@@ -78,8 +78,8 @@ internal sealed class FakeGridController : IGridController
         });
     }
 
-    /// <summary>The <see cref="GridStatus.StartError"/> of the status built from the other properties.</summary>
-    public string? StartError { get; set; }
+    /// <summary>The <see cref="GridStatus.StartFailure"/> of the status built from the other properties.</summary>
+    public StartFailure? StartFailure { get; set; }
 
     /// <summary>When set, <see cref="GetStatus"/> returns it instead of the status built from the other properties.</summary>
     public GridStatus? Status { get; set; }
@@ -90,7 +90,7 @@ internal sealed class FakeGridController : IGridController
         var running = new ComponentStatus("x", ProcessState.Running, null, null, null, null);
         return new GridStatus(running with { Name = "database" }, running with { Name = "robust" },
             HasRegion ? new ComponentStatus("region", RegionState, null, null, null, null) : null,
-            _loginsEnabled, "http://127.0.0.1:8002", StartError);
+            _loginsEnabled, "http://127.0.0.1:8002", StartFailure);
     }
 
     /// <summary>Thrown by the component operations when set.</summary>

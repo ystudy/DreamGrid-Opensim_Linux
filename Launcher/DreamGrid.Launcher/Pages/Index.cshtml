@@ -25,7 +25,7 @@
             <summary>Show details</summary>
             @foreach (var (label, lines) in Model.FailedLogs)
             {
-                <p class="component-label">@label: the last lines it wrote</p>
+                <p class="component-label">@label</p>
                 <pre>@string.Join('\n', lines)</pre>
             }
         </details>

@@ -12,6 +12,9 @@ namespace DreamGrid.Launcher.Tests;
 public sealed partial class DashboardTests : IAsyncLifetime
 {
     private const string PortMessage = "Port 8002 (Robust public) is already in use by another program.";
+    private const string PlainPort =
+        "Port 8002 is already in use by another program, so your world can't start. Close that program, or pick another port in Advanced Settings → Network.";
+    private const string CouldNotStart = "Your world could not start.";
 
     private readonly LauncherFactory _f = new(s => s with
     {
@@ -39,9 +42,10 @@ public sealed partial class DashboardTests : IAsyncLifetime
     private static ComponentStatus Component(string name, ProcessState state, string? lastError = null) =>
         new(name, state, null, null, null, lastError);
 
-    private static GridStatus Status(ProcessState db, ProcessState robust, ProcessState? region, string? startError = null) =>
+    private static GridStatus Status(ProcessState db, ProcessState robust, ProcessState? region,
+        StartFailure? startFailure = null, GridActivity activity = GridActivity.None) =>
         new(Component("database", db), Component("robust", robust), region is { } r ? Component("region", r) : null,
-            false, "http://127.0.0.1:8002", startError);
+            false, "http://127.0.0.1:8002", startFailure, activity);
 
     private static string Token(string html) =>
         WebUtility.HtmlDecode(TokenPattern().Match(html).Groups[1].Value);
@@ -93,30 +97,105 @@ public sealed partial class DashboardTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task A_start_error_is_the_problem_shown()
+    public async Task A_port_conflict_is_shown_in_plain_words_from_the_port_number()
     {
-        _f.Grid.Status = Status(ProcessState.Stopped, ProcessState.Stopped, ProcessState.Stopped, PortMessage);
+        _f.Grid.Status = Status(ProcessState.Stopped, ProcessState.Stopped, ProcessState.Stopped, new StartFailure(PortMessage, 8002));
+
+        using var client = await SignedInAsync();
+        var text = VisibleText(await client.GetStringAsync("/", Ct));
+        var admin = await client.GetStringAsync("/api/status", Ct);
+        var anonymous = await _f.CreateClient().GetStringAsync("/api/status", Ct);
+
+        Assert.Contains(PlainPort, text);
+        Assert.DoesNotMatch(@"(?i)\brobust\b", text);
+        foreach (var body in new[] { admin, anonymous })
+        {
+            using var json = JsonDocument.Parse(body);
+            Assert.Equal(PlainPort, json.RootElement.GetProperty("problem").GetString());
+            Assert.DoesNotContain("Robust", body);
+        }
+    }
+
+    [Fact]
+    public async Task Any_other_start_failure_is_plain_with_the_raw_message_only_in_the_admin_details()
+    {
+        var raw = "MariaDB server not found; searched: " + Path.Combine(_f.Paths.Data, "mariadb", "bin");
+        _f.Grid.Status = Status(ProcessState.Stopped, ProcessState.Stopped, ProcessState.Stopped, new StartFailure(raw, null));
 
         using var client = await SignedInAsync();
         var html = await client.GetStringAsync("/", Ct);
+        var anonymous = await _f.CreateClient().GetStringAsync("/api/status", Ct);
+        var admin = await client.GetStringAsync("/api/status", Ct);
+
+        Assert.Contains(CouldNotStart, VisibleText(html));
+        Assert.Contains("Show details", html);
+        Assert.Contains(raw, VisibleText(html));
+        foreach (var body in new[] { anonymous, admin })
+        {
+            using var json = JsonDocument.Parse(body);
+            Assert.Equal(CouldNotStart, json.RootElement.GetProperty("problem").GetString());
+            Assert.DoesNotContain(_f.Paths.Data, body);
+            Assert.DoesNotContain(JsonEncodedText.Encode(_f.Paths.Data).ToString(), body);
+        }
+    }
+
+    [Fact]
+    public async Task A_start_failure_is_ignored_once_everything_runs()
+    {
+        _f.Grid.Status = Status(ProcessState.Running, ProcessState.Running, ProcessState.Running, new StartFailure(PortMessage, 8002));
+
+        using var client = await SignedInAsync();
         using var json = JsonDocument.Parse(await client.GetStringAsync("/api/status", Ct));
 
-        Assert.Contains("Port 8002", html);
-        Assert.Equal(PortMessage, json.RootElement.GetProperty("problem").GetString());
+        Assert.Equal(JsonValueKind.Null, json.RootElement.GetProperty("problem").ValueKind);
+        Assert.Equal("Your world is running.", json.RootElement.GetProperty("headline").GetString());
     }
 
     [Theory]
-    [InlineData(ProcessState.Running, ProcessState.Running, ProcessState.Running, null)]
-    [InlineData(ProcessState.Stopped, ProcessState.Stopped, ProcessState.Stopped, null)]
-    [InlineData(ProcessState.Failed, ProcessState.Stopped, ProcessState.Stopped, "The database isn't running.")]
-    [InlineData(ProcessState.Running, ProcessState.Failed, ProcessState.Stopped, "The grid service isn't running.")]
-    [InlineData(ProcessState.Running, ProcessState.Running, ProcessState.Failed, "Your region isn't running.")]
-    [InlineData(ProcessState.Running, ProcessState.Stopped, ProcessState.Stopped, "The grid service isn't running.")]
-    [InlineData(ProcessState.Running, ProcessState.Running, ProcessState.Stopped, "Your region isn't running.")]
-    [InlineData(ProcessState.Running, ProcessState.Running, ProcessState.Starting, null)]
-    public void Problem_names_the_first_component_that_is_down(ProcessState db, ProcessState robust, ProcessState region, string? problem)
+    // Settled states.
+    [InlineData(ProcessState.Running, ProcessState.Running, ProcessState.Running, GridActivity.None, null)]
+    [InlineData(ProcessState.Stopped, ProcessState.Stopped, ProcessState.Stopped, GridActivity.None, null)]
+    [InlineData(ProcessState.Running, ProcessState.Stopped, ProcessState.Stopped, GridActivity.None, "The grid service isn't running.")]
+    [InlineData(ProcessState.Running, ProcessState.Running, ProcessState.Stopped, GridActivity.None, "Your region isn't running.")]
+    // Failed and Crashed are problems at any time.
+    [InlineData(ProcessState.Failed, ProcessState.Stopped, ProcessState.Stopped, GridActivity.None, "The database isn't running.")]
+    [InlineData(ProcessState.Running, ProcessState.Failed, ProcessState.Stopped, GridActivity.None, "The grid service isn't running.")]
+    [InlineData(ProcessState.Running, ProcessState.Running, ProcessState.Failed, GridActivity.None, "Your region isn't running.")]
+    [InlineData(ProcessState.Running, ProcessState.Running, ProcessState.Crashed, GridActivity.Starting, "Your region isn't running.")]
+    [InlineData(ProcessState.Running, ProcessState.Failed, ProcessState.Stopped, GridActivity.Starting, "The grid service isn't running.")]
+    // A component in transition: no partial-stop problem.
+    [InlineData(ProcessState.Running, ProcessState.Starting, ProcessState.Stopped, GridActivity.None, null)]
+    [InlineData(ProcessState.Running, ProcessState.Running, ProcessState.Starting, GridActivity.None, null)]
+    [InlineData(ProcessState.Running, ProcessState.Stopping, ProcessState.Stopped, GridActivity.None, null)]
+    // StartAsync step by step, including the moments between components.
+    [InlineData(ProcessState.Starting, ProcessState.Stopped, ProcessState.Stopped, GridActivity.Starting, null)]
+    [InlineData(ProcessState.Running, ProcessState.Stopped, ProcessState.Stopped, GridActivity.Starting, null)]
+    [InlineData(ProcessState.Running, ProcessState.Starting, ProcessState.Stopped, GridActivity.Starting, null)]
+    [InlineData(ProcessState.Running, ProcessState.Running, ProcessState.Stopped, GridActivity.Starting, null)]
+    [InlineData(ProcessState.Running, ProcessState.Running, ProcessState.Starting, GridActivity.Starting, null)]
+    // StopAllAsync step by step: the region goes first.
+    [InlineData(ProcessState.Running, ProcessState.Running, ProcessState.Stopping, GridActivity.Stopping, null)]
+    [InlineData(ProcessState.Running, ProcessState.Running, ProcessState.Stopped, GridActivity.Stopping, null)]
+    [InlineData(ProcessState.Running, ProcessState.Stopping, ProcessState.Stopped, GridActivity.Stopping, null)]
+    [InlineData(ProcessState.Running, ProcessState.Stopped, ProcessState.Stopped, GridActivity.Stopping, null)]
+    [InlineData(ProcessState.Stopping, ProcessState.Stopped, ProcessState.Stopped, GridActivity.Stopping, null)]
+    // A one-component restart.
+    [InlineData(ProcessState.Running, ProcessState.Running, ProcessState.Stopped, GridActivity.Restarting, null)]
+    public void Problem_names_the_first_component_that_is_down(ProcessState db, ProcessState robust, ProcessState region, GridActivity activity, string? problem)
     {
-        Assert.Equal(problem, StatusApi.Problem(Status(db, robust, region)));
+        Assert.Equal(problem, StatusApi.Problem(Status(db, robust, region, activity: activity)));
+    }
+
+    [Theory]
+    [InlineData(ProcessState.Running, ProcessState.Running, ProcessState.Running, GridActivity.None, "Your world is running.")]
+    [InlineData(ProcessState.Stopped, ProcessState.Stopped, ProcessState.Stopped, GridActivity.None, "Your world is stopped.")]
+    [InlineData(ProcessState.Running, ProcessState.Stopped, ProcessState.Stopped, GridActivity.Starting, "Your world is starting.")]
+    [InlineData(ProcessState.Running, ProcessState.Running, ProcessState.Stopped, GridActivity.Stopping, "Your world is stopping.")]
+    [InlineData(ProcessState.Running, ProcessState.Running, ProcessState.Stopped, GridActivity.Restarting, "Your world is restarting.")]
+    [InlineData(ProcessState.Running, ProcessState.Starting, ProcessState.Stopped, GridActivity.None, "Your world is starting.")]
+    public void Headline_follows_what_the_grid_is_doing(ProcessState db, ProcessState robust, ProcessState region, GridActivity activity, string headline)
+    {
+        Assert.Equal(headline, StatusApi.Headline(Status(db, robust, region, activity: activity)));
     }
 
     [Fact]

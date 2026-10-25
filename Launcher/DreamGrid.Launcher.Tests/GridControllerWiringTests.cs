@@ -117,7 +117,7 @@ public sealed class GridControllerWiringTests : IDisposable
     }
 
     [Fact]
-    public async Task A_port_conflict_is_kept_in_the_status_until_the_next_start()
+    public async Task A_failed_start_is_kept_in_the_status_with_the_conflicting_port()
     {
         var ct = TestContext.Current.CancellationToken;
         var s = _store.LoadOrCreate();
@@ -129,12 +129,28 @@ public sealed class GridControllerWiringTests : IDisposable
             conflict = await Assert.ThrowsAsync<PortConflictException>(() => _grid.StartAsync(ct));
         }
         finally { robust.Stop(); }
-        Assert.Equal(conflict.Message, _grid.GetStatus().StartError);
+        Assert.Equal(s.RobustPublicPort, conflict.Port);
+        Assert.Equal(new StartFailure(conflict.Message, s.RobustPublicPort), _grid.GetStatus().StartFailure);
+        Assert.Equal(GridActivity.None, _grid.GetStatus().Activity);
 
-        // The next attempt gets past the port check (MariaDB cannot start in this rig): the old message goes.
+        // Any other failure is kept too (MariaDB cannot start in this rig), without a port.
         var e = await Record.ExceptionAsync(() => _grid.StartAsync(ct));
         Assert.IsNotType<PortConflictException>(e);
-        Assert.Null(_grid.GetStatus().StartError);
+        Assert.Equal(new StartFailure(e!.Message, null), _grid.GetStatus().StartFailure);
+    }
+
+    [Fact]
+    public async Task A_port_conflict_on_a_component_start_is_kept_in_the_status()
+    {
+        var s = _store.LoadOrCreate();
+        var robust = new TcpListener(IPAddress.Any, s.RobustPublicPort);
+        robust.Start();
+        try
+        {
+            await Assert.ThrowsAsync<PortConflictException>(() => _grid.StartComponentAsync("database", TestContext.Current.CancellationToken));
+        }
+        finally { robust.Stop(); }
+        Assert.Equal(s.RobustPublicPort, _grid.GetStatus().StartFailure?.ConflictPort);
     }
 
     [Fact]

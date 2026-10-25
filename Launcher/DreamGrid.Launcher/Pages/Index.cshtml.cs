@@ -15,20 +15,26 @@ public sealed class IndexModel(IGridController grid, IOnlineUsers online, GridAc
 
     public StatusView Status { get; private set; } = null!;
 
-    /// <summary>The last log lines of each failed component, by its dashboard label.</summary>
+    /// <summary>For the "Show details" box: the raw start failure and the last log lines of each failed component.</summary>
     public IReadOnlyList<(string Label, IReadOnlyList<string> Lines)> FailedLogs { get; private set; } = [];
 
     [TempData] public string? Notice { get; set; }
 
     public async Task OnGetAsync()
     {
+        var raw = grid.GetStatus();
         Status = await StatusApi.BuildAsync(grid, online, withOnline: true, HttpContext.RequestAborted);
         var g = Status.Grid;
-        FailedLogs = new[] { g.Database, g.Robust, g.Region }
+        var details = new List<(string Label, IReadOnlyList<string> Lines)>();
+        // The raw start message may name paths: only this admin page shows it, never /api/status. A port conflict's
+        // plain text already says everything (its raw message uses internal port names).
+        if (StatusApi.ShowsStartFailure(raw) && raw.StartFailure!.ConflictPort is null)
+            details.Add(("Why the last start failed", [raw.StartFailure!.Message]));
+        details.AddRange(new[] { g.Database, g.Robust, g.Region }
             .Where(c => c?.State == nameof(Core.Processes.ProcessState.Failed))
-            .Select(c => (c!.Label, Lines: LastLines(c.Name)))
-            .Where(f => f.Lines.Count > 0)
-            .ToList();
+            .Select(c => (c!.Label + ": the last lines it wrote", LastLines(c.Name)))
+            .Where(f => f.Item2.Count > 0));
+        FailedLogs = details;
     }
 
     /// <summary>The controls without JavaScript: the action runs in the background and the page comes back at once.</summary>

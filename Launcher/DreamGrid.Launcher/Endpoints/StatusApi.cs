@@ -48,21 +48,44 @@ public static class StatusApi
             people.Avatars.Select(a => a.Name).ToList(), people.Available, problem, problem ?? Headline(s));
     }
 
+    public const string CouldNotStart = "Your world could not start.";
+
     /// <summary>
-    /// The start error, else the first component (in start order) that failed or crashed, or that is stopped while
-    /// another runs; null when the world is running, starting, stopping or wholly stopped.
+    /// In plain words: the last failed start (unless everything runs again), else the first component (in start
+    /// order) that failed or crashed, else (with nothing under way) one that is stopped while another runs; null when
+    /// the world is running, starting, stopping, restarting or wholly stopped.
     /// </summary>
     public static string? Problem(GridStatus s)
     {
-        if (s.StartError is { } startError) return startError;
+        if (ShowsStartFailure(s)) return PlainStartFailure(s.StartFailure!);
         var parts = Parts(s).ToList();
         if (parts.FirstOrDefault(p => p.C.State is ProcessState.Failed or ProcessState.Crashed) is { C: not null } down)
             return down.Message;
+        // Between components of a start or stop every state looks settled; only a settled partial grid is a problem.
+        if (InTransition(s)) return null;
         if (parts.Any(p => p.C.State == ProcessState.Running) &&
             parts.FirstOrDefault(p => p.C.State == ProcessState.Stopped) is { C: not null } stopped)
             return stopped.Message;
         return null;
     }
+
+    /// <summary>
+    /// True while the last start failure is worth showing: not while a retry or other operation is under way, and a
+    /// stale one is ignored once everything runs.
+    /// </summary>
+    public static bool ShowsStartFailure(GridStatus s) => s.StartFailure is not null && s.Activity == GridActivity.None && !AllRunning(s);
+
+    /// <summary>
+    /// Built from the port number, never from the raw message (which uses 2a's internal names and may hold paths).
+    /// </summary>
+    private static string PlainStartFailure(StartFailure f) => f.ConflictPort is { } port
+        ? $"Port {port} is already in use by another program, so your world can't start. Close that program, or pick another port in Advanced Settings \u2192 Network."
+        : CouldNotStart;
+
+    private static bool AllRunning(GridStatus s) => Parts(s).All(p => p.C.State == ProcessState.Running);
+
+    private static bool InTransition(GridStatus s) =>
+        s.Activity != GridActivity.None || Parts(s).Any(p => p.C.State is ProcessState.Starting or ProcessState.Stopping);
 
     private static IEnumerable<(ComponentStatus C, string Message)> Parts(GridStatus s)
     {
@@ -71,10 +94,17 @@ public static class StatusApi
         if (s.Region is { } r) yield return (r, "Your region isn't running.");
     }
 
-    private static string Headline(GridStatus s)
+    /// <summary>The line shown when there is no problem.</summary>
+    public static string Headline(GridStatus s)
     {
         var states = Parts(s).Select(p => p.C.State).ToList();
         if (states.All(x => x == ProcessState.Running)) return "Your world is running.";
+        switch (s.Activity)
+        {
+            case GridActivity.Starting: return "Your world is starting.";
+            case GridActivity.Stopping: return "Your world is stopping.";
+            case GridActivity.Restarting: return "Your world is restarting.";
+        }
         if (states.Any(x => x == ProcessState.Starting)) return "Your world is starting.";
         if (states.Any(x => x == ProcessState.Stopping)) return "Your world is stopping.";
         return "Your world is stopped.";

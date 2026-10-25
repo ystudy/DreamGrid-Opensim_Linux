@@ -43,7 +43,8 @@ public sealed partial class GridController(
     private volatile string _host = "127.0.0.1";
     private volatile Component? _db, _robust, _region;
     private volatile bool _loginsEnabled;
-    private volatile string? _startError;
+    private volatile StartFailure? _startFailure;
+    private volatile GridActivity _activity;
     private int? _regionAlertPid;
     private TaskCompletionSource<string>? _oarLoaded;
 
@@ -64,35 +65,37 @@ public sealed partial class GridController(
     public async Task StartAsync(CancellationToken ct)
     {
         await _ops.WaitAsync(ct);
+        _activity = GridActivity.Starting;
         try
         {
-            // A port conflict stops the start before any component runs, so no component state shows it.
-            _startError = null;
             var s = LoadSettings();
-            try { await PrepareAsync(s, ct); }
-            catch (PortConflictException e)
-            {
-                _startError = e.Message;
-                throw;
-            }
+            await PrepareAsync(s, ct);
 
             await StartDatabaseAsync(s, ct);
             await StartComponentAsync(_robust!, ct);
             if (s.Setup.RegionCreated && _region is not null)
                 await StartRegionAsync(ct);
+            _startFailure = null;
         }
-        finally { _ops.Release(); }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            // A failure before any component runs (a port conflict, MariaDB missing) shows in no component state.
+            _startFailure = new StartFailure(e.Message, (e as PortConflictException)?.Port);
+            throw;
+        }
+        finally { _activity = GridActivity.None; _ops.Release(); }
     }
 
     public async Task StopAllAsync(CancellationToken ct)
     {
         await _ops.WaitAsync(ct);
+        _activity = GridActivity.Stopping;
         try
         {
             LoadSettings();
             await StopAllCoreAsync(ct);
         }
-        finally { _ops.Release(); }
+        finally { _activity = GridActivity.None; _ops.Release(); }
     }
 
     public async Task DetachAsync()
@@ -108,6 +111,7 @@ public sealed partial class GridController(
     public async Task RestartComponentAsync(string name, CancellationToken ct)
     {
         await _ops.WaitAsync(ct);
+        _activity = GridActivity.Restarting;
         try
         {
             var s = LoadSettings();
@@ -137,7 +141,7 @@ public sealed partial class GridController(
                     throw UnknownComponent(name);
             }
         }
-        finally { _ops.Release(); }
+        finally { _activity = GridActivity.None; _ops.Release(); }
     }
 
     public async Task StartComponentAsync(string name, CancellationToken ct)
@@ -146,6 +150,7 @@ public sealed partial class GridController(
         if (component is not ("database" or "robust" or "region")) throw UnknownComponent(name);
 
         await _ops.WaitAsync(ct);
+        _activity = GridActivity.Starting;
         try
         {
             var s = LoadSettings();
@@ -161,7 +166,14 @@ public sealed partial class GridController(
 
             // On an idle grid this is the first start since the launcher came up: same preparation as StartAsync.
             if (new[] { _db, _robust, _region }.All(c => c is null || c.Process.State != ProcessState.Running))
-                await PrepareAsync(s, ct);
+            {
+                try { await PrepareAsync(s, ct); }
+                catch (PortConflictException e)
+                {
+                    _startFailure = new StartFailure(e.Message, e.Port);
+                    throw;
+                }
+            }
 
             switch (component)
             {
@@ -170,12 +182,13 @@ public sealed partial class GridController(
                 default: await StartRegionAsync(ct); break;
             }
         }
-        finally { _ops.Release(); }
+        finally { _activity = GridActivity.None; _ops.Release(); }
     }
 
     public async Task StopComponentAsync(string name, CancellationToken ct)
     {
         await _ops.WaitAsync(ct);
+        _activity = GridActivity.Stopping;
         try
         {
             LoadSettings();
@@ -196,7 +209,7 @@ public sealed partial class GridController(
                     throw UnknownComponent(name);
             }
         }
-        finally { _ops.Release(); }
+        finally { _activity = GridActivity.None; _ops.Release(); }
     }
 
     private static ArgumentException UnknownComponent(string name) =>
@@ -265,6 +278,7 @@ public sealed partial class GridController(
             throw new ArgumentException("Content must be \"starter\" or \"island\".", nameof(content));
 
         await _ops.WaitAsync(ct);
+        _activity = GridActivity.Starting;
         try
         {
             progress?.Report(SetupProgress.CreatingRegion);
@@ -289,7 +303,7 @@ public sealed partial class GridController(
 
             UpdateSettings(l => l with { Setup = l.Setup with { RegionCreated = true } }, writeConfig: false);
         }
-        finally { _ops.Release(); }
+        finally { _activity = GridActivity.None; _ops.Release(); }
     }
 
     // ---- status and alerts --------------------------------------------------------------------------
@@ -304,7 +318,8 @@ public sealed partial class GridController(
             s.Region is null ? null : Describe("region", _region),
             _loginsEnabled,
             $"http://{_host}:{s.RobustPublicPort}",
-            _startError);
+            _startFailure,
+            _activity);
     }
 
     /// <summary>The settings the controller last loaded (the file only on first use); never waits behind an operation.</summary>
@@ -375,8 +390,8 @@ public sealed partial class GridController(
         var skip = new HashSet<int> { s.WebPort };
         foreach (var c in new[] { _db, _robust, _region })
             if (c is not null && WillAdopt(c)) skip.UnionWith(c.Ports);
-        if (PortCheck.FindConflict(s, skip) is { } conflict)
-            throw new PortConflictException(conflict);
+        if (PortCheck.FindConflictPort(s, skip) is { } conflict)
+            throw new PortConflictException(conflict.Message, conflict.Port);
     }
 
     /// <summary>
