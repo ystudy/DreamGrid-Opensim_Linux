@@ -200,7 +200,9 @@ public sealed class AccessTests
 
         using var resp = await client.GetAsync("/", Ct);
 
-        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        // No Index page yet (Task 5); what matters is that the legacy probe no longer answers a bare "/".
+        Assert.NotEqual(HttpStatusCode.OK, resp.StatusCode);
+        Assert.DoesNotContain("Test Completed", await resp.Content.ReadAsStringAsync(Ct));
     }
 
     [Theory]

@@ -7,6 +7,29 @@ using DreamGrid.Launcher.Core.Settings;
 namespace DreamGrid.Launcher;
 
 /// <summary>The port-8001 contract (spec 5) that the patched OpenSim and Robust call, on the web port.</summary>
+/// <summary>Marks the port-8001 handler on "/".</summary>
+internal sealed class LegacyRootMetadata;
+
+/// <summary>A GET of "/" without alt, type or command is not a legacy call; it falls through to the website's pages.</summary>
+internal sealed class LegacyRootPolicy : Microsoft.AspNetCore.Routing.MatcherPolicy, Microsoft.AspNetCore.Routing.Matching.IEndpointSelectorPolicy
+{
+    private static readonly string[] Keys = ["alt", "type", "command"];
+
+    public override int Order => -1000;
+
+    public bool AppliesToEndpoints(IReadOnlyList<Endpoint> endpoints) => endpoints.Any(e => e.Metadata.GetMetadata<LegacyRootMetadata>() is not null);
+
+    public Task ApplyAsync(HttpContext ctx, Microsoft.AspNetCore.Routing.Matching.CandidateSet candidates)
+    {
+        if (!HttpMethods.IsGet(ctx.Request.Method) && !HttpMethods.IsHead(ctx.Request.Method)) return Task.CompletedTask;
+        if (Keys.Any(ctx.Request.Query.ContainsKey)) return Task.CompletedTask;
+        for (var i = 0; i < candidates.Count; i++)
+            if (candidates[i].Endpoint.Metadata.GetMetadata<LegacyRootMetadata>() is not null)
+                candidates.SetValidity(i, false);
+        return Task.CompletedTask;
+    }
+}
+
 public static class LegacyEndpoints
 {
     private const string TextPlain = "text/plain; charset=utf-8";
@@ -15,7 +38,7 @@ public static class LegacyEndpoints
 
     public static void Map(WebApplication app)
     {
-        app.MapMethods("/", [HttpMethods.Get, HttpMethods.Post], Root);
+        app.MapMethods("/", [HttpMethods.Get, HttpMethods.Post], Root).WithMetadata(new LegacyRootMetadata());
         app.MapPost("/dreamgrid/regionready", RegionReady);
     }
 
@@ -45,7 +68,8 @@ public static class LegacyEndpoints
             return Text(ctx, reply);
         }
 
-        return Text(ctx, "Test Completed"); // the old DreamGrid port probe
+        // Unreachable for a bare GET (LegacyRootPolicy leaves that to the website); a POST with no known key.
+        return Results.NotFound();
     }
 
     /// <summary>True for 127.0.0.0/8 and ::1, including IPv4-mapped forms such as ::ffff:127.0.0.1.</summary>
