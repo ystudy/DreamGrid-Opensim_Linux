@@ -69,13 +69,13 @@ public sealed class AccessTests
         using var client = NoRedirect(f);
         (await client.GetAsync("/setup?token=" + Token, Ct)).Dispose();
 
-        // No Setup page exists yet (Task 3): "through" means the gate did not redirect.
+        // "Through" means the setup page and API answered, not the gate.
         using var setup = await client.GetAsync("/setup", Ct);
         using var api = await client.GetAsync("/api/setup/progress", Ct);
         using var other = await client.GetAsync("/", Ct);
 
-        Assert.Equal(HttpStatusCode.NotFound, setup.StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, api.StatusCode);
+        Assert.Equal("/setup/world", setup.Headers.Location?.OriginalString);
+        Assert.Equal(HttpStatusCode.OK, api.StatusCode);
         Assert.Equal("/waiting", other.Headers.Location?.OriginalString);
     }
 
@@ -153,9 +153,9 @@ public sealed class AccessTests
         using var setup = await client.GetAsync("/setup", Ct);
         using var api = await client.GetAsync("/api/setup/progress", Ct);
 
-        // Passed the gate; the Setup page and API come in Task 3.
-        Assert.Equal(HttpStatusCode.NotFound, setup.StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, api.StatusCode);
+        // Passed the gate: the checklist sends on to its first unfinished step (this seed never named the world).
+        Assert.Equal("/setup/world", setup.Headers.Location?.OriginalString);
+        Assert.Equal(HttpStatusCode.OK, api.StatusCode);
     }
 
     [Fact]

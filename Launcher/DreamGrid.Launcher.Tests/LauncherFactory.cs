@@ -27,6 +27,7 @@ internal sealed class LauncherFactory : WebApplicationFactory<Program>
         var s = Store.LoadOrCreate();
         Store.Save(seed is null ? s : seed(s));
         Grid.SettingsSource = Store.LoadOrCreate;
+        Grid.SettingsSink = Store.Save;
     }
 
     public LauncherPaths Paths { get; }

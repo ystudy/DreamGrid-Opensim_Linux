@@ -20,8 +20,12 @@ public interface IGridController
 
     Task<RobustAccount> CreateOwnerAsync(string first, string last, string password, string? email, CancellationToken ct);
 
-    /// <summary><paramref name="content"/> is "starter" or "island".</summary>
-    Task CreateRegionAsync(string name, string content, CancellationToken ct);
+    /// <summary>
+    /// <paramref name="content"/> is "starter" or "island". <paramref name="progress"/> hears the plain-language stage
+    /// as each real step begins: "Creating your region", "Loading the region content",
+    /// "Waiting for the region to accept logins".
+    /// </summary>
+    Task CreateRegionAsync(string name, string content, CancellationToken ct, IProgress<string>? progress = null);
 
     GridStatus GetStatus();
 

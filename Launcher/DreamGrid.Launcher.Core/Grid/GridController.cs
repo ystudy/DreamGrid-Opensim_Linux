@@ -7,6 +7,7 @@ using DreamGrid.Launcher.Core.OpenSim;
 using DreamGrid.Launcher.Core.Processes;
 using DreamGrid.Launcher.Core.Runtime;
 using DreamGrid.Launcher.Core.Settings;
+using DreamGrid.Launcher.Core.Setup;
 
 namespace DreamGrid.Launcher.Core.Grid;
 
@@ -248,7 +249,7 @@ public sealed partial class GridController(
         finally { _ops.Release(); }
     }
 
-    public async Task CreateRegionAsync(string name, string content, CancellationToken ct)
+    public async Task CreateRegionAsync(string name, string content, CancellationToken ct, IProgress<string>? progress = null)
     {
         if (!IsValidRegionName(name))
             throw new ArgumentException("A region name is 2-32 letters, digits, spaces, '-', '_' or '\\'' with no leading or trailing space.", nameof(name));
@@ -258,6 +259,7 @@ public sealed partial class GridController(
         await _ops.WaitAsync(ct);
         try
         {
+            progress?.Report(SetupProgress.CreatingRegion);
             var s = LoadSettings();
             // A retry for the same name keeps the region's UUID.
             var uuid = s.Region is { } old && old.Name == name ? old.Uuid : Guid.NewGuid();
@@ -272,7 +274,9 @@ public sealed partial class GridController(
             _loginsEnabled = false;
             await StartRegionAsync(ct);
             await WaitForLoginsAsync(ct); // the scene is up and accepts console commands for it
+            progress?.Report(SetupProgress.LoadingContent);
             await LoadContentAsync(region, content, ct);
+            progress?.Report(SetupProgress.WaitingForLogins);
             await WaitForLoginsAsync(ct);
 
             UpdateSettings(l => l with { Setup = l.Setup with { RegionCreated = true } }, writeConfig: false);
@@ -495,9 +499,7 @@ public sealed partial class GridController(
     private async Task LoadContentAsync(RegionSettings region, string content, CancellationToken ct)
     {
         var console = _region!.Console!;
-        var programRoot = Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(Path.GetFullPath(paths.OpenSimProgram)))
-            ?? paths.OpenSimProgram;
-        var oar = content == "starter" ? StarterContent.StarterOar(programRoot) : null;
+        var oar = content == "starter" ? StarterContent.StarterOar(paths) : null;
         if (oar is not null)
         {
             // RegionReady reports the archiver's result as an "oarloaded" or "oarnotloaded" alert.

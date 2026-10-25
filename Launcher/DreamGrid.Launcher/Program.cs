@@ -10,7 +10,9 @@ using DreamGrid.Launcher.Endpoints;
 using DreamGrid.Launcher.Core.Modules;
 using DreamGrid.Launcher.Core.OpenSim;
 using DreamGrid.Launcher.Core.Settings;
+using DreamGrid.Launcher.Core.Setup;
 using DreamGrid.Launcher.Security;
+using DreamGrid.Launcher.Setup;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Connections;
@@ -62,6 +64,8 @@ builder.Services.AddAuthentication(AuthSchemes.Admin).AddCookie(AuthSchemes.Admi
     o.Cookie.HttpOnly = true;
     o.Cookie.SameSite = SameSiteMode.Strict;
     o.LoginPath = "/login";
+    o.ExpireTimeSpan = AdminSignIn.Expiry;
+    o.SlidingExpiration = true;
     // API callers get a status code, never a redirect to the login page.
     o.Events.OnRedirectToLogin = c => ApiOr(c, StatusCodes.Status401Unauthorized);
     o.Events.OnRedirectToAccessDenied = c => ApiOr(c, StatusCodes.Status403Forbidden);
@@ -102,6 +106,8 @@ builder.Services.AddSingleton<IRobustClient>(sp => new RobustClient(
 builder.Services.AddSingleton<GridController>();
 builder.Services.AddSingleton<IGridController>(sp => sp.GetRequiredService<GridController>());
 builder.Services.AddSingleton<LegacyCommandApi>();
+builder.Services.AddSingleton<SetupProgress>();
+builder.Services.AddSingleton<SetupRunner>();
 builder.Services.AddHostedService<GridHostedService>();
 
 var app = builder.Build();
@@ -111,6 +117,7 @@ app.UseMiddleware<SetupGate>();
 app.UseAuthorization();
 LegacyEndpoints.Map(app);
 LogsApi.Map(app);
+SetupApi.Map(app);
 app.MapRazorPages();
 
 app.Lifetime.ApplicationStarted.Register(() =>

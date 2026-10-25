@@ -55,8 +55,10 @@ public sealed class GridBootTests : IDisposable
 
             // Task 11's /dreamgrid/regionready endpoint does not exist yet: stand in for it on the web port.
             using var alerts = new AlertListener(s.WebPort, grid.OnRegionAlert);
-            await grid.CreateRegionAsync("Welcome", "island", ct);
+            var stages = new StageRecorder();
+            await grid.CreateRegionAsync("Welcome", "island", ct, stages);
             Assert.True(grid.GetStatus().LoginsEnabled);
+            Assert.Equal(["Creating your region", "Loading the region content", "Waiting for the region to accept logins"], stages.Stages);
 
             status = grid.GetStatus();
             Assert.Equal(ProcessState.Running, status.Region!.State);
@@ -99,5 +101,16 @@ public sealed class GridBootTests : IDisposable
             holder.Stop();
             await grid.DetachAsync();
         }
+    }
+}
+
+/// <summary>Records reported stages synchronously (Progress&lt;T&gt; would post them to the thread pool, out of order).</summary>
+internal sealed class StageRecorder : IProgress<string>
+{
+    public List<string> Stages { get; } = new();
+
+    public void Report(string value)
+    {
+        lock (Stages) Stages.Add(value);
     }
 }

@@ -70,3 +70,44 @@ pre { overflow-x: auto; padding: .75rem; background: var(--card); border: 1px so
 .log-lines { max-height: 70vh; overflow: auto; font-size: .8rem; white-space: pre; }
 .log-auto { font-weight: normal; }
 .log-auto input { width: auto; }
+
+.field-error { display: block; color: #c62828; font-size: .9rem; }
+.hint { display: block; color: var(--muted); font-size: .85rem; }
+.button {
+    display: inline-block;
+    margin-top: 1rem;
+    padding: .55rem 1.1rem;
+    color: #fff;
+    background: var(--accent);
+    border-radius: .35rem;
+    text-decoration: none;
+}
+
+/* Setup checklist */
+.checklist { display: flex; flex-wrap: wrap; gap: .25rem .5rem; padding: 0; margin: 0 0 1rem; list-style: none; counter-reset: step; }
+.checklist li {
+    counter-increment: step;
+    padding: .2rem .6rem;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 1rem;
+    font-size: .85rem;
+}
+.checklist li::before { content: counter(step) ". "; }
+.checklist li.done::before { content: "\2713  "; }
+.checklist li.current { color: var(--text); border-color: var(--accent); font-weight: 600; }
+.name-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: 0 1rem; }
+fieldset { margin: 1rem 0 0; padding: .5rem .75rem; border: 1px solid var(--border); border-radius: .35rem; }
+legend { font-weight: 600; }
+label.choice { font-weight: normal; }
+label.choice input { width: auto; margin-right: .4rem; }
+.progress-box, .error-box, .ok-box { margin: 1rem 0; padding: .75rem 1rem; background: var(--card); border: 1px solid var(--border); border-radius: .35rem; }
+.error-box { border-color: #c62828; }
+.ok-box { border-color: #2e7d32; }
+.stage { font-weight: 600; }
+progress { width: 100%; height: 1.25rem; }
+details pre { max-height: 50vh; }
+.copy-row { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; }
+.copy-row button { margin-top: 0; }
+.login-uri { padding: .4rem .6rem; background: var(--card); border: 1px solid var(--border); border-radius: .35rem; user-select: all; }
+.steps li { margin: .35rem 0; }

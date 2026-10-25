@@ -34,10 +34,49 @@ internal sealed class FakeGridController : IGridController
 
     public Task DetachAsync() { Record("DetachAsync"); return Task.CompletedTask; }
 
-    public Task<RobustAccount> CreateOwnerAsync(string first, string last, string password, string? email, CancellationToken ct) =>
-        throw new NotSupportedException();
+    public int CreateOwnerCalls { get; private set; }
 
-    public Task CreateRegionAsync(string name, string content, CancellationToken ct) => throw new NotSupportedException();
+    /// <summary>The last owner created: (first, last, password, email).</summary>
+    public (string First, string Last, string Password, string? Email)? CreatedOwner { get; private set; }
+
+    /// <summary>Thrown by <see cref="CreateOwnerAsync"/> when set.</summary>
+    public Exception? OwnerError { get; set; }
+
+    /// <summary>Like the controller: saves Setup.OwnerCreated and Setup.Owner through <see cref="UpdateSettings"/>.</summary>
+    public Task<RobustAccount> CreateOwnerAsync(string first, string last, string password, string? email, CancellationToken ct)
+    {
+        Record("CreateOwner " + first + " " + last);
+        CreateOwnerCalls++;
+        if (OwnerError is { } e) throw e;
+        CreatedOwner = (first, last, password, email);
+        var account = new RobustAccount(Guid.NewGuid(), first, last, 200, email ?? "");
+        UpdateSettings(l => l with { Setup = l.Setup with { OwnerCreated = true, Owner = new OwnerInfo(first, last, account.PrincipalId) } });
+        return Task.FromResult(account);
+    }
+
+    /// <summary>
+    /// Runs inside <see cref="CreateRegionAsync"/> before the region is saved (blocking probes, thrown exceptions);
+    /// the default reports the controller's three stages.
+    /// </summary>
+    public Func<IProgress<string>?, CancellationToken, Task> OnCreateRegion { get; set; } = (progress, _) =>
+    {
+        progress?.Report("Creating your region");
+        progress?.Report("Loading the region content");
+        progress?.Report("Waiting for the region to accept logins");
+        return Task.CompletedTask;
+    };
+
+    /// <summary>Like the controller: saves the region, then Setup.RegionCreated, through <see cref="UpdateSettings"/>.</summary>
+    public async Task CreateRegionAsync(string name, string content, CancellationToken ct, IProgress<string>? progress = null)
+    {
+        Record("CreateRegion " + name + " " + content);
+        await OnCreateRegion(progress, ct);
+        UpdateSettings(l => l with
+        {
+            Region = new RegionSettings(GridController.SafeFolderName(name), name, Guid.NewGuid(), Content: content),
+            Setup = l.Setup with { RegionCreated = true },
+        });
+    }
 
     /// <summary>When set, <see cref="GetStatus"/> returns it instead of the status built from the other properties.</summary>
     public GridStatus? Status { get; set; }
@@ -60,6 +99,12 @@ internal sealed class FakeGridController : IGridController
     /// <summary>What <see cref="CurrentSettings"/> returns (the controller's cached settings in the real host).</summary>
     public Func<LauncherSettings>? SettingsSource { get; set; }
 
+    /// <summary>Where <see cref="UpdateSettings"/> saves (the settings file in the test host); nothing is saved when null.</summary>
+    public Action<LauncherSettings>? SettingsSink { get; set; }
+
+    /// <summary>The writeConfig argument of every <see cref="UpdateSettings"/> call, in order.</summary>
+    public List<bool> UpdateWriteConfig { get; } = new();
+
     public LauncherSettings CurrentSettings() =>
         (SettingsSource ?? throw new InvalidOperationException("No settings source set on the fake grid."))();
 
@@ -80,8 +125,14 @@ internal sealed class FakeGridController : IGridController
 
     public LauncherSettings UpdateSettings(Func<LauncherSettings, LauncherSettings> change, bool writeConfig = true)
     {
-        Record("UpdateSettings");
-        return change(CurrentSettings());
+        lock (UpdateWriteConfig)
+        {
+            Record("UpdateSettings");
+            UpdateWriteConfig.Add(writeConfig);
+            var next = change(CurrentSettings());
+            SettingsSink?.Invoke(next);
+            return next;
+        }
     }
 
     public void OnRegionAlert(RegionAlert alert)
