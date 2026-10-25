@@ -4,12 +4,16 @@
     <NoWarn>$(NoWarn);CA2022;CS9193;MSB3243;MSB3245;SYSLIB0057</NoWarn>
   </PropertyGroup>
 
-  <!-- Replaces the copy runprebuild.bat/.sh used to do: bin/ needs the System.Drawing.Common build for this OS. -->
-  <Target Name="SelectSystemDrawing" BeforeTargets="Build" Condition="'$(MSBuildProjectName)' == 'OpenSim.Framework'">
+  <!-- Replaces the copy runprebuild.bat/.sh used to do: bin/ needs the System.Drawing.Common build for this OS.
+       Runs before reference resolution in every project that references it, so a clean clone compiles;
+       parallel builds may race on the copy, hence SkipUnchangedFiles and Retries. -->
+  <Target Name="SelectSystemDrawing" BeforeTargets="ResolveAssemblyReferences"
+          Condition="'@(Reference->WithMetadataValue('Identity', 'System.Drawing.Common'))' != ''">
     <PropertyGroup>
       <_DgDrawingSource Condition="$([MSBuild]::IsOSPlatform('Windows'))">$(MSBuildThisFileDirectory)bin/System.Drawing.Common.dll.win</_DgDrawingSource>
       <_DgDrawingSource Condition="!$([MSBuild]::IsOSPlatform('Windows'))">$(MSBuildThisFileDirectory)bin/System.Drawing.Common.dll.linux</_DgDrawingSource>
     </PropertyGroup>
-    <Copy SourceFiles="$(_DgDrawingSource)" DestinationFiles="$(MSBuildThisFileDirectory)bin/System.Drawing.Common.dll" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(_DgDrawingSource)" DestinationFiles="$(MSBuildThisFileDirectory)bin/System.Drawing.Common.dll" SkipUnchangedFiles="true"
+          Retries="5" RetryDelayMilliseconds="200" />
   </Target>
 </Project>
