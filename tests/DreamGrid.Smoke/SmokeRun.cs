@@ -9,7 +9,7 @@ public sealed record SmokeOptions(string Bin, string Physics, string? Culture, i
 
 /// <summary>
 /// Copies bin/ into a sandbox whose path contains a space, writes a standalone configuration, boots OpenSim twice
-/// and evaluates the checks C1-C6 (see SmokeChecks and the plan's Task 4).
+/// and evaluates the checks C1-C7 (see SmokeChecks and the plan's Task 4).
 /// </summary>
 public sealed class SmokeRun
 {
@@ -50,12 +50,12 @@ public sealed class SmokeRun
         var first = await BootAsync();
         var results = new List<CheckResult> { SmokeChecks.LoginsEnabled(first.Output) };
         results.Add(SmokeChecks.FileNonEmpty("C3", Path.Combine(_sandboxBin, "smoke-terrain.png")));
-        results.Add(SmokeChecks.DirectoryHasFiles("C4", Path.Combine(_sandboxBin, "assetcache")));
+        results.Add(SmokeChecks.AssetCacheHasEntries(Path.Combine(_sandboxBin, "assetcache")));
         results.Add(first.SimStatus);
 
         var second = await BootAsync();
-        var again = SmokeChecks.LoginsEnabled(second.Output);
-        results.Add(again with { Id = "C6", Detail = "second boot: " + again.Detail });
+        results.Add(SmokeChecks.EstateReused(second.Output));
+        results.Add(SmokeChecks.FileNonEmpty("C7", Path.Combine(_sandboxBin, "smoke-map.jpg")));
 
         string fileLog = File.Exists(LogFile) ? File.ReadAllText(LogFile) : "";
         results.Insert(1, SmokeChecks.NoForbiddenExceptions(first.Output + second.Output + fileLog));
@@ -92,7 +92,7 @@ public sealed class SmokeRun
         File.Copy(Path.Combine(include, "FlotsamCache.ini.example"), Path.Combine(include, "FlotsamCache.ini"), true);
 
         File.WriteAllText(Path.Combine(_sandboxBin, "smoke-commands.txt"),
-            "terrain save smoke-terrain.png\nterrain load smoke-terrain.png\n");
+            "terrain save smoke-terrain.png\nterrain load smoke-terrain.png\nexport-map smoke-map.jpg\n");
 
         // $$ raw string: {{x}} interpolates, so OpenSim's own ${Const|...} expansions stay literal.
         File.WriteAllText(Path.Combine(_sandboxBin, "OpenSim.ini"), $$"""
@@ -172,10 +172,11 @@ public sealed class SmokeRun
         while (DateTime.UtcNow < deadline && !proc.HasExited && !SmokeChecks.LoginsEnabled(Snapshot()).Passed)
             await Task.Delay(1000);
 
-        // The startup commands run after the region is up; give the terrain save/load time to finish.
+        // The startup commands run after the region is up; give terrain save/load and export-map time to finish.
         string png = Path.Combine(_sandboxBin, "smoke-terrain.png");
+        string map = Path.Combine(_sandboxBin, "smoke-map.jpg");
         var pngDeadline = DateTime.UtcNow.AddSeconds(30);
-        while (!proc.HasExited && DateTime.UtcNow < pngDeadline && !File.Exists(png))
+        while (!proc.HasExited && DateTime.UtcNow < pngDeadline && !(File.Exists(png) && File.Exists(map)))
             await Task.Delay(500);
         await Task.Delay(2000);
 

@@ -126,3 +126,10 @@ bin/OpenSim.ini
 # Build outputs (see MERGING.md): only third-party binaries are tracked in bin/
 bin/*.runtimeconfig.json
 bin/System.Drawing.Common.dll
+# Linux apphosts (no extension) the build writes next to the .dll
+/bin/OpenSim
+/bin/Robust
+/bin/pCampBot
+/bin/OpenSim.ConsoleClient
+/bin/OpenSim.Tools.Configger
+/bin/Diva.Wifi.ProcessorTest
