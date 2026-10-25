@@ -28,6 +28,15 @@ public interface IGridController
     Task RestartComponentAsync(string name, CancellationToken ct);
 
     /// <summary>
+    /// Starts (or adopts) one component: "database", "robust" or "region". Robust needs the database running and
+    /// the region needs Robust running; otherwise it throws <see cref="InvalidOperationException"/>.
+    /// </summary>
+    Task StartComponentAsync(string name, CancellationToken ct);
+
+    /// <summary>Stops one component; stopping the database stops the region and Robust first.</summary>
+    Task StopComponentAsync(string name, CancellationToken ct);
+
+    /// <summary>
     /// Reloads the settings and rewrites the INIs without restarting anything. Running children keep the ports
     /// they started with. A changed Robust public or private port needs a launcher restart (the injected
     /// IRobustClient keeps its ports); every other port applies at that component's next start or restart.

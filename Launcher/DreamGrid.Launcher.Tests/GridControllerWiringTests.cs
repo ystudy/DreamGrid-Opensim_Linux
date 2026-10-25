@@ -140,6 +140,83 @@ public sealed class GridControllerWiringTests : IDisposable
         await owner;
     }
 
+    private void AddRegion() =>
+        _store.Save(_store.LoadOrCreate() with { Region = new RegionSettings("Welcome", "Welcome", Guid.NewGuid()) });
+
+    [Fact]
+    public async Task StartComponent_region_without_a_region_throws()
+    {
+        var e = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _grid.StartComponentAsync("region", TestContext.Current.CancellationToken));
+        Assert.Contains("region", e.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task StartComponent_region_needs_Robust_running()
+    {
+        AddRegion();
+
+        var e = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _grid.StartComponentAsync("region", TestContext.Current.CancellationToken));
+
+        Assert.Contains("Robust is not running", e.Message);
+        Assert.Empty(_http.CommandPorts);
+        Assert.False(File.Exists(Path.Combine(_paths.Pids, "Welcome.pid")));
+    }
+
+    [Fact]
+    public async Task StartComponent_robust_needs_the_database_running()
+    {
+        var e = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _grid.StartComponentAsync("robust", TestContext.Current.CancellationToken));
+
+        Assert.Contains("database is not running", e.Message);
+        Assert.False(File.Exists(Path.Combine(_paths.Pids, "robust.pid")));
+    }
+
+    [Fact]
+    public async Task Component_operations_reject_unknown_names()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await Assert.ThrowsAsync<ArgumentException>(() => _grid.StartComponentAsync("apache", ct));
+        await Assert.ThrowsAsync<ArgumentException>(() => _grid.StopComponentAsync("apache", ct));
+    }
+
+    [Fact]
+    public async Task StopComponent_database_stops_the_region_then_Robust_first()
+    {
+        AddRegion();
+        var s = _store.LoadOrCreate();
+
+        await _grid.StopComponentAsync("database", TestContext.Current.CancellationToken);
+
+        // Each graceful stop is a console "quit"; MariaDB's SHUTDOWN goes over SQL, not the console.
+        Assert.Equal(new[] { s.RegionConsolePort, s.RobustConsolePort }, _http.CommandPorts);
+    }
+
+    [Fact]
+    public async Task StopComponent_robust_leaves_the_region_alone()
+    {
+        AddRegion();
+        var s = _store.LoadOrCreate();
+
+        await _grid.StopComponentAsync("robust", TestContext.Current.CancellationToken);
+
+        Assert.Equal(new[] { s.RobustConsolePort }, _http.CommandPorts);
+    }
+
+    [Fact]
+    public async Task StopComponent_region_stops_only_the_region()
+    {
+        AddRegion();
+        var s = _store.LoadOrCreate();
+
+        await _grid.StopComponentAsync("region", TestContext.Current.CancellationToken);
+
+        Assert.Equal(new[] { s.RegionConsolePort }, _http.CommandPorts);
+        Assert.False(_grid.LoginsEnabled);
+    }
+
     private sealed class FakeRobust : IRobustClient
     {
         public Task Block { get; set; } = Task.CompletedTask;

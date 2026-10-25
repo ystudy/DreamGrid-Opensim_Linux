@@ -13,7 +13,7 @@ namespace DreamGrid.Launcher.Core.Grid;
 /// <summary>
 /// Owns the grid: stages the runtime, writes the INIs, and starts (or adopts) MariaDB, Robust and the region in
 /// that order, each one healthy before the next. Children outlive the launcher (spec 4.12): only
-/// <see cref="StopAllAsync"/> and <see cref="RestartComponentAsync"/> stop them.
+/// <see cref="StopAllAsync"/>, <see cref="StopComponentAsync"/> and <see cref="RestartComponentAsync"/> stop them.
 /// </summary>
 public sealed partial class GridController(
     LauncherPaths paths,
@@ -130,11 +130,69 @@ public sealed partial class GridController(
                     await StartRegionAsync(ct);
                     break;
                 default:
-                    throw new ArgumentException($"Unknown component '{name}'; expected database, robust or region.", nameof(name));
+                    throw UnknownComponent(name);
             }
         }
         finally { _ops.Release(); }
     }
+
+    public async Task StartComponentAsync(string name, CancellationToken ct)
+    {
+        await _ops.WaitAsync(ct);
+        try
+        {
+            var s = LoadSettings();
+            switch (name.ToLowerInvariant())
+            {
+                case "database":
+                    await StartDatabaseAsync(s, ct);
+                    break;
+                case "robust":
+                    if (_db!.Process.State != ProcessState.Running)
+                        throw new InvalidOperationException("The database is not running; start it first.");
+                    await StartComponentAsync(_robust!, ct);
+                    break;
+                case "region":
+                    if (_region is null) throw new InvalidOperationException("No region has been created yet.");
+                    if (_robust!.Process.State != ProcessState.Running)
+                        throw new InvalidOperationException("Robust is not running; start it first.");
+                    await StartRegionAsync(ct);
+                    break;
+                default:
+                    throw UnknownComponent(name);
+            }
+        }
+        finally { _ops.Release(); }
+    }
+
+    public async Task StopComponentAsync(string name, CancellationToken ct)
+    {
+        await _ops.WaitAsync(ct);
+        try
+        {
+            LoadSettings();
+            switch (name.ToLowerInvariant())
+            {
+                case "database":
+                    // Robust and the region hold database connections, so they go down first.
+                    await StopAllCoreAsync(ct);
+                    break;
+                case "robust":
+                    await _robust!.Process.StopAsync(ct);
+                    break;
+                case "region":
+                    if (_region is not null) await _region.Process.StopAsync(ct);
+                    _loginsEnabled = false;
+                    break;
+                default:
+                    throw UnknownComponent(name);
+            }
+        }
+        finally { _ops.Release(); }
+    }
+
+    private static ArgumentException UnknownComponent(string name) =>
+        new($"Unknown component '{name}'; expected database, robust or region.", nameof(name));
 
     /// <summary>Takes only the short config lock, never waiting behind a start, stop or provisioning.</summary>
     public void RegenerateConfig()

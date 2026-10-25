@@ -1,3 +1,101 @@
+using System.Net;
+using DreamGrid.Launcher;
+using DreamGrid.Launcher.Core;
+using DreamGrid.Launcher.Core.Api;
+using DreamGrid.Launcher.Core.Config;
+using DreamGrid.Launcher.Core.Database;
+using DreamGrid.Launcher.Core.Grid;
+using DreamGrid.Launcher.Core.Modules;
+using DreamGrid.Launcher.Core.OpenSim;
+using DreamGrid.Launcher.Core.Settings;
+using Microsoft.AspNetCore.Connections;
+
 var builder = WebApplication.CreateBuilder(args);
+builder.Host.UseSystemd();
+builder.Host.UseWindowsService(o => o.ServiceName = "DreamGrid");
+
+// The configuration carries the environment, so DREAMGRID_* can also come from the host settings (tests).
+var config = builder.Configuration;
+var env = new Dictionary<string, string?>
+{
+    ["DREAMGRID_DATA"] = config["DREAMGRID_DATA"],
+    ["DREAMGRID_OPENSIM"] = config["DREAMGRID_OPENSIM"],
+    ["DREAMGRID_MARIADB_BIN"] = config["DREAMGRID_MARIADB_BIN"],
+    ["ProgramData"] = Environment.GetEnvironmentVariable("ProgramData"),
+};
+var paths = LauncherPaths.Resolve(args, env, OperatingSystem.IsWindows());
+var store = new SettingsStore(paths.SettingsFile);
+var settings = store.LoadOrCreate();
+
+builder.WebHost.ConfigureKestrel(o => o.Listen(IPAddress.Any, settings.WebPort));
+// The request log line includes the query string, which carries ?password= (MachineId or an avatar's).
+builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.Warning);
+// Health polls of children that are still booting would log a stack trace every few seconds.
+builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);
+
+builder.Services.AddHttpClient();
+builder.Services.AddSingleton(paths);
+builder.Services.AddSingleton(store);
+// Read per request, so a MachineId, grid name or region change is seen without a restart.
+builder.Services.AddSingleton<Func<LauncherSettings>>(_ => store.LoadOrCreate);
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton(sp =>
+{
+    try
+    {
+        return MariaDbBinaries.Locate(paths.MariaDbBin, OperatingSystem.IsWindows());
+    }
+    catch (MariaDbNotFoundException e)
+    {
+        // Logged, not fatal: the host still serves the web port and the grid status; the grid start then fails.
+        sp.GetRequiredService<ILogger<Program>>().LogError("{Message}", e.Message);
+        var missing = Path.Combine(paths.Data, "mariadb-not-found", "mariadbd");
+        return new MariaDbBinaries(missing, missing, null);
+    }
+});
+builder.Services.AddSingleton<IFeatureModule, LogLevelModule>();
+builder.Services.AddSingleton<IRobustClient>(sp => new RobustClient(
+    sp.GetRequiredService<IHttpClientFactory>().CreateClient("DreamGrid.Robust"),
+    new Uri($"http://127.0.0.1:{settings.RobustPrivatePort}"),
+    new Uri($"http://127.0.0.1:{settings.RobustPublicPort}")));
+builder.Services.AddSingleton<GridController>();
+builder.Services.AddSingleton<IGridController>(sp => sp.GetRequiredService<GridController>());
+builder.Services.AddSingleton<LegacyCommandApi>();
+builder.Services.AddHostedService<GridHostedService>();
+
 var app = builder.Build();
-app.Run();
+LegacyEndpoints.Map(app);
+
+app.Lifetime.ApplicationStarted.Register(() =>
+{
+    // Plan 3's installers print and open this link; it is shown until the owner avatar exists.
+    var s = store.LoadOrCreate();
+    if (s.SetupToken is { } token && !s.Setup.OwnerCreated)
+        app.Logger.LogInformation("Setup link: http://{Host}:{Port}/setup?token={Token}",
+            s.Hostname ?? HostAddress.Detect(), s.WebPort, token);
+});
+
+try
+{
+    await app.StartAsync();
+}
+catch (Exception e) when (IsAddressInUse(e))
+{
+    // The website cannot show this one: nothing is listening.
+    app.Logger.LogCritical("Port {Port} (Web) is already in use by another program.", settings.WebPort);
+    await app.DisposeAsync();
+    return 1;
+}
+
+await app.WaitForShutdownAsync();
+await app.DisposeAsync();
+return 0;
+
+static bool IsAddressInUse(Exception? e)
+{
+    for (; e is not null; e = e.InnerException)
+        if (e is AddressInUseException) return true;
+    return false;
+}
+
+public partial class Program { }
