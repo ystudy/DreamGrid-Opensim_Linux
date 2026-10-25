@@ -66,3 +66,7 @@ button {
     cursor: pointer;
 }
 pre { overflow-x: auto; padding: .75rem; background: var(--card); border: 1px solid var(--border); border-radius: .35rem; }
+
+.log-lines { max-height: 70vh; overflow: auto; font-size: .8rem; white-space: pre; }
+.log-auto { font-weight: normal; }
+.log-auto input { width: auto; }

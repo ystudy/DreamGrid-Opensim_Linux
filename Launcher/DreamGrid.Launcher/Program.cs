@@ -5,6 +5,8 @@ using DreamGrid.Launcher.Core.Api;
 using DreamGrid.Launcher.Core.Config;
 using DreamGrid.Launcher.Core.Database;
 using DreamGrid.Launcher.Core.Grid;
+using DreamGrid.Launcher.Core.Logs;
+using DreamGrid.Launcher.Endpoints;
 using DreamGrid.Launcher.Core.Modules;
 using DreamGrid.Launcher.Core.OpenSim;
 using DreamGrid.Launcher.Core.Settings;
@@ -78,6 +80,7 @@ builder.Services.AddSingleton(paths);
 builder.Services.AddSingleton(store);
 // Read per request from the controller's cache (never the file), so a change the controller saved is seen at once.
 builder.Services.AddSingleton<Func<LauncherSettings>>(sp => sp.GetRequiredService<IGridController>().CurrentSettings);
+builder.Services.AddSingleton<LogReader>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton(sp =>
 {
@@ -107,6 +110,7 @@ app.UseAuthentication();
 app.UseMiddleware<SetupGate>();
 app.UseAuthorization();
 LegacyEndpoints.Map(app);
+LogsApi.Map(app);
 app.MapRazorPages();
 
 app.Lifetime.ApplicationStarted.Register(() =>

@@ -1,8 +1,4 @@
 using System.Net;
-using System.Security.Claims;
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
 using Xunit;
 
 namespace DreamGrid.Launcher.Tests;
@@ -22,24 +18,7 @@ public sealed class AccessTests
         Setup = s.Setup with { OwnerCreated = true, Finished = finished },
     })
     {
-        // Test-only helpers that go through the real "dg" cookie scheme.
-        Before = app => app.Use(async (ctx, next) =>
-        {
-            if (ctx.Request.Path == "/__test/signin")
-            {
-                var id = new ClaimsIdentity([new Claim(ClaimTypes.Name, "owner"), new Claim(ClaimTypes.Role, "admin")], "dg");
-                await ctx.SignInAsync("dg", new ClaimsPrincipal(id));
-                ctx.Response.StatusCode = StatusCodes.Status204NoContent;
-            }
-            else if (ctx.Request.Path.Value!.EndsWith("/__test/challenge", StringComparison.Ordinal))
-            {
-                await ctx.ChallengeAsync("dg");
-            }
-            else
-            {
-                await next(ctx);
-            }
-        }),
+        Before = TestAuth.Apply,
     };
 
     private static string? LocationPath(HttpResponseMessage r) =>
