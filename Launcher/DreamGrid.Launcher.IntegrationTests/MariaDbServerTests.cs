@@ -127,6 +127,28 @@ public sealed class MariaDbServerTests : IDisposable
         await using var conn = new MySqlConnection(noPassword);
         await Assert.ThrowsAsync<MySqlException>(() => conn.OpenAsync(TestContext.Current.CancellationToken));
 
+        // Only loopback root accounts may remain, and no anonymous ones.
+        var tokenX = TestContext.Current.CancellationToken;
+        await using (var admin = new MySqlConnection(new MySqlConnectionStringBuilder
+        {
+            Server = "127.0.0.1", Port = (uint)s.MariaDbPort, UserID = "root", Password = s.Db.RootPassword,
+        }.ConnectionString))
+        {
+            await admin.OpenAsync(tokenX);
+            await using var cmd = new MySqlCommand(
+                "SELECT User, Host FROM mysql.global_priv WHERE User = 'root' OR User = ''", admin);
+            await using var r = await cmd.ExecuteReaderAsync(tokenX);
+            var loopback = new[] { "localhost", "127.0.0.1", "::1" };
+            var rows = 0;
+            while (await r.ReadAsync(tokenX))
+            {
+                rows++;
+                Assert.Equal("root", r.GetString(0));
+                Assert.Contains(r.GetString(1), loopback);
+            }
+            Assert.True(rows > 0);
+        }
+
         // No anonymous account may let an arbitrary user in without a password.
         var anonymous = new MySqlConnectionStringBuilder
         {
@@ -134,6 +156,41 @@ public sealed class MariaDbServerTests : IDisposable
         }.ConnectionString;
         await using var anon = new MySqlConnection(anonymous);
         await Assert.ThrowsAsync<MySqlException>(() => anon.OpenAsync(TestContext.Current.CancellationToken));
+
+        await server.ShutdownAsync(TestContext.Current.CancellationToken);
+        Assert.True(p.WaitForExit(30_000));
+    }
+
+    [Fact]
+    public async Task A_failed_initialization_is_retried_from_a_clean_datadir()
+    {
+        var (server, paths, s) = Make();
+
+        // Hold the port so the temporary setup server cannot start; Windows initialises with the same flow.
+        var holder = new TcpListener(IPAddress.Loopback, s.MariaDbPort);
+        holder.Start();
+        try
+        {
+            await Assert.ThrowsAnyAsync<Exception>(() => server.InitializeAsync(TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            holder.Stop();
+        }
+        Assert.False(server.IsInitialized);
+        Assert.Empty(Directory.GetFileSystemEntries(paths.MariaDbData));
+
+        await server.InitializeAsync(TestContext.Current.CancellationToken);
+        Assert.True(server.IsInitialized);
+        var p = Start(server);
+        await WaitForPing(server, p);
+
+        var noPassword = new MySqlConnectionStringBuilder
+        {
+            Server = "127.0.0.1", Port = (uint)s.MariaDbPort, UserID = "root", Password = "",
+        }.ConnectionString;
+        await using var conn = new MySqlConnection(noPassword);
+        await Assert.ThrowsAsync<MySqlException>(() => conn.OpenAsync(TestContext.Current.CancellationToken));
 
         await server.ShutdownAsync(TestContext.Current.CancellationToken);
         Assert.True(p.WaitForExit(30_000));

@@ -12,7 +12,10 @@ public sealed class MariaDbServer(MariaDbBinaries bin, LauncherPaths paths, Laun
     /// <summary>UNIX socket paths are limited to 107 bytes (sun_path minus the terminator).</summary>
     private const int MaxSocketBytes = 107;
 
-    public bool IsInitialized => Directory.Exists(Path.Combine(paths.MariaDbData, "mysql"));
+    private const string MarkerName = ".dreamgrid-initialized";
+
+    /// <summary>True once install-db finished and root was secured (marker written last).</summary>
+    public bool IsInitialized => File.Exists(MarkerPath);
 
     /// <summary>The server socket: inside the data directory when short enough, else a hashed path under /tmp.</summary>
     public static string SocketPathFor(string data)
@@ -41,54 +44,67 @@ public sealed class MariaDbServer(MariaDbBinaries bin, LauncherPaths paths, Laun
             ConnectionTimeout = 5,
         }.ConnectionString;
 
+    /// <summary>
+    /// Creates the datadir and secures root. The marker is written only once root has its password; any
+    /// failure empties the datadir (an uninitialized one holds no user data) so a retry starts clean.
+    /// </summary>
     public async Task InitializeAsync(CancellationToken ct)
     {
-        if (OperatingSystem.IsWindows())
-        {
-            await RunInstallDb(["--datadir=" + paths.MariaDbData, "--password=" + s.Db.RootPassword], ct);
-            return;
-        }
-
-        // mariadb-install-db chowns the datadir unquoted when given --user, so a path with whitespace
-        // is handed over through a space-free symlink.
-        var asRoot = Environment.IsPrivilegedProcess;
-        var link = asRoot && paths.MariaDbData.Any(char.IsWhiteSpace) ? TempPathFor(paths.MariaDbData, "-data") : null;
-        if (link is not null)
-        {
-            if (Directory.Exists(link) || File.Exists(link)) new DirectoryInfo(link).Delete();
-            Directory.CreateSymbolicLink(link, paths.MariaDbData);
-        }
+        if (IsInitialized) return;
+        ClearDataDir();
         try
         {
-            var args = new List<string>
-            {
-                "--no-defaults", "--datadir=" + (link ?? paths.MariaDbData),
-                "--auth-root-authentication-method=normal", "--skip-test-db",
-            };
-            if (asRoot) args.Add("--user=root");
-            await RunInstallDb(args, ct);
+            await RunInstallDb(ct);
+            await SecureWithTemporaryServer(ct);
+            await File.WriteAllTextAsync(MarkerPath, "", ct);
         }
-        finally
+        catch
         {
-            if (link is not null && Directory.Exists(link)) new DirectoryInfo(link).Delete();
+            ClearDataDir();
+            throw;
         }
+    }
 
-        // Root starts with an empty password; set it, then stop the server again.
+    private void ClearDataDir()
+    {
+        if (!Directory.Exists(paths.MariaDbData)) return;
+        foreach (var entry in Directory.GetFileSystemEntries(paths.MariaDbData))
+        {
+            if (Directory.Exists(entry)) Directory.Delete(entry, true);
+            else File.Delete(entry);
+        }
+    }
+
+    private async Task SecureWithTemporaryServer(CancellationToken ct)
+    {
+        // Windows install-db already set the root password; on Linux root starts empty.
+        var initialPassword = OperatingSystem.IsWindows() ? s.Db.RootPassword : "";
         using var server = Process.Start(Prepare(StartInfo()))
             ?? throw new InvalidOperationException("Could not start mariadbd to secure the root account.");
         try
         {
-            await WaitUntilAnswering(server, "", ct);
-            await SecureRootAccounts(ct);
+            await WaitUntilAnswering(server, initialPassword, ct);
+            await SecureRootAccounts(initialPassword, ct);
             await ShutdownAsync(ct);
-            if (!server.WaitForExit(30_000))
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(TimeSpan.FromSeconds(30));
+            try { await server.WaitForExitAsync(timeout.Token); }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
                 throw new InvalidOperationException("mariadbd did not stop after the initial setup.");
+            }
         }
         finally
         {
-            if (!server.HasExited) server.Kill(true);
+            if (!server.HasExited)
+            {
+                server.Kill(true);
+                await server.WaitForExitAsync(CancellationToken.None);
+            }
         }
     }
+
+    private string MarkerPath => Path.Combine(paths.MariaDbData, MarkerName);
 
     public ProcessStartInfo StartInfo()
     {
@@ -147,6 +163,36 @@ public sealed class MariaDbServer(MariaDbBinaries bin, LauncherPaths paths, Laun
         return psi;
     }
 
+    private async Task RunInstallDb(CancellationToken ct)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            await RunInstallDb(["--datadir=" + paths.MariaDbData, "--password=" + s.Db.RootPassword], ct);
+            return;
+        }
+
+        // mariadb-install-db chowns the datadir unquoted when given --user, so a path with unusual
+        // characters is handed over through a space-free symlink with a random name.
+        var asRoot = Environment.IsPrivilegedProcess;
+        var needsLink = asRoot && paths.MariaDbData.Any(c => !(char.IsAsciiLetterOrDigit(c) || c is '/' or '.' or '_' or '-'));
+        var link = needsLink ? $"/tmp/dg-{Guid.NewGuid():N}-data" : null;
+        if (link is not null) Directory.CreateSymbolicLink(link, paths.MariaDbData);
+        try
+        {
+            var args = new List<string>
+            {
+                "--no-defaults", "--datadir=" + (link ?? paths.MariaDbData),
+                "--auth-root-authentication-method=normal", "--skip-test-db",
+            };
+            if (asRoot) args.Add("--user=root");
+            await RunInstallDb(args, ct);
+        }
+        finally
+        {
+            if (link is not null && Directory.Exists(link)) new DirectoryInfo(link).Delete();
+        }
+    }
+
     private async Task RunInstallDb(List<string> args, CancellationToken ct)
     {
         var psi = Prepare(new ProcessStartInfo(bin.InstallDb)
@@ -157,17 +203,26 @@ public sealed class MariaDbServer(MariaDbBinaries bin, LauncherPaths paths, Laun
         foreach (var a in args) psi.ArgumentList.Add(a);
 
         using var p = Process.Start(psi) ?? throw new InvalidOperationException("Could not start " + bin.InstallDb);
-        var stdout = p.StandardOutput.ReadToEndAsync(ct);
-        var stderr = p.StandardError.ReadToEndAsync(ct);
-        await p.WaitForExitAsync(ct);
-        if (p.ExitCode != 0)
-            throw new InvalidOperationException(
-                $"{Path.GetFileName(bin.InstallDb)} failed with exit code {p.ExitCode}: {await stdout} {await stderr}");
+        try
+        {
+            var stdout = p.StandardOutput.ReadToEndAsync(ct);
+            var stderr = p.StandardError.ReadToEndAsync(ct);
+            await p.WaitForExitAsync(ct);
+            if (p.ExitCode != 0)
+                throw new InvalidOperationException(
+                    $"{Path.GetFileName(bin.InstallDb)} failed with exit code {p.ExitCode}: {await stdout} {await stderr}");
+        }
+        catch (OperationCanceledException)
+        {
+            try { p.Kill(true); } catch (InvalidOperationException) { }
+            throw;
+        }
     }
 
     private async Task WaitUntilAnswering(Process server, string rootPassword, CancellationToken ct)
     {
         var deadline = DateTime.UtcNow.AddSeconds(60);
+        Exception? last = null;
         while (DateTime.UtcNow < deadline)
         {
             if (server.HasExited) throw new InvalidOperationException("mariadbd exited during initial setup; see mariadb.err.");
@@ -177,16 +232,16 @@ public sealed class MariaDbServer(MariaDbBinaries bin, LauncherPaths paths, Laun
                 await conn.OpenAsync(ct);
                 return;
             }
-            catch (Exception) when (!ct.IsCancellationRequested) { }
+            catch (Exception e) when (!ct.IsCancellationRequested) { last = e; }
             await Task.Delay(300, ct);
         }
-        throw new TimeoutException("mariadbd did not answer within 60 s during initial setup.");
+        throw new TimeoutException("mariadbd did not answer within 60 s during initial setup.", last);
     }
 
     /// <summary>Gives every root account the password and drops anonymous accounts.</summary>
-    private async Task SecureRootAccounts(CancellationToken ct)
+    private async Task SecureRootAccounts(string currentPassword, CancellationToken ct)
     {
-        await using var conn = new MySqlConnection(ConnectionString(s, ""));
+        await using var conn = new MySqlConnection(ConnectionString(s, currentPassword));
         await conn.OpenAsync(ct);
 
         async Task<List<string>> Hosts(string user)

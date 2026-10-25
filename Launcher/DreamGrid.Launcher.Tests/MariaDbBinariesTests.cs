@@ -115,7 +115,7 @@ public class MariaDbBinariesTests : IDisposable
     [Fact]
     public void SocketPath_counts_bytes_not_characters()
     {
-        // 40 two-byte characters: short in chars, but the limit is in bytes.
+        // 50 two-byte characters: short in chars, but the limit is in bytes.
         var data = "/d/" + new string('é', 50);
         var p = MariaDbServer.SocketPathFor(data);
         Assert.True(System.Text.Encoding.UTF8.GetByteCount(p) <= 107);
