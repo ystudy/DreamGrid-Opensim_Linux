@@ -27,6 +27,7 @@ public sealed partial class GridController(
     private static readonly TimeSpan ConsoleSettle = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan LoginWait = TimeSpan.FromSeconds(300);
     private static readonly TimeSpan LoginPoll = TimeSpan.FromMilliseconds(500);
+    private static readonly TimeSpan AccountWait = TimeSpan.FromSeconds(30);
 
     private readonly IReadOnlyList<IFeatureModule> _modules = modules.ToList();
     private readonly SemaphoreSlim _ops = new(1, 1);
@@ -214,9 +215,13 @@ public sealed partial class GridController(
                 transcript.AddRange(await GridConsoleCommands.CreateUserAsync(console, first, last, password, email, Guid.NewGuid(), ConsoleSettle, ct));
             else // an earlier attempt created the account: make the password the one the owner just chose
                 transcript.AddRange(await console.RunAsync($"reset user password {first} {last} {password}", ConsoleSettle, ct));
+            // Robust runs console commands on its own thread, so under load the account (and then its level)
+            // appears only after the console output has settled: wait for each before going on.
+            _ = await WaitForAccountAsync(first, last, _ => true, ct)
+                ?? throw new InvalidOperationException($"Robust did not create {first} {last}. Console: {string.Join(" | ", transcript)}");
             transcript.AddRange(await console.RunAsync($"set user level {first} {last} 200", ConsoleSettle, ct));
 
-            var account = await robust.GetAccountAsync(first, last, ct)
+            var account = await WaitForAccountAsync(first, last, a => a.UserLevel == 200, ct)
                 ?? throw new InvalidOperationException($"Robust did not create {first} {last}. Console: {string.Join(" | ", transcript)}");
             if (account.UserLevel != 200)
                 throw new InvalidOperationException($"{first} {last} has level {account.UserLevel}, not 200. Console: {string.Join(" | ", transcript)}");
@@ -446,6 +451,18 @@ public sealed partial class GridController(
     /// <summary>True when the component's PID file names a live process with its image: starting it will adopt.</summary>
     private static bool WillAdopt(Component c) =>
         PidFile.Read(c.Spec.PidFile) is { } pid && ProcessImage.Matches(pid, c.Spec.ExpectedImage);
+
+    /// <summary>Polls Robust until the account satisfies <paramref name="done"/> or <see cref="AccountWait"/> passes; returns the last account seen.</summary>
+    private async Task<RobustAccount?> WaitForAccountAsync(string first, string last, Func<RobustAccount, bool> done, CancellationToken ct)
+    {
+        var deadline = time.GetUtcNow() + AccountWait;
+        while (true)
+        {
+            var account = await robust.GetAccountAsync(first, last, ct);
+            if ((account is not null && done(account)) || time.GetUtcNow() >= deadline) return account;
+            await Task.Delay(LoginPoll, time, ct);
+        }
+    }
 
     private async Task WaitForLoginsAsync(CancellationToken ct)
     {

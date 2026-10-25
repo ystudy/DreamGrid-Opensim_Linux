@@ -50,13 +50,23 @@ public static partial class GridConsoleCommands
         return transcript;
     }
 
-    /// <summary>The region's <c>login status</c> (AccessModule): true/false, or null when the reply is not recognised.</summary>
+    /// <summary>
+    /// The region's <c>login status</c> (AccessModule): true/false, or null when the reply is not recognised.
+    /// AccessModule answers "status" with "Login in NAME are enabled|disabled"; the "Logins are ... for region"
+    /// wording is its reply to enable/disable and is accepted too.
+    /// </summary>
     public static async Task<bool?> LoginsEnabledAsync(RestConsoleClient console, TimeSpan settle, CancellationToken ct)
     {
-        foreach (var line in await console.RunAsync("login status", settle, ct))
+        foreach (var raw in await console.RunAsync("login status", settle, ct))
         {
+            var line = raw.TrimEnd();
             if (line.Contains("Logins are enabled for region", StringComparison.Ordinal)) return true;
             if (line.Contains("Logins are disabled for region", StringComparison.Ordinal)) return false;
+            if (line.StartsWith("Login in ", StringComparison.Ordinal))
+            {
+                if (line.EndsWith(" are enabled", StringComparison.Ordinal)) return true;
+                if (line.EndsWith(" are disabled", StringComparison.Ordinal)) return false;
+            }
         }
         return null;
     }

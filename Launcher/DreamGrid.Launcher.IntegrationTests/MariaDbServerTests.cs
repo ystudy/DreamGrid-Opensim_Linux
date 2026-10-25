@@ -43,8 +43,7 @@ public sealed class MariaDbServerTests : IDisposable
 
     private (MariaDbServer Server, LauncherPaths Paths, LauncherSettings Settings) Make(string? subDir = null)
     {
-        var bin = IntegrationEnvironment.MariaDbBin;
-        Assert.SkipWhen(bin is null, "No MariaDB binaries (set DREAMGRID_MARIADB_BIN).");
+        var bin = IntegrationEnvironment.RequireMariaDbBin();
         var data = subDir is null ? _root : Path.Combine(_root, subDir);
         var paths = new LauncherPaths(data, IntegrationEnvironment.OpenSimBin, bin);
         paths.EnsureCreated();

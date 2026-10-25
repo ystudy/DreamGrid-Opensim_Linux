@@ -124,6 +124,19 @@ public sealed class GridControllerWiringTests : IDisposable
     }
 
     [Fact]
+    public async Task CreateOwner_waits_for_Robust_to_apply_the_console_commands()
+    {
+        // Robust runs console commands on its own thread: under load the account (and then its level) shows up
+        // only after the console output has settled.
+        foreach (var level in new int?[] { null, null, null, 0, 0 }) _robust.Levels.Enqueue(level);
+
+        var account = await _grid.CreateOwnerAsync("Test", "Owner", "pw1", null, TestContext.Current.CancellationToken);
+
+        Assert.Equal(200, account.UserLevel);
+        Assert.Empty(_robust.Levels);
+    }
+
+    [Fact]
     public async Task RegenerateConfig_and_GetStatus_do_not_wait_behind_a_long_operation()
     {
         var gate = new TaskCompletionSource();
@@ -291,11 +304,16 @@ public sealed class GridControllerWiringTests : IDisposable
 
         public Task<bool> IsReadyAsync(CancellationToken ct) => Task.FromResult(false);
 
+        /// <summary>Replies returned (in order) before the default level-200 account, standing in for a slow Robust.</summary>
+        public Queue<int?> Levels { get; } = new();
+
         public async Task<RobustAccount?> GetAccountAsync(string first, string last, CancellationToken ct)
         {
             Entered.TrySetResult();
             await Block;
-            return new RobustAccount(Guid.Parse("aaaaaaaa-0000-0000-0000-000000000001"), first, last, 200, "");
+            int? level = 200;
+            lock (Levels) if (Levels.Count > 0) level = Levels.Dequeue();
+            return level is { } l ? new RobustAccount(Guid.Parse("aaaaaaaa-0000-0000-0000-000000000001"), first, last, l, "") : null;
         }
 
         public Task<bool> AuthenticateAsync(Guid principal, string plainPassword, CancellationToken ct) => Task.FromResult(true);

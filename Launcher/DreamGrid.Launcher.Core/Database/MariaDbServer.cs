@@ -108,6 +108,7 @@ public sealed class MariaDbServer(MariaDbBinaries bin, LauncherPaths paths, Laun
 
     public ProcessStartInfo StartInfo()
     {
+        Directory.CreateDirectory(paths.MariaDbTmp);
         var psi = new ProcessStartInfo(bin.Server);
         foreach (var a in new[]
         {
@@ -120,6 +121,9 @@ public sealed class MariaDbServer(MariaDbBinaries bin, LauncherPaths paths, Laun
             "--collation-server=utf8mb4_unicode_ci",
             "--pid-file=" + Path.Combine(paths.Pids, "mariadb.pid"),
             "--log-error=" + Path.Combine(paths.Logs, "mariadb.err"),
+            // mariadbd deletes every "#sql*" file in its tmpdir at startup: a shared one (/tmp, %TEMP%) would
+            // destroy the temporary tables of any other MariaDB running or bootstrapping there.
+            "--tmpdir=" + paths.MariaDbTmp,
         })
             psi.ArgumentList.Add(a);
 
@@ -175,13 +179,19 @@ public sealed class MariaDbServer(MariaDbBinaries bin, LauncherPaths paths, Laun
         // characters is handed over through a space-free symlink with a random name.
         var asRoot = Environment.IsPrivilegedProcess;
         var needsLink = asRoot && paths.MariaDbData.Any(c => !(char.IsAsciiLetterOrDigit(c) || c is '/' or '.' or '_' or '-'));
-        var link = needsLink ? $"/tmp/dg-{Guid.NewGuid():N}-data" : null;
+        var id = Guid.NewGuid().ToString("N");
+        var link = needsLink ? $"/tmp/dg-{id}-data" : null;
+        var tmpLink = needsLink ? $"/tmp/dg-{id}-tmp" : null;
+        Directory.CreateDirectory(paths.MariaDbTmp);
         if (link is not null) Directory.CreateSymbolicLink(link, paths.MariaDbData);
+        if (tmpLink is not null) Directory.CreateSymbolicLink(tmpLink, paths.MariaDbTmp);
         try
         {
             var args = new List<string>
             {
                 "--no-defaults", "--datadir=" + (link ?? paths.MariaDbData),
+                // The bootstrap server's temporary tables must not sit in a tmpdir another mariadbd empties.
+                "--tmpdir=" + (tmpLink ?? paths.MariaDbTmp),
                 "--auth-root-authentication-method=normal", "--skip-test-db",
             };
             if (asRoot) args.Add("--user=root");
@@ -189,7 +199,8 @@ public sealed class MariaDbServer(MariaDbBinaries bin, LauncherPaths paths, Laun
         }
         finally
         {
-            if (link is not null && Directory.Exists(link)) new DirectoryInfo(link).Delete();
+            foreach (var l in new[] { link, tmpLink })
+                if (l is not null && Directory.Exists(l)) new DirectoryInfo(l).Delete();
         }
     }
 

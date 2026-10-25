@@ -5,6 +5,8 @@ public sealed record LauncherPaths(string Data, string OpenSimProgram, string? M
 {
     public string SettingsFile => Path.Combine(Data, "settings.json");
     public string MariaDbData => Path.Combine(Data, "mariadb", "data");
+    /// <summary>The private MariaDB's tmpdir (mariadbd empties its tmpdir of "#sql*" files at startup, so it is never shared).</summary>
+    public string MariaDbTmp => Path.Combine(Data, "mariadb", "tmp");
     public string RuntimeOpenSim => Path.Combine(Data, "runtime", "opensim");
     public string RegionsRoot => Path.Combine(Data, "state", "regions");
     public string AssetCache => Path.Combine(Data, "state", "assetcache");
@@ -53,7 +55,7 @@ public sealed record LauncherPaths(string Data, string OpenSimProgram, string? M
     {
         foreach (var dir in new[]
         {
-            Data, MariaDbData, RuntimeOpenSim, RegionsRoot, AssetCache, FsAssetsData, FsAssetsSpool,
+            Data, MariaDbData, MariaDbTmp, RuntimeOpenSim, RegionsRoot, AssetCache, FsAssetsData, FsAssetsSpool,
             ScriptEngines, Logs, Pids,
         })
             Directory.CreateDirectory(dir);

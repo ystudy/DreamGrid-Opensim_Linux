@@ -96,3 +96,114 @@ jobs:
         with:
           name: smoke-logs-debian${{ matrix.debian }}
           path: /tmp/dg smoke */bin/smoke.log
+
+  # The launcher (Launcher/): unit tests, then the integration tests against a real MariaDB, Robust and region,
+  # including the end-to-end tests that run the launcher itself. DREAMGRID_REQUIRE_INTEGRATION=1 turns a missing
+  # MariaDB or bin/ into a failure, so these jobs cannot pass by skipping. DREAMGRID_TEST_KEEP=1 keeps the test data
+  # directories (under the runner temp directory) so their logs can be uploaded when a test fails.
+  launcher-windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      MARIADB_VERSION: 11.4.9
+    steps:
+      - name: Allow long paths
+        run: git config --system core.longpaths true
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Cache MariaDB
+        id: mariadb-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}\mariadb-dist
+          key: mariadb-${{ env.MARIADB_VERSION }}-winx64
+
+      - name: Download MariaDB
+        if: steps.mariadb-cache.outputs.cache-hit != 'true'
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP "mariadb-$env:MARIADB_VERSION-winx64.zip"
+          Invoke-WebRequest -Uri "https://archive.mariadb.org/mariadb-$env:MARIADB_VERSION/winx64-packages/mariadb-$env:MARIADB_VERSION-winx64.zip" -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath (Join-Path $env:RUNNER_TEMP 'mariadb-dist')
+          Remove-Item $zip
+
+      - name: Point the tests at MariaDB
+        run: |
+          $bin = Join-Path $env:RUNNER_TEMP "mariadb-dist\mariadb-$env:MARIADB_VERSION-winx64\bin"
+          if (-not (Test-Path (Join-Path $bin 'mariadbd.exe'))) { throw "mariadbd.exe not found in $bin" }
+          "DREAMGRID_MARIADB_BIN=$bin" >> $env:GITHUB_ENV
+
+      - name: Build
+        run: dotnet build -c Release DreamGrid.sln
+
+      - name: Launcher unit tests
+        run: dotnet test --project Launcher/DreamGrid.Launcher.Tests -c Release
+
+      - name: Launcher integration and end-to-end tests
+        run: dotnet test --project Launcher/DreamGrid.Launcher.IntegrationTests -c Release
+        env:
+          TMP: ${{ runner.temp }}
+          TEMP: ${{ runner.temp }}
+          DREAMGRID_REQUIRE_INTEGRATION: '1'
+          DREAMGRID_TEST_KEEP: '1'
+
+      - name: Upload launcher test logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: launcher-logs-windows
+          path: ${{ runner.temp }}/Dréam Grid */state/logs/*
+
+  launcher-debian:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        debian: ['12', '13']
+    container: debian:${{ matrix.debian }}
+    env:
+      DOTNET_ROOT: /usr/share/dotnet
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+    steps:
+      - name: Install .NET 10, MariaDB, libgdiplus, git
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates libicu-dev libgdiplus git mariadb-server
+          curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
+          bash /tmp/dotnet-install.sh --channel 10.0 --install-dir /usr/share/dotnet
+          echo /usr/share/dotnet >> "$GITHUB_PATH"
+          echo "DREAMGRID_MARIADB_BIN=/usr/sbin" >> "$GITHUB_ENV"
+          # In a container job the runner.temp context is the host path; RUNNER_TEMP is the path inside the container.
+          echo "DG_TEST_TEMP=$RUNNER_TEMP" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Build
+        run: dotnet build -c Release DreamGrid.sln
+
+      - name: Launcher unit tests
+        run: dotnet test --project Launcher/DreamGrid.Launcher.Tests -c Release
+
+      # The container runs as root: the launcher starts mariadbd with --user=root then.
+      - name: Launcher integration and end-to-end tests
+        run: dotnet test --project Launcher/DreamGrid.Launcher.IntegrationTests -c Release
+        env:
+          TMPDIR: ${{ env.DG_TEST_TEMP }}
+          DREAMGRID_REQUIRE_INTEGRATION: '1'
+          DREAMGRID_TEST_KEEP: '1'
+
+      - name: Upload launcher test logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: launcher-logs-debian${{ matrix.debian }}
+          path: ${{ env.DG_TEST_TEMP }}/Dréam Grid */state/logs/*

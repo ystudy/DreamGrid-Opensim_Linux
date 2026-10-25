@@ -76,6 +76,10 @@ public class GridConsoleCommandsTests
     [Theory]
     [InlineData("Logins are enabled for region Welcome", true)]
     [InlineData("Logins are disabled for region Welcome", false)]
+    // What AccessModule really answers to "login status" (the lines above are its replies to enable/disable).
+    [InlineData("Login in Welcome are enabled", true)]
+    [InlineData("Login in Welcome are disabled", false)]
+    [InlineData("Login in My Region are enabled", true)]
     public async Task Login_status_is_read_from_the_region_console(string reply, bool expected)
     {
         var console = new FakeConsole(cmd => cmd == "login status" ? [(reply, false)] : []);

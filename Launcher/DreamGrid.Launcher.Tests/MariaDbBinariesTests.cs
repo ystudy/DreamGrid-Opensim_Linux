@@ -91,6 +91,10 @@ public class MariaDbBinariesTests : IDisposable
         Assert.Contains("--collation-server=utf8mb4_unicode_ci", args);
         Assert.Contains($"--pid-file={Path.Combine(paths.Pids, "mariadb.pid")}", args);
         Assert.Contains($"--log-error={Path.Combine(paths.Logs, "mariadb.err")}", args);
+        // A private tmpdir: mariadbd deletes every "#sql*" file in its tmpdir at startup, so a shared one (/tmp)
+        // destroys the temporary tables of any other MariaDB that is running or bootstrapping there.
+        Assert.Equal(Path.Combine(data, "mariadb", "tmp"), paths.MariaDbTmp);
+        Assert.Contains($"--tmpdir={paths.MariaDbTmp}", args);
     }
 
     [Fact]
