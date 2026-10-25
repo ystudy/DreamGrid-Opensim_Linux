@@ -122,3 +122,7 @@ doc/doxygen.error.log
 bin/OpenSim.ini
 
 *.patch
+
+# Build outputs (see MERGING.md): only third-party binaries are tracked in bin/
+bin/*.runtimeconfig.json
+bin/System.Drawing.Common.dll
