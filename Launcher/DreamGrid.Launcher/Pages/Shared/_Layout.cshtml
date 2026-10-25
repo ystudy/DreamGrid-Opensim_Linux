@@ -23,7 +23,7 @@
             <a href="/">Home</a>
             <a href="/advanced">Advanced</a>
             <a href="/logs">Logs</a>
-            <a href="/logout">Sign out</a>
+            <form method="post" action="/logout" asp-antiforgery="true" class="signout"><button type="submit" class="link-button">Sign out</button></form>
         </nav>
     }
 </header>

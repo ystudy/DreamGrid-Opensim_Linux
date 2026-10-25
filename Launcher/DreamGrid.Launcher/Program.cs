@@ -10,6 +10,7 @@ using DreamGrid.Launcher.Endpoints;
 using DreamGrid.Launcher.Core.Modules;
 using DreamGrid.Launcher.Core.OpenSim;
 using DreamGrid.Launcher.Core.Settings;
+using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Core.Setup;
 using DreamGrid.Launcher.Security;
 using DreamGrid.Launcher.Setup;
@@ -76,7 +77,7 @@ builder.Services.AddRazorPages(o =>
 {
     // Every page needs the admin role except these; the setup pages are guarded by SetupGate.
     o.Conventions.AuthorizeFolder("/", AuthSchemes.AdminPolicy);
-    foreach (var open in new[] { "/Login", "/Welcome", "/Waiting", "/SetupDone", "/Setup" })
+    foreach (var open in new[] { "/Login", "/Logout", "/Welcome", "/Waiting", "/SetupDone", "/Setup" })
         o.Conventions.AllowAnonymousToPage(open);
     o.Conventions.AllowAnonymousToFolder("/Setup");
 });
@@ -86,6 +87,7 @@ builder.Services.AddSingleton(store);
 builder.Services.AddSingleton<Func<LauncherSettings>>(sp => sp.GetRequiredService<IGridController>().CurrentSettings);
 builder.Services.AddSingleton<LogReader>();
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<LoginThrottle>();
 builder.Services.AddSingleton(sp =>
 {
     try

@@ -40,6 +40,8 @@ header {
 
 nav { display: flex; flex-wrap: wrap; gap: .25rem 1rem; }
 a { color: var(--accent); }
+nav form { margin: 0; }
+.link-button { margin: 0; padding: 0; color: var(--accent); background: none; border: 0; text-decoration: underline; cursor: pointer; }
 
 main { max-width: 48rem; margin: 0 auto; padding: 1rem; overflow-wrap: anywhere; }
 h1 { font-size: 1.5rem; margin: .5rem 0 1rem; }

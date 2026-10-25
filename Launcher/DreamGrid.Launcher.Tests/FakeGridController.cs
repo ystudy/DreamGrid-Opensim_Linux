@@ -149,6 +149,9 @@ internal sealed class FakeRobustAccounts : IRobustClient
 
     public int Lookups { get; private set; }
 
+    /// <summary>Simulates Robust not running: lookups and sign-in checks fail like a refused connection.</summary>
+    public bool Down { get; set; }
+
     public FakeRobustAccounts Add(string first, string last, int level, string password)
     {
         _accounts[(first, last)] = (new RobustAccount(Guid.NewGuid(), first, last, level, ""), password);
@@ -160,9 +163,10 @@ internal sealed class FakeRobustAccounts : IRobustClient
     public Task<RobustAccount?> GetAccountAsync(string first, string last, CancellationToken ct)
     {
         Lookups++;
+        if (Down) throw new HttpRequestException("Connection refused");
         return Task.FromResult(_accounts.TryGetValue((first, last), out var a) ? a.Account : null);
     }
 
     public Task<bool> AuthenticateAsync(Guid principal, string plainPassword, CancellationToken ct) =>
-        Task.FromResult(_accounts.Values.Any(a => a.Account.PrincipalId == principal && a.Password == plainPassword));
+        Down ? throw new HttpRequestException("Connection refused") : Task.FromResult(_accounts.Values.Any(a => a.Account.PrincipalId == principal && a.Password == plainPassword));
 }
