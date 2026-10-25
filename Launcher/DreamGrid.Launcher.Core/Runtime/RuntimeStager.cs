@@ -108,7 +108,7 @@ public sealed class RuntimeStager(LauncherPaths paths)
         Value(w, "staticLogFileName", "true");
         w.WriteStartElement("layout");
         w.WriteAttributeString("type", "log4net.Layout.PatternLayout");
-        Value(w, "conversionPattern", "%date{HH:mm:ss} - %message%newline");
+        Value(w, "conversionPattern", "%date{HH:mm:ss} - [%level] %message%newline");
         w.WriteEndElement(); // layout
         w.WriteEndElement(); // appender
         w.WriteStartElement("root");

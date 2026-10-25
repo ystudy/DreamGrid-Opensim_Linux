@@ -112,7 +112,8 @@ public sealed partial class LogReader(LauncherPaths paths, Func<LauncherSettings
         };
     }
 
-    // log4net: "[LEVEL]" (usually " - [LEVEL]"); the launcher: "<date>Z <level> <category>: ".
-    [GeneratedRegex(@"\[(?<l>DEBUG|INFO|WARN|ERROR|FATAL)\]|^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{3}Z (?<l>trce|dbug|info|warn|fail|crit) ")]
+    // Anchored at the line start, so "[ERROR]" inside a message does not count.
+    // OpenSim (log4net, see RuntimeStager): "HH:mm:ss - [LEVEL] message"; the launcher: "<date>Z <level> <category>: ".
+    [GeneratedRegex(@"^(?:\d\d:\d\d:\d\d - \[(?<l>DEBUG|INFO|WARN|ERROR|FATAL)\] |\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{3}Z (?<l>trce|dbug|info|warn|fail|crit) )")]
     private static partial Regex LevelPattern();
 }

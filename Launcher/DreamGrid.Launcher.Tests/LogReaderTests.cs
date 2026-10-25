@@ -98,6 +98,38 @@ public sealed class LogReaderTests : IDisposable
         Assert.Equal(["12:00:02 - [WARN] w", "12:00:03 - [ERROR] e"], tail.Lines);
     }
 
+    [Theory]
+    [InlineData("DEBUG", 5)]
+    [InlineData("INFO", 4)]
+    [InlineData("WARN", 3)]
+    [InlineData("ERROR", 2)]
+    public void Level_filter_works_on_every_opensim_level(string min, int expected)
+    {
+        File.WriteAllLines(LogFile("robust.log"),
+        [
+            "12:00:00 - [DEBUG] d", "12:00:01 - [INFO] i", "12:00:02 - [WARN] w", "12:00:03 - [ERROR] e", "12:00:04 - [FATAL] f",
+        ]);
+
+        var tail = Reader().Tail("robust", minLevel: min);
+
+        Assert.Equal(expected, tail.Lines.Count);
+        Assert.Equal("12:00:04 - [FATAL] f", tail.Lines[^1]);
+    }
+
+    [Fact]
+    public void An_error_token_inside_the_message_does_not_count_as_the_lines_level()
+    {
+        File.WriteAllLines(LogFile("robust.log"),
+        [
+            "12:00:00 - [INFO] chat says [ERROR] hello",
+            "12:00:01 - [ERROR] real",
+        ]);
+
+        var tail = Reader().Tail("robust", minLevel: "ERROR");
+
+        Assert.Equal(["12:00:01 - [ERROR] real"], tail.Lines);
+    }
+
     [Fact]
     public void Level_filter_keeps_lines_without_a_level_and_knows_the_launchers_own_levels()
     {
