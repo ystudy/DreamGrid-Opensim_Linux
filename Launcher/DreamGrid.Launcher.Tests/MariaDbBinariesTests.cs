@@ -97,6 +97,39 @@ public class MariaDbBinariesTests : IDisposable
         Assert.Contains($"--tmpdir={paths.MariaDbTmp}", args);
     }
 
+    // mariadb-install-db word-splits every argument except --datadir (args="$args $arg", later unquoted), and
+    // chowns the datadir unquoted when given --user: such paths go through space-free /tmp symlinks.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void InstallDb_gets_the_tmpdir_through_a_link_when_its_path_has_a_space(bool asRoot)
+    {
+        var paths = new LauncherPaths("/home/dg/Dréam Grid", "/opensim", null);
+        var plan = MariaDbServer.PlanInstallDb(paths, asRoot, "abc");
+
+        Assert.Equal("/tmp/dg-abc-tmp", plan.TmpLink);
+        Assert.Contains("--tmpdir=/tmp/dg-abc-tmp", plan.Arguments);
+        Assert.DoesNotContain(plan.Arguments, a => a.StartsWith("--tmpdir=") && a.Contains(' '));
+        // The datadir link stays root-only (Task 7): without --user the script quotes --datadir itself.
+        Assert.Equal(asRoot ? "/tmp/dg-abc-data" : null, plan.DataLink);
+        Assert.Contains("--datadir=" + (asRoot ? "/tmp/dg-abc-data" : paths.MariaDbData), plan.Arguments);
+        Assert.Equal(asRoot, plan.Arguments.Contains("--user=root"));
+        Assert.Contains("--no-defaults", plan.Arguments);
+    }
+
+    [Fact]
+    public void InstallDb_uses_plain_paths_when_they_need_no_link()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Path.Combine adds '\'; install-db planning is Linux-only.");
+        var paths = new LauncherPaths("/var/lib/dreamgrid", "/opensim", null);
+        var plan = MariaDbServer.PlanInstallDb(paths, asRoot: true, "abc");
+
+        Assert.Null(plan.DataLink);
+        Assert.Null(plan.TmpLink);
+        Assert.Contains("--datadir=/var/lib/dreamgrid/mariadb/data", plan.Arguments);
+        Assert.Contains("--tmpdir=/var/lib/dreamgrid/mariadb/tmp", plan.Arguments);
+    }
+
     [Fact]
     public void SocketPath_is_inside_the_data_dir_when_short()
     {

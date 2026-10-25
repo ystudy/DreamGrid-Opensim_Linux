@@ -6,6 +6,7 @@ using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.Modules;
 using DreamGrid.Launcher.Core.OpenSim;
 using DreamGrid.Launcher.Core.Settings;
+using Microsoft.Extensions.Time.Testing;
 using Xunit;
 
 namespace DreamGrid.Launcher.Tests;
@@ -39,10 +40,15 @@ public sealed class GridControllerWiringTests : IDisposable
             WebPort = p[0], RobustPublicPort = p[1], RobustPrivatePort = p[2], RegionPort = p[3],
             MariaDbPort = p[4], RobustConsolePort = p[5], RegionConsolePort = p[6],
         });
+        _grid = NewGrid(TimeProvider.System);
+    }
+
+    private GridController NewGrid(TimeProvider time)
+    {
         // A MariaDB that cannot start: anything past the port check fails with a non-port error.
         var missing = Path.Combine(_root, "no-such-dir", "mariadbd");
-        _grid = new GridController(_paths, _store, new MariaDbBinaries(missing, missing, null),
-            [new LogLevelModule()], _robust, _http, TimeProvider.System);
+        return new GridController(_paths, _store, new MariaDbBinaries(missing, missing, null),
+            [new LogLevelModule()], _robust, _http, time);
     }
 
     public void Dispose()
@@ -134,6 +140,31 @@ public sealed class GridControllerWiringTests : IDisposable
 
         Assert.Equal(200, account.UserLevel);
         Assert.Empty(_robust.Levels);
+    }
+
+    [Fact]
+    public async Task CreateOwner_gives_up_after_30_s_when_Robust_never_shows_the_account()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        _robust.Missing = true;
+        _robust.Clock = time.GetUtcNow;
+        var owner = NewGrid(time).CreateOwnerAsync("Test", "Owner", "pw1", null, ct);
+
+        // Fake time runs only while the controller polls; the console settle waits in real time.
+        var guard = DateTime.UtcNow.AddSeconds(60);
+        while (!owner.IsCompleted && DateTime.UtcNow < guard)
+        {
+            time.Advance(TimeSpan.FromMilliseconds(100));
+            await Task.Delay(10, ct);
+        }
+
+        var e = await Assert.ThrowsAsync<InvalidOperationException>(() => owner);
+        Assert.Contains("Robust did not create Test Owner within 30 s", e.Message);
+        // The first lookup only decides create vs. reset; the polls after it span the full 30 s.
+        var polls = _robust.Calls.Skip(1).ToList();
+        Assert.True(polls.Count > 2, $"only {polls.Count} polls");
+        Assert.True(polls[^1] - polls[0] >= TimeSpan.FromSeconds(30), $"gave up after {polls[^1] - polls[0]}");
     }
 
     [Fact]
@@ -307,10 +338,17 @@ public sealed class GridControllerWiringTests : IDisposable
         /// <summary>Replies returned (in order) before the default level-200 account, standing in for a slow Robust.</summary>
         public Queue<int?> Levels { get; } = new();
 
+        /// <summary>Robust never shows the account.</summary>
+        public bool Missing { get; set; }
+        public Func<DateTimeOffset> Clock { get; set; } = () => DateTimeOffset.UtcNow;
+        public List<DateTimeOffset> Calls { get; } = new();
+
         public async Task<RobustAccount?> GetAccountAsync(string first, string last, CancellationToken ct)
         {
             Entered.TrySetResult();
             await Block;
+            lock (Calls) Calls.Add(Clock());
+            if (Missing) return null;
             int? level = 200;
             lock (Levels) if (Levels.Count > 0) level = Levels.Dequeue();
             return level is { } l ? new RobustAccount(Guid.Parse("aaaaaaaa-0000-0000-0000-000000000001"), first, last, l, "") : null;

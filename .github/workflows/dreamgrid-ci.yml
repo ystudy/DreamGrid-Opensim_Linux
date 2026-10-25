@@ -68,7 +68,8 @@ jobs:
           sed -i 's/# de_DE.UTF-8/de_DE.UTF-8/' /etc/locale.gen
           locale-gen
           curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
-          bash /tmp/dotnet-install.sh --channel 10.0 --install-dir /usr/share/dotnet
+          # The channel's newest SDK can be announced before every feed has it: retry once, then pin.
+          bash /tmp/dotnet-install.sh --channel 10.0 --install-dir /usr/share/dotnet || { sleep 30; bash /tmp/dotnet-install.sh --channel 10.0 --install-dir /usr/share/dotnet; } || bash /tmp/dotnet-install.sh --version 10.0.402 --install-dir /usr/share/dotnet
           echo /usr/share/dotnet >> "$GITHUB_PATH"
 
       - uses: actions/checkout@v4
@@ -106,6 +107,8 @@ jobs:
     timeout-minutes: 30
     env:
       MARIADB_VERSION: 11.4.9
+      # From https://archive.mariadb.org/mariadb-11.4.9/winx64-packages/sha256sums.txt
+      MARIADB_SHA256: 802f9f40a9dca774a3ba62f39c21093942954f178d6d7d458dc51453929bcdda
     steps:
       - name: Allow long paths
         run: git config --system core.longpaths true
@@ -118,18 +121,21 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Cache MariaDB
+      - name: Restore MariaDB from the cache
         id: mariadb-cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ${{ runner.temp }}\mariadb-dist
           key: mariadb-${{ env.MARIADB_VERSION }}-winx64
 
       - name: Download MariaDB
+        id: mariadb-download
         if: steps.mariadb-cache.outputs.cache-hit != 'true'
         run: |
           $zip = Join-Path $env:RUNNER_TEMP "mariadb-$env:MARIADB_VERSION-winx64.zip"
           Invoke-WebRequest -Uri "https://archive.mariadb.org/mariadb-$env:MARIADB_VERSION/winx64-packages/mariadb-$env:MARIADB_VERSION-winx64.zip" -OutFile $zip
+          $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash
+          if ($hash -ne $env:MARIADB_SHA256) { throw "mariadb zip SHA256 $hash does not match $env:MARIADB_SHA256" }
           Expand-Archive -Path $zip -DestinationPath (Join-Path $env:RUNNER_TEMP 'mariadb-dist')
           Remove-Item $zip
 
@@ -160,6 +166,14 @@ jobs:
           name: launcher-logs-windows
           path: ${{ runner.temp }}/Dréam Grid */state/logs/*
 
+      # Saved even when a test failed, but only a download that passed its checksum.
+      - name: Save MariaDB to the cache
+        if: always() && steps.mariadb-cache.outputs.cache-hit != 'true' && steps.mariadb-download.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}\mariadb-dist
+          key: mariadb-${{ env.MARIADB_VERSION }}-winx64
+
   launcher-debian:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -177,7 +191,8 @@ jobs:
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates libicu-dev libgdiplus git mariadb-server
           curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
-          bash /tmp/dotnet-install.sh --channel 10.0 --install-dir /usr/share/dotnet
+          # The channel's newest SDK can be announced before every feed has it: retry once, then pin.
+          bash /tmp/dotnet-install.sh --channel 10.0 --install-dir /usr/share/dotnet || { sleep 30; bash /tmp/dotnet-install.sh --channel 10.0 --install-dir /usr/share/dotnet; } || bash /tmp/dotnet-install.sh --version 10.0.402 --install-dir /usr/share/dotnet
           echo /usr/share/dotnet >> "$GITHUB_PATH"
           echo "DREAMGRID_MARIADB_BIN=/usr/sbin" >> "$GITHUB_ENV"
           # In a container job the runner.temp context is the host path; RUNNER_TEMP is the path inside the container.

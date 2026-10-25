@@ -45,7 +45,7 @@ public sealed class MariaDbServerTests : IDisposable
     {
         var bin = IntegrationEnvironment.RequireMariaDbBin();
         var data = subDir is null ? _root : Path.Combine(_root, subDir);
-        var paths = new LauncherPaths(data, IntegrationEnvironment.OpenSimBin, bin);
+        var paths = new LauncherPaths(data, IntegrationEnvironment.RequireOpenSimBin(), bin);
         paths.EnsureCreated();
         var settings = new LauncherSettings
         {

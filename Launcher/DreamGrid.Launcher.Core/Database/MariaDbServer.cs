@@ -175,34 +175,45 @@ public sealed class MariaDbServer(MariaDbBinaries bin, LauncherPaths paths, Laun
             return;
         }
 
-        // mariadb-install-db chowns the datadir unquoted when given --user, so a path with unusual
-        // characters is handed over through a space-free symlink with a random name.
-        var asRoot = Environment.IsPrivilegedProcess;
-        var needsLink = asRoot && paths.MariaDbData.Any(c => !(char.IsAsciiLetterOrDigit(c) || c is '/' or '.' or '_' or '-'));
-        var id = Guid.NewGuid().ToString("N");
-        var link = needsLink ? $"/tmp/dg-{id}-data" : null;
-        var tmpLink = needsLink ? $"/tmp/dg-{id}-tmp" : null;
+        var plan = PlanInstallDb(paths, Environment.IsPrivilegedProcess, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(paths.MariaDbTmp);
-        if (link is not null) Directory.CreateSymbolicLink(link, paths.MariaDbData);
-        if (tmpLink is not null) Directory.CreateSymbolicLink(tmpLink, paths.MariaDbTmp);
+        if (plan.DataLink is not null) Directory.CreateSymbolicLink(plan.DataLink, paths.MariaDbData);
+        if (plan.TmpLink is not null) Directory.CreateSymbolicLink(plan.TmpLink, paths.MariaDbTmp);
         try
         {
-            var args = new List<string>
-            {
-                "--no-defaults", "--datadir=" + (link ?? paths.MariaDbData),
-                // The bootstrap server's temporary tables must not sit in a tmpdir another mariadbd empties.
-                "--tmpdir=" + (tmpLink ?? paths.MariaDbTmp),
-                "--auth-root-authentication-method=normal", "--skip-test-db",
-            };
-            if (asRoot) args.Add("--user=root");
-            await RunInstallDb(args, ct);
+            await RunInstallDb(plan.Arguments.ToList(), ct);
         }
         finally
         {
-            foreach (var l in new[] { link, tmpLink })
+            foreach (var l in new[] { plan.DataLink, plan.TmpLink })
                 if (l is not null && Directory.Exists(l)) new DirectoryInfo(l).Delete();
         }
     }
+
+    /// <summary>The Linux mariadb-install-db arguments, and the /tmp symlinks they need (<paramref name="linkId"/> names them).</summary>
+    public sealed record InstallDbPlan(IReadOnlyList<string> Arguments, string? DataLink, string? TmpLink);
+
+    public static InstallDbPlan PlanInstallDb(LauncherPaths paths, bool asRoot, string linkId)
+    {
+        // mariadb-install-db chowns the datadir unquoted when given --user, and word-splits every other option
+        // it passes on (args="$args $arg", expanded unquoted), whoever runs it. A path with unusual characters
+        // is therefore handed over through a space-free symlink with a random name: the datadir when root, the
+        // tmpdir always.
+        var link = asRoot && NeedsLink(paths.MariaDbData) ? $"/tmp/dg-{linkId}-data" : null;
+        var tmpLink = NeedsLink(paths.MariaDbTmp) ? $"/tmp/dg-{linkId}-tmp" : null;
+        var args = new List<string>
+        {
+            "--no-defaults", "--datadir=" + (link ?? paths.MariaDbData),
+            // The bootstrap server's temporary tables must not sit in a tmpdir another mariadbd empties.
+            "--tmpdir=" + (tmpLink ?? paths.MariaDbTmp),
+            "--auth-root-authentication-method=normal", "--skip-test-db",
+        };
+        if (asRoot) args.Add("--user=root");
+        return new InstallDbPlan(args, link, tmpLink);
+    }
+
+    private static bool NeedsLink(string path) =>
+        path.Any(c => !(char.IsAsciiLetterOrDigit(c) || c is '/' or '.' or '_' or '-'));
 
     private async Task RunInstallDb(List<string> args, CancellationToken ct)
     {
