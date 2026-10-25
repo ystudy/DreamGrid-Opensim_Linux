@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Runs on Microsoft.Testing.Platform (selected in global.json); no VSTest packages needed. -->
+    <PackageReference Include="xunit.v3" Version="4.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DreamGrid.Launcher.Core\DreamGrid.Launcher.Core.csproj" />
+    <ProjectReference Include="..\DreamGrid.Launcher\DreamGrid.Launcher.csproj" />
+  </ItemGroup>
+
+</Project>
