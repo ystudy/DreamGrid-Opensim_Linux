@@ -39,8 +39,12 @@ internal sealed class FakeGridController : IGridController
 
     public Task CreateRegionAsync(string name, string content, CancellationToken ct) => throw new NotSupportedException();
 
+    /// <summary>When set, <see cref="GetStatus"/> returns it instead of the status built from the other properties.</summary>
+    public GridStatus? Status { get; set; }
+
     public GridStatus GetStatus()
     {
+        if (Status is { } fixedStatus) return fixedStatus;
         var running = new ComponentStatus("x", ProcessState.Running, null, null, null, null);
         return new GridStatus(running with { Name = "database" }, running with { Name = "robust" },
             HasRegion ? new ComponentStatus("region", RegionState, null, null, null, null) : null,

@@ -1,0 +1,7 @@
+@page "/welcome"
+@inject Func<DreamGrid.Launcher.Core.Settings.LauncherSettings> Settings
+@{
+    ViewData["Title"] = "Welcome";
+}
+<h1>Welcome to @Settings().GridName</h1>
+<p>Log in with your avatar name and password.</p>

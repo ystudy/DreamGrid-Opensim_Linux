@@ -17,7 +17,6 @@ public static class LegacyEndpoints
     {
         app.MapMethods("/", [HttpMethods.Get, HttpMethods.Post], Root);
         app.MapPost("/dreamgrid/regionready", RegionReady);
-        app.MapGet("/welcome", Welcome);
     }
 
     private static async Task<IResult> Root(HttpContext ctx, LegacyCommandApi api, IHostApplicationLifetime lifetime, ILoggerFactory logs)
@@ -86,15 +85,5 @@ public static class LegacyEndpoints
         if (RegionAlert.Parse(new string(buffer, 0, read)) is not { } alert) return Results.BadRequest();
         grid.OnRegionAlert(alert);
         return Results.Ok();
-    }
-
-    /// <summary>The GridInfoService welcome page; plan 2b replaces it.</summary>
-    private static IResult Welcome(Func<LauncherSettings> settings)
-    {
-        var name = WebUtility.HtmlEncode(settings().GridName);
-        return Results.Content(
-            $"<!DOCTYPE html>\n<html><head><meta charset=\"utf-8\"><title>{name}</title></head>"
-            + $"<body><h1>Welcome to {name}</h1></body></html>\n",
-            "text/html; charset=utf-8");
     }
 }

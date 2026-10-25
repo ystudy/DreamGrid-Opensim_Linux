@@ -47,7 +47,10 @@ builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.W
 // Health polls of children that are still booting would log a stack trace every few seconds.
 builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);
 
+builder.Logging.AddProvider(new RollingFileLoggerProvider(Path.Combine(paths.Logs, "launcher.log")));
+
 builder.Services.AddHttpClient();
+builder.Services.AddRazorPages();
 builder.Services.AddSingleton(paths);
 builder.Services.AddSingleton(store);
 // Read per request from the controller's cache (never the file), so a change the controller saved is seen at once.
@@ -76,7 +79,9 @@ builder.Services.AddSingleton<LegacyCommandApi>();
 builder.Services.AddHostedService<GridHostedService>();
 
 var app = builder.Build();
+app.UseStaticFiles();
 LegacyEndpoints.Map(app);
+app.MapRazorPages();
 
 app.Lifetime.ApplicationStarted.Register(() =>
 {
