@@ -16,4 +16,13 @@
     <Copy SourceFiles="$(_DgDrawingSource)" DestinationFiles="$(MSBuildThisFileDirectory)bin/System.Drawing.Common.dll" SkipUnchangedFiles="true"
           Retries="5" RetryDelayMilliseconds="200" />
   </Target>
+
+  <!-- OpenSim projects build with UseCommonOutputDirectory=true, which skips copying references to bin/.
+       The BinaryFormatter compatibility package must sit next to OpenSim.dll/Robust.dll, so copy it explicitly. -->
+  <Target Name="DeployBinaryFormatterCompat" AfterTargets="Build"
+          Condition="'$(UseCommonOutputDirectory)' == 'true' And '@(PackageReference->WithMetadataValue('Identity', 'System.Runtime.Serialization.Formatters'))' != ''">
+    <Copy SourceFiles="@(ReferenceCopyLocalPaths)" DestinationFolder="$(OutDir)"
+          Condition="'%(ReferenceCopyLocalPaths.Filename)' == 'System.Runtime.Serialization.Formatters' And '%(ReferenceCopyLocalPaths.Extension)' == '.dll'"
+          SkipUnchangedFiles="true" Retries="5" RetryDelayMilliseconds="200" />
+  </Target>
 </Project>

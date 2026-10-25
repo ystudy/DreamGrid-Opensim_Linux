@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Tests for the .NET 10 platform work: runtime gaps in OpenSim (BinaryFormatter) and the smoke-harness checks. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Same switch OpenSim's runtimeconfig sets; without it the compatibility package refuses to run. -->
+    <EnableUnsafeBinaryFormatterSerialization>true</EnableUnsafeBinaryFormatterSerialization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Runs on Microsoft.Testing.Platform (selected in global.json); no VSTest packages needed. -->
+    <PackageReference Include="xunit.v3" Version="4.0.2" />
+    <PackageReference Include="System.Runtime.Serialization.Formatters" Version="10.0.13" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../OpenSim/Framework/OpenSim.Framework.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="OpenMetaverseTypes">
+      <HintPath>$(DgRoot)bin/OpenMetaverseTypes.dll</HintPath>
+    </Reference>
+    <Reference Include="log4net">
+      <HintPath>$(DgRoot)bin/log4net.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+</Project>

@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <PreserveCompilationContext>false</PreserveCompilationContext>
     <OutputType>Library</OutputType>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
@@ -807,5 +808,9 @@
     <Compile Include="World\WorldMap\WorldMapModule.cs">
       <SubType>Code</SubType>
     </Compile>
+  </ItemGroup>
+  <ItemGroup>
+    <!-- .NET 9+ removed BinaryFormatter from the runtime; this package restores it (asset cache, script state, keyframes). -->
+    <PackageReference Include="System.Runtime.Serialization.Formatters" Version="10.0.13" />
   </ItemGroup>
 </Project>
