@@ -10,11 +10,21 @@
   <ItemGroup>
     <!-- Runs on Microsoft.Testing.Platform (selected in global.json); no VSTest packages needed. -->
     <PackageReference Include="xunit.v3" Version="4.0.2" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.0.0" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\DreamGrid.Launcher.Core\DreamGrid.Launcher.Core.csproj" />
     <ProjectReference Include="..\DreamGrid.Launcher\DreamGrid.Launcher.csproj" />
+    <!-- Built first; the tests start its output as a stand-in child process. -->
+    <ProjectReference Include="..\..\tests\DreamGrid.FakeChild\DreamGrid.FakeChild.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>FakeChildDir</_Parameter1>
+      <_Parameter2>$(DgRoot)tests/DreamGrid.FakeChild/bin/$(Configuration)/$(TargetFramework)/</_Parameter2>
+    </AssemblyAttribute>
   </ItemGroup>
 
 </Project>
