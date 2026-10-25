@@ -57,7 +57,7 @@ The target framework is set once in `Directory.Build.props`; do not add `<Target
 
 ```bash
 dotnet build -c Release DreamGrid.sln
-dotnet test tests/DreamGrid.Platform.Tests -c Release
+dotnet test --project tests/DreamGrid.Platform.Tests -c Release
 dotnet run --project tests/DreamGrid.Smoke -c Release -- --bin bin
 ```
 

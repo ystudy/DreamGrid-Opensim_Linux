@@ -499,6 +499,9 @@
     <Compile Include="UserProfiles.cs">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="BinaryFormatterCompat.cs">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="Util.cs">
       <SubType>Code</SubType>
     </Compile>
