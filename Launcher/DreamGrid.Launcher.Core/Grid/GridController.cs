@@ -201,7 +201,11 @@ public sealed partial class GridController(
             await LoadContentAsync(region, content, ct);
             await WaitForLoginsAsync(ct);
 
-            Save(_settings! with { Setup = _settings!.Setup with { RegionCreated = true } });
+            lock (_configGate)
+            {
+                var latest = _settings!;
+                Save(latest with { Setup = latest.Setup with { RegionCreated = true } });
+            }
         }
         finally { _ops.Release(); }
     }
@@ -211,7 +215,10 @@ public sealed partial class GridController(
     /// <summary>Reads only cached state (components are built under the operation lock), so it never waits.</summary>
     public GridStatus GetStatus()
     {
-        var s = _settings ?? ReloadSettings();
+        LauncherSettings s;
+        // On a first launch LoadOrCreate generates and saves fresh secrets, so the fallback load is serialised
+        // with the controller's own (re-checking the cache inside the lock).
+        lock (_configGate) s = _settings ?? ReloadSettings();
         return new GridStatus(
             Describe("database", _db),
             Describe("robust", _robust),

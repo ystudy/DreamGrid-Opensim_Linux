@@ -29,7 +29,8 @@ public interface IGridController
 
     /// <summary>
     /// Reloads the settings and rewrites the INIs without restarting anything. Running children keep the ports
-    /// they started with; a component picks up changed ports at its next start or restart.
+    /// they started with. A changed Robust public or private port needs a launcher restart (the injected
+    /// IRobustClient keeps its ports); every other port applies at that component's next start or restart.
     /// </summary>
     void RegenerateConfig();
 

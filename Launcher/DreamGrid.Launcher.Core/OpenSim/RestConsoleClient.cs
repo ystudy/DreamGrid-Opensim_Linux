@@ -4,10 +4,10 @@ using System.Xml.Linq;
 
 namespace DreamGrid.Launcher.Core.OpenSim;
 
-/// <summary>The REST console rejected the USER/PASS (HTTP 401/403 or no SessionID).</summary>
 /// <summary>A console output line; <see cref="IsPrompt"/> marks an interactive question (Prompt="true", Command="false").</summary>
 public sealed record ConsoleOutput(string Text, bool IsPrompt);
 
+/// <summary>The REST console rejected the USER/PASS (HTTP 401/403 or no SessionID).</summary>
 public sealed class ConsoleAuthException(string message) : Exception(message);
 
 /// <summary>
