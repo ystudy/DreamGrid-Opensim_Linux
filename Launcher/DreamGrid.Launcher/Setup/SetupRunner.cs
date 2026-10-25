@@ -91,23 +91,50 @@ public sealed class SetupRunner(
         {
             var stage = progress.Stage;
             log.LogError(e, "Setup: creating the region {Name} failed at \"{Stage}\": {Message}", name, stage, e.Message);
+            // The headline stays plain newcomer text; the technical message leads the details, above the log lines.
             var where = stage == "" ? "" : $" It stopped at \"{stage}\".";
-            progress.Fail($"Your region could not be set up.{where} {e.Message}", Excerpt());
+            var excerpt = Excerpt();
+            progress.Fail($"Your region could not be set up.{where} Check the details, then try again.",
+                excerpt is null ? e.Message : e.Message + "\n\n" + excerpt);
+        }
+        finally
+        {
+            // Never leave the run marked as going: that would refuse every retry until a restart.
+            if (progress.Running)
+                progress.Fail("Your region could not be set up. Try again.", null);
         }
     }
 
-    /// <summary>The region log's last lines, else Robust's, else the launcher's own.</summary>
+    /// <summary>
+    /// The region log's last lines, else Robust's, else the launcher's own. A log that cannot be read is skipped
+    /// (and logged): the failure must still be reported.
+    /// </summary>
     private string? Excerpt()
     {
-        var sources = new List<string>();
-        if (settings().Region is { } region) sources.Add("region-" + region.Instance);
-        sources.Add("robust");
-        sources.Add("launcher");
-        foreach (var source in sources)
+        try
         {
-            var tail = logs.Tail(source, ExcerptLines);
-            if (tail.Lines.Count > 0) return string.Join('\n', tail.Lines);
+            var sources = new List<string>();
+            if (settings().Region is { } region) sources.Add("region-" + region.Instance);
+            sources.Add("robust");
+            sources.Add("launcher");
+            foreach (var source in sources)
+            {
+                try
+                {
+                    var tail = logs.Tail(source, ExcerptLines);
+                    if (tail.Lines.Count > 0) return string.Join('\n', tail.Lines);
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                {
+                    log.LogWarning("Setup: the {Source} log could not be read for the excerpt: {Message}", source, e.Message);
+                }
+            }
+            return null;
         }
-        return null;
+        catch (Exception e)
+        {
+            log.LogWarning(e, "Setup: the log excerpt could not be read: {Message}", e.Message);
+            return null;
+        }
     }
 }

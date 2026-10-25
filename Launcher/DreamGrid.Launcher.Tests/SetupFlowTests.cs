@@ -386,6 +386,58 @@ public sealed class SetupFlowTests
     }
 
     [Fact]
+    public async Task Region_failure_headline_is_plain_and_the_message_is_in_the_details()
+    {
+        await using var f = AfterOwner();
+        f.Grid.OnCreateRegion = (progress, _) =>
+        {
+            progress?.Report("Creating your region");
+            throw new InvalidOperationException("Robust is not running; start it first.");
+        };
+        using var client = await SignedInClientAsync(f);
+
+        (await PostFormAsync(client, "/setup/region", new() { ["RegionName"] = "Welcome", ["Content"] = "island" })).Dispose();
+
+        var failed = await WaitForProgressAsync(client, p => !p.GetProperty("running").GetBoolean() && Str(p, "error") is not null);
+        Assert.DoesNotContain("Robust", Str(failed, "error"));
+        Assert.Contains("Creating your region", Str(failed, "error"));
+        Assert.StartsWith("Robust is not running; start it first.", Str(failed, "logExcerpt"));
+
+        var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/region?working=1", Ct));
+        var box = page.QuerySelector(".error-box")!;
+        Assert.DoesNotContain(box.QuerySelectorAll("p"), p => p.TextContent.Contains("Robust"));
+        Assert.Contains("Robust is not running; start it first.", box.QuerySelector("details")?.TextContent);
+    }
+
+    [Fact]
+    public async Task Region_failure_is_reported_even_when_the_log_cannot_be_read()
+    {
+        await using var f = AfterOwner();
+        // A directory where robust.log should be: opening it for reading throws (not "file not found").
+        Directory.CreateDirectory(Path.Combine(f.Paths.Logs, "robust.log"));
+        var defaultStages = f.Grid.OnCreateRegion;
+        f.Grid.OnCreateRegion = (progress, _) =>
+        {
+            progress?.Report("Creating your region");
+            throw new InvalidOperationException("The region failed: boom");
+        };
+        using var client = await SignedInClientAsync(f);
+
+        (await PostFormAsync(client, "/setup/region", new() { ["RegionName"] = "Welcome", ["Content"] = "island" })).Dispose();
+
+        var failed = await WaitForProgressAsync(client, p => !p.GetProperty("running").GetBoolean() && Str(p, "error") is not null);
+        Assert.Contains("The region failed: boom", Str(failed, "logExcerpt"));
+        Assert.True(await f.WaitForLogAsync(l => l.Message.Contains("robust log could not be read")), "the unreadable log was not hit");
+
+        f.Grid.OnCreateRegion = defaultStages;
+        using (var retry = await PostFormAsync(client, "/setup/region", new() { ["RegionName"] = "Welcome", ["Content"] = "island" }))
+            Assert.Equal("/setup/region?working=1", Location(retry));
+        var done = await WaitForProgressAsync(client, p => !p.GetProperty("running").GetBoolean() && Str(p, "stage") == "Ready");
+        Assert.Null(Str(done, "error"));
+        Assert.True(f.Store.LoadOrCreate().Setup.RegionCreated);
+    }
+
+    [Fact]
     public async Task Region_step_starts_the_database_and_grid_service_when_they_are_stopped()
     {
         await using var f = AfterOwner();
