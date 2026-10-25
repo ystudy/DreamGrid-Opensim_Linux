@@ -267,4 +267,209 @@ public sealed class ManagedProcessTests : IAsyncLifetime
         }
         Assert.True(ProcessImage.IsAlive(pid!.Value));
     }
+
+    [Theory]
+    [InlineData(1, 2)]
+    [InlineData(2, 4)]
+    [InlineData(3, 8)]
+    [InlineData(5, 32)]
+    [InlineData(6, 60)]
+    [InlineData(40, 60)]
+    public void DelayFor_doubles_and_caps_with_default_substitution(int failures, int expectedSeconds)
+    {
+        // default(TimeSpan) values select 2 s initial and 60 s max.
+        Assert.Equal(TimeSpan.FromSeconds(expectedSeconds), new RestartPolicy().DelayFor(failures));
+    }
+
+    [Fact]
+    public void DelayFor_honours_explicit_delays()
+    {
+        var policy = new RestartPolicy(InitialDelay: TimeSpan.FromSeconds(1), MaxDelay: TimeSpan.FromSeconds(5));
+        Assert.Equal(TimeSpan.FromSeconds(4), policy.DelayFor(3));
+        Assert.Equal(TimeSpan.FromSeconds(5), policy.DelayFor(4));
+    }
+
+    [Fact]
+    public async Task Process_matched_by_command_line_only_is_adopted()
+    {
+        // Robust and OpenSim run as "dotnet OpenSim.dll": the main module is dotnet, so only the command line can match.
+        var port = FreePort();
+        var pidFile = NewPidFile();
+        var dll = Path.Combine(Path.GetDirectoryName(FakeChildExe())!, "DreamGrid.FakeChild.dll");
+        ProcessSpec Spec(Counters c) => ServeSpec(port, pidFile, c, "DreamGrid.FakeChild.dll") with
+        {
+            StartInfo = () =>
+            {
+                c.Starts++;
+                var psi = new ProcessStartInfo("dotnet");
+                psi.ArgumentList.Add(dll);
+                psi.ArgumentList.Add("--serve");
+                psi.ArgumentList.Add(port.ToString());
+                return psi;
+            },
+        };
+        var first = new Counters();
+        var firstProcess = new ManagedProcess(Spec(first), new RestartPolicy(), TimeProvider.System);
+        await firstProcess.StartAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(ProcessState.Running, firstProcess.State);
+        Assert.True(ProcessImage.Matches(firstProcess.Pid!.Value, "DreamGrid.FakeChild.dll"));
+        Assert.False(ProcessImage.Matches(Environment.ProcessId, "DreamGrid.FakeChild.dll"));
+
+        var second = new Counters();
+        var secondProcess = new ManagedProcess(Spec(second), new RestartPolicy(), TimeProvider.System);
+        await secondProcess.StartAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, second.Starts);
+        Assert.Equal(firstProcess.Pid, secondProcess.Pid);
+        Assert.Equal(ProcessState.Running, secondProcess.State);
+    }
+
+    [Fact]
+    public async Task Stop_while_monitoring_completes_the_monitor_cleanly_without_restart()
+    {
+        var port = FreePort();
+        var pidFile = NewPidFile();
+        var counters = new Counters();
+        var mp = new ManagedProcess(ServeSpec(port, pidFile, counters), new RestartPolicy(), TimeProvider.System);
+        var ct = TestContext.Current.CancellationToken;
+        await mp.StartAsync(ct);
+        var monitor = mp.MonitorAsync(ct);
+
+        await mp.StopAsync(ct);
+        await monitor.WaitAsync(TimeSpan.FromSeconds(15), ct); // rethrows a fault such as ObjectDisposedException
+
+        Assert.Equal(ProcessState.Stopped, mp.State);
+        Assert.Equal(1, counters.Starts);
+    }
+
+    [Fact]
+    public async Task Stop_during_restart_backoff_prevents_the_restart()
+    {
+        var pidFile = NewPidFile();
+        var time = new FakeTimeProvider();
+        var starts = 0;
+        var spec = new ProcessSpec("crasher", () =>
+            {
+                Interlocked.Increment(ref starts);
+                var psi = new ProcessStartInfo(FakeChildExe());
+                psi.ArgumentList.Add("--crash");
+                return psi;
+            },
+            pidFile, _ => Task.FromResult(true), _ => Task.CompletedTask,
+            TimeSpan.FromMinutes(5), TimeSpan.FromSeconds(5), Image);
+        var mp = new ManagedProcess(spec, new RestartPolicy(MaxFailures: 5), time);
+        var ct = TestContext.Current.CancellationToken;
+        var crashed = new TaskCompletionSource();
+        mp.StateChanged += s => { if (s == ProcessState.Crashed) crashed.TrySetResult(); };
+        await mp.StartAsync(ct);
+        var monitor = mp.MonitorAsync(ct);
+        await crashed.Task.WaitAsync(TimeSpan.FromSeconds(30), ct);
+
+        await mp.StopAsync(ct);
+        time.Advance(TimeSpan.FromMinutes(5));
+        await monitor.WaitAsync(TimeSpan.FromSeconds(15), ct);
+
+        Assert.Equal(1, Volatile.Read(ref starts));
+        Assert.Equal(ProcessState.Stopped, mp.State);
+    }
+
+    [Fact]
+    public async Task Monitor_detects_death_of_an_adopted_process_and_restarts_it()
+    {
+        var port = FreePort();
+        var pidFile = NewPidFile();
+        var owner = new ManagedProcess(ServeSpec(port, pidFile, new Counters()), new RestartPolicy(), TimeProvider.System);
+        var ct = TestContext.Current.CancellationToken;
+        await owner.StartAsync(ct);
+        var oldPid = owner.Pid!.Value;
+
+        var counters = new Counters();
+        var adopter = new ManagedProcess(ServeSpec(port, pidFile, counters), new RestartPolicy(InitialDelay: TimeSpan.FromMilliseconds(50)), TimeProvider.System);
+        await adopter.StartAsync(ct);
+        Assert.Equal(0, counters.Starts);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var monitor = adopter.MonitorAsync(cts.Token);
+        try
+        {
+            using (var victim = Process.GetProcessById(oldPid)) { victim.Kill(entireProcessTree: true); victim.WaitForExit(5000); }
+
+            var deadline = DateTime.UtcNow.AddSeconds(30);
+            while (DateTime.UtcNow < deadline && !(counters.Starts == 1 && adopter.State == ProcessState.Running))
+                await Task.Delay(100, ct);
+
+            Assert.Equal(1, counters.Starts);
+            Assert.Equal(ProcessState.Running, adopter.State);
+            Assert.NotEqual(oldPid, adopter.Pid);
+        }
+        finally
+        {
+            await cts.CancelAsync();
+            await monitor;
+        }
+    }
+
+    [Fact]
+    public async Task Explicit_start_after_Failed_begins_with_a_clean_failure_count()
+    {
+        var pidFile = NewPidFile();
+        var port = FreePort();
+        var crash = true;
+        var spec = new ProcessSpec("flaky", () =>
+            {
+                var psi = new ProcessStartInfo(FakeChildExe());
+                if (crash) psi.ArgumentList.Add("--crash");
+                else { psi.ArgumentList.Add("--serve"); psi.ArgumentList.Add(port.ToString()); }
+                return psi;
+            },
+            pidFile, async ct => !crash && await HealthAsync(port, ct), _ => Task.CompletedTask,
+            TimeSpan.FromSeconds(20), TimeSpan.FromSeconds(5), Image);
+        var mp = new ManagedProcess(spec, new RestartPolicy(MaxFailures: 2), TimeProvider.System);
+        var ct = TestContext.Current.CancellationToken;
+
+        // Every explicit start begins a fresh failure count, so a crash right after a manual start is failure 1 of 2
+        // (Crashed), never accumulated with the earlier manual attempts into Failed.
+        await mp.StartAsync(ct);
+        Assert.Equal(ProcessState.Crashed, mp.State);
+        await mp.StartAsync(ct);
+        Assert.Equal(ProcessState.Crashed, mp.State);
+        await mp.StartAsync(ct);
+        Assert.Equal(ProcessState.Crashed, mp.State);
+    }
+
+    [Fact]
+    public async Task Start_timeout_of_a_started_child_kills_it_and_clears_pid_state()
+    {
+        var port = FreePort();
+        var pidFile = NewPidFile();
+        var time = new FakeTimeProvider();
+        var spec = ServeSpec(port, pidFile, new Counters()) with
+        {
+            IsHealthy = _ => Task.FromResult(false),
+            StartTimeout = TimeSpan.FromSeconds(3),
+        };
+        var mp = new ManagedProcess(spec, new RestartPolicy(), time);
+        var ct = TestContext.Current.CancellationToken;
+        using var pumpStop = new CancellationTokenSource();
+        var pump = Task.Run(async () => { while (!pumpStop.IsCancellationRequested) { time.Advance(TimeSpan.FromSeconds(1)); await Task.Delay(10); } }, ct);
+
+        await mp.StartAsync(ct);
+        await pumpStop.CancelAsync();
+        await pump;
+
+        Assert.Equal(ProcessState.Failed, mp.State);
+        Assert.Null(mp.Pid);
+        Assert.False(File.Exists(pidFile));
+    }
+
+    [Fact]
+    public async Task Throwing_StateChanged_handler_does_not_break_the_manager()
+    {
+        var port = FreePort();
+        var mp = new ManagedProcess(ServeSpec(port, NewPidFile(), new Counters()), new RestartPolicy(), TimeProvider.System);
+        mp.StateChanged += _ => throw new InvalidOperationException("handler bug");
+
+        await mp.StartAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(ProcessState.Running, mp.State);
+    }
 }

@@ -31,10 +31,22 @@ public sealed class ManagedProcess(ProcessSpec spec, RestartPolicy policy, TimeP
     private enum Wait { Healthy, Exited, TimedOut }
 
     /// <summary>Adopts the live process named by the PID file when its image matches, otherwise starts a new one; returns once healthy, crashed or timed out.</summary>
-    public async Task StartAsync(CancellationToken ct)
+    public Task StartAsync(CancellationToken ct)
     {
-        _stopRequested = false;
-        SetState(ProcessState.Starting);
+        // An explicit start is a fresh request: it cancels an earlier stop and forgets earlier failures.
+        lock (_gate) { _stopRequested = false; _failures.Clear(); }
+        return StartCoreAsync(honorStop: false, ct);
+    }
+
+    // The monitor restarts through here with honorStop, so a StopAsync that lands during the backoff is never overridden.
+    private async Task StartCoreAsync(bool honorStop, CancellationToken ct)
+    {
+        lock (_gate)
+        {
+            if (honorStop && _stopRequested) return;
+            _state = ProcessState.Starting;
+        }
+        RaiseStateChanged(ProcessState.Starting);
 
         var recorded = PidFile.Read(spec.PidFile);
         if (recorded is { } existing && ProcessImage.Matches(existing, spec.ExpectedImage))
@@ -57,6 +69,12 @@ public sealed class ManagedProcess(ProcessSpec spec, RestartPolicy policy, TimeP
         }
         Attach(process.Id, process);
         PidFile.Write(spec.PidFile, process.Id);
+        if (honorStop && _stopRequested)
+        {
+            KillTree();
+            ClearChild();
+            return;
+        }
         await AwaitStartedAsync(adopted: false, ct);
     }
 
@@ -81,7 +99,8 @@ public sealed class ManagedProcess(ProcessSpec spec, RestartPolicy policy, TimeP
 
         KillTree();
         PidFile.Delete(spec.PidFile);
-        lock (_gate) { _pid = null; _process?.Dispose(); _process = null; }
+        // The Process object is not disposed here: the monitor may still be awaiting its exit.
+        lock (_gate) { _pid = null; _process = null; }
         SetState(ProcessState.Stopped);
     }
 
@@ -105,7 +124,7 @@ public sealed class ManagedProcess(ProcessSpec spec, RestartPolicy policy, TimeP
                         lock (_gate) recent = _failures.Count;
                         await Task.Delay(policy.DelayFor(recent), time, ct);
                         if (_stopRequested) return;
-                        await StartAsync(ct);
+                        await StartCoreAsync(honorStop: true, ct);
                         break;
 
                     case ProcessState.Starting:
@@ -180,7 +199,11 @@ public sealed class ManagedProcess(ProcessSpec spec, RestartPolicy policy, TimeP
                 break;
             default:
                 // A started child that never became healthy is not left running; an adopted one is not ours to kill.
-                if (!adopted) KillTree();
+                if (!adopted)
+                {
+                    KillTree();
+                    ClearChild();
+                }
                 Fail($"{spec.Name} was not healthy within {spec.StartTimeout.TotalSeconds.ToString("0.#", CultureInfo.InvariantCulture)} s");
                 break;
         }
@@ -256,6 +279,12 @@ public sealed class ManagedProcess(ProcessSpec spec, RestartPolicy policy, TimeP
         SetState(failed ? ProcessState.Failed : ProcessState.Crashed);
     }
 
+    private void ClearChild()
+    {
+        lock (_gate) { _process?.Dispose(); _process = null; _pid = null; }
+        PidFile.Delete(spec.PidFile);
+    }
+
     private void Fail(string error)
     {
         lock (_gate) _lastError = error;
@@ -294,6 +323,12 @@ public sealed class ManagedProcess(ProcessSpec spec, RestartPolicy policy, TimeP
             if (_state == state) return;
             _state = state;
         }
-        StateChanged?.Invoke(state);
+        RaiseStateChanged(state);
+    }
+
+    private void RaiseStateChanged(ProcessState state)
+    {
+        try { StateChanged?.Invoke(state); }
+        catch (Exception) { /* a faulty subscriber must not break supervision */ }
     }
 }
