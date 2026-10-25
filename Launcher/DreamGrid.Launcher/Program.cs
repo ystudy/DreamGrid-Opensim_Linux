@@ -8,6 +8,9 @@ using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.Modules;
 using DreamGrid.Launcher.Core.OpenSim;
 using DreamGrid.Launcher.Core.Settings;
+using DreamGrid.Launcher.Security;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Connections;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -50,7 +53,26 @@ builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);
 builder.Logging.AddProvider(new RollingFileLoggerProvider(Path.Combine(paths.Logs, "launcher.log")));
 
 builder.Services.AddHttpClient();
-builder.Services.AddRazorPages();
+builder.Services.AddAuthentication(AuthSchemes.Admin).AddCookie(AuthSchemes.Admin, o =>
+{
+    o.Cookie.Name = "dg-auth";
+    o.Cookie.HttpOnly = true;
+    o.Cookie.SameSite = SameSiteMode.Strict;
+    o.LoginPath = "/login";
+    // API callers get a status code, never a redirect to the login page.
+    o.Events.OnRedirectToLogin = c => ApiOr(c, StatusCodes.Status401Unauthorized);
+    o.Events.OnRedirectToAccessDenied = c => ApiOr(c, StatusCodes.Status403Forbidden);
+});
+builder.Services.AddAuthorizationBuilder()
+    .AddPolicy(AuthSchemes.AdminPolicy, p => p.AddAuthenticationSchemes(AuthSchemes.Admin).RequireRole(AuthSchemes.AdminRole));
+builder.Services.AddRazorPages(o =>
+{
+    // Every page needs the admin role except these; the setup pages are guarded by SetupGate.
+    o.Conventions.AuthorizeFolder("/", AuthSchemes.AdminPolicy);
+    foreach (var open in new[] { "/Login", "/Welcome", "/Waiting", "/SetupDone", "/Setup" })
+        o.Conventions.AllowAnonymousToPage(open);
+    o.Conventions.AllowAnonymousToFolder("/Setup");
+});
 builder.Services.AddSingleton(paths);
 builder.Services.AddSingleton(store);
 // Read per request from the controller's cache (never the file), so a change the controller saved is seen at once.
@@ -80,6 +102,9 @@ builder.Services.AddHostedService<GridHostedService>();
 
 var app = builder.Build();
 app.UseStaticFiles();
+app.UseAuthentication();
+app.UseMiddleware<SetupGate>();
+app.UseAuthorization();
 LegacyEndpoints.Map(app);
 app.MapRazorPages();
 
@@ -107,6 +132,15 @@ catch (Exception e) when (IsAddressInUse(e))
 await app.WaitForShutdownAsync();
 await app.DisposeAsync();
 return 0;
+
+static Task ApiOr(RedirectContext<CookieAuthenticationOptions> c, int apiStatus)
+{
+    if (c.Request.Path.StartsWithSegments("/api"))
+        c.Response.StatusCode = apiStatus;
+    else
+        c.Response.Redirect(c.RedirectUri);
+    return Task.CompletedTask;
+}
 
 static bool IsAddressInUse(Exception? e)
 {
