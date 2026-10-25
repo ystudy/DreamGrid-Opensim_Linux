@@ -78,6 +78,27 @@
     </div>
 </section>
 
+@if (Model.Switches.Count > 0)
+{
+    <section id="features" class="card">
+        <h2>Features</h2>
+        <ul class="features">
+            @foreach (var (sw, on) in Model.Switches)
+            {
+                <li>
+                    <span class="component-label">@sw.Label</span>
+                    <span class="badge@(on ? " state-running" : "")">@(on ? "On" : "Off")</span>
+                    <span class="hint">@sw.Description</span>
+                    <form method="post" action="/dashboard?handler=switch" asp-antiforgery="true">
+                        <input type="hidden" name="moduleId" value="@sw.ModuleId">
+                        <button type="submit" name="on" value="@(on ? "false" : "true")" class="secondary">@(on ? "Turn off" : "Turn on")</button>
+                    </form>
+                </li>
+            }
+        </ul>
+    </section>
+}
+
 <section class="card">
     <h2>Coming soon</h2>
     <p class="muted">Your world will grow. These are on the way:</p>

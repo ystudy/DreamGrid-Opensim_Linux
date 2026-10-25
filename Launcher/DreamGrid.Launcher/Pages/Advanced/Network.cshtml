@@ -1,0 +1,27 @@
+@page "/advanced/network"
+@model DreamGrid.Launcher.Pages.Advanced.NetworkModel
+@using DreamGrid.Launcher.Core.Settings
+@{
+    ViewData["Title"] = "Network";
+}
+<p><a href="/advanced">Advanced Settings</a></p>
+<h1>Network</h1>
+@if (Model.SavedNotes is { } notes)
+{
+    <partial name="_Saved" model="notes" />
+}
+<form id="network" method="post">
+    <label for="Hostname">Hostname or IP address</label>
+    <input id="Hostname" name="Hostname" value="@Model.Hostname" placeholder="@Model.DetectedAddress" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <span class="hint">The address Firestorm uses to reach your world. Leave it empty to use the detected address, @Model.DetectedAddress.</span>
+    <span class="field-error" data-error-for="Hostname">@Model.Errors.GetValueOrDefault("Hostname")</span>
+
+    @foreach (var (key, label) in SettingsValidator.PortFields)
+    {
+        <label for="@key">@label</label>
+        <input id="@key" name="@key" value="@Model.Ports.GetValueOrDefault(key)" inputmode="numeric" autocomplete="off" required>
+        <span class="field-error" data-error-for="@key">@Model.Errors.GetValueOrDefault(key)</span>
+    }
+    <p class="hint">Each port is a number from @SettingsValidator.MinPort to @SettingsValidator.MaxPort, and no two can be the same.</p>
+    <button type="submit">Save</button>
+</form>

@@ -1,0 +1,45 @@
+@page "/advanced/module/{id}"
+@model DreamGrid.Launcher.Pages.Advanced.ModuleModel
+@{
+    ViewData["Title"] = Model.Module.Title;
+}
+<p><a href="/advanced">Advanced Settings</a></p>
+<h1>@Model.Module.Title</h1>
+@if (Model.Saved)
+{
+    <partial name="_Saved" model="Array.Empty<string>()" />
+}
+<form id="module" method="post">
+    @foreach (var f in Model.Fields)
+    {
+        var id = "field-" + f.Key;
+        <label for="@id">@f.Label</label>
+        @switch (f.Kind)
+        {
+            case "select":
+                <select id="@id" name="@f.Key">
+                    @foreach (var option in f.Options ?? [])
+                    {
+                        <option value="@option" selected="@(option == f.Value)">@option</option>
+                    }
+                </select>
+                break;
+            case "secret":
+                @* Never echoed: leaving it empty keeps the saved value. *@
+                <input id="@id" name="@f.Key" type="password" value="" placeholder="Unchanged" autocomplete="new-password">
+                break;
+            case "number":
+                <input id="@id" name="@f.Key" value="@f.Value" inputmode="numeric" autocomplete="off">
+                break;
+            default:
+                <input id="@id" name="@f.Key" value="@f.Value" autocomplete="off">
+                break;
+        }
+        @if (f.Help is not null)
+        {
+            <span class="hint">@f.Help</span>
+        }
+        <span class="field-error" data-error-for="@f.Key">@Model.Errors.GetValueOrDefault(f.Key)</span>
+    }
+    <button type="submit">Save</button>
+</form>

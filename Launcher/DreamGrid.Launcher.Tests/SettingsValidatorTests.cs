@@ -1,0 +1,69 @@
+using DreamGrid.Launcher.Core.Settings;
+using Xunit;
+
+namespace DreamGrid.Launcher.Tests;
+
+public sealed class SettingsValidatorTests
+{
+    private static Core.Modules.ValidationResult Valid(string? hostname = null, int web = 8001, int region = 8004, int mariaDb = 3307) =>
+        SettingsValidator.Network(hostname, web, 8002, 8003, region, mariaDb, 8010, 8011);
+
+    [Fact]
+    public void Validator_accepts_the_defaults()
+    {
+        Assert.True(Valid().Ok);
+        Assert.True(Valid("").Ok);
+    }
+
+    [Fact]
+    public void Validator_rejects_out_of_range_duplicate_ports_and_bad_hostname()
+    {
+        var zero = Valid(web: 0);
+        Assert.Equal(["WebPort"], zero.Errors.Keys);
+
+        var high = Valid(mariaDb: 70000);
+        Assert.Equal(["MariaDbPort"], high.Errors.Keys);
+
+        var low = Valid(region: 1023);
+        Assert.Equal(["RegionPort"], low.Errors.Keys);
+
+        var duplicate = Valid(web: 8004);
+        Assert.Equal(["RegionPort", "WebPort"], duplicate.Errors.Keys.Order());
+        Assert.Contains("8004", duplicate.Errors["WebPort"]);
+
+        var host = Valid("my host");
+        Assert.Equal(["Hostname"], host.Errors.Keys);
+    }
+
+    [Theory]
+    [InlineData("192.168.1.20")]
+    [InlineData("world.example.com")]
+    [InlineData("my-pc")]
+    [InlineData("a1.b-2.c3")]
+    public void Validator_accepts_dns_names_and_ipv4(string hostname) => Assert.True(Valid(hostname).Ok);
+
+    [Theory]
+    [InlineData(" world.example.com")]
+    [InlineData("world.example.com ")]
+    [InlineData("tab\there")]
+    [InlineData("-leading.example.com")]
+    [InlineData("trailing-.example.com")]
+    [InlineData("double..dot")]
+    [InlineData("under_score")]
+    [InlineData("192.168.1.300")]
+    [InlineData("1.2.3")]
+    [InlineData("http://host")]
+    [InlineData("host:8001")]
+    public void Validator_rejects_bad_hostnames(string hostname) =>
+        Assert.True(Valid(hostname).Errors.ContainsKey("Hostname"), hostname);
+
+    [Fact]
+    public void Validator_rejects_hostnames_over_253_characters()
+    {
+        var label = new string('a', 60);
+        var name = string.Join('.', Enumerable.Repeat(label, 5)); // 304 characters
+
+        Assert.True(Valid(name).Errors.ContainsKey("Hostname"));
+        Assert.True(Valid(new string('a', 64) + ".com").Errors.ContainsKey("Hostname"));
+    }
+}

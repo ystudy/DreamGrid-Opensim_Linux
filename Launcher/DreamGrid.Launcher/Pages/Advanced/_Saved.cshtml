@@ -1,0 +1,12 @@
+@model IReadOnlyList<string>
+@* After a successful save: the restart reuses the dashboard's control (a plain form; JavaScript not needed). *@
+<div class="ok-box" role="status">
+    <p><strong>Saved. Restart your world to use the new settings.</strong></p>
+    @foreach (var note in Model)
+    {
+        <p>@note</p>
+    }
+    <form method="post" action="/dashboard?handler=run" asp-antiforgery="true">
+        <button type="submit" name="gridAction" value="restart">Restart your world</button>
+    </form>
+</div>

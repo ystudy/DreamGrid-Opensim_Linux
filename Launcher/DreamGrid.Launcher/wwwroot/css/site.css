@@ -136,3 +136,17 @@ summary { cursor: pointer; margin-top: .75rem; }
 .coming-soon { display: flex; flex-wrap: wrap; gap: .4rem; }
 .coming-soon li { padding: .15rem .6rem; color: var(--muted); border: 1px dashed var(--border); border-radius: 1rem; font-size: .9rem; }
 .failed-details pre { font-size: .8rem; white-space: pre-wrap; }
+
+/* Advanced Settings */
+.menu { margin: 0; padding: 0; list-style: none; }
+.menu li { padding: .5rem 0; border-top: 1px solid var(--border); }
+.menu a { font-weight: 600; }
+.facts { display: grid; grid-template-columns: minmax(7rem, max-content) 1fr; gap: .35rem 1rem; margin: 0; }
+.facts dt { font-weight: 600; }
+.facts dd { margin: 0; min-width: 0; }
+.button-row form { margin: 0; }
+.features { margin: 0; padding: 0; list-style: none; }
+.features li { display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem .6rem; padding: .35rem 0; border-top: 1px solid var(--border); }
+.features form { margin: 0; }
+.features button { margin-top: 0; }
+.ok-box form button { margin-top: .25rem; }

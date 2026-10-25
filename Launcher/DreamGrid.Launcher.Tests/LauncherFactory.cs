@@ -40,6 +40,9 @@ internal sealed class LauncherFactory : WebApplicationFactory<Program>
     /// <summary>Runs before the app's own middleware (e.g. to fake the remote address).</summary>
     public Action<Microsoft.AspNetCore.Builder.IApplicationBuilder>? Before { get; init; }
 
+    /// <summary>Extra test-only registrations (e.g. a module), added after the fakes.</summary>
+    public Action<IServiceCollection>? ExtraServices { get; init; }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseSetting("DREAMGRID_DATA", Paths.Data);
@@ -55,6 +58,7 @@ internal sealed class LauncherFactory : WebApplicationFactory<Program>
             services.AddSingleton<IOnlineUsers>(OnlineUsers);
             if (Before is { } before)
                 services.AddSingleton<Microsoft.AspNetCore.Hosting.IStartupFilter>(new BeforeFilter(before));
+            ExtraServices?.Invoke(services);
         });
     }
 

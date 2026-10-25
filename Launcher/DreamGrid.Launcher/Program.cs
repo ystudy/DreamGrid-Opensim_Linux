@@ -104,7 +104,10 @@ builder.Services.AddSingleton(sp =>
         return MariaDbBinaries.NotFound(e.Message);
     }
 });
-builder.Services.AddSingleton<IFeatureModule, LogLevelModule>();
+// One instance per module, registered under each seam it implements (spec 6.9).
+builder.Services.AddSingleton<LogLevelModule>();
+builder.Services.AddSingleton<IFeatureModule>(sp => sp.GetRequiredService<LogLevelModule>());
+builder.Services.AddSingleton<ISettingsPage>(sp => sp.GetRequiredService<LogLevelModule>());
 builder.Services.AddSingleton<IRobustClient>(sp => new RobustClient(
     sp.GetRequiredService<IHttpClientFactory>().CreateClient("DreamGrid.Robust"),
     new Uri($"http://127.0.0.1:{settings.RobustPrivatePort}"),

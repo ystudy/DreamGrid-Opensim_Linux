@@ -56,4 +56,36 @@ public sealed class LogLevelModuleTests : IDisposable
         Assert.Empty(m.Contribute(Settings(new())));
         Assert.Empty(((IFeatureModule)m).Commands);
     }
+
+    [Fact]
+    public void LogLevelModule_settings_page_offers_four_levels_and_validates()
+    {
+        ISettingsPage page = new LogLevelModule();
+        var field = Assert.Single(page.Fields(Settings(new() { ["loglevel"] = new() { ["level"] = "WARN" } })));
+
+        Assert.Equal("loglevel", page.ModuleId);
+        Assert.Equal(("level", "select", "WARN"), (field.Key, field.Kind, field.Value));
+        Assert.Equal(["DEBUG", "INFO", "WARN", "ERROR"], field.Options);
+        Assert.True(page.Validate(new Dictionary<string, string> { ["level"] = "ERROR" }).Ok);
+        foreach (var bad in new[] { "TRACE", "debug", "ALL", "" })
+            Assert.True(page.Validate(new Dictionary<string, string> { ["level"] = bad }).Errors.ContainsKey("level"), bad);
+        Assert.True(page.Validate(new Dictionary<string, string>()).Errors.ContainsKey("level"));
+    }
+
+    [Fact]
+    public void LogLevelModule_apply_copies_the_module_dictionaries()
+    {
+        var other = new Dictionary<string, string> { ["x"] = "1" };
+        var mine = new Dictionary<string, string> { ["level"] = "INFO", ["keep"] = "yes" };
+        var s = Settings(new() { ["loglevel"] = mine, ["other"] = other });
+
+        var next = new LogLevelModule().Apply(s, new Dictionary<string, string> { ["level"] = "DEBUG" });
+
+        Assert.Equal("DEBUG", next.Modules["loglevel"]["level"]);
+        Assert.Equal("yes", next.Modules["loglevel"]["keep"]);
+        Assert.Equal("1", next.Modules["other"]["x"]);
+        Assert.Equal("INFO", s.Modules["loglevel"]["level"]);
+        Assert.NotSame(s.Modules, next.Modules);
+        Assert.Equal(2, s.Modules.Count);
+    }
 }
