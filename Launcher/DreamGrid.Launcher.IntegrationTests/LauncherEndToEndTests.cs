@@ -11,8 +11,9 @@ namespace DreamGrid.Launcher.IntegrationTests;
 /// <summary>
 /// Runs the real launcher (<c>dotnet DreamGrid.Launcher.dll --data ... --opensim ... --mariadb-bin ...</c>) as a child
 /// process against a pre-seeded settings.json, and checks the port-8001 contract and adoption across launcher kills.
+/// The website's newcomer path is in WebsiteEndToEndTests.cs (the same class, sharing these helpers).
 /// </summary>
-public sealed class LauncherEndToEndTests : IDisposable
+public sealed partial class LauncherEndToEndTests : IDisposable
 {
     private const string GridRunning = "The grid is running.";
     private const string GridFailed = "The grid did not start";
