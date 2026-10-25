@@ -5,7 +5,6 @@ bin/WifiPages-Custom/*
 bin/fsassets/*
 .project
 .settings
-*.csproj
 *.csproj.user
 *.build
 *.mdb
@@ -90,7 +89,6 @@ bin/*.manifest
 bin/crashes/
 Examples/*.dll
 OpenSim.build
-OpenSim.sln
 OpenSim.userprefs
 Prebuild/Prebuild.build
 Prebuild/Prebuild.sln

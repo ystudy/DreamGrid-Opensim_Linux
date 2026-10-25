@@ -1,7 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
     <PreserveCompilationContext>false</PreserveCompilationContext>
     <OutputType>Library</OutputType>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
@@ -63,32 +62,32 @@
   <ItemGroup>
     <Reference Include="log4net" >
       <Name>log4net</Name>
-      <HintPath>O:\Opensim\A_TandyV7\OutworldzFiles\Opensim\bin\log4net.dll</HintPath>
+      <HintPath>$(DgRoot)bin\log4net.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="Mono.Addins" >
       <Name>Mono.Addins</Name>
-      <HintPath>O:\Opensim\A_TandyV7\OutworldzFiles\Opensim\bin\Mono.Addins.dll</HintPath>
+      <HintPath>$(DgRoot)bin\Mono.Addins.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="Nini" >
       <Name>Nini</Name>
-      <HintPath>O:\Opensim\A_TandyV7\OutworldzFiles\Opensim\bin\Nini.dll</HintPath>
+      <HintPath>$(DgRoot)bin\Nini.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="OpenMetaverse" >
       <Name>OpenMetaverse</Name>
-      <HintPath>O:\Opensim\A_TandyV7\OutworldzFiles\Opensim\bin\OpenMetaverse.dll</HintPath>
+      <HintPath>$(DgRoot)bin\OpenMetaverse.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="OpenMetaverseTypes" >
       <Name>OpenMetaverseTypes</Name>
-      <HintPath>O:\Opensim\A_TandyV7\OutworldzFiles\Opensim\bin\OpenMetaverseTypes.dll</HintPath>
+      <HintPath>$(DgRoot)bin\OpenMetaverseTypes.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="XMLRPC" >
       <Name>XMLRPC</Name>
-      <HintPath>O:\Opensim\A_TandyV7\OutworldzFiles\Opensim\bin\XMLRPC.dll</HintPath>
+      <HintPath>$(DgRoot)bin\XMLRPC.dll</HintPath>
       <Private>False</Private>
     </Reference>
   </ItemGroup>
@@ -101,15 +100,6 @@
 
   <ItemGroup>
     <Compile Include="jOpenSimSearch\jOpenSimSearch.cs">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="obj\Debug\.NETCoreApp,Version=v8.0.AssemblyAttributes.cs">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="obj\Debug\.NETFramework,Version=v4.6.AssemblyAttributes.cs">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="obj\Release\.NETCoreApp,Version=v8.0.AssemblyAttributes.cs">
       <SubType>Code</SubType>
     </Compile>
   </ItemGroup>

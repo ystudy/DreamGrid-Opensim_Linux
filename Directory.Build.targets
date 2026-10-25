@@ -1,0 +1,15 @@
+<Project>
+  <!-- Evaluated after each project body, so this appends to the NoWarn every project sets for itself. -->
+  <PropertyGroup>
+    <NoWarn>$(NoWarn);CA2022;CS9193;MSB3243;MSB3245;SYSLIB0057</NoWarn>
+  </PropertyGroup>
+
+  <!-- Replaces the copy runprebuild.bat/.sh used to do: bin/ needs the System.Drawing.Common build for this OS. -->
+  <Target Name="SelectSystemDrawing" BeforeTargets="Build" Condition="'$(MSBuildProjectName)' == 'OpenSim.Framework'">
+    <PropertyGroup>
+      <_DgDrawingSource Condition="$([MSBuild]::IsOSPlatform('Windows'))">$(MSBuildThisFileDirectory)bin/System.Drawing.Common.dll.win</_DgDrawingSource>
+      <_DgDrawingSource Condition="!$([MSBuild]::IsOSPlatform('Windows'))">$(MSBuildThisFileDirectory)bin/System.Drawing.Common.dll.linux</_DgDrawingSource>
+    </PropertyGroup>
+    <Copy SourceFiles="$(_DgDrawingSource)" DestinationFiles="$(MSBuildThisFileDirectory)bin/System.Drawing.Common.dll" SkipUnchangedFiles="true" />
+  </Target>
+</Project>
