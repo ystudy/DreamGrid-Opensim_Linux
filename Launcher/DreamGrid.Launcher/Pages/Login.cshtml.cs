@@ -29,18 +29,20 @@ public sealed class LoginModel(IRobustClient robust, LoginThrottle throttle, ILo
     {
         var name = (Name ?? "").Trim();
         var password = Password ?? "";
-        if (throttle.IsLocked(name))
+        // First name up to the first space; the rest is the last name. The throttle key is the normalised
+        // "First Last", so extra spaces cannot give one account several lock states.
+        var space = name.IndexOf(' ');
+        var first = space < 0 ? "" : name[..space];
+        var last = space < 0 ? "" : name[(space + 1)..].Trim();
+        var key = first.Length == 0 || last.Length == 0 ? name : $"{first} {last}";
+        if (throttle.IsLocked(key))
         {
             Error = "Too many attempts. Try again in a few minutes.";
             return Page();
         }
 
-        // First name up to the first space; the rest is the last name.
-        var space = name.IndexOf(' ');
-        var first = space < 0 ? "" : name[..space];
-        var last = space < 0 ? "" : name[(space + 1)..].Trim();
         if (first.Length == 0 || last.Length == 0)
-            return Fail(name);
+            return Fail(key);
 
         bool ok;
         RobustAccount? account;
@@ -58,9 +60,9 @@ public sealed class LoginModel(IRobustClient robust, LoginThrottle throttle, ILo
             return Page();
         }
 
-        if (!ok) return Fail(name);
+        if (!ok) return Fail(key);
 
-        throttle.RecordSuccess(name);
+        throttle.RecordSuccess(key);
         await AdminSignIn.SignInAsync(HttpContext, account!.FirstName, account.LastName, account.PrincipalId);
         return LocalRedirect(Url.IsLocalUrl(ReturnUrl) ? ReturnUrl! : "/");
     }

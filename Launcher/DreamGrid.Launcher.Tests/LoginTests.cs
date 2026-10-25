@@ -115,6 +115,18 @@ public sealed class LoginTests
     }
 
     [Fact]
+    public async Task Different_spacings_of_one_name_share_one_lock()
+    {
+        await using var f = Factory();
+        var client = Client(f);
+        string[] spellings = ["Test Owner", "Test  Owner", "Test   Owner", " Test Owner ", "test owner"];
+        foreach (var s in spellings)
+            Assert.Equal(Wrong, await ErrorAsync(await LoginAsync(client, s, "bad-password")));
+        foreach (var s in spellings)
+            Assert.Equal(Locked, await ErrorAsync(await LoginAsync(client, s, "pass-word1")));
+    }
+
+    [Fact]
     public async Task Grid_not_running_gets_its_own_message_and_is_not_counted()
     {
         await using var f = Factory();
