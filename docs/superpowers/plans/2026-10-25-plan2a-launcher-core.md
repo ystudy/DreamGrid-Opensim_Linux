@@ -535,6 +535,8 @@
       - Content: if `content=="starter"` and `StarterContent.StarterOar(...)` is not null, `load oar --force-terrain --force-parcels <path>` on the region console. Otherwise `IslandTerrain.WriteR32(<RegionDir>/island.r32)` + `terrain load <path>`.
       - Wait for `LoginsEnabled` (Task 11's alert endpoint sets it) up to 300 s, then save `Setup.RegionCreated`.
     - **`GridStatus GetStatus()`.**
+    - **`Task RestartComponentAsync(string name /* "database" | "robust" | "region" */, CancellationToken)`:** stop and start that one `ManagedProcess`. Restarting the database also restarts Robust and the region, in order, since they hold connections to it.
+    - **`void RegenerateConfig()`:** reload the settings and run `GridConfigWriter.Write` without restarting anything. Plan 2b's Advanced Settings uses it.
     - **`void OnRegionAlert(RegionAlert a)`** sets `LoginsEnabled` on `login=="enabled"`, clears it on `"disabled"`, and records the PID on `regionpid`.
 
 - [ ] **Step 1: Write failing tests**
