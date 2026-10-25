@@ -5,6 +5,7 @@ using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.Modules;
 using DreamGrid.Launcher.Core.OpenSim;
 using DreamGrid.Launcher.Core.Settings;
+using Microsoft.Extensions.Logging;
 
 namespace DreamGrid.Launcher.Core.Api;
 
@@ -17,7 +18,8 @@ public sealed class LegacyCommandApi(
     IGridController grid,
     IRobustClient robust,
     Func<LauncherSettings> settings,
-    IEnumerable<IFeatureModule> modules)
+    IEnumerable<IFeatureModule> modules,
+    ILogger<LegacyCommandApi> log)
 {
     public const int MachineLevel = 1000;
     private const int AdminLevel = 200;
@@ -58,9 +60,12 @@ public sealed class LegacyCommandApi(
             if (account is null) return 0;
             return await robust.AuthenticateAsync(account.PrincipalId, r.Password, ct) ? account.UserLevel : 0;
         }
-        catch (HttpRequestException)
+        catch (Exception e) when (!ct.IsCancellationRequested)
         {
-            return 0; // Robust is down: nobody but the MachineId gets in
+            // Robust down, slow (HttpClient timeout) or answering garbage: nobody but the MachineId gets in.
+            // Only the exception type is logged: messages could echo the request.
+            log.LogWarning("Avatar check against Robust failed ({Error}); treating the caller as level 0.", e.GetType().Name);
+            return 0;
         }
     }
 

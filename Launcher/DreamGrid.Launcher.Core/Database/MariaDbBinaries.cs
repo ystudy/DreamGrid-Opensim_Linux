@@ -48,6 +48,19 @@ public sealed record MariaDbBinaries(string Server, string InstallDb, string? Ad
         return new MariaDbBinaries(server, install, Find(["mariadb-admin", "mysqladmin"], new List<string>()));
     }
 
+    /// <summary>Set when <see cref="Locate"/> failed: starting MariaDB throws <see cref="MariaDbNotFoundException"/> with it.</summary>
+    public string? NotFoundMessage { get; init; }
+
+    /// <summary>
+    /// Stands in for binaries that were not found, so the host still comes up and serves the grid status; the
+    /// grid start reports <paramref name="message"/>. The paths cannot exist, so nothing is started or adopted.
+    /// </summary>
+    public static MariaDbBinaries NotFound(string message)
+    {
+        var missing = Path.Combine(Path.GetTempPath(), "dreamgrid-mariadb-not-found", "mariadbd");
+        return new MariaDbBinaries(missing, missing, null) { NotFoundMessage = message };
+    }
+
     private static string Describe(List<string> searched) =>
         searched.Count == 0 ? "(no directory to search)" : string.Join(", ", searched);
 }

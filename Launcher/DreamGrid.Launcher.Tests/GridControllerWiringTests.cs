@@ -140,8 +140,75 @@ public sealed class GridControllerWiringTests : IDisposable
         await owner;
     }
 
-    private void AddRegion() =>
-        _store.Save(_store.LoadOrCreate() with { Region = new RegionSettings("Welcome", "Welcome", Guid.NewGuid()) });
+    private void AddRegion(bool created = true)
+    {
+        var s = _store.LoadOrCreate();
+        _store.Save(s with
+        {
+            Region = new RegionSettings("Welcome", "Welcome", Guid.NewGuid()),
+            Setup = s.Setup with { RegionCreated = created },
+        });
+    }
+
+    [Fact]
+    public async Task StartComponent_region_needs_a_finished_region()
+    {
+        AddRegion(created: false);
+
+        var e = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _grid.StartComponentAsync("region", TestContext.Current.CancellationToken));
+
+        Assert.Contains("No region has been created yet", e.Message);
+    }
+
+    [Fact]
+    public async Task StartComponent_on_an_idle_grid_stages_and_writes_the_config_first()
+    {
+        var ini = Path.Combine(_paths.RuntimeOpenSim, "Robust.HG.ini");
+        Assert.False(File.Exists(ini));
+
+        var e = await Record.ExceptionAsync(() => _grid.StartComponentAsync("database", TestContext.Current.CancellationToken));
+
+        Assert.NotNull(e); // MariaDB cannot start in this rig
+        Assert.True(File.Exists(ini));
+    }
+
+    [Fact]
+    public async Task StartComponent_on_an_idle_grid_runs_the_port_check()
+    {
+        var s = _store.LoadOrCreate();
+        var robust = new TcpListener(IPAddress.Any, s.RobustPublicPort);
+        robust.Start();
+        try
+        {
+            var e = await Assert.ThrowsAsync<PortConflictException>(() =>
+                _grid.StartComponentAsync("database", TestContext.Current.CancellationToken));
+            Assert.Contains(s.RobustPublicPort.ToString(), e.Message);
+        }
+        finally { robust.Stop(); }
+    }
+
+    [Fact]
+    public async Task A_missing_MariaDB_surfaces_its_own_message_on_start()
+    {
+        var grid = new GridController(_paths, _store, MariaDbBinaries.NotFound("MariaDB server not found; searched: /nowhere/mariadbd"),
+            [new LogLevelModule()], _robust, _http, TimeProvider.System);
+
+        var e = await Assert.ThrowsAsync<MariaDbNotFoundException>(() => grid.StartAsync(TestContext.Current.CancellationToken));
+
+        Assert.Contains("MariaDB server not found; searched: /nowhere/mariadbd", e.Message);
+    }
+
+    [Fact]
+    public void CurrentSettings_is_the_controller_cache_and_does_not_reread_the_file()
+    {
+        var first = _grid.CurrentSettings();
+        _store.Save(first with { GridName = "Changed on disk" });
+
+        Assert.Equal(first.GridName, _grid.CurrentSettings().GridName);
+        _grid.RegenerateConfig(); // reloads
+        Assert.Equal("Changed on disk", _grid.CurrentSettings().GridName);
+    }
 
     [Fact]
     public async Task StartComponent_region_without_a_region_throws()

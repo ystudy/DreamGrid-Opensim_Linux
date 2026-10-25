@@ -66,6 +66,26 @@ public class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task Concurrent_reads_never_make_a_save_fail()
+    {
+        var store = new SettingsStore(Path.Combine(NewDir(), "settings.json"));
+        var s = store.LoadOrCreate();
+        using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+
+        var reader = Task.Run(() =>
+        {
+            var reads = 0;
+            while (!stop.IsCancellationRequested) { store.LoadOrCreate(); reads++; }
+            return reads;
+        });
+        var saves = 0;
+        while (!stop.IsCancellationRequested) { store.Save(s with { GridName = "G" + saves }); saves++; }
+
+        Assert.True(await reader > 0);
+        Assert.True(saves > 0);
+    }
+
+    [Fact]
     public void Save_is_atomic_leaves_no_tmp_file()
     {
         var path = Path.Combine(NewDir(), "settings.json");

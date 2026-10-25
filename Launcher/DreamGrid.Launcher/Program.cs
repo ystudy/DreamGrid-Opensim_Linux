@@ -36,8 +36,8 @@ builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton(paths);
 builder.Services.AddSingleton(store);
-// Read per request, so a MachineId, grid name or region change is seen without a restart.
-builder.Services.AddSingleton<Func<LauncherSettings>>(_ => store.LoadOrCreate);
+// Read per request from the controller's cache (never the file), so a change the controller saved is seen at once.
+builder.Services.AddSingleton<Func<LauncherSettings>>(sp => sp.GetRequiredService<IGridController>().CurrentSettings);
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton(sp =>
 {
@@ -47,10 +47,8 @@ builder.Services.AddSingleton(sp =>
     }
     catch (MariaDbNotFoundException e)
     {
-        // Logged, not fatal: the host still serves the web port and the grid status; the grid start then fails.
-        sp.GetRequiredService<ILogger<Program>>().LogError("{Message}", e.Message);
-        var missing = Path.Combine(paths.Data, "mariadb-not-found", "mariadbd");
-        return new MariaDbBinaries(missing, missing, null);
+        // Not fatal: the host still serves the web port and the grid status; the grid start reports this message.
+        return MariaDbBinaries.NotFound(e.Message);
     }
 });
 builder.Services.AddSingleton<IFeatureModule, LogLevelModule>();
@@ -69,7 +67,7 @@ LegacyEndpoints.Map(app);
 app.Lifetime.ApplicationStarted.Register(() =>
 {
     // Plan 3's installers print and open this link; it is shown until the owner avatar exists.
-    var s = store.LoadOrCreate();
+    var s = app.Services.GetRequiredService<IGridController>().CurrentSettings();
     if (s.SetupToken is { } token && !s.Setup.OwnerCreated)
         app.Logger.LogInformation("Setup link: http://{Host}:{Port}/setup?token={Token}",
             s.Hostname ?? HostAddress.Detect(), s.WebPort, token);

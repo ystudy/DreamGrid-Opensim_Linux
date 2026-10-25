@@ -1,4 +1,5 @@
 using DreamGrid.Launcher.Core.OpenSim;
+using DreamGrid.Launcher.Core.Settings;
 
 namespace DreamGrid.Launcher.Core.Grid;
 
@@ -23,6 +24,9 @@ public interface IGridController
     Task CreateRegionAsync(string name, string content, CancellationToken ct);
 
     GridStatus GetStatus();
+
+    /// <summary>The controller's cached settings (what the grid was configured from); the host reads these per request.</summary>
+    LauncherSettings CurrentSettings();
 
     /// <summary><paramref name="name"/> is "database", "robust" or "region".</summary>
     Task RestartComponentAsync(string name, CancellationToken ct);

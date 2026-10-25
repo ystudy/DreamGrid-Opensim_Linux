@@ -195,6 +195,91 @@ public sealed class LegacyEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Settings_come_from_the_grid_controller_not_the_file()
+    {
+        var file = _factory.Store.LoadOrCreate();
+        _factory.Grid.SettingsSource = () => file with
+        {
+            GridName = "Cached Name",
+            Region = new RegionSettings("Cached", "Cached", Guid.NewGuid()),
+        };
+
+        Assert.Equal("Running", await GetAsync("/?command=RegionStatus&RegionName=Cached"));
+        Assert.StartsWith("NAK", await GetAsync("/?command=RegionStatus&RegionName=Welcome"));
+        Assert.Contains("Welcome to Cached Name", await GetAsync("/welcome"));
+    }
+
+    [Fact]
+    public async Task Aborting_the_request_does_not_cancel_the_grid_operation()
+    {
+        var request = new TaskCompletionSource<HttpContext>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var factory = new LauncherFactory
+        {
+            Before = app => app.Use((ctx, next) => { request.TrySetResult(ctx); return next(ctx); }),
+        };
+        var machineId = factory.Store.LoadOrCreate().MachineId;
+        var entered = new TaskCompletionSource<CancellationToken>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        factory.Grid.OnComponent = async ct => { entered.TrySetResult(ct); await release.Task; };
+        var client = factory.CreateClient();
+
+        try
+        {
+            var call = client.GetAsync($"/?command=StopRobust&password={machineId}", Ct);
+            var token = await entered.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
+            var ctx = await request.Task;
+            ctx.Abort(); // the caller went away
+            Assert.True(ctx.RequestAborted.IsCancellationRequested);
+
+            Assert.False(token.IsCancellationRequested);
+            release.TrySetResult();
+            await Record.ExceptionAsync(() => call); // the aborted request may fail on the client side
+            Assert.Contains("Stop robust", factory.Grid.Snapshot());
+        }
+        finally { release.TrySetResult(); }
+    }
+
+    [Fact]
+    public async Task Untrusted_values_are_logged_on_one_line_and_truncated()
+    {
+        var evil = "Booted%0D%0Afake: Robust stopped%07" + new string('x', 500);
+        await GetAsync("/?type=" + evil + "&UUID=" + Rid);
+        await GetAsync("/?command=Nope%0Ainjected");
+
+        Assert.True(await _factory.WaitForLogAsync(l => l.Message.StartsWith("Command ", StringComparison.Ordinal)));
+        var mine = _factory.Logs.Where(l => l.Category == "DreamGrid.Launcher.LegacyEndpoints").ToList();
+        Assert.Equal(2, mine.Count);
+        Assert.All(mine, l =>
+        {
+            Assert.DoesNotContain(l.Message, char.IsControl);
+            Assert.True(l.Message.Length < 300, l.Message);
+        });
+    }
+
+    [Theory]
+    [InlineData("/?alt=x")]
+    [InlineData("/")]
+    [InlineData("/?type=Booted")]
+    [InlineData("/?command=RegionStatus")]
+    public async Task Text_replies_are_not_sniffed(string url)
+    {
+        using var resp = await _factory.CreateClient().GetAsync(url, Ct);
+
+        Assert.Equal("nosniff", string.Join(",", resp.Headers.GetValues("X-Content-Type-Options")));
+    }
+
+    [Theory]
+    [InlineData("127.0.0.1", true)]
+    [InlineData("::1", true)]
+    [InlineData("::ffff:127.0.0.1", true)]
+    [InlineData("192.168.1.50", false)]
+    [InlineData("::ffff:192.168.1.50", false)]
+    public void Only_loopback_callers_count_as_local(string address, bool local)
+    {
+        Assert.Equal(local, LegacyEndpoints.IsLoopbackCaller(IPAddress.Parse(address)));
+    }
+
+    [Fact]
     public void Parser_reads_names_case_insensitively_and_the_form_wins()
     {
         var query = new QueryCollection(new Dictionary<string, StringValues>(StringComparer.OrdinalIgnoreCase)

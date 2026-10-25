@@ -149,4 +149,55 @@ public sealed class GridHostedServiceTests
             try { Directory.Delete(root, true); } catch (IOException) { }
         }
     }
+
+    [Fact]
+    public async Task Launcher_exits_zero_on_SIGTERM_and_only_detaches()
+    {
+        Assert.SkipUnless(OperatingSystem.IsLinux(), "SIGTERM is the systemd stop signal; Linux only");
+
+        var root = Path.Combine(Path.GetTempPath(), "dg-term-" + Guid.NewGuid().ToString("N"));
+        var data = Path.Combine(root, "data");
+        try
+        {
+            var store = new SettingsStore(Path.Combine(data, "settings.json"));
+            store.Save(store.LoadOrCreate() with { WebPort = FreePort() });
+
+            // No OpenSim program dir: the grid start fails (logged) and no child is ever started.
+            var psi = new ProcessStartInfo(Dotnet()) { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
+            psi.ArgumentList.Add(Path.Combine(AppContext.BaseDirectory, "DreamGrid.Launcher.dll"));
+            foreach (var a in new[] { "--data", data, "--opensim", Path.Combine(root, "no-program") }) psi.ArgumentList.Add(a);
+            psi.Environment["DOTNET_ENVIRONMENT"] = "Production";
+            psi.Environment["ASPNETCORE_ENVIRONMENT"] = "Production";
+
+            var output = new System.Text.StringBuilder();
+            using var p = new Process { StartInfo = psi };
+            p.OutputDataReceived += (_, e) => { lock (output) output.AppendLine(e.Data); };
+            p.ErrorDataReceived += (_, e) => { lock (output) output.AppendLine(e.Data); };
+            p.Start();
+            p.BeginOutputReadLine();
+            p.BeginErrorReadLine();
+            try
+            {
+                string Text() { lock (output) return output.ToString(); }
+                for (var i = 0; i < 300 && !Text().Contains("The grid did not start"); i++) await Task.Delay(100, Ct);
+                Assert.Contains("Application started", Text());
+
+                using (var kill = Process.Start("kill", ["-TERM", p.Id.ToString()])) await kill.WaitForExitAsync(Ct);
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+                timeout.CancelAfter(TimeSpan.FromSeconds(30));
+                await p.WaitForExitAsync(timeout.Token);
+
+                Assert.Equal(0, p.ExitCode);
+                Assert.Contains("Application is shutting down", Text());
+            }
+            finally
+            {
+                if (!p.HasExited) p.Kill(true);
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(root, true); } catch (IOException) { }
+        }
+    }
 }

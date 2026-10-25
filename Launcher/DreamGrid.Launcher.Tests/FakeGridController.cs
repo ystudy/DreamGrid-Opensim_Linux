@@ -1,6 +1,7 @@
 using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.OpenSim;
 using DreamGrid.Launcher.Core.Processes;
+using DreamGrid.Launcher.Core.Settings;
 
 namespace DreamGrid.Launcher.Tests;
 
@@ -49,16 +50,26 @@ internal sealed class FakeGridController : IGridController
     /// <summary>Thrown by the component operations when set.</summary>
     public Exception? ComponentError { get; set; }
 
-    public Task RestartComponentAsync(string name, CancellationToken ct) => Component("Restart " + name);
+    /// <summary>Runs inside every component operation with the token it was given.</summary>
+    public Func<CancellationToken, Task> OnComponent { get; set; } = _ => Task.CompletedTask;
 
-    public Task StartComponentAsync(string name, CancellationToken ct) => Component("Start " + name);
+    /// <summary>What <see cref="CurrentSettings"/> returns (the controller's cached settings in the real host).</summary>
+    public Func<LauncherSettings>? SettingsSource { get; set; }
 
-    public Task StopComponentAsync(string name, CancellationToken ct) => Component("Stop " + name);
+    public LauncherSettings CurrentSettings() =>
+        (SettingsSource ?? throw new InvalidOperationException("No settings source set on the fake grid."))();
 
-    private Task Component(string call)
+    public Task RestartComponentAsync(string name, CancellationToken ct) => Component("Restart " + name, ct);
+
+    public Task StartComponentAsync(string name, CancellationToken ct) => Component("Start " + name, ct);
+
+    public Task StopComponentAsync(string name, CancellationToken ct) => Component("Stop " + name, ct);
+
+    private async Task Component(string call, CancellationToken ct)
     {
         Record(call);
-        return ComponentError is { } e ? Task.FromException(e) : Task.CompletedTask;
+        await OnComponent(ct);
+        if (ComponentError is { } e) throw e;
     }
 
     public void RegenerateConfig() => Record("RegenerateConfig");

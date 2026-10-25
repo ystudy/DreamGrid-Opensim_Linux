@@ -63,14 +63,7 @@ public sealed partial class GridController(
         try
         {
             var s = LoadSettings();
-            await StageAndWriteConfigAsync(s, ct);
-
-            // The host owns and binds the web port before StartAsync (RegionReady posts its alerts there).
-            var skip = new HashSet<int> { s.WebPort };
-            foreach (var c in new[] { _db, _robust, _region })
-                if (c is not null && WillAdopt(c)) skip.UnionWith(c.Ports);
-            if (PortCheck.FindConflict(s, skip) is { } conflict)
-                throw new PortConflictException(conflict);
+            await PrepareAsync(s, ct);
 
             await StartDatabaseAsync(s, ct);
             await StartComponentAsync(_robust!, ct);
@@ -138,28 +131,32 @@ public sealed partial class GridController(
 
     public async Task StartComponentAsync(string name, CancellationToken ct)
     {
+        var component = name.ToLowerInvariant();
+        if (component is not ("database" or "robust" or "region")) throw UnknownComponent(name);
+
         await _ops.WaitAsync(ct);
         try
         {
             var s = LoadSettings();
-            switch (name.ToLowerInvariant())
+            switch (component)
             {
-                case "database":
-                    await StartDatabaseAsync(s, ct);
-                    break;
-                case "robust":
-                    if (_db!.Process.State != ProcessState.Running)
-                        throw new InvalidOperationException("The database is not running; start it first.");
-                    await StartComponentAsync(_robust!, ct);
-                    break;
-                case "region":
-                    if (_region is null) throw new InvalidOperationException("No region has been created yet.");
-                    if (_robust!.Process.State != ProcessState.Running)
-                        throw new InvalidOperationException("Robust is not running; start it first.");
-                    await StartRegionAsync(ct);
-                    break;
-                default:
-                    throw UnknownComponent(name);
+                case "robust" when _db!.Process.State != ProcessState.Running:
+                    throw new InvalidOperationException("The database is not running; start it first.");
+                case "region" when !s.Setup.RegionCreated || _region is null:
+                    throw new InvalidOperationException("No region has been created yet.");
+                case "region" when _robust!.Process.State != ProcessState.Running:
+                    throw new InvalidOperationException("Robust is not running; start it first.");
+            }
+
+            // On an idle grid this is the first start since the launcher came up: same preparation as StartAsync.
+            if (new[] { _db, _robust, _region }.All(c => c is null || c.Process.State != ProcessState.Running))
+                await PrepareAsync(s, ct);
+
+            switch (component)
+            {
+                case "database": await StartDatabaseAsync(s, ct); break;
+                case "robust": await StartComponentAsync(_robust!, ct); break;
+                default: await StartRegionAsync(ct); break;
             }
         }
         finally { _ops.Release(); }
@@ -273,16 +270,21 @@ public sealed partial class GridController(
     /// <summary>Reads only cached state (components are built under the operation lock), so it never waits.</summary>
     public GridStatus GetStatus()
     {
-        LauncherSettings s;
-        // On a first launch LoadOrCreate generates and saves fresh secrets, so the fallback load is serialised
-        // with the controller's own (re-checking the cache inside the lock).
-        lock (_configGate) s = _settings ?? ReloadSettings();
+        var s = CurrentSettings();
         return new GridStatus(
             Describe("database", _db),
             Describe("robust", _robust),
             s.Region is null ? null : Describe("region", _region),
             _loginsEnabled,
             $"http://{_host}:{s.RobustPublicPort}");
+    }
+
+    /// <summary>The settings the controller last loaded (the file only on first use); never waits behind an operation.</summary>
+    public LauncherSettings CurrentSettings()
+    {
+        // On a first launch LoadOrCreate generates and saves fresh secrets, so the fallback load is serialised
+        // with the controller's own (re-checking the cache inside the lock).
+        lock (_configGate) return _settings ?? ReloadSettings();
     }
 
     public void OnRegionAlert(RegionAlert alert)
@@ -355,6 +357,19 @@ public sealed partial class GridController(
     private void WriteConfig(LauncherSettings s) =>
         new GridConfigWriter(paths).Write(s, _modules.Cast<IIniContributor>().ToList());
 
+    /// <summary>Stages the runtime, writes the configs and checks the ports (the web port is the host's; adoptable children keep theirs).</summary>
+    private async Task PrepareAsync(LauncherSettings s, CancellationToken ct)
+    {
+        await StageAndWriteConfigAsync(s, ct);
+
+        // The host owns and binds the web port before StartAsync (RegionReady posts its alerts there).
+        var skip = new HashSet<int> { s.WebPort };
+        foreach (var c in new[] { _db, _robust, _region })
+            if (c is not null && WillAdopt(c)) skip.UnionWith(c.Ports);
+        if (PortCheck.FindConflict(s, skip) is { } conflict)
+            throw new PortConflictException(conflict);
+    }
+
     /// <summary>Stages the runtime and writes the configs (R1: adopted Robust/region holding its DLLs are stopped and staging retried once).</summary>
     private async Task StageAndWriteConfigAsync(LauncherSettings s, CancellationToken ct)
     {
@@ -379,6 +394,7 @@ public sealed partial class GridController(
 
     private async Task StartDatabaseAsync(LauncherSettings s, CancellationToken ct)
     {
+        if (mariaBin.NotFoundMessage is { } missing) throw new MariaDbNotFoundException(missing);
         if (!WillAdopt(_db!))
             await new MariaDbServer(mariaBin, paths, s).InitializeAsync(ct);
         await StartComponentAsync(_db!, ct);

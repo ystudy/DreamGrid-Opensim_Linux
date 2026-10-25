@@ -1,9 +1,13 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
+using System.Xml;
 using DreamGrid.Launcher.Core.Api;
 using DreamGrid.Launcher.Core.Config;
 using DreamGrid.Launcher.Core.Modules;
 using DreamGrid.Launcher.Core.Processes;
+using DreamGrid.Launcher.Core.OpenSim;
 using DreamGrid.Launcher.Core.Settings;
+using Microsoft.Extensions.Logging;
 using Xunit;
 
 namespace DreamGrid.Launcher.Tests;
@@ -25,7 +29,13 @@ public sealed class LegacyCommandApiTests
         Region = new RegionSettings("Welcome", "Welcome", RegionUuid),
     };
 
-    private LegacyCommandApi Api(params IFeatureModule[] modules) => new(_grid, _robust, () => _settings, modules);
+    private readonly ConcurrentQueue<(LogLevel Level, string Category, string Message)> _logs = new();
+
+    private LegacyCommandApi Api(params IFeatureModule[] modules) => Api(_robust, modules);
+
+    private LegacyCommandApi Api(IRobustClient robust, params IFeatureModule[] modules) =>
+        new(_grid, robust, () => _settings, modules,
+            LoggerFactory.Create(b => b.AddProvider(new CapturingLoggerProvider(_logs))).CreateLogger<LegacyCommandApi>());
 
     private static LegacyRequest Req(string command, string? avatar = null, string? password = null,
         string? regionName = null, Guid? regionUuid = null) =>
@@ -213,6 +223,44 @@ public sealed class LegacyCommandApiTests
 
         Assert.StartsWith("NAK You do not have permission", await api.HandleAsync(Req("StopMysql", password: MachineId), Ct));
         Assert.Equal("ACK", await api.HandleAsync(Req("StopMysql", password: "rotated-machine-id-000000000"), Ct));
+    }
+
+    public static TheoryData<Exception> RobustFailures() => new()
+    {
+        new TimeoutException("robust slow"),
+        new TaskCanceledException("HttpClient timeout"), // HttpClient.Timeout, not the caller's token
+        new XmlException("bad xml"),
+        new HttpRequestException("refused"),
+    };
+
+    [Theory]
+    [MemberData(nameof(RobustFailures))]
+    public async Task A_failing_Robust_lookup_is_level_0_and_logged_without_secrets(Exception failure)
+    {
+        var reply = await Api(new ThrowingRobust(failure)).HandleAsync(Req("StopRobust", "God Owner", "sekrit-avatar-pw"), Ct);
+
+        Assert.StartsWith("NAK You do not have permission to StopRobust", reply);
+        Assert.Empty(_grid.Snapshot());
+        Assert.Contains(_logs, l => l.Level == LogLevel.Warning);
+        Assert.DoesNotContain(_logs, l => l.Message.Contains("sekrit-avatar-pw") || l.Message.Contains(MachineId));
+    }
+
+    [Fact]
+    public async Task Cancellation_by_the_caller_is_not_turned_into_a_NAK()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        var robust = new ThrowingRobust(new OperationCanceledException(cts.Token));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            Api(robust).HandleAsync(Req("StopRobust", "God Owner", "godpw"), cts.Token));
+    }
+
+    private sealed class ThrowingRobust(Exception failure) : IRobustClient
+    {
+        public Task<bool> IsReadyAsync(CancellationToken ct) => Task.FromResult(true);
+        public Task<RobustAccount?> GetAccountAsync(string first, string last, CancellationToken ct) => Task.FromException<RobustAccount?>(failure);
+        public Task<bool> AuthenticateAsync(Guid principal, string plainPassword, CancellationToken ct) => Task.FromResult(true);
     }
 
     private sealed class PingModule : IFeatureModule
