@@ -28,7 +28,7 @@ public class RestConsoleClientTests
 
         Assert.True(await c.IsUpAsync(CancellationToken.None));
 
-        var req = Assert.Single(h.Requests);
+        var req = h.Requests[0];
         Assert.Equal(HttpMethod.Post, req.Method);
         Assert.Equal("/StartSession/", req.Uri.AbsolutePath);
         Assert.Equal("dg", req.Form("USER"));
@@ -36,7 +36,7 @@ public class RestConsoleClientTests
     }
 
     [Fact]
-    public async Task RunAsync_returns_line_texts_and_skips_echoed_command_lines()
+    public async Task RunAsync_returns_output_and_skips_input_echo_and_command_prompt_lines()
     {
         var reads = 0;
         var (c, h) = Make(r =>
@@ -44,25 +44,120 @@ public class RestConsoleClientTests
             if (r.Uri.AbsolutePath == "/StartSession/") return (HttpStatusCode.OK, StartOk);
             if (r.Uri.AbsolutePath == "/SessionCommand/") return (HttpStatusCode.OK, CmdOk);
             // First read is the scrollback sent to a new session; second carries the output.
+            // Real server: command prompt = Command="true"; echo of typed text = Input="true".
             return (HttpStatusCode.OK, Interlocked.Increment(ref reads) switch
             {
-                1 => "<ConsoleSession><Line Number=\"1\" Level=\"normal\" Prompt=\"False\" Command=\"False\" Input=\"False\">old scrollback</Line></ConsoleSession>",
-                2 => "<ConsoleSession>" +
-                     "<Line Number=\"2\" Level=\"normal\" Prompt=\"False\" Command=\"True\" Input=\"False\">show users</Line>" +
-                     "<Line Number=\"3\" Level=\"normal\" Prompt=\"False\" Command=\"False\" Input=\"False\">alpha &amp; beta</Line>" +
-                     "<Line Number=\"4\" Level=\"normal\" Prompt=\"False\" Command=\"False\" Input=\"False\">gamma</Line>" +
-                     "</ConsoleSession>",
+                1 => Lines(("old scrollback", "false", "false", "false")),
+                2 => Lines(
+                    ("show users", "false", "false", "true"),
+                    ("alpha & beta", "false", "false", "false"),
+                    ("gamma", "false", "false", "false"),
+                    ("Are you sure? [y/n]: ", "true", "false", "false"),
+                    ("Robust# ", "true", "true", "false")),
                 _ => Empty,
             });
         });
 
         var lines = await c.RunAsync("show users", TimeSpan.FromMilliseconds(100), CancellationToken.None);
 
-        Assert.Equal(new[] { "alpha & beta", "gamma" }, lines);
+        Assert.Equal(new[] { "alpha & beta", "gamma", "Are you sure? [y/n]: " }, lines);
         var cmd = Assert.Single(h.Requests, r => r.Uri.AbsolutePath == "/SessionCommand/");
         Assert.Equal(Sid, cmd.Form("ID"));
         Assert.Equal("show users", cmd.Form("COMMAND"));
         Assert.Contains(h.Requests, r => r.Uri.AbsolutePath == "/ReadResponses/" + Sid + "/");
+    }
+
+    private static string Lines(params (string Text, string Prompt, string Command, string Input)[] lines) =>
+        "<ConsoleSession>" + string.Concat(lines.Select((l, i) =>
+            $"<Line Number=\"{i + 1}\" Level=\"normal\" Prompt=\"{l.Prompt}\" Command=\"{l.Command}\" Input=\"{l.Input}\">{System.Security.SecurityElement.Escape(l.Text)}</Line>")) +
+        "</ConsoleSession>";
+
+    [Fact]
+    public async Task IsUpAsync_then_RunAsync_does_not_return_scrollback_and_IsUp_closes_its_probe_session()
+    {
+        var reads = 0;
+        var (c, h) = Make(r =>
+        {
+            if (r.Uri.AbsolutePath == "/StartSession/") return (HttpStatusCode.OK, StartOk);
+            if (r.Uri.AbsolutePath == "/SessionCommand/" || r.Uri.AbsolutePath == "/CloseSession/") return (HttpStatusCode.OK, CmdOk);
+            return (HttpStatusCode.OK, Interlocked.Increment(ref reads) switch
+            {
+                1 => Lines(("old scrollback", "false", "false", "false")),
+                2 => Lines(("fresh", "false", "false", "false")),
+                _ => Empty,
+            });
+        });
+
+        Assert.True(await c.IsUpAsync(CancellationToken.None));
+        Assert.Contains(h.Requests, r => r.Uri.AbsolutePath == "/CloseSession/" && r.Form("ID") == Sid);
+
+        var lines = await c.RunAsync("x", TimeSpan.FromMilliseconds(50), CancellationToken.None);
+
+        Assert.Equal(new[] { "fresh" }, lines);
+    }
+
+    [Fact]
+    public async Task Restart_after_expired_session_inside_RunAsync_also_drains_scrollback()
+    {
+        var starts = 0;
+        var commandsSeen = 0;
+        var readsPerSession = new Dictionary<string, int>();
+        var (c, _) = Make(r =>
+        {
+            if (r.Uri.AbsolutePath == "/StartSession/")
+            {
+                var n = ++starts;
+                return (HttpStatusCode.OK, StartOk.Replace(Sid, "sid-" + n));
+            }
+            if (r.Uri.AbsolutePath == "/SessionCommand/")
+                return ++commandsSeen == 1 ? (HttpStatusCode.NotFound, "") : (HttpStatusCode.OK, CmdOk);
+            var sid = r.Uri.AbsolutePath.Split('/')[2];
+            readsPerSession[sid] = readsPerSession.GetValueOrDefault(sid) + 1;
+            return (HttpStatusCode.OK, readsPerSession[sid] switch
+            {
+                1 => Lines(("old scrollback", "false", "false", "false")),
+                2 => Lines(("new output", "false", "false", "false")),
+                _ => Empty,
+            });
+        });
+
+        var lines = await c.RunAsync("x", TimeSpan.FromMilliseconds(50), CancellationToken.None);
+
+        Assert.Equal(2, starts);
+        Assert.Equal(new[] { "new output" }, lines);
+    }
+
+    [Fact]
+    public async Task RunAsync_does_not_wait_for_the_servers_long_poll()
+    {
+        var h = new DelayingReadHandler();
+        var c = new RestConsoleClient(new HttpClient(h), Base, "dg", "pw");
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+
+        var lines = await c.RunAsync("x", TimeSpan.FromMilliseconds(200), CancellationToken.None);
+
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(8), $"took {clock.Elapsed}");
+        Assert.Empty(lines);
+    }
+
+    /// <summary>Answers StartSession/SessionCommand at once but holds ReadResponses for 30 s, like the real long-poll.</summary>
+    private sealed class DelayingReadHandler : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            if (path.StartsWith("/ReadResponses/")) await Task.Delay(TimeSpan.FromSeconds(30), ct);
+            var body = path == "/StartSession/" ? StartOk : path == "/SessionCommand/" ? CmdOk : Empty;
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body) };
+        }
+    }
+
+    [Fact]
+    public async Task IsUpAsync_lets_ConsoleAuthException_propagate()
+    {
+        var (c, _) = Make(r => (HttpStatusCode.Unauthorized, ""));
+
+        await Assert.ThrowsAsync<ConsoleAuthException>(() => c.IsUpAsync(CancellationToken.None));
     }
 
     [Fact]
