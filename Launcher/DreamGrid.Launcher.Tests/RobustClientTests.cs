@@ -24,7 +24,7 @@ public class RobustClientTests
         Assert.True(await c.AuthenticateAsync(Guid.Parse(Pid), "secret", CancellationToken.None));
 
         var req = Assert.Single(h.Requests);
-        Assert.Equal("/auth", req.Uri.AbsolutePath);
+        Assert.Equal("/auth/plain", req.Uri.AbsolutePath); // AuthenticationServerPostHandler dispatches on the "plain" segment
         Assert.Equal(8003, req.Uri.Port);
         Assert.Equal("authenticate", req.Form("METHOD"));
         Assert.Equal(Pid, req.Form("PRINCIPAL"));

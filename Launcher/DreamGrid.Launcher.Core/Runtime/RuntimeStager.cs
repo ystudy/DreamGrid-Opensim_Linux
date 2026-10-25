@@ -8,7 +8,11 @@ public sealed class RuntimeStager(LauncherPaths paths)
     private static readonly string[] ExcludedDirectories =
         ["assetcache", "Regions", "ScriptEngines", "fsassets", "MeshCache", "j2kDecodeCache", "maptiles", "bakes"];
 
-    private static readonly string[] ExcludedFiles = ["Gloebit.dll", "OpenSim.ini"];
+    private static readonly string[] ExcludedFiles = ["Gloebit.dll"];
+
+    // The program's live OpenSim.ini; config-include/Proto/Robust/OpenSim.ini is the region prototype and is staged.
+    private const string TopLevelOnlyExcluded = "OpenSim.ini";
+
     private static readonly string[] ExcludedExtensions = [".log", ".db", ".pid"];
 
     private string StampFile => Path.Combine(paths.RuntimeOpenSim, ".dreamgrid-stamp");
@@ -24,7 +28,7 @@ public sealed class RuntimeStager(LauncherPaths paths)
             Directory.Delete(paths.RuntimeOpenSim, true);
         Directory.CreateDirectory(paths.RuntimeOpenSim);
 
-        CopyDirectory(paths.OpenSimProgram, paths.RuntimeOpenSim);
+        CopyDirectory(paths.OpenSimProgram, paths.RuntimeOpenSim, topLevel: true);
         File.WriteAllText(StampFile, stamp);
         return true;
     }
@@ -55,13 +59,13 @@ public sealed class RuntimeStager(LauncherPaths paths)
         ExcludedFiles.Contains(name, StringComparer.OrdinalIgnoreCase)
         || ExcludedExtensions.Contains(Path.GetExtension(name), StringComparer.OrdinalIgnoreCase);
 
-    private static void CopyDirectory(string source, string target)
+    private static void CopyDirectory(string source, string target, bool topLevel = false)
     {
         Directory.CreateDirectory(target);
         foreach (var file in Directory.EnumerateFiles(source))
         {
             var name = Path.GetFileName(file);
-            if (!IsExcludedFile(name))
+            if (!IsExcludedFile(name) && !(topLevel && name.Equals(TopLevelOnlyExcluded, StringComparison.OrdinalIgnoreCase)))
                 File.Copy(file, Path.Combine(target, name), true);
         }
         foreach (var dir in Directory.EnumerateDirectories(source))

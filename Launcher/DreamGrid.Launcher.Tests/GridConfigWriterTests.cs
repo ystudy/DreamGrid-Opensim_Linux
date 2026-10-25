@@ -144,6 +144,43 @@ public sealed class GridConfigWriterTests : IDisposable
         Assert.Contains("outworldz.com", File.ReadAllText(Path.Combine(_paths.RuntimeOpenSim, "Robust.HG.ini.proto")));
     }
 
+    /// <summary>
+    /// Nini rejects any line that is not blank, a comment, a section or key=value ("Expected assignment operator").
+    /// Robust.HG.ini.proto starts with a stray "3; *", which stopped Robust from booting (found in Task 10).
+    /// </summary>
+    [Fact]
+    public void Generated_files_contain_only_lines_Nini_can_parse()
+    {
+        Write(Make(owner: true));
+        var files = new[]
+        {
+            Path.Combine(_paths.RuntimeOpenSim, "Robust.HG.ini"),
+            Path.Combine(_paths.RuntimeOpenSim, "config-include", "GridCommon.ini"),
+            Path.Combine(_paths.RuntimeOpenSim, "config-include", "FlotsamCache.ini"),
+            Path.Combine(_paths.RegionDir("Region1"), "OpenSim.ini"),
+            Path.Combine(_paths.RegionDefinitionDir("Region1"), "Welcome Area.ini"),
+        };
+        foreach (var file in files)
+            foreach (var (line, n) in File.ReadAllLines(file).Select((l, i) => (l.Trim(), i + 1)))
+                Assert.True(line.Length == 0 || line[0] is ';' or '#' || (line[0] == '[' && line.IndexOf(']') > 0) || line.IndexOf('=') > 0,
+                    $"{Path.GetFileName(file)}:{n}: {line}");
+    }
+
+    /// <summary>
+    /// Robust reads [Network] ConsolePort (HttpServerBase) but the region reads [Network] console_port
+    /// (OpenSim.cs); the proto's console_port=${Const|http_listener_port} put the region console on the region
+    /// HTTP port (found in Task 10).
+    /// </summary>
+    [Fact]
+    public void Region_console_listens_on_console_port_key()
+    {
+        Write(Make());
+        Assert.Equal("8011", Region().Get("Network", "console_port"));
+        Assert.Equal("conuser", Region().Get("Network", "ConsoleUser"));
+        Assert.Equal("conpass32chars", Region().Get("Network", "ConsolePass"));
+        Assert.Equal("8010", Robust().Get("Network", "ConsolePort"));
+    }
+
     [Fact]
     public void SmartStart_disabled_and_Wifi_disabled_in_both()
     {

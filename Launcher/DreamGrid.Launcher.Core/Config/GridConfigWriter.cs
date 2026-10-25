@@ -15,7 +15,7 @@ public sealed class GridConfigWriter(LauncherPaths paths)
         var extra = s.Overrides.Concat(contributors.SelectMany(c => c.Contribute(s))).ToList();
 
         // 1. Robust.HG.ini
-        var robust = IniDocument.Load(Path.Combine(rt, "Robust.HG.ini.proto"));
+        var robust = LoadProto(Path.Combine(rt, "Robust.HG.ini.proto"));
         robust.Set("Const", "GridName", s.GridName);
         robust.Set("Const", "http_listener_port", s.RobustPublicPort.ToString());
         robust.Set("Const", "BaseURL", $"http://{host}");
@@ -26,7 +26,7 @@ public sealed class GridConfigWriter(LauncherPaths paths)
         robust.Set("Const", "MachineID", s.MachineId);
         robust.Set("DatabaseService", "StorageProvider", "\"OpenSim.Data.MySQL.dll\"");
         robust.Set("DatabaseService", "ConnectionString", $"\"{DbConn(s, "robust", "robustuser", s.Db.RobustPassword)}\"");
-        SetNetwork(robust, s, s.RobustConsolePort);
+        SetNetwork(robust, s, "ConsolePort", s.RobustConsolePort);
         SetFsAssetsDirectories(robust);
         SetSmartStartAndWifi(robust, s);
         robust.Set("GridInfoService", "welcome", $"http://{host}:{s.WebPort}/welcome");
@@ -34,13 +34,13 @@ public sealed class GridConfigWriter(LauncherPaths paths)
         Finish(robust, "robust", extra, Path.Combine(rt, "Robust.HG.ini"));
 
         // 2. GridCommon.ini
-        var common = IniDocument.Load(Path.Combine(rt, "config-include", "Proto", "Robust", "GridCommon.ini"));
+        var common = LoadProto(Path.Combine(rt, "config-include", "Proto", "Robust", "GridCommon.ini"));
         common.Set("DatabaseService", "StorageProvider", "\"OpenSim.Data.MySQL.dll\"");
         common.Set("DatabaseService", "ConnectionString", $"\"{DbConn(s, "opensim", "opensimuser", s.Db.OpensimPassword)}\"");
         Finish(common, "region", extra, Path.Combine(rt, "config-include", "GridCommon.ini"), applyExtra: false);
 
         // 3. FlotsamCache.ini
-        var flotsam = IniDocument.Load(Path.Combine(rt, "config-include", "FlotsamCache.ini.example"));
+        var flotsam = LoadProto(Path.Combine(rt, "config-include", "FlotsamCache.ini.example"));
         flotsam.Set("AssetCache", "CacheDirectory", Fwd(paths.AssetCache));
         Finish(flotsam, "region", extra, Path.Combine(rt, "config-include", "FlotsamCache.ini"), applyExtra: false);
 
@@ -48,7 +48,7 @@ public sealed class GridConfigWriter(LauncherPaths paths)
         var r = s.Region;
 
         // 4. region OpenSim.ini
-        var os = IniDocument.Load(Path.Combine(rt, "config-include", "Proto", "Robust", "OpenSim.ini"));
+        var os = LoadProto(Path.Combine(rt, "config-include", "Proto", "Robust", "OpenSim.ini"));
         os.Set("Const", "BaseHostname", host);
         os.Set("Const", "BaseURL", $"http://{host}");
         os.Set("Const", "PublicPort", s.RobustPublicPort.ToString());
@@ -62,7 +62,8 @@ public sealed class GridConfigWriter(LauncherPaths paths)
         os.Set("Startup", "ConsoleHistoryFile", Fwd(Path.Combine(paths.RegionDir(r.Instance), "ConsoleHistory.txt")));
         os.Set("Startup", "physics", r.Physics);
         os.Set("Startup", "meshing", r.Physics == "BulletSim" ? "Meshmerizer" : "ubODEMeshmerizer");
-        SetNetwork(os, s, s.RegionConsolePort);
+        // The region reads [Network] console_port (OpenSim.cs), unlike Robust's ConsolePort.
+        SetNetwork(os, s, "console_port", s.RegionConsolePort);
         if (s.Setup.OwnerCreated && s.Setup.Owner is { } owner)
         {
             os.Set("Estates", "DefaultEstateName", $"{s.GridName} Estate");
@@ -87,16 +88,33 @@ public sealed class GridConfigWriter(LauncherPaths paths)
         Finish(def, "region", extra, Path.Combine(paths.RegionDefinitionDir(r.Instance), r.Name + ".ini"), applyExtra: false);
     }
 
+    /// <summary>
+    /// Loads a prototype, commenting out every line Nini cannot parse (not blank, a comment, a section or
+    /// key=value). Robust.HG.ini.proto starts with a stray "3; *" that would abort Robust's boot.
+    /// </summary>
+    private static IniDocument LoadProto(string path)
+    {
+        var text = File.ReadAllText(path);
+        var lines = text.Split('\n');
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var t = lines[i].Trim();
+            var ok = t.Length == 0 || t[0] is ';' or '#' || (t[0] == '[' && t.IndexOf(']') > 0) || t.IndexOf('=') > 0;
+            if (!ok) lines[i] = "; " + lines[i];
+        }
+        return IniDocument.Parse(string.Join('\n', lines));
+    }
+
     private static string DbConn(LauncherSettings s, string db, string user, string pw) =>
         $"Data Source=127.0.0.1;Database={db};Port={s.MariaDbPort};User ID={user};Password={pw};Old Guids=true;Allow Zero Datetime=true;Connect Timeout=60;";
 
     private static string Fwd(string path) => path.Replace('\\', '/');
 
-    private static void SetNetwork(IniDocument doc, LauncherSettings s, int consolePort)
+    private static void SetNetwork(IniDocument doc, LauncherSettings s, string portKey, int consolePort)
     {
         doc.Set("Network", "ConsoleUser", s.Console.User);
         doc.Set("Network", "ConsolePass", s.Console.Password);
-        doc.Set("Network", "ConsolePort", consolePort.ToString());
+        doc.Set("Network", portKey, consolePort.ToString());
     }
 
     private static void SetSmartStartAndWifi(IniDocument doc, LauncherSettings s)

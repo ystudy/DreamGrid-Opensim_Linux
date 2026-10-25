@@ -46,7 +46,7 @@ public sealed class RobustClient(HttpClient http, Uri privateBase, Uri publicBas
     public async Task<bool> AuthenticateAsync(Guid principal, string plainPassword, CancellationToken ct)
     {
         var md5 = Convert.ToHexStringLower(MD5.HashData(Encoding.UTF8.GetBytes(plainPassword)));
-        var root = await PostAsync("/auth", ct,
+        var root = await PostAsync("/auth/plain", ct,
             ("METHOD", "authenticate"), ("PRINCIPAL", principal.ToString()), ("PASSWORD", md5));
         return !string.IsNullOrWhiteSpace(root?.Element("Token")?.Value);
     }

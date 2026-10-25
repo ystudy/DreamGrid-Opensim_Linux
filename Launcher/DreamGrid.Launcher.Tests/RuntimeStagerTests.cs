@@ -68,6 +68,24 @@ public sealed class RuntimeStagerTests : IDisposable
         Assert.True(File.Exists(Path.Combine(_paths.RuntimeOpenSim, "OpenSim.dll")));
     }
 
+    /// <summary>
+    /// Only the program's own live bin/OpenSim.ini is left out; the region prototype
+    /// config-include/Proto/Robust/OpenSim.ini must be staged (GridConfigWriter reads it; found in Task 10).
+    /// </summary>
+    [Fact]
+    public void Only_the_top_level_OpenSim_ini_is_excluded()
+    {
+        var proto = Path.Combine(_paths.OpenSimProgram, "config-include", "Proto", "Robust");
+        Directory.CreateDirectory(proto);
+        File.WriteAllText(Path.Combine(proto, "OpenSim.ini"), "[Const]");
+        File.WriteAllText(Path.Combine(_paths.OpenSimProgram, "OpenSim.ini"), "[Live]");
+
+        new RuntimeStager(_paths).StageIfNeeded();
+
+        Assert.True(File.Exists(Path.Combine(_paths.RuntimeOpenSim, "config-include", "Proto", "Robust", "OpenSim.ini")));
+        Assert.False(File.Exists(Path.Combine(_paths.RuntimeOpenSim, "OpenSim.ini")));
+    }
+
     [Fact]
     public void Log_configs_use_absolute_forward_slash_paths_under_Logs()
     {
