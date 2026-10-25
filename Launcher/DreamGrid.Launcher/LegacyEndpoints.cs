@@ -10,7 +10,11 @@ namespace DreamGrid.Launcher;
 /// <summary>Marks the port-8001 handler on "/".</summary>
 internal sealed class LegacyRootMetadata;
 
-/// <summary>A GET of "/" without alt, type or command is not a legacy call; it falls through to the website's pages.</summary>
+/// <summary>
+/// Chooses between the legacy handler and the dashboard page, which both match "/". A GET or HEAD without alt, type
+/// or command is the website's; a POST, or a GET or HEAD with one of those keys, is the legacy contract's (the
+/// dashboard's own forms post to /dashboard).
+/// </summary>
 internal sealed class LegacyRootPolicy : Microsoft.AspNetCore.Routing.MatcherPolicy, Microsoft.AspNetCore.Routing.Matching.IEndpointSelectorPolicy
 {
     private static readonly string[] Keys = ["alt", "type", "command"];
@@ -21,10 +25,10 @@ internal sealed class LegacyRootPolicy : Microsoft.AspNetCore.Routing.MatcherPol
 
     public Task ApplyAsync(HttpContext ctx, Microsoft.AspNetCore.Routing.Matching.CandidateSet candidates)
     {
-        if (!HttpMethods.IsGet(ctx.Request.Method) && !HttpMethods.IsHead(ctx.Request.Method)) return Task.CompletedTask;
-        if (Keys.Any(ctx.Request.Query.ContainsKey)) return Task.CompletedTask;
+        var method = ctx.Request.Method;
+        var legacy = !(HttpMethods.IsGet(method) || HttpMethods.IsHead(method)) || Keys.Any(ctx.Request.Query.ContainsKey);
         for (var i = 0; i < candidates.Count; i++)
-            if (candidates[i].Endpoint.Metadata.GetMetadata<LegacyRootMetadata>() is not null)
+            if ((candidates[i].Endpoint.Metadata.GetMetadata<LegacyRootMetadata>() is not null) != legacy)
                 candidates.SetValidity(i, false);
         return Task.CompletedTask;
     }

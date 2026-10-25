@@ -117,6 +117,27 @@ public sealed class GridControllerWiringTests : IDisposable
     }
 
     [Fact]
+    public async Task A_port_conflict_is_kept_in_the_status_until_the_next_start()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var s = _store.LoadOrCreate();
+        var robust = new TcpListener(IPAddress.Any, s.RobustPublicPort);
+        robust.Start();
+        PortConflictException conflict;
+        try
+        {
+            conflict = await Assert.ThrowsAsync<PortConflictException>(() => _grid.StartAsync(ct));
+        }
+        finally { robust.Stop(); }
+        Assert.Equal(conflict.Message, _grid.GetStatus().StartError);
+
+        // The next attempt gets past the port check (MariaDB cannot start in this rig): the old message goes.
+        var e = await Record.ExceptionAsync(() => _grid.StartAsync(ct));
+        Assert.IsNotType<PortConflictException>(e);
+        Assert.Null(_grid.GetStatus().StartError);
+    }
+
+    [Fact]
     public async Task A_changed_console_port_is_used_once_the_component_is_not_running()
     {
         var ct = TestContext.Current.CancellationToken;

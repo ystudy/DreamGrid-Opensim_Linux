@@ -78,6 +78,9 @@ internal sealed class FakeGridController : IGridController
         });
     }
 
+    /// <summary>The <see cref="GridStatus.StartError"/> of the status built from the other properties.</summary>
+    public string? StartError { get; set; }
+
     /// <summary>When set, <see cref="GetStatus"/> returns it instead of the status built from the other properties.</summary>
     public GridStatus? Status { get; set; }
 
@@ -87,7 +90,7 @@ internal sealed class FakeGridController : IGridController
         var running = new ComponentStatus("x", ProcessState.Running, null, null, null, null);
         return new GridStatus(running with { Name = "database" }, running with { Name = "robust" },
             HasRegion ? new ComponentStatus("region", RegionState, null, null, null, null) : null,
-            _loginsEnabled, "http://127.0.0.1:8002");
+            _loginsEnabled, "http://127.0.0.1:8002", StartError);
     }
 
     /// <summary>Thrown by the component operations when set.</summary>
@@ -169,4 +172,12 @@ internal sealed class FakeRobustAccounts : IRobustClient
 
     public Task<bool> AuthenticateAsync(Guid principal, string plainPassword, CancellationToken ct) =>
         Down ? throw new HttpRequestException("Connection refused") : Task.FromResult(_accounts.Values.Any(a => a.Account.PrincipalId == principal && a.Password == plainPassword));
+}
+
+/// <summary>Who's online without a database: returns <see cref="Result"/>.</summary>
+internal sealed class FakeOnlineUsers : IOnlineUsers
+{
+    public OnlineList Result { get; set; } = new([], true);
+
+    public Task<OnlineList> ListAsync(CancellationToken ct) => Task.FromResult(Result);
 }

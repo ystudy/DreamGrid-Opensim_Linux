@@ -34,6 +34,7 @@ internal sealed class LauncherFactory : WebApplicationFactory<Program>
     public SettingsStore Store { get; }
     public FakeGridController Grid { get; } = new();
     public FakeRobustAccounts Robust { get; } = new();
+    public FakeOnlineUsers OnlineUsers { get; } = new();
     public ConcurrentQueue<(LogLevel Level, string Category, string Message)> Logs { get; } = new();
 
     /// <summary>Runs before the app's own middleware (e.g. to fake the remote address).</summary>
@@ -50,6 +51,8 @@ internal sealed class LauncherFactory : WebApplicationFactory<Program>
             services.AddSingleton<IGridController>(Grid);
             services.RemoveAll<IRobustClient>();
             services.AddSingleton<IRobustClient>(Robust);
+            services.RemoveAll<IOnlineUsers>();
+            services.AddSingleton<IOnlineUsers>(OnlineUsers);
             if (Before is { } before)
                 services.AddSingleton<Microsoft.AspNetCore.Hosting.IStartupFilter>(new BeforeFilter(before));
         });

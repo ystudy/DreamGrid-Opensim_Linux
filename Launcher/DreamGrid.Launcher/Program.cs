@@ -80,7 +80,11 @@ builder.Services.AddRazorPages(o =>
     foreach (var open in new[] { "/Login", "/Logout", "/Welcome", "/Waiting", "/SetupDone", "/Setup" })
         o.Conventions.AllowAnonymousToPage(open);
     o.Conventions.AllowAnonymousToFolder("/Setup");
+    // The dashboard's forms post here: a POST to "/" belongs to the port-8001 contract (LegacyRootPolicy).
+    o.Conventions.AddPageRoute("/Index", "dashboard");
 });
+// The dashboard's script sends the token in this header to /api/grid/*.
+builder.Services.AddAntiforgery(o => o.HeaderName = "RequestVerificationToken");
 builder.Services.AddSingleton(paths);
 builder.Services.AddSingleton(store);
 // Read per request from the controller's cache (never the file), so a change the controller saved is seen at once.
@@ -108,6 +112,8 @@ builder.Services.AddSingleton<IRobustClient>(sp => new RobustClient(
 builder.Services.AddSingleton<GridController>();
 builder.Services.AddSingleton<IGridController>(sp => sp.GetRequiredService<GridController>());
 builder.Services.AddSingleton<LegacyCommandApi>();
+builder.Services.AddSingleton<IOnlineUsers>(sp => new OnlineUsers(sp.GetRequiredService<Func<LauncherSettings>>()));
+builder.Services.AddSingleton<GridActions>();
 builder.Services.AddSingleton<SetupProgress>();
 builder.Services.AddSingleton<SetupRunner>();
 builder.Services.AddHostedService<GridHostedService>();
@@ -119,6 +125,7 @@ app.UseMiddleware<SetupGate>();
 app.UseAuthorization();
 LegacyEndpoints.Map(app);
 LogsApi.Map(app);
+StatusApi.Map(app);
 SetupApi.Map(app);
 app.MapRazorPages();
 

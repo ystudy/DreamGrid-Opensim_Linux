@@ -113,3 +113,26 @@ details pre { max-height: 50vh; }
 .copy-row button { margin-top: 0; }
 .login-uri { padding: .4rem .6rem; background: var(--card); border: 1px solid var(--border); border-radius: .35rem; user-select: all; }
 .steps li { margin: .35rem 0; }
+
+/* Dashboard */
+h2 { font-size: 1.15rem; margin: 0 0 .5rem; }
+.card { margin: 0 0 1rem; padding: .75rem 1rem; background: var(--card); border: 1px solid var(--border); border-radius: .35rem; }
+.headline { margin: 0 0 .5rem; font-size: 1.1rem; font-weight: 600; }
+.headline.problem { color: #c62828; }
+.components, .online, .coming-soon { margin: 0; padding: 0; list-style: none; }
+.components li { display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem .6rem; padding: .35rem 0; border-top: 1px solid var(--border); }
+.component-label { font-weight: 600; }
+.badge { padding: .05rem .5rem; border-radius: 1rem; font-size: .8rem; color: #fff; background: #6b7280; }
+.state-running { background: #2e7d32; }
+.state-starting, .state-stopping, .state-crashed { background: #b26a00; }
+.state-failed { background: #c62828; }
+.muted { color: var(--muted); }
+.button-row { display: flex; flex-wrap: wrap; gap: .5rem; }
+.button-row button { margin-top: .5rem; }
+button.secondary { color: var(--accent); background: transparent; border: 1px solid var(--accent); }
+summary { cursor: pointer; margin-top: .75rem; }
+.notice:empty { display: none; }
+.online li { padding: .15rem 0; }
+.coming-soon { display: flex; flex-wrap: wrap; gap: .4rem; }
+.coming-soon li { padding: .15rem .6rem; color: var(--muted); border: 1px dashed var(--border); border-radius: 1rem; font-size: .9rem; }
+.failed-details pre { font-size: .8rem; white-space: pre-wrap; }

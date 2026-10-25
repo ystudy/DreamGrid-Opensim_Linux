@@ -22,26 +22,6 @@
 
 @section Scripts {
 <script>
-(function () {
-    var uri = document.getElementById("login-uri");
-    var button = document.getElementById("copy-uri");
-    function selectAddress() {
-        var range = document.createRange();
-        range.selectNodeContents(uri);
-        var sel = window.getSelection();
-        sel.removeAllRanges();
-        sel.addRange(range);
-    }
-    button.hidden = false;
-    button.addEventListener("click", function () {
-        // The clipboard API needs a secure context (localhost); elsewhere the address is selected for Ctrl+C.
-        if (navigator.clipboard && window.isSecureContext) {
-            navigator.clipboard.writeText(uri.textContent).then(function () { button.textContent = "Copied"; }, selectAddress);
-        } else {
-            selectAddress();
-            button.textContent = "Selected: press Ctrl+C";
-        }
-    });
-})();
+copyButton(document.getElementById("login-uri"), document.getElementById("copy-uri"));
 </script>
 }

@@ -43,6 +43,7 @@ public sealed partial class GridController(
     private volatile string _host = "127.0.0.1";
     private volatile Component? _db, _robust, _region;
     private volatile bool _loginsEnabled;
+    private volatile string? _startError;
     private int? _regionAlertPid;
     private TaskCompletionSource<string>? _oarLoaded;
 
@@ -65,8 +66,15 @@ public sealed partial class GridController(
         await _ops.WaitAsync(ct);
         try
         {
+            // A port conflict stops the start before any component runs, so no component state shows it.
+            _startError = null;
             var s = LoadSettings();
-            await PrepareAsync(s, ct);
+            try { await PrepareAsync(s, ct); }
+            catch (PortConflictException e)
+            {
+                _startError = e.Message;
+                throw;
+            }
 
             await StartDatabaseAsync(s, ct);
             await StartComponentAsync(_robust!, ct);
@@ -295,7 +303,8 @@ public sealed partial class GridController(
             Describe("robust", _robust),
             s.Region is null ? null : Describe("region", _region),
             _loginsEnabled,
-            $"http://{_host}:{s.RobustPublicPort}");
+            $"http://{_host}:{s.RobustPublicPort}",
+            _startError);
     }
 
     /// <summary>The settings the controller last loaded (the file only on first use); never waits behind an operation.</summary>
