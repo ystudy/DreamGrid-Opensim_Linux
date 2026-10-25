@@ -34,7 +34,7 @@ public sealed class SettingsStore(string path)
     public void Save(LauncherSettings s)
     {
         var dir = Path.GetDirectoryName(Path.GetFullPath(path));
-        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+        if (!string.IsNullOrEmpty(dir)) LauncherPaths.CreateOwnerOnly(dir); // <data>: it holds the secrets
 
         var tmp = path + ".tmp";
         using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))

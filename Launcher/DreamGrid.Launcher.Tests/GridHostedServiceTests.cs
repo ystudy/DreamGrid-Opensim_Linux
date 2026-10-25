@@ -151,7 +151,7 @@ public sealed class GridHostedServiceTests
     }
 
     [Fact]
-    public async Task Launcher_exits_zero_on_SIGTERM_and_only_detaches()
+    public async Task Launcher_exits_zero_on_SIGTERM_after_logging_the_shutdown()
     {
         Assert.SkipUnless(OperatingSystem.IsLinux(), "SIGTERM is the systemd stop signal; Linux only");
 
@@ -194,6 +194,53 @@ public sealed class GridHostedServiceTests
             {
                 if (!p.HasExited) p.Kill(true);
             }
+        }
+        finally
+        {
+            try { Directory.Delete(root, true); } catch (IOException) { }
+        }
+    }
+
+    [Theory]
+    [InlineData("no-opensim")]
+    [InlineData("corrupt-settings")]
+    public async Task Launcher_exits_non_zero_with_one_line_when_it_cannot_start(string failure)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "dg-fatal-" + Guid.NewGuid().ToString("N"));
+        var data = Path.Combine(root, "data");
+        try
+        {
+            Directory.CreateDirectory(data);
+            var args = new List<string> { "--data", data };
+            if (failure == "corrupt-settings")
+            {
+                File.WriteAllText(Path.Combine(data, "settings.json"), "{ not json");
+                args.AddRange(["--opensim", Path.Combine(root, "program")]);
+            }
+
+            var psi = new ProcessStartInfo(Dotnet()) { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
+            psi.ArgumentList.Add(Path.Combine(AppContext.BaseDirectory, "DreamGrid.Launcher.dll"));
+            foreach (var a in args) psi.ArgumentList.Add(a);
+            psi.Environment["DOTNET_ENVIRONMENT"] = "Production";
+            psi.Environment["ASPNETCORE_ENVIRONMENT"] = "Production";
+            psi.Environment.Remove("DREAMGRID_OPENSIM");
+
+            using var p = Process.Start(psi)!;
+            var stdout = p.StandardOutput.ReadToEndAsync(Ct);
+            var stderr = p.StandardError.ReadToEndAsync(Ct);
+            using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(Ct))
+            {
+                timeout.CancelAfter(TimeSpan.FromSeconds(60));
+                try { await p.WaitForExitAsync(timeout.Token); }
+                catch (OperationCanceledException) { p.Kill(true); throw; }
+            }
+            var output = await stdout + await stderr;
+
+            Assert.Equal(2, p.ExitCode);
+            Assert.Contains("crit:", output);
+            Assert.Contains(failure == "no-opensim" ? "--opensim" : "settings", output);
+            Assert.DoesNotContain("Unhandled exception", output);
+            Assert.DoesNotContain("   at ", output); // one plain line, no stack trace
         }
         finally
         {

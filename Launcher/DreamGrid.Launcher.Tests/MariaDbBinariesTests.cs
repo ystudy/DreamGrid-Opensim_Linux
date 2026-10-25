@@ -120,7 +120,7 @@ public class MariaDbBinariesTests : IDisposable
     [Fact]
     public void InstallDb_uses_plain_paths_when_they_need_no_link()
     {
-        Assert.SkipWhen(OperatingSystem.IsWindows(), "Path.Combine adds '\'; install-db planning is Linux-only.");
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Path.Combine adds a backslash; install-db planning is Linux-only.");
         var paths = new LauncherPaths("/var/lib/dreamgrid", "/opensim", null);
         var plan = MariaDbServer.PlanInstallDb(paths, asRoot: true, "abc");
 
@@ -156,5 +156,36 @@ public class MariaDbBinariesTests : IDisposable
         var data = "/d/" + new string('é', 50);
         var p = MariaDbServer.SocketPathFor(data);
         Assert.True(System.Text.Encoding.UTF8.GetByteCount(p) <= 107);
+    }
+
+    [Fact]
+    public void Bootstrap_server_writes_its_pid_file_under_the_MariaDB_tmpdir()
+    {
+        // The root-securing temporary server must never write <Pids>/mariadb.pid, which names the supervised server.
+        var paths = new LauncherPaths(Path.Combine(_dir, "data"), "/opensim", null);
+        var server = new MariaDbServer(new MariaDbBinaries("/x/mariadbd", "/x/install", null), paths, Settings());
+
+        var args = server.BootstrapStartInfo().ArgumentList;
+
+        Assert.Contains($"--pid-file={Path.Combine(paths.MariaDbTmp, "bootstrap.pid")}", args);
+        Assert.DoesNotContain($"--pid-file={Path.Combine(paths.Pids, "mariadb.pid")}", args);
+    }
+
+    [Theory]
+    [InlineData("robust")]
+    [InlineData("opensim")]
+    public async Task Initialize_refuses_to_empty_a_datadir_that_holds_grid_databases_without_the_marker(string database)
+    {
+        var paths = new LauncherPaths(Path.Combine(_dir, "data"), "/opensim", null);
+        var db = Path.Combine(paths.MariaDbData, database);
+        Directory.CreateDirectory(db);
+        File.WriteAllText(Path.Combine(db, "users.ibd"), "data");
+        var server = new MariaDbServer(new MariaDbBinaries("/x/mariadbd", "/x/install", null), paths, Settings());
+
+        var e = await Assert.ThrowsAsync<InvalidOperationException>(() => server.InitializeAsync(TestContext.Current.CancellationToken));
+
+        Assert.Contains("refusing to empty it", e.Message);
+        Assert.Contains(paths.MariaDbData, e.Message);
+        Assert.True(File.Exists(Path.Combine(db, "users.ibd")));
     }
 }

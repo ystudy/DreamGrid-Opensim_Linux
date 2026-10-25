@@ -144,4 +144,17 @@ public class IniDocumentTests
         Assert.Equal(N(text), N(IniDocument.Parse(text).ToText()));
         Assert.Equal(text, IniDocument.Parse(text).ToText());
     }
+
+    [Theory]
+    [InlineData("A", "x", "1\n[Evil]")]
+    [InlineData("A", "x", "1\rmore")]
+    [InlineData("A", "x\ny", "1")]
+    [InlineData("A]\n[B", "x", "1")]
+    public void Set_rejects_line_breaks(string section, string key, string value)
+    {
+        // A value with a line break would add lines (even sections) to the generated INI.
+        var d = IniDocument.Parse("[A]\nx=0\n");
+        Assert.Throws<ArgumentException>(() => d.Set(section, key, value));
+        Assert.Equal("[A]\nx=0\n", N(d.ToText()));
+    }
 }

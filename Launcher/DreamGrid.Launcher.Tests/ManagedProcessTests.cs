@@ -472,4 +472,109 @@ public sealed class ManagedProcessTests : IAsyncLifetime
 
         Assert.Equal(ProcessState.Running, mp.State);
     }
+
+    [Fact]
+    public async Task Second_start_of_a_running_child_keeps_crash_supervision()
+    {
+        // I1: a Start* command on a running component must not end the monitor's watch of the child.
+        var port = FreePort();
+        var pidFile = NewPidFile();
+        var counters = new Counters();
+        var mp = new ManagedProcess(ServeSpec(port, pidFile, counters), new RestartPolicy(InitialDelay: TimeSpan.FromMilliseconds(50)), TimeProvider.System);
+        var ct = TestContext.Current.CancellationToken;
+        await mp.StartAsync(ct);
+        var firstPid = mp.Pid!.Value;
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var monitor = mp.MonitorAsync(cts.Token);
+        try
+        {
+            await Task.Delay(500, ct); // the monitor is now awaiting the child's exit
+            await mp.StartAsync(ct);
+            Assert.Equal(1, counters.Starts);
+            Assert.Equal(firstPid, mp.Pid);
+            Assert.Equal(ProcessState.Running, mp.State);
+
+            using (var victim = Process.GetProcessById(firstPid)) { victim.Kill(entireProcessTree: true); victim.WaitForExit(5000); }
+
+            var deadline = DateTime.UtcNow.AddSeconds(30);
+            while (DateTime.UtcNow < deadline && !(counters.Starts == 2 && mp.State == ProcessState.Running))
+                await Task.Delay(100, ct);
+            Assert.Equal(2, counters.Starts);
+            Assert.Equal(ProcessState.Running, mp.State);
+            Assert.NotEqual(firstPid, mp.Pid);
+        }
+        finally
+        {
+            await cts.CancelAsync();
+            await monitor.WaitAsync(TimeSpan.FromSeconds(10), ct);
+        }
+    }
+
+    [Fact]
+    public async Task Stop_during_a_start_health_wait_wins_and_ends_the_monitor()
+    {
+        // I2: a health check that answers only after StopAsync finished must not bring the state back to Running.
+        var port = FreePort();
+        var pidFile = NewPidFile();
+        var polled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var spec = ServeSpec(port, pidFile, new Counters()) with
+        {
+            IsHealthy = async ct =>
+            {
+                polled.TrySetResult();
+                await release.Task.WaitAsync(ct);
+                return true;
+            },
+        };
+        var mp = new ManagedProcess(spec, new RestartPolicy(), TimeProvider.System);
+        var ct = TestContext.Current.CancellationToken;
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var start = mp.StartAsync(ct);
+        var monitor = mp.MonitorAsync(cts.Token);
+        try
+        {
+            await polled.Task.WaitAsync(TimeSpan.FromSeconds(30), ct);
+            await mp.StopAsync(ct);
+            release.SetResult();
+            await start.WaitAsync(TimeSpan.FromSeconds(15), ct);
+
+            Assert.Equal(ProcessState.Stopped, mp.State);
+            Assert.Null(mp.Pid);
+            await monitor.WaitAsync(TimeSpan.FromSeconds(10), ct);
+            Assert.Equal(ProcessState.Stopped, mp.State);
+        }
+        finally
+        {
+            await cts.CancelAsync();
+        }
+    }
+
+    [Fact]
+    public async Task A_zombie_is_not_alive()
+    {
+        // A launcher-started child that outlived its launcher is reparented to PID 1; in a container whose PID 1
+        // never reaps (GitHub's "tail -f /dev/null"), its exit leaves a zombie that must count as gone.
+        Assert.SkipUnless(OperatingSystem.IsLinux(), "zombies are a Linux /proc state");
+        var ct = TestContext.Current.CancellationToken;
+        var psi = new ProcessStartInfo("/bin/sh") { RedirectStandardOutput = true, UseShellExecute = false };
+        psi.ArgumentList.Add("-c");
+        // "sleep 30" replaces the shell and never waits for the shell's background child.
+        psi.ArgumentList.Add("sleep 0.1 & echo $!; exec sleep 30");
+        using var parent = Process.Start(psi)!;
+        try
+        {
+            var pid = int.Parse((await parent.StandardOutput.ReadLineAsync(ct))!);
+            var deadline = DateTime.UtcNow.AddSeconds(10);
+            while (DateTime.UtcNow < deadline && !File.ReadAllText($"/proc/{pid}/stat").Contains(") Z ", StringComparison.Ordinal))
+                await Task.Delay(50, ct);
+            Assert.Contains(") Z ", File.ReadAllText($"/proc/{pid}/stat"));
+
+            Assert.False(ProcessImage.IsAlive(pid));
+        }
+        finally
+        {
+            parent.Kill();
+        }
+    }
 }

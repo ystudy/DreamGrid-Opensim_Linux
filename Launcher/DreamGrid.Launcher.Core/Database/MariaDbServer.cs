@@ -68,6 +68,11 @@ public sealed class MariaDbServer(MariaDbBinaries bin, LauncherPaths paths, Laun
     private void ClearDataDir()
     {
         if (!Directory.Exists(paths.MariaDbData)) return;
+        // Without the marker the datadir should hold nothing of value; the grid databases mean the marker was lost.
+        if (!IsInitialized && new[] { "robust", "opensim" }.FirstOrDefault(d => Directory.Exists(Path.Combine(paths.MariaDbData, d))) is { } db)
+            throw new InvalidOperationException(
+                $"The MariaDB datadir {paths.MariaDbData} holds the '{db}' database but no {MarkerName} marker; refusing to empty it. "
+                + $"If the data is still wanted, create an empty {MarkerName} file there; otherwise move the datadir away.");
         foreach (var entry in Directory.GetFileSystemEntries(paths.MariaDbData))
         {
             if (Directory.Exists(entry)) Directory.Delete(entry, true);
@@ -79,7 +84,7 @@ public sealed class MariaDbServer(MariaDbBinaries bin, LauncherPaths paths, Laun
     {
         // Windows install-db already set the root password; on Linux root starts empty.
         var initialPassword = OperatingSystem.IsWindows() ? s.Db.RootPassword : "";
-        using var server = Process.Start(Prepare(StartInfo()))
+        using var server = Process.Start(Prepare(BootstrapStartInfo()))
             ?? throw new InvalidOperationException("Could not start mariadbd to secure the root account.");
         try
         {
@@ -106,7 +111,12 @@ public sealed class MariaDbServer(MariaDbBinaries bin, LauncherPaths paths, Laun
 
     private string MarkerPath => Path.Combine(paths.MariaDbData, MarkerName);
 
-    public ProcessStartInfo StartInfo()
+    public ProcessStartInfo StartInfo() => StartInfo(Path.Combine(paths.Pids, "mariadb.pid"));
+
+    /// <summary>The root-securing temporary server: its own PID file, so <c>mariadb.pid</c> only ever names the supervised server.</summary>
+    public ProcessStartInfo BootstrapStartInfo() => StartInfo(Path.Combine(paths.MariaDbTmp, "bootstrap.pid"));
+
+    private ProcessStartInfo StartInfo(string pidFile)
     {
         Directory.CreateDirectory(paths.MariaDbTmp);
         var psi = new ProcessStartInfo(bin.Server);
@@ -119,7 +129,7 @@ public sealed class MariaDbServer(MariaDbBinaries bin, LauncherPaths paths, Laun
             "--skip-name-resolve",
             "--character-set-server=utf8mb4",
             "--collation-server=utf8mb4_unicode_ci",
-            "--pid-file=" + Path.Combine(paths.Pids, "mariadb.pid"),
+            "--pid-file=" + pidFile,
             "--log-error=" + Path.Combine(paths.Logs, "mariadb.err"),
             // mariadbd deletes every "#sql*" file in its tmpdir at startup: a shared one (/tmp, %TEMP%) would
             // destroy the temporary tables of any other MariaDB running or bootstrapping there.
@@ -177,10 +187,11 @@ public sealed class MariaDbServer(MariaDbBinaries bin, LauncherPaths paths, Laun
 
         var plan = PlanInstallDb(paths, Environment.IsPrivilegedProcess, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(paths.MariaDbTmp);
-        if (plan.DataLink is not null) Directory.CreateSymbolicLink(plan.DataLink, paths.MariaDbData);
-        if (plan.TmpLink is not null) Directory.CreateSymbolicLink(plan.TmpLink, paths.MariaDbTmp);
         try
         {
+            // Inside the try, so the finally removes whichever link was made when the second one fails.
+            if (plan.DataLink is not null) Directory.CreateSymbolicLink(plan.DataLink, paths.MariaDbData);
+            if (plan.TmpLink is not null) Directory.CreateSymbolicLink(plan.TmpLink, paths.MariaDbTmp);
             await RunInstallDb(plan.Arguments.ToList(), ct);
         }
         finally

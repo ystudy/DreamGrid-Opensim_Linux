@@ -14,11 +14,30 @@ public static class ProcessImage
         try
         {
             using var p = Process.GetProcessById(pid);
-            return !p.HasExited;
+            return !p.HasExited && !(OperatingSystem.IsLinux() && IsZombie(pid));
         }
         catch (Exception e) when (e is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
         {
             return false;
+        }
+    }
+
+    /// <summary>
+    /// A child that outlived the launcher belongs to PID 1. If PID 1 never reaps (a container's "tail -f /dev/null"),
+    /// the exited child stays a zombie, which signal 0 (and so HasExited) still reports as alive.
+    /// </summary>
+    private static bool IsZombie(int pid)
+    {
+        try
+        {
+            // "pid (comm) S ...": the state follows the last ')', since comm may itself contain ')'.
+            var stat = File.ReadAllText($"/proc/{pid}/stat");
+            var end = stat.LastIndexOf(')');
+            return end >= 0 && end + 2 < stat.Length && stat[end + 2] is 'Z' or 'X';
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return true; // /proc entry gone: the process is gone
         }
     }
 

@@ -8,9 +8,11 @@ Version 1 is LAN-only. The firewall and any router port forwarding must not expo
 
 When the launcher creates the owner avatar it sends `create user` (or `reset user password`) to Robust's REST console, and Robust echoes that command, password included, into its console scrollback (readable only with the console credentials) and into its stdout, which the launcher discards.
 
-## Settings file
+Robust's private port (8003) is stock OpenSim and unauthenticated: anyone who reaches it can call the private grid services. Version 1 is LAN-only, so it must not be exposed beyond the LAN either.
 
-`<data>/settings.json` holds the database passwords and the console passwords, so it must be readable only by the account that runs the grid.
+## Data directory
 
-- On Linux the launcher writes it with mode 0600.
-- On Windows it lives under `%ProgramData%\DreamGrid`. The installer (plan 3) must restrict its ACL to SYSTEM and Administrators.
+The whole data directory is secret, not only `settings.json`. `<data>/settings.json` holds the database passwords, the console passwords and the MachineID, and the INIs the launcher generates under `<data>/runtime/opensim/` and `<data>/state/regions/` carry the same database passwords, the `ConsolePass` and the MachineID. The data directory must be readable only by the account that runs the grid, on both operating systems.
+
+- On Linux the launcher creates `<data>` with mode 0700 and narrows an existing one to 0700 at every start; `settings.json` itself is written with mode 0600.
+- On Windows it is `%ProgramData%\DreamGrid`. The installer (plan 3) must restrict the ACL of the whole `%ProgramData%\DreamGrid` tree, not only `settings.json`, to SYSTEM, Administrators and the grid's service account.

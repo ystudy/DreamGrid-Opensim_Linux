@@ -21,6 +21,12 @@ public sealed class ManagedProcess(ProcessSpec spec, RestartPolicy policy, TimeP
     private int? _pid;
     private string? _lastError;
     private Process? _process;          // set only for a child this instance started; null when adopted
+    // A Process is disposed only once nobody uses it: not the current child, not awaited by the monitor (a disposed
+    // Process's WaitForExitAsync never completes) and not being stopped by StopAsync.
+    private Process? _watched;
+    private Process? _stopping;
+    // Bumped by every StartAsync and StopAsync: a start, or a monitor's watch, changes state only while its epoch is current.
+    private long _epoch;
     private volatile bool _stopRequested;
 
     public ProcessState State { get { lock (_gate) return _state; } }
@@ -30,20 +36,25 @@ public sealed class ManagedProcess(ProcessSpec spec, RestartPolicy policy, TimeP
 
     private enum Wait { Healthy, Exited, TimedOut }
 
+    /// <summary>A child one start launched, with its PID read while the Process was certainly not disposed.</summary>
+    private sealed record Launched(Process Process, int Pid);
+
     /// <summary>Adopts the live process named by the PID file when its image matches, otherwise starts a new one; returns once healthy, crashed or timed out.</summary>
     public Task StartAsync(CancellationToken ct)
     {
         // An explicit start is a fresh request: it cancels an earlier stop and forgets earlier failures.
-        lock (_gate) { _stopRequested = false; _failures.Clear(); }
+        lock (_gate) { _stopRequested = false; _failures.Clear(); _epoch++; }
         return StartCoreAsync(honorStop: false, ct);
     }
 
     // The monitor restarts through here with honorStop, so a StopAsync that lands during the backoff is never overridden.
     private async Task StartCoreAsync(bool honorStop, CancellationToken ct)
     {
+        long epoch;
         lock (_gate)
         {
             if (honorStop && _stopRequested) return;
+            epoch = _epoch;
             _state = ProcessState.Starting;
         }
         RaiseStateChanged(ProcessState.Starting);
@@ -51,8 +62,11 @@ public sealed class ManagedProcess(ProcessSpec spec, RestartPolicy policy, TimeP
         var recorded = PidFile.Read(spec.PidFile);
         if (recorded is { } existing && ProcessImage.Matches(existing, spec.ExpectedImage))
         {
-            Attach(existing, process: null);
-            await AwaitStartedAsync(adopted: true, ct);
+            // The child we already track (a second start of a running child) keeps its Process, which the monitor
+            // may be awaiting; any other live match is adopted.
+            lock (_gate)
+                if (_epoch == epoch && _pid != existing) Attach(existing, process: null);
+            await AwaitStartedAsync(epoch, launched: null, ct);
             return;
         }
         if (recorded is not null) PidFile.Delete(spec.PidFile); // stale: dead, or reused by an unrelated program
@@ -64,43 +78,74 @@ public sealed class ManagedProcess(ProcessSpec spec, RestartPolicy policy, TimeP
         }
         catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException or FileNotFoundException)
         {
-            Fail($"could not start {spec.Name}: {e.Message}");
+            Fail($"could not start {spec.Name}: {e.Message}", epoch);
             return;
         }
-        Attach(process.Id, process);
-        PidFile.Write(spec.PidFile, process.Id);
-        if (honorStop && _stopRequested)
+        var launched = new Launched(process, process.Id);
+        bool current;
+        lock (_gate)
         {
-            KillTree();
-            ClearChild();
+            current = _epoch == epoch;
+            if (current)
+            {
+                Attach(launched.Pid, process);
+                PidFile.Write(spec.PidFile, launched.Pid);
+            }
+        }
+        if (!current)
+        {
+            // A stop (or a newer start) came in while this one launched: the child is nobody's.
+            KillLaunched(process);
+            process.Dispose();
             return;
         }
-        await AwaitStartedAsync(adopted: false, ct);
+        await AwaitStartedAsync(epoch, launched, ct);
     }
 
     /// <summary>Asks the child to stop, waits <see cref="ProcessSpec.StopTimeout"/>, then kills its process tree and removes the PID file.</summary>
     public async Task StopAsync(CancellationToken ct)
     {
-        _stopRequested = true;
+        lock (_gate) { _stopRequested = true; _epoch++; }
 
         if (Pid is null && PidFile.Read(spec.PidFile) is { } recorded && ProcessImage.Matches(recorded, spec.ExpectedImage))
-            Attach(recorded, process: null); // stop a child left by an earlier launcher run
+            lock (_gate) Attach(recorded, process: null); // stop a child left by an earlier launcher run
 
-        SetState(ProcessState.Stopping);
-        try { await spec.GracefulStop(ct); }
-        catch (Exception e) when (e is not OperationCanceledException) { /* already gone, or console unreachable: fall through to the wait and kill */ }
-
-        using (var expiry = new CancellationTokenSource(spec.StopTimeout, time))
-        using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct, expiry.Token))
+        lock (_gate) _stopping = _process;
+        try
         {
-            try { await WaitForGoneAsync(timeout.Token); }
-            catch (OperationCanceledException) when (!ct.IsCancellationRequested) { }
-        }
+            SetState(ProcessState.Stopping);
+            try { await spec.GracefulStop(ct); }
+            catch (Exception e) when (e is not OperationCanceledException) { /* already gone, or console unreachable: fall through to the wait and kill */ }
 
-        KillTree();
-        PidFile.Delete(spec.PidFile);
-        // The Process object is not disposed here: the monitor may still be awaiting its exit.
-        lock (_gate) { _pid = null; _process = null; }
+            using (var expiry = new CancellationTokenSource(spec.StopTimeout, time))
+            using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct, expiry.Token))
+            {
+                Process? process;
+                int? pid;
+                lock (_gate) { process = _process; pid = _pid; }
+                try { await WaitForGoneAsync(process, pid, StopPollInterval, timeout.Token); }
+                catch (OperationCanceledException) when (!ct.IsCancellationRequested) { }
+            }
+
+            KillTree();
+            PidFile.Delete(spec.PidFile);
+            lock (_gate)
+            {
+                var process = _process;
+                _pid = null;
+                _process = null;
+                DisposeIfUnused(process);
+            }
+        }
+        finally
+        {
+            lock (_gate)
+            {
+                var held = _stopping;
+                _stopping = null;
+                DisposeIfUnused(held);
+            }
+        }
         SetState(ProcessState.Stopped);
     }
 
@@ -114,9 +159,7 @@ public sealed class ManagedProcess(ProcessSpec spec, RestartPolicy policy, TimeP
                 switch (State)
                 {
                     case ProcessState.Running:
-                        await WaitForGoneAsync(ct);
-                        if (_stopRequested || State != ProcessState.Running) break;
-                        RecordExit(ExitDescription());
+                        if (!await WatchAsync(ct)) return;
                         break;
 
                     case ProcessState.Crashed:
@@ -140,6 +183,35 @@ public sealed class ManagedProcess(ProcessSpec spec, RestartPolicy policy, TimeP
         catch (OperationCanceledException)
         {
             // Normal shutdown of the launcher: the child keeps running.
+        }
+    }
+
+    /// <summary>
+    /// The monitor's Running case: waits for the child to go and records the exit. False when the monitor should end
+    /// (a stop is under way, or there is nothing to watch). A start or stop that came in meanwhile owns the state, so
+    /// the exit is then left to the next round of the loop.
+    /// </summary>
+    private async Task<bool> WatchAsync(CancellationToken ct)
+    {
+        long epoch;
+        Process? watched;
+        int? pid;
+        lock (_gate) { epoch = _epoch; watched = _process; pid = _pid; _watched = watched; }
+        try
+        {
+            if (_stopRequested || pid is null) return false;
+            await WaitForGoneAsync(watched, pid, AdoptedPollInterval, ct);
+            if (_stopRequested) return false;
+            RecordExit(ExitDescription(watched), epoch, ProcessState.Running);
+            return true;
+        }
+        finally
+        {
+            lock (_gate)
+            {
+                _watched = null;
+                DisposeIfUnused(watched);
+            }
         }
     }
 
@@ -177,35 +249,76 @@ public sealed class ManagedProcess(ProcessSpec spec, RestartPolicy policy, TimeP
         return process;
     }
 
+    /// <summary>Caller holds <see cref="_gate"/>.</summary>
     private void Attach(int pid, Process? process)
     {
-        lock (_gate)
-        {
-            _process?.Dispose();
-            _process = process;
-            _pid = pid;
-        }
+        var old = _process;
+        _process = process;
+        _pid = pid;
+        DisposeIfUnused(old);
     }
 
-    private async Task AwaitStartedAsync(bool adopted, CancellationToken ct)
+    /// <summary>Caller holds <see cref="_gate"/>. Disposes a Process that nobody uses any more.</summary>
+    private void DisposeIfUnused(Process? process)
     {
-        switch (await WaitForHealthyAsync(ct))
+        if (process is null || ReferenceEquals(process, _process) || ReferenceEquals(process, _watched) || ReferenceEquals(process, _stopping))
+            return;
+        process.Dispose();
+    }
+
+    private async Task AwaitStartedAsync(long epoch, Launched? launched, CancellationToken ct)
+    {
+        var outcome = await WaitForHealthyAsync(ct);
+        bool current;
+        lock (_gate) current = _epoch == epoch;
+        if (!current)
+        {
+            // A StopAsync (or a newer start) took over while this one waited, so the state is theirs. A child this
+            // start launched is killed unless the newer start kept it as its own.
+            if (launched is not null) DropLaunched(launched, onlyIfOrphan: true);
+            return;
+        }
+
+        switch (outcome)
         {
             case Wait.Healthy:
-                SetState(ProcessState.Running);
+                SetState(ProcessState.Running, epoch);
                 break;
             case Wait.Exited:
-                RecordExit(ExitDescription() + " during startup");
+                RecordExit(ExitDescription(launched?.Process) + " during startup", epoch, ProcessState.Starting);
                 break;
             default:
                 // A started child that never became healthy is not left running; an adopted one is not ours to kill.
-                if (!adopted)
-                {
-                    KillTree();
-                    ClearChild();
-                }
-                Fail($"{spec.Name} was not healthy within {spec.StartTimeout.TotalSeconds.ToString("0.#", CultureInfo.InvariantCulture)} s");
+                if (launched is not null) DropLaunched(launched, onlyIfOrphan: false);
+                Fail($"{spec.Name} was not healthy within {spec.StartTimeout.TotalSeconds.ToString("0.#", CultureInfo.InvariantCulture)} s", epoch);
                 break;
+        }
+    }
+
+    /// <summary>Kills a child this instance launched, and forgets it (and its PID file) if it is still the current child.</summary>
+    private void DropLaunched(Launched launched, bool onlyIfOrphan)
+    {
+        lock (_gate)
+            if (onlyIfOrphan && ReferenceEquals(_process, launched.Process)) return;
+        KillLaunched(launched.Process);
+        lock (_gate)
+        {
+            if (ReferenceEquals(_process, launched.Process)) { _process = null; _pid = null; }
+            if (PidFile.Read(spec.PidFile) == launched.Pid) PidFile.Delete(spec.PidFile);
+            DisposeIfUnused(launched.Process);
+        }
+    }
+
+    private static void KillLaunched(Process process)
+    {
+        try
+        {
+            if (!process.HasExited) process.Kill(entireProcessTree: true);
+            process.WaitForExit(5000);
+        }
+        catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            // Already gone, or already disposed by the stop that took over.
         }
     }
 
@@ -229,28 +342,27 @@ public sealed class ManagedProcess(ProcessSpec spec, RestartPolicy policy, TimeP
         Process? process;
         int? pid;
         lock (_gate) { process = _process; pid = _pid; }
-        if (process is not null) return !process.HasExited;
+        try
+        {
+            if (process is not null) return !process.HasExited;
+        }
+        catch (InvalidOperationException) { return false; } // disposed by a stop that took over
         return pid is { } p && ProcessImage.IsAlive(p);
     }
 
-    private async Task WaitForGoneAsync(CancellationToken ct)
+    private async Task WaitForGoneAsync(Process? process, int? pid, TimeSpan pollInterval, CancellationToken ct)
     {
-        Process? process;
-        lock (_gate) process = _process;
         if (process is not null)
         {
             await process.WaitForExitAsync(ct);
             return;
         }
         // Adopted processes are not our children, so there is no exit event: poll the PID.
-        var interval = State == ProcessState.Stopping ? StopPollInterval : AdoptedPollInterval;
-        while (IsRunning()) await Task.Delay(interval, time, ct);
+        while (pid is { } p && ProcessImage.IsAlive(p)) await Task.Delay(pollInterval, time, ct);
     }
 
-    private string ExitDescription()
+    private string ExitDescription(Process? process)
     {
-        Process? process;
-        lock (_gate) process = _process;
         try
         {
             if (process is { HasExited: true }) return $"{spec.Name} exited with code {process.ExitCode}";
@@ -259,11 +371,13 @@ public sealed class ManagedProcess(ProcessSpec spec, RestartPolicy policy, TimeP
         return $"{spec.Name} exited";
     }
 
-    private void RecordExit(string reason)
+    /// <summary>Records a crash, only while <paramref name="epoch"/> is current and the state is still <paramref name="expected"/>.</summary>
+    private void RecordExit(string reason, long epoch, ProcessState expected)
     {
         bool failed;
         lock (_gate)
         {
+            if (_epoch != epoch || _state != expected) return;
             var now = time.GetUtcNow();
             _failures.Add(now);
             _failures.RemoveAll(t => now - t > policy.EffectiveWindow);
@@ -271,24 +385,23 @@ public sealed class ManagedProcess(ProcessSpec spec, RestartPolicy policy, TimeP
             _lastError = failed
                 ? $"{reason}; gave up after {_failures.Count} failures within {policy.EffectiveWindow.TotalMinutes.ToString("0.#", CultureInfo.InvariantCulture)} min"
                 : reason;
-            _process?.Dispose();
+            var process = _process;
             _process = null;
             _pid = null;
+            DisposeIfUnused(process);
+            PidFile.Delete(spec.PidFile);
         }
-        PidFile.Delete(spec.PidFile);
-        SetState(failed ? ProcessState.Failed : ProcessState.Crashed);
+        SetState(failed ? ProcessState.Failed : ProcessState.Crashed, epoch);
     }
 
-    private void ClearChild()
+    private void Fail(string error, long epoch)
     {
-        lock (_gate) { _process?.Dispose(); _process = null; _pid = null; }
-        PidFile.Delete(spec.PidFile);
-    }
-
-    private void Fail(string error)
-    {
-        lock (_gate) _lastError = error;
-        SetState(ProcessState.Failed);
+        lock (_gate)
+        {
+            if (_epoch != epoch) return;
+            _lastError = error;
+        }
+        SetState(ProcessState.Failed, epoch);
     }
 
     private void KillTree()
@@ -316,10 +429,12 @@ public sealed class ManagedProcess(ProcessSpec spec, RestartPolicy policy, TimeP
         }
     }
 
-    private void SetState(ProcessState state)
+    /// <summary>Sets the state; with <paramref name="epoch"/>, only while that epoch is current (a newer start or a stop owns it otherwise).</summary>
+    private void SetState(ProcessState state, long? epoch = null)
     {
         lock (_gate)
         {
+            if (epoch is { } e && _epoch != e) return;
             if (_state == state) return;
             _state = state;
         }

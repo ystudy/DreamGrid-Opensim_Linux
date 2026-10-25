@@ -1,3 +1,4 @@
+using System.Runtime.Versioning;
 using System.Text.RegularExpressions;
 using DreamGrid.Launcher.Core.Settings;
 using Xunit;
@@ -97,6 +98,7 @@ public class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    [SupportedOSPlatform("linux")]
     public void Unix_file_mode_is_owner_only()
     {
         Assert.SkipUnless(OperatingSystem.IsLinux(), "Linux only");
@@ -104,5 +106,16 @@ public class SettingsStoreTests : IDisposable
         new SettingsStore(path).LoadOrCreate();
 
         Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(path));
+    }
+
+    [Fact]
+    [SupportedOSPlatform("linux")]
+    public void Save_makes_the_settings_directory_owner_only_on_linux()
+    {
+        Assert.SkipUnless(OperatingSystem.IsLinux(), "Linux only");
+        var dir = Path.Combine(NewDir(), "data");
+        new SettingsStore(Path.Combine(dir, "settings.json")).LoadOrCreate();
+
+        Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute, File.GetUnixFileMode(dir));
     }
 }

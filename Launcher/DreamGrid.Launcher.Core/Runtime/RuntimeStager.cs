@@ -33,6 +33,9 @@ public sealed class RuntimeStager(LauncherPaths paths)
         return true;
     }
 
+    /// <summary>True when the program dir changed since the last staging (or nothing is staged yet).</summary>
+    public bool NeedsStaging() => !(File.Exists(StampFile) && File.ReadAllText(StampFile) == ComputeStamp());
+
     /// <summary>Writes the log4net configs for Robust and (optionally) one region instance.</summary>
     public void WriteLogConfigs(string? regionInstance, string level = "INFO")
     {
@@ -46,9 +49,22 @@ public sealed class RuntimeStager(LauncherPaths paths)
 
     private string ComputeStamp()
     {
-        var dll = new FileInfo(Path.Combine(paths.OpenSimProgram, "OpenSim.dll"));
-        var count = Directory.EnumerateFiles(paths.OpenSimProgram).Count();
-        return $"{dll.Length}-{dll.LastWriteTimeUtc.Ticks}-{count}";
+        var program = paths.OpenSimProgram;
+        var count = Directory.EnumerateFiles(program).Count();
+        // The INI prototypes and includes are what GridConfigWriter builds the configs from.
+        var include = Path.Combine(program, "config-include");
+        var configs = Directory.EnumerateFiles(program, "*.proto")
+            .Concat(Directory.Exists(include) ? Directory.EnumerateFiles(include, "*", SearchOption.AllDirectories) : [])
+            .Select(f => File.GetLastWriteTimeUtc(f).Ticks)
+            .DefaultIfEmpty(0)
+            .Max();
+        return $"{Describe("OpenSim.dll")}-{count}-{Describe("Robust.dll")}-{configs}";
+
+        string Describe(string name)
+        {
+            var dll = new FileInfo(Path.Combine(program, name));
+            return dll.Exists ? $"{dll.Length}-{dll.LastWriteTimeUtc.Ticks}" : "none";
+        }
     }
 
     private static bool IsExcludedDirectory(string name) =>

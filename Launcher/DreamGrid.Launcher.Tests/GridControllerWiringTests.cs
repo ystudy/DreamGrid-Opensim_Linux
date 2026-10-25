@@ -1,10 +1,13 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
+using System.Reflection;
 using DreamGrid.Launcher.Core;
 using DreamGrid.Launcher.Core.Database;
 using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.Modules;
 using DreamGrid.Launcher.Core.OpenSim;
+using DreamGrid.Launcher.Core.Processes;
 using DreamGrid.Launcher.Core.Settings;
 using Microsoft.Extensions.Time.Testing;
 using Xunit;
@@ -328,6 +331,95 @@ public sealed class GridControllerWiringTests : IDisposable
         Assert.False(_grid.LoginsEnabled);
     }
 
+    private static string FakeChildExe()
+    {
+        var dir = typeof(GridControllerWiringTests).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
+            .Single(a => a.Key == "FakeChildDir").Value!;
+        return Path.Combine(dir, OperatingSystem.IsWindows() ? "DreamGrid.FakeChild.exe" : "DreamGrid.FakeChild");
+    }
+
+    [Fact]
+    public async Task An_upgrade_stops_an_adoptable_Robust_before_restaging()
+    {
+        // I4: on Linux the runtime dir can be deleted under a running Robust, which then runs on in a deleted cwd.
+        var ct = TestContext.Current.CancellationToken;
+        var s = _store.LoadOrCreate();
+        var stamp = Path.Combine(_paths.RuntimeOpenSim, ".dreamgrid-stamp");
+        var oldStamp = File.ReadAllText(stamp);
+        // A stand-in Robust whose command line names the staged Robust.dll, so the controller would adopt it.
+        var psi = new ProcessStartInfo(FakeChildExe()) { UseShellExecute = false };
+        psi.ArgumentList.Add("--serve");
+        psi.ArgumentList.Add(FreePorts(1)[0].ToString());
+        psi.ArgumentList.Add(Path.Combine(_paths.RuntimeOpenSim, "Robust.dll"));
+        using var fake = Process.Start(psi)!;
+        try
+        {
+            _paths.EnsureCreated();
+            PidFile.Write(Path.Combine(_paths.Pids, "robust.pid"), fake.Id);
+            string? stampAtStop = null;
+            _http.OnCommand = port =>
+            {
+                if (port != s.RobustConsolePort) return;
+                stampAtStop = File.ReadAllText(stamp);
+                fake.Kill(); // what Robust does on "quit"
+            };
+            File.SetLastWriteTimeUtc(Path.Combine(_paths.OpenSimProgram, "OpenSim.dll"), DateTime.UtcNow.AddHours(1));
+
+            var e = await Record.ExceptionAsync(() => _grid.StartAsync(ct));
+
+            Assert.NotNull(e); // MariaDB cannot start in this rig
+            Assert.Equal(oldStamp, stampAtStop); // Robust was asked to quit before the old runtime went away
+            Assert.True(fake.WaitForExit(5000), "the old Robust still runs");
+            Assert.NotEqual(oldStamp, File.ReadAllText(stamp));
+        }
+        finally
+        {
+            if (!fake.HasExited) fake.Kill();
+        }
+    }
+
+    [Fact]
+    public async Task A_MariaDB_without_our_datadir_is_not_adopted()
+    {
+        // I5: Debian's own mariadbd has the same image as ours; only --datadir=<our datadir> makes a process ours.
+        var ct = TestContext.Current.CancellationToken;
+        var s = _store.LoadOrCreate();
+        _paths.EnsureCreated();
+        PidFile.Write(Path.Combine(_paths.Pids, "mariadb.pid"), Environment.ProcessId);
+        var self = Environment.ProcessPath!;
+        var grid = new GridController(_paths, _store, new MariaDbBinaries(self, self, null), [new LogLevelModule()], _robust, _http, TimeProvider.System);
+        var holder = new TcpListener(IPAddress.Loopback, s.MariaDbPort);
+        holder.Start();
+        try
+        {
+            // Not adoptable, so its port is checked like any other program's.
+            var e = await Assert.ThrowsAsync<PortConflictException>(() => grid.StartAsync(ct));
+            Assert.Contains(s.MariaDbPort.ToString(), e.Message);
+        }
+        finally { holder.Stop(); }
+    }
+
+    [Fact]
+    public async Task A_settings_change_made_during_CreateOwner_survives_it()
+    {
+        // I7: a long operation saves only its own fields onto the latest settings, not onto the copy it started with.
+        var gate = new TaskCompletionSource();
+        _robust.Block = gate.Task;
+        var ct = TestContext.Current.CancellationToken;
+        var owner = _grid.CreateOwnerAsync("Test", "Owner", "pw1", null, ct);
+        await _robust.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10), ct);
+
+        var changed = _grid.UpdateSettings(s => s with { GridName = "Renamed meanwhile" });
+        Assert.Equal("Renamed meanwhile", changed.GridName);
+        gate.SetResult();
+        await owner;
+
+        var saved = _store.LoadOrCreate();
+        Assert.Equal("Renamed meanwhile", saved.GridName);
+        Assert.True(saved.Setup.OwnerCreated);
+        Assert.Equal("Renamed meanwhile", _grid.CurrentSettings().GridName);
+    }
+
     private sealed class FakeRobust : IRobustClient
     {
         public Task Block { get; set; } = Task.CompletedTask;
@@ -361,6 +453,8 @@ public sealed class GridControllerWiringTests : IDisposable
     private sealed class ConsoleHttp : IHttpClientFactory
     {
         public List<int> CommandPorts { get; } = new();
+        /// <summary>Called with the console port of each command, after it is recorded.</summary>
+        public Action<int>? OnCommand { get; set; }
 
         public HttpClient CreateClient(string name) => new(new StubHandler(r =>
         {
@@ -370,6 +464,7 @@ public sealed class GridControllerWiringTests : IDisposable
                     return (HttpStatusCode.OK, "<ConsoleSession><SessionID>sid</SessionID></ConsoleSession>");
                 case "/SessionCommand/":
                     lock (CommandPorts) CommandPorts.Add(r.Uri.Port);
+                    OnCommand?.Invoke(r.Uri.Port);
                     return (HttpStatusCode.OK, "<ConsoleSession><Result>OK</Result></ConsoleSession>");
                 default:
                     return (HttpStatusCode.OK, "<ConsoleSession></ConsoleSession>");

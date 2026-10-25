@@ -86,4 +86,22 @@ public class PortCheckTests
         }
         finally { holder.Stop(); }
     }
+
+    [Theory]
+    [InlineData("Robust public")]
+    [InlineData("Robust console")]
+    [InlineData("Web")]
+    public void PortCheck_reports_a_port_held_on_loopback_only(string name)
+    {
+        // On Windows a 0.0.0.0 bind succeeds next to another program's 127.0.0.1 listener, which then wins.
+        var s = FreeSettings();
+        var port = name switch { "Robust public" => s.RobustPublicPort, "Robust console" => s.RobustConsolePort, _ => s.WebPort };
+        var holder = new TcpListener(IPAddress.Loopback, port);
+        holder.Start();
+        try
+        {
+            Assert.Equal($"Port {port} ({name}) is already in use by another program.", PortCheck.FindConflict(s));
+        }
+        finally { holder.Stop(); }
+    }
 }

@@ -48,4 +48,12 @@ public interface IGridController
     void RegenerateConfig();
 
     void OnRegionAlert(RegionAlert alert);
+
+    /// <summary>
+    /// Applies <paramref name="change"/> to the latest saved settings, saves them and (by default) rewrites the INIs,
+    /// all under the short config lock, and returns the new settings. Every settings change goes through here: a
+    /// long operation saves only its own fields this way, so a change made meanwhile is never lost. Plan 2b's
+    /// Advanced Settings must use it too, never <see cref="SettingsStore.Save"/> directly.
+    /// </summary>
+    LauncherSettings UpdateSettings(Func<LauncherSettings, LauncherSettings> change, bool writeConfig = true);
 }

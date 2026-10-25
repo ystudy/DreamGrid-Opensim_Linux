@@ -1,3 +1,4 @@
+using System.Runtime.Versioning;
 using DreamGrid.Launcher.Core;
 using Xunit;
 
@@ -20,17 +21,17 @@ public class LauncherPathsTests
 
         var fromArgs = LauncherPaths.Resolve(
             ["--data", "/arg/data", "--opensim", "/arg/opensim", "--mariadb-bin", "/arg/maria"], env, isWindows: false);
-        Assert.Equal("/arg/data", fromArgs.Data);
-        Assert.Equal("/arg/opensim", fromArgs.OpenSimProgram);
-        Assert.Equal("/arg/maria", fromArgs.MariaDbBin);
+        Assert.Equal(Path.GetFullPath("/arg/data"), fromArgs.Data);
+        Assert.Equal(Path.GetFullPath("/arg/opensim"), fromArgs.OpenSimProgram);
+        Assert.Equal(Path.GetFullPath("/arg/maria"), fromArgs.MariaDbBin);
 
         var fromEnv = LauncherPaths.Resolve([], env, isWindows: false);
-        Assert.Equal("/env/data", fromEnv.Data);
-        Assert.Equal("/env/opensim", fromEnv.OpenSimProgram);
-        Assert.Equal("/env/maria", fromEnv.MariaDbBin);
+        Assert.Equal(Path.GetFullPath("/env/data"), fromEnv.Data);
+        Assert.Equal(Path.GetFullPath("/env/opensim"), fromEnv.OpenSimProgram);
+        Assert.Equal(Path.GetFullPath("/env/maria"), fromEnv.MariaDbBin);
 
         var defaults = LauncherPaths.Resolve([], new Dictionary<string, string?> { ["DREAMGRID_OPENSIM"] = "/o" }, isWindows: false);
-        Assert.Equal("/var/lib/dreamgrid", defaults.Data);
+        Assert.Equal(Path.GetFullPath("/var/lib/dreamgrid"), defaults.Data);
         Assert.Null(defaults.MariaDbBin);
     }
 
@@ -53,7 +54,7 @@ public class LauncherPathsTests
         };
 
         Assert.Equal(Path.Combine(env["ProgramData"]!, "DreamGrid"), LauncherPaths.Resolve([], env, isWindows: true).Data);
-        Assert.Equal("/var/lib/dreamgrid", LauncherPaths.Resolve([], env, isWindows: false).Data);
+        Assert.Equal(Path.GetFullPath("/var/lib/dreamgrid"), LauncherPaths.Resolve([], env, isWindows: false).Data);
     }
 
     [Fact]
@@ -85,6 +86,47 @@ public class LauncherPathsTests
         finally
         {
             if (Directory.Exists(data)) Directory.Delete(data, true);
+        }
+    }
+
+    [Fact]
+    public void Resolve_makes_relative_paths_absolute()
+    {
+        // A relative --data would otherwise follow the working directory of whichever child uses it.
+        var env = new Dictionary<string, string?> { ["DREAMGRID_DATA"] = "rel-env-data", ["DREAMGRID_OPENSIM"] = "rel-env-opensim" };
+
+        var fromArgs = LauncherPaths.Resolve(["--data", "rel-data", "--opensim", "rel-opensim", "--mariadb-bin", "rel-maria"], env, OperatingSystem.IsWindows());
+        Assert.Equal(Path.GetFullPath("rel-data"), fromArgs.Data);
+        Assert.Equal(Path.GetFullPath("rel-opensim"), fromArgs.OpenSimProgram);
+        Assert.Equal(Path.GetFullPath("rel-maria"), fromArgs.MariaDbBin);
+
+        var fromEnv = LauncherPaths.Resolve([], env, OperatingSystem.IsWindows());
+        Assert.Equal(Path.GetFullPath("rel-env-data"), fromEnv.Data);
+        Assert.Equal(Path.GetFullPath("rel-env-opensim"), fromEnv.OpenSimProgram);
+    }
+
+    [Fact]
+    [SupportedOSPlatform("linux")]
+    public void EnsureCreated_makes_the_data_dir_owner_only_on_linux()
+    {
+        // The generated INIs under <data> carry the database passwords, ConsolePass and the MachineID.
+        Assert.SkipUnless(OperatingSystem.IsLinux(), "Linux only");
+        var data = Path.Combine(Path.GetTempPath(), "dg-mode-" + Guid.NewGuid().ToString("N"));
+        var existing = Path.Combine(Path.GetTempPath(), "dg-mode-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            new LauncherPaths(data, "/o", null).EnsureCreated();
+            Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute, File.GetUnixFileMode(data));
+
+            Directory.CreateDirectory(existing);
+            File.SetUnixFileMode(existing, (UnixFileMode)0b111_101_101); // 0755, as an earlier version left it
+            new LauncherPaths(existing, "/o", null).EnsureCreated();
+            Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute, File.GetUnixFileMode(existing));
+        }
+        finally
+        {
+            foreach (var d in new[] { data, existing })
+                if (Directory.Exists(d)) Directory.Delete(d, true);
         }
     }
 }

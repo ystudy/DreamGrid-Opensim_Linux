@@ -23,9 +23,23 @@ var env = new Dictionary<string, string?>
     ["DREAMGRID_MARIADB_BIN"] = config["DREAMGRID_MARIADB_BIN"],
     ["ProgramData"] = Environment.GetEnvironmentVariable("ProgramData"),
 };
-var paths = LauncherPaths.Resolve(args, env, OperatingSystem.IsWindows());
-var store = new SettingsStore(paths.SettingsFile);
-var settings = store.LoadOrCreate();
+LauncherPaths paths;
+SettingsStore store;
+LauncherSettings settings;
+try
+{
+    paths = LauncherPaths.Resolve(args, env, OperatingSystem.IsWindows());
+    store = new SettingsStore(paths.SettingsFile);
+    settings = store.LoadOrCreate();
+}
+catch (Exception e) when (e is ArgumentException or SettingsCorruptException or IOException or UnauthorizedAccessException)
+{
+    // Nothing can be served without the data directory and settings: one plain line, then a non-zero exit
+    // (2; the taken web port is 1).
+    using (var early = LoggerFactory.Create(b => b.AddConsole()))
+        early.CreateLogger("DreamGrid.Launcher").LogCritical("The launcher cannot start: {Reason}", e.Message);
+    return 2;
+}
 
 builder.WebHost.ConfigureKestrel(o => o.Listen(IPAddress.Any, settings.WebPort));
 // The request log line includes the query string, which carries ?password= (MachineId or an avatar's).

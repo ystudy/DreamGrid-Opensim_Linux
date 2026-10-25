@@ -100,4 +100,23 @@ public sealed class RuntimeStagerTests : IDisposable
         Assert.Equal(Path.Combine(_paths.Logs, "region-Region1.log").Replace('\\', '/'),
             region.Descendants("file").Single().Attribute("value")!.Value);
     }
+
+    [Theory]
+    [InlineData("Robust.dll")]
+    [InlineData("config-include/a.ini")]
+    [InlineData("Robust.HG.ini.proto")]
+    public void A_changed_Robust_dll_include_or_prototype_restages(string rel)
+    {
+        File.WriteAllBytes(Path.Combine(_paths.OpenSimProgram, "Robust.dll"), [7]);
+        File.WriteAllText(Path.Combine(_paths.OpenSimProgram, "Robust.HG.ini.proto"), "[Const]");
+        var stager = new RuntimeStager(_paths);
+        stager.StageIfNeeded();
+        Assert.False(stager.NeedsStaging());
+
+        File.SetLastWriteTimeUtc(Path.Combine(_paths.OpenSimProgram, rel), DateTime.UtcNow.AddHours(1));
+
+        Assert.True(stager.NeedsStaging());
+        Assert.True(stager.StageIfNeeded());
+        Assert.False(stager.NeedsStaging());
+    }
 }

@@ -199,6 +199,20 @@ public sealed partial class GridController(
         lock (_configGate) WriteConfig(ReloadSettings());
     }
 
+    /// <summary>Changes only what <paramref name="change"/> touches, on the latest saved settings (see <see cref="IGridController.UpdateSettings"/>).</summary>
+    public LauncherSettings UpdateSettings(Func<LauncherSettings, LauncherSettings> change, bool writeConfig = true)
+    {
+        lock (_configGate)
+        {
+            var next = change(store.LoadOrCreate());
+            store.Save(next);
+            _host = next.Hostname ?? HostAddress.Detect();
+            _settings = next;
+            if (writeConfig) WriteConfig(next);
+            return next;
+        }
+    }
+
     // ---- provisioning -------------------------------------------------------------------------------
 
     public async Task<RobustAccount> CreateOwnerAsync(string first, string last, string password, string? email, CancellationToken ct)
@@ -208,7 +222,7 @@ public sealed partial class GridController(
         await _ops.WaitAsync(ct);
         try
         {
-            var s = LoadSettings();
+            LoadSettings();
             var console = _robust!.Console!;
             var transcript = new List<string>();
 
@@ -228,7 +242,7 @@ public sealed partial class GridController(
                 throw new InvalidOperationException($"{first} {last} has level {account.UserLevel}, not 200. Console: {string.Join(" | ", transcript)}");
 
             // The region INI now gets the [Estates] keys.
-            SaveAndWriteConfig(s with { Setup = s.Setup with { OwnerCreated = true, Owner = new OwnerInfo(first, last, account.PrincipalId) } });
+            UpdateSettings(l => l with { Setup = l.Setup with { OwnerCreated = true, Owner = new OwnerInfo(first, last, account.PrincipalId) } });
             return account;
         }
         finally { _ops.Release(); }
@@ -251,9 +265,8 @@ public sealed partial class GridController(
             if (_region is not null && _region.Instance != region.Instance)
                 await _region.Process.StopAsync(ct);
 
-            s = s with { Region = region };
+            s = UpdateSettings(l => l with { Region = region });
             lock (_configGate) new RuntimeStager(paths).WriteLogConfigs(region.Instance, LogLevelModule.LevelFor(s));
-            SaveAndWriteConfig(s);
             EnsureComponents(s);
 
             _loginsEnabled = false;
@@ -262,11 +275,7 @@ public sealed partial class GridController(
             await LoadContentAsync(region, content, ct);
             await WaitForLoginsAsync(ct);
 
-            lock (_configGate)
-            {
-                var latest = _settings!;
-                Save(latest with { Setup = latest.Setup with { RegionCreated = true } });
-            }
+            UpdateSettings(l => l with { Setup = l.Setup with { RegionCreated = true } }, writeConfig: false);
         }
         finally { _ops.Release(); }
     }
@@ -341,25 +350,6 @@ public sealed partial class GridController(
         return s;
     }
 
-    private void Save(LauncherSettings s)
-    {
-        lock (_configGate)
-        {
-            store.Save(s);
-            _settings = s;
-        }
-    }
-
-    private void SaveAndWriteConfig(LauncherSettings s)
-    {
-        lock (_configGate)
-        {
-            store.Save(s);
-            _settings = s;
-            WriteConfig(s);
-        }
-    }
-
     private void WriteConfig(LauncherSettings s) =>
         new GridConfigWriter(paths).Write(s, _modules.Cast<IIniContributor>().ToList());
 
@@ -376,11 +366,27 @@ public sealed partial class GridController(
             throw new PortConflictException(conflict);
     }
 
-    /// <summary>Stages the runtime and writes the configs (R1: adopted Robust/region holding its DLLs are stopped and staging retried once).</summary>
+    /// <summary>
+    /// Stages the runtime and writes the configs. A Robust or region that runs from the old runtime copy is stopped
+    /// before an upgrade restages it (on Linux the delete would succeed under it, leaving it on a deleted directory);
+    /// R1 stays as the backstop: when the copy still fails because a child holds its DLLs, those are stopped and
+    /// staging is retried once.
+    /// </summary>
     private async Task StageAndWriteConfigAsync(LauncherSettings s, CancellationToken ct)
     {
         paths.EnsureCreated();
         var stager = new RuntimeStager(paths);
+        bool upgrade;
+        lock (_configGate) upgrade = stager.NeedsStaging();
+        if (upgrade)
+        {
+            if (_region is not null && WillAdopt(_region))
+            {
+                await _region.Process.StopAsync(ct);
+                _loginsEnabled = false;
+            }
+            if (WillAdopt(_robust!)) await _robust!.Process.StopAsync(ct);
+        }
         try
         {
             lock (_configGate) stager.StageIfNeeded();
@@ -409,8 +415,9 @@ public sealed partial class GridController(
 
     private async Task StartRegionAsync(CancellationToken ct)
     {
-        var adopted = WillAdopt(_region!);
-        await StartComponentAsync(_region!, ct);
+        var running = _region!.Process.State == ProcessState.Running;
+        var adopted = running || WillAdopt(_region!);
+        if (!running) await StartComponentAsync(_region!, ct);
         // An adopted region announced its logins before this launcher was listening, so ask it.
         if (adopted)
             _loginsEnabled = await GridConsoleCommands.LoginsEnabledAsync(_region!.Console!, ConsoleSettle, ct) ?? false;
@@ -426,6 +433,12 @@ public sealed partial class GridController(
 
     private async Task StartComponentAsync(Component c, CancellationToken ct)
     {
+        // Already running (a Start* command, or a retry): nothing to start, and its monitor keeps watching.
+        if (c.Process.State == ProcessState.Running)
+        {
+            EnsureMonitor(c, onlyIfMissing: true);
+            return;
+        }
         await c.Process.StartAsync(ct);
         EnsureMonitor(c);
         if (c.Process.State != ProcessState.Running)
@@ -436,11 +449,12 @@ public sealed partial class GridController(
     /// Starts monitoring the component. A previous monitor that has not finished yet (it is about to see the stop)
     /// is chained onto rather than skipped, so a component is never left unmonitored.
     /// </summary>
-    private void EnsureMonitor(Component c)
+    private void EnsureMonitor(Component c, bool onlyIfMissing = false)
     {
         lock (_monitors)
         {
             if (_monitorCts.IsCancellationRequested) return;
+            if (onlyIfMissing && _monitors.TryGetValue(c.Name, out var live) && !live.IsCompleted) return;
             var token = _monitorCts.Token;
             _monitors[c.Name] = _monitors.TryGetValue(c.Name, out var previous) && !previous.IsCompleted
                 ? previous.ContinueWith(_ => c.Process.MonitorAsync(token), CancellationToken.None,
@@ -535,7 +549,9 @@ public sealed partial class GridController(
     {
         var server = new MariaDbServer(mariaBin, paths, s);
         var spec = new ProcessSpec("MariaDB", server.StartInfo, Path.Combine(paths.Pids, "mariadb.pid"),
-            server.PingAsync, server.ShutdownAsync, TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(30), mariaBin.Server);
+            server.PingAsync, server.ShutdownAsync, TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(30),
+            // Our datadir, not the server binary: a system mariadbd (Debian's) has the same image.
+            "--datadir=" + paths.MariaDbData);
         return new Component("database", new ManagedProcess(spec, new RestartPolicy(), time), spec, [s.MariaDbPort], null) { Key = KeyOf(s, "database") };
     }
 

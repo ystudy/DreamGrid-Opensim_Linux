@@ -74,6 +74,12 @@ internal sealed class FakeGridController : IGridController
 
     public void RegenerateConfig() => Record("RegenerateConfig");
 
+    public LauncherSettings UpdateSettings(Func<LauncherSettings, LauncherSettings> change, bool writeConfig = true)
+    {
+        Record("UpdateSettings");
+        return change(CurrentSettings());
+    }
+
     public void OnRegionAlert(RegionAlert alert)
     {
         Record("Alert " + alert.Alert + " " + alert.Login);

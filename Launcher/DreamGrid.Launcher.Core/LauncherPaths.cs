@@ -47,17 +47,37 @@ public sealed record LauncherPaths(string Data, string OpenSimProgram, string? M
         var opensim = Pick("--opensim", "DREAMGRID_OPENSIM")
             ?? throw new ArgumentException("The OpenSim program directory is required: pass --opensim <dir> or set DREAMGRID_OPENSIM.");
 
-        return new LauncherPaths(data, opensim, Pick("--mariadb-bin", "DREAMGRID_MARIADB_BIN"));
+        // Children run with other working directories, so every path is made absolute here.
+        var mariaDbBin = Pick("--mariadb-bin", "DREAMGRID_MARIADB_BIN");
+        return new LauncherPaths(Path.GetFullPath(data), Path.GetFullPath(opensim),
+            mariaDbBin is null ? null : Path.GetFullPath(mariaDbBin));
     }
 
-    /// <summary>Creates every directory in the layout.</summary>
+    /// <summary>Creates every directory in the layout; on Unix <see cref="Data"/> is owner-only (it holds secrets).</summary>
     public void EnsureCreated()
     {
+        CreateOwnerOnly(Data);
         foreach (var dir in new[]
         {
             Data, MariaDbData, MariaDbTmp, RuntimeOpenSim, RegionsRoot, AssetCache, FsAssetsData, FsAssetsSpool,
             ScriptEngines, Logs, Pids,
         })
             Directory.CreateDirectory(dir);
+    }
+
+    /// <summary>
+    /// Creates <paramref name="dir"/> mode 0700 on Unix, and narrows an existing one to 0700: the generated INIs and
+    /// settings.json carry the database passwords, the console password and the MachineID.
+    /// </summary>
+    public static void CreateOwnerOnly(string dir)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Directory.CreateDirectory(dir); // plan 3's installer sets the ACL on %ProgramData%\DreamGrid
+            return;
+        }
+        const UnixFileMode OwnerOnly = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
+        Directory.CreateDirectory(dir, OwnerOnly);
+        if (File.GetUnixFileMode(dir) != OwnerOnly) File.SetUnixFileMode(dir, OwnerOnly);
     }
 }

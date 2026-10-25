@@ -31,7 +31,9 @@ public static class PortCheck
         foreach (var (port, name, address, udp) in checks)
         {
             if (skip.Contains(port)) continue;
-            if (!CanBind(address, port, udp))
+            // On Windows a wildcard bind succeeds next to another program's 127.0.0.1 listener, which would then
+            // take the loopback traffic: probe loopback as well.
+            if (!CanBind(address, port, udp) || (address.Equals(IPAddress.Any) && !CanBind(IPAddress.Loopback, port, udp)))
                 return $"Port {port} ({name}) is already in use by another program.";
         }
         return null;

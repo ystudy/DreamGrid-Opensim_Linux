@@ -146,6 +146,10 @@ public sealed class IniDocument
 
     public void Set(string section, string key, string value)
     {
+        // A line break would add lines, even whole sections, to the generated INI.
+        foreach (var (name, text) in new[] { (nameof(section), section), (nameof(key), key), (nameof(value), value) })
+            if (text.AsSpan().IndexOfAny('\r', '\n') >= 0)
+                throw new ArgumentException($"An INI {name} cannot contain a line break.", name);
         int idx = LastActiveEntry(section, key);
         if (idx >= 0)
         {
