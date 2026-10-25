@@ -64,6 +64,7 @@ public sealed class GridControllerTests : IDisposable
     [Theory]
     [InlineData("pass word")]
     [InlineData("pass\"word")]
+    [InlineData("--pass")]
     [InlineData("")]
     public async Task CreateOwner_rejects_passwords_the_console_would_split(string password)
     {

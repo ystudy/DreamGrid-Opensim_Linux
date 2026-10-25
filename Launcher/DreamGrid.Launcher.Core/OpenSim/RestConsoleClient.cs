@@ -5,6 +5,9 @@ using System.Xml.Linq;
 namespace DreamGrid.Launcher.Core.OpenSim;
 
 /// <summary>The REST console rejected the USER/PASS (HTTP 401/403 or no SessionID).</summary>
+/// <summary>A console output line; <see cref="IsPrompt"/> marks an interactive question (Prompt="true", Command="false").</summary>
+public sealed record ConsoleOutput(string Text, bool IsPrompt);
+
 public sealed class ConsoleAuthException(string message) : Exception(message);
 
 /// <summary>
@@ -71,7 +74,11 @@ public sealed class RestConsoleClient(HttpClient http, Uri baseUri, string user,
     /// <paramref name="settle"/> (total wait capped at 20 x settle). The echo of the typed command and the
     /// command prompt are dropped; interactive prompt lines are kept.
     /// </summary>
-    public async Task<IReadOnlyList<string>> RunAsync(string command, TimeSpan settle, CancellationToken ct)
+    public async Task<IReadOnlyList<string>> RunAsync(string command, TimeSpan settle, CancellationToken ct) =>
+        (await RunLinesAsync(command, settle, ct)).Select(l => l.Text).ToList();
+
+    /// <summary>As <see cref="RunAsync"/>, keeping whether each line is an interactive prompt.</summary>
+    public async Task<IReadOnlyList<ConsoleOutput>> RunLinesAsync(string command, TimeSpan settle, CancellationToken ct)
     {
         await _gate.WaitAsync(ct);
         try
@@ -79,7 +86,7 @@ public sealed class RestConsoleClient(HttpClient http, Uri baseUri, string user,
             await EnsureSessionAsync(ct);
             await PostCommandAsync(command, ct);
 
-            var result = new List<string>();
+            var result = new List<ConsoleOutput>();
             var clock = Stopwatch.StartNew();
             var lastNew = TimeSpan.Zero;
             var cap = settle * MaxSettleMultiple;
@@ -92,7 +99,7 @@ public sealed class RestConsoleClient(HttpClient http, Uri baseUri, string user,
                 if (lines.Count > 0)
                 {
                     lastNew = clock.Elapsed;
-                    result.AddRange(lines.Where(l => !l.IsInput && !l.IsCommand).Select(l => l.Text));
+                    result.AddRange(lines.Where(l => !l.IsInput && !l.IsCommand).Select(l => new ConsoleOutput(l.Text, l.IsPrompt)));
                 }
                 else
                 {
@@ -201,7 +208,7 @@ public sealed class RestConsoleClient(HttpClient http, Uri baseUri, string user,
         var doc = ParseXml(await resp.Content.ReadAsStringAsync());
         if (doc is null) return new List<ConsoleLine>();
         return doc.Descendants("Line")
-            .Select(e => new ConsoleLine(e.Value, IsTrue(e, "Command"), IsTrue(e, "Input")))
+            .Select(e => new ConsoleLine(e.Value, IsTrue(e, "Command"), IsTrue(e, "Input"), IsTrue(e, "Prompt")))
             .ToList();
     }
 
@@ -232,5 +239,5 @@ public sealed class RestConsoleClient(HttpClient http, Uri baseUri, string user,
 
     private sealed class SessionExpiredException() : HttpRequestException("REST console session expired.");
 
-    private sealed record ConsoleLine(string Text, bool IsCommand, bool IsInput);
+    private sealed record ConsoleLine(string Text, bool IsCommand, bool IsInput, bool IsPrompt);
 }

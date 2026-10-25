@@ -27,23 +27,28 @@ public sealed partial class GridController(
     private static readonly TimeSpan ConsoleSettle = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan LoginWait = TimeSpan.FromSeconds(300);
     private static readonly TimeSpan LoginPoll = TimeSpan.FromMilliseconds(500);
-    private const int MaxPromptAnswers = 5;
 
     private readonly IReadOnlyList<IFeatureModule> _modules = modules.ToList();
     private readonly SemaphoreSlim _ops = new(1, 1);
     private readonly CancellationTokenSource _monitorCts = new();
     private readonly Dictionary<string, Task> _monitors = new();
     private readonly object _alertGate = new();
+    // Short lock around settings reads/writes and INI generation only; long operations hold _ops instead.
+    private readonly object _configGate = new();
 
-    private LauncherSettings? _settings;
-    private string _host = "127.0.0.1";
-    private Component? _db, _robust, _region;
+    private volatile LauncherSettings? _settings;
+    private volatile string _host = "127.0.0.1";
+    private volatile Component? _db, _robust, _region;
     private volatile bool _loginsEnabled;
     private int? _regionAlertPid;
     private TaskCompletionSource<string>? _oarLoaded;
 
-    /// <summary>One supervised child with what the controller needs to talk to it.</summary>
-    private sealed record Component(string Name, ManagedProcess Process, ProcessSpec Spec, int[] Ports, RestConsoleClient? Console, string? Instance = null);
+
+    /// <summary>One supervised child with what the controller needs to talk to it; <see cref="Key"/> is the settings it was built from.</summary>
+    private sealed record Component(string Name, ManagedProcess Process, ProcessSpec Spec, int[] Ports, RestConsoleClient? Console, string? Instance = null)
+    {
+        public string Key { get; init; } = "";
+    }
 
     public bool LoginsEnabled => _loginsEnabled;
 
@@ -58,10 +63,10 @@ public sealed partial class GridController(
         try
         {
             var s = LoadSettings();
-            await StageAsync(s, ct);
-            WriteConfig(s);
+            await StageAndWriteConfigAsync(s, ct);
 
-            var skip = new HashSet<int>();
+            // The host owns and binds the web port before StartAsync (RegionReady posts its alerts there).
+            var skip = new HashSet<int> { s.WebPort };
             foreach (var c in new[] { _db, _robust, _region })
                 if (c is not null && WillAdopt(c)) skip.UnionWith(c.Ports);
             if (PortCheck.FindConflict(s, skip) is { } conflict)
@@ -107,18 +112,21 @@ public sealed partial class GridController(
                 case "database":
                     // Robust and the region hold database connections, so they go down and come back with it.
                     await StopAllCoreAsync(ct);
+                    EnsureComponents(s); // stopped components pick up changed ports
                     await StartDatabaseAsync(s, ct);
                     await StartComponentAsync(_robust!, ct);
                     if (s.Setup.RegionCreated && _region is not null) await StartRegionAsync(ct);
                     break;
                 case "robust":
                     await _robust!.Process.StopAsync(ct);
-                    await StartComponentAsync(_robust, ct);
+                    EnsureComponents(s);
+                    await StartComponentAsync(_robust!, ct);
                     break;
                 case "region":
                     if (_region is null) throw new InvalidOperationException("No region has been created yet.");
                     await _region.Process.StopAsync(ct);
                     _loginsEnabled = false;
+                    EnsureComponents(s);
                     await StartRegionAsync(ct);
                     break;
                 default:
@@ -128,24 +136,17 @@ public sealed partial class GridController(
         finally { _ops.Release(); }
     }
 
+    /// <summary>Takes only the short config lock, never waiting behind a start, stop or provisioning.</summary>
     public void RegenerateConfig()
     {
-        _ops.Wait();
-        try { WriteConfig(LoadSettings()); }
-        finally { _ops.Release(); }
+        lock (_configGate) WriteConfig(ReloadSettings());
     }
 
     // ---- provisioning -------------------------------------------------------------------------------
 
     public async Task<RobustAccount> CreateOwnerAsync(string first, string last, string password, string? email, CancellationToken ct)
     {
-        ValidateAvatarName(first, nameof(first));
-        ValidateAvatarName(last, nameof(last));
-        // The console splits commands on whitespace and treats double quotes as grouping.
-        if (string.IsNullOrEmpty(password) || password.Any(c => char.IsWhiteSpace(c) || c == '"'))
-            throw new ArgumentException("The password must not be empty or contain spaces or double quotes.", nameof(password));
-        if (email is not null && email.Any(c => char.IsWhiteSpace(c) || c == '"'))
-            throw new ArgumentException("The e-mail address must not contain spaces or double quotes.", nameof(email));
+        GridConsoleCommands.ValidateOwner(first, last, password, email);
 
         await _ops.WaitAsync(ct);
         try
@@ -155,23 +156,9 @@ public sealed partial class GridController(
             var transcript = new List<string>();
 
             if (await robust.GetAccountAsync(first, last, ct) is null)
-            {
-                // All eight arguments (the last, an empty model, means default appearance), so Robust should not prompt;
-                // any prompt that still appears is answered with an empty line (its default).
-                var output = await console.RunAsync(
-                    $"create user {first} {last} {password} \"{email ?? ""}\" {Guid.NewGuid()} \"\"", ConsoleSettle, ct);
-                transcript.AddRange(output);
-                for (var i = 0; i < MaxPromptAnswers && output.Count > 0 && IsPrompt(output[^1]); i++)
-                {
-                    output = await console.RunAsync("", ConsoleSettle, ct);
-                    transcript.AddRange(output);
-                }
-            }
-            else
-            {
-                // An earlier attempt created the account: make the password the one the owner just chose.
+                transcript.AddRange(await GridConsoleCommands.CreateUserAsync(console, first, last, password, email, Guid.NewGuid(), ConsoleSettle, ct));
+            else // an earlier attempt created the account: make the password the one the owner just chose
                 transcript.AddRange(await console.RunAsync($"reset user password {first} {last} {password}", ConsoleSettle, ct));
-            }
             transcript.AddRange(await console.RunAsync($"set user level {first} {last} 200", ConsoleSettle, ct));
 
             var account = await robust.GetAccountAsync(first, last, ct)
@@ -179,9 +166,8 @@ public sealed partial class GridController(
             if (account.UserLevel != 200)
                 throw new InvalidOperationException($"{first} {last} has level {account.UserLevel}, not 200. Console: {string.Join(" | ", transcript)}");
 
-            s = s with { Setup = s.Setup with { OwnerCreated = true, Owner = new OwnerInfo(first, last, account.PrincipalId) } };
-            Save(s);
-            WriteConfig(s); // the region INI now gets the [Estates] keys
+            // The region INI now gets the [Estates] keys.
+            SaveAndWriteConfig(s with { Setup = s.Setup with { OwnerCreated = true, Owner = new OwnerInfo(first, last, account.PrincipalId) } });
             return account;
         }
         finally { _ops.Release(); }
@@ -205,9 +191,8 @@ public sealed partial class GridController(
                 await _region.Process.StopAsync(ct);
 
             s = s with { Region = region };
-            Save(s);
-            new RuntimeStager(paths).WriteLogConfigs(region.Instance, LogLevelModule.LevelFor(s));
-            WriteConfig(s);
+            lock (_configGate) new RuntimeStager(paths).WriteLogConfigs(region.Instance, LogLevelModule.LevelFor(s));
+            SaveAndWriteConfig(s);
             EnsureComponents(s);
 
             _loginsEnabled = false;
@@ -216,16 +201,17 @@ public sealed partial class GridController(
             await LoadContentAsync(region, content, ct);
             await WaitForLoginsAsync(ct);
 
-            Save(s with { Setup = s.Setup with { RegionCreated = true } });
+            Save(_settings! with { Setup = _settings!.Setup with { RegionCreated = true } });
         }
         finally { _ops.Release(); }
     }
 
     // ---- status and alerts --------------------------------------------------------------------------
 
+    /// <summary>Reads only cached state (components are built under the operation lock), so it never waits.</summary>
     public GridStatus GetStatus()
     {
-        var s = _settings ?? LoadSettings();
+        var s = _settings ?? ReloadSettings();
         return new GridStatus(
             Describe("database", _db),
             Describe("robust", _robust),
@@ -262,51 +248,68 @@ public sealed partial class GridController(
     [GeneratedRegex(@"^[\p{L}\p{Nd} _'\-]{2,32}$")]
     private static partial Regex RegionNamePattern();
 
-    private static void ValidateAvatarName(string name, string param)
-    {
-        // Robust refuses ' ', '@', '.' and ':' in names; quotes would confuse the console parser.
-        if (string.IsNullOrEmpty(name) || name.Any(c => char.IsWhiteSpace(c) || c is '@' or '.' or ':' or '"'))
-            throw new ArgumentException("An avatar name part must be non-empty and contain no spaces, '@', '.', ':' or '\"'.", param);
-    }
-
-    private static bool IsPrompt(string line) => line.TrimEnd().EndsWith(':');
-
     // ---- internals ----------------------------------------------------------------------------------
 
+    /// <summary>Under the operation lock: reloads the settings and (re)builds the components.</summary>
     private LauncherSettings LoadSettings()
     {
-        var s = store.LoadOrCreate();
-        _settings = s;
-        _host = s.Hostname ?? HostAddress.Detect();
+        LauncherSettings s;
+        lock (_configGate) s = ReloadSettings();
         EnsureComponents(s);
+        return s;
+    }
+
+    /// <summary>Reads the settings into the cache; never touches components.</summary>
+    private LauncherSettings ReloadSettings()
+    {
+        var s = store.LoadOrCreate();
+        _host = s.Hostname ?? HostAddress.Detect();
+        _settings = s;
         return s;
     }
 
     private void Save(LauncherSettings s)
     {
-        store.Save(s);
-        _settings = s;
+        lock (_configGate)
+        {
+            store.Save(s);
+            _settings = s;
+        }
+    }
+
+    private void SaveAndWriteConfig(LauncherSettings s)
+    {
+        lock (_configGate)
+        {
+            store.Save(s);
+            _settings = s;
+            WriteConfig(s);
+        }
     }
 
     private void WriteConfig(LauncherSettings s) =>
         new GridConfigWriter(paths).Write(s, _modules.Cast<IIniContributor>().ToList());
 
-    /// <summary>Stages the runtime (R1: adopted Robust/region holding its DLLs are stopped and staging retried once).</summary>
-    private async Task StageAsync(LauncherSettings s, CancellationToken ct)
+    /// <summary>Stages the runtime and writes the configs (R1: adopted Robust/region holding its DLLs are stopped and staging retried once).</summary>
+    private async Task StageAndWriteConfigAsync(LauncherSettings s, CancellationToken ct)
     {
         paths.EnsureCreated();
         var stager = new RuntimeStager(paths);
         try
         {
-            stager.StageIfNeeded();
+            lock (_configGate) stager.StageIfNeeded();
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             if (_region is not null) await _region.Process.StopAsync(ct);
             await _robust!.Process.StopAsync(ct);
-            stager.StageIfNeeded();
+            lock (_configGate) stager.StageIfNeeded();
         }
-        stager.WriteLogConfigs(s.Region?.Instance, LogLevelModule.LevelFor(s));
+        lock (_configGate)
+        {
+            stager.WriteLogConfigs(s.Region?.Instance, LogLevelModule.LevelFor(s));
+            WriteConfig(s);
+        }
     }
 
     private async Task StartDatabaseAsync(LauncherSettings s, CancellationToken ct)
@@ -321,8 +324,9 @@ public sealed partial class GridController(
     {
         var adopted = WillAdopt(_region!);
         await StartComponentAsync(_region!, ct);
-        // An adopted region announced its logins before this launcher was listening.
-        if (adopted) _loginsEnabled = true;
+        // An adopted region announced its logins before this launcher was listening, so ask it.
+        if (adopted)
+            _loginsEnabled = await GridConsoleCommands.LoginsEnabledAsync(_region!.Console!, ConsoleSettle, ct) ?? false;
     }
 
     private async Task StopAllCoreAsync(CancellationToken ct)
@@ -341,14 +345,20 @@ public sealed partial class GridController(
             throw new InvalidOperationException($"{c.Name} did not start: {c.Process.LastError ?? c.Process.State.ToString()}");
     }
 
+    /// <summary>
+    /// Starts monitoring the component. A previous monitor that has not finished yet (it is about to see the stop)
+    /// is chained onto rather than skipped, so a component is never left unmonitored.
+    /// </summary>
     private void EnsureMonitor(Component c)
     {
         lock (_monitors)
         {
             if (_monitorCts.IsCancellationRequested) return;
-            if (_monitors.TryGetValue(c.Name, out var running) && !running.IsCompleted) return;
             var token = _monitorCts.Token;
-            _monitors[c.Name] = Task.Run(() => c.Process.MonitorAsync(token), CancellationToken.None);
+            _monitors[c.Name] = _monitors.TryGetValue(c.Name, out var previous) && !previous.IsCompleted
+                ? previous.ContinueWith(_ => c.Process.MonitorAsync(token), CancellationToken.None,
+                    TaskContinuationOptions.None, TaskScheduler.Default).Unwrap()
+                : Task.Run(() => c.Process.MonitorAsync(token), CancellationToken.None);
         }
     }
 
@@ -377,6 +387,7 @@ public sealed partial class GridController(
         var oar = content == "starter" ? StarterContent.StarterOar(programRoot) : null;
         if (oar is not null)
         {
+            // RegionReady reports the archiver's result as an "oarloaded" or "oarnotloaded" alert.
             var loaded = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
             _oarLoaded = loaded;
             await console.RunAsync($"load oar --force-terrain --force-parcels \"{Fwd(oar)}\"", ConsoleSettle, ct);
@@ -387,27 +398,46 @@ public sealed partial class GridController(
 
         var r32 = Path.Combine(paths.RegionDir(region.Instance), "island.r32");
         IslandTerrain.WriteR32(r32);
-        var output = await console.RunAsync($"terrain load \"{Fwd(r32)}\"", ConsoleSettle, ct);
-        if (output.Any(l => l.Contains("error", StringComparison.OrdinalIgnoreCase) || l.Contains("unable", StringComparison.OrdinalIgnoreCase)))
-            throw new InvalidOperationException("The region could not load the island terrain: " + string.Join(" | ", output));
+        await console.RunAsync($"terrain load \"{Fwd(r32)}\"", ConsoleSettle, ct);
+        if (!await GridConsoleCommands.IslandTerrainLoadedAsync(console, ConsoleSettle, ct))
+            throw new InvalidOperationException($"The region did not load the island terrain {r32}; see the region log.");
     }
 
     private static string Fwd(string path) => path.Replace('\\', '/');
 
+    /// <summary>
+    /// Builds missing components and rebuilds one whose settings (ports, console credentials, instance) changed,
+    /// but only while it is neither running nor adoptable; a running child keeps its spec until it is stopped.
+    /// </summary>
     private void EnsureComponents(LauncherSettings s)
     {
-        _db ??= MakeDatabase(s);
-        _robust ??= MakeRobust(s);
-        if (s.Region is { } r && _region?.Instance != r.Instance)
-            _region = MakeRegion(s, r);
+        _db = Refresh(_db, KeyOf(s, "database"), () => MakeDatabase(s));
+        _robust = Refresh(_robust, KeyOf(s, "robust"), () => MakeRobust(s));
+        if (s.Region is { } r)
+            _region = _region?.Instance != r.Instance ? MakeRegion(s, r) : Refresh(_region, KeyOf(s, "region"), () => MakeRegion(s, r));
     }
+
+    private static Component Refresh(Component? current, string key, Func<Component> make)
+    {
+        if (current is null) return make();
+        if (current.Key == key || current.Process.State is not (ProcessState.Stopped or ProcessState.Failed) || WillAdopt(current))
+            return current;
+        return make();
+    }
+
+    private static string KeyOf(LauncherSettings s, string component) => component switch
+    {
+        "database" => $"{s.MariaDbPort}|{s.Db.RootPassword}",
+        "robust" => $"{s.RobustPublicPort}|{s.RobustPrivatePort}|{s.RobustConsolePort}|{s.Console.User}|{s.Console.Password}",
+        _ => $"{s.Region?.Instance}|{s.RegionPort}|{s.RegionConsolePort}|{s.Console.User}|{s.Console.Password}",
+    };
 
     private Component MakeDatabase(LauncherSettings s)
     {
         var server = new MariaDbServer(mariaBin, paths, s);
         var spec = new ProcessSpec("MariaDB", server.StartInfo, Path.Combine(paths.Pids, "mariadb.pid"),
             server.PingAsync, server.ShutdownAsync, TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(30), mariaBin.Server);
-        return new Component("database", new ManagedProcess(spec, new RestartPolicy(), time), spec, [s.MariaDbPort], null);
+        return new Component("database", new ManagedProcess(spec, new RestartPolicy(), time), spec, [s.MariaDbPort], null) { Key = KeyOf(s, "database") };
     }
 
     private Component MakeRobust(LauncherSettings s)
@@ -419,7 +449,7 @@ public sealed partial class GridController(
             Path.Combine(paths.Pids, "robust.pid"), robust.IsReadyAsync, ct => console.SendAsync("quit", ct),
             TimeSpan.FromSeconds(120), TimeSpan.FromSeconds(30), dll);
         return new Component("robust", new ManagedProcess(spec, new RestartPolicy(), time), spec,
-            [s.RobustPublicPort, s.RobustPrivatePort, s.RobustConsolePort], console);
+            [s.RobustPublicPort, s.RobustPrivatePort, s.RobustConsolePort], console) { Key = KeyOf(s, "robust") };
     }
 
     private Component MakeRegion(LauncherSettings s, RegionSettings r)
@@ -433,7 +463,7 @@ public sealed partial class GridController(
             Path.Combine(paths.Pids, r.Instance + ".pid"), console.IsUpAsync, ct => console.SendAsync("quit", ct),
             TimeSpan.FromSeconds(300), TimeSpan.FromSeconds(60), dll);
         return new Component("region", new ManagedProcess(spec, new RestartPolicy(), time), spec,
-            [s.RegionPort, s.RegionConsolePort], console, r.Instance);
+            [s.RegionPort, s.RegionConsolePort], console, r.Instance) { Key = KeyOf(s, "region") };
     }
 
     private RestConsoleClient MakeConsole(LauncherSettings s, int port) =>

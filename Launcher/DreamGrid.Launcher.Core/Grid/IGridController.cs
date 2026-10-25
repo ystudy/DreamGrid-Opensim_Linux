@@ -11,7 +11,10 @@ public interface IGridController
     /// <summary>Stops region, Robust, then MariaDB.</summary>
     Task StopAllAsync(CancellationToken ct);
 
-    /// <summary>Stops monitoring; every child keeps running (spec 4.12).</summary>
+    /// <summary>
+    /// Stops monitoring; every child keeps running (spec 4.12). Detaching is final: monitoring is not resumed
+    /// afterwards, so a later start or restart on this instance leaves its children unsupervised.
+    /// </summary>
     Task DetachAsync();
 
     Task<RobustAccount> CreateOwnerAsync(string first, string last, string password, string? email, CancellationToken ct);
@@ -24,7 +27,10 @@ public interface IGridController
     /// <summary><paramref name="name"/> is "database", "robust" or "region".</summary>
     Task RestartComponentAsync(string name, CancellationToken ct);
 
-    /// <summary>Reloads the settings and rewrites the INIs without restarting anything.</summary>
+    /// <summary>
+    /// Reloads the settings and rewrites the INIs without restarting anything. Running children keep the ports
+    /// they started with; a component picks up changed ports at its next start or restart.
+    /// </summary>
     void RegenerateConfig();
 
     void OnRegionAlert(RegionAlert alert);

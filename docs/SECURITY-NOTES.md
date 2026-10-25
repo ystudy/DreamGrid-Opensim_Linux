@@ -6,6 +6,8 @@ The Robust and region REST consoles listen on ports 8010 (Robust) and 8011 (regi
 
 Version 1 is LAN-only. The firewall and any router port forwarding must not expose ports 8010 and 8011 to the internet. Anyone who can reach those ports and knows the password can run console commands on the grid.
 
+When the launcher creates the owner avatar it sends `create user` (or `reset user password`) to Robust's REST console, and Robust echoes that command, password included, into its console scrollback (readable only with the console credentials) and into its stdout, which the launcher discards.
+
 ## Settings file
 
 `<data>/settings.json` holds the database passwords and the console passwords, so it must be readable only by the account that runs the grid.

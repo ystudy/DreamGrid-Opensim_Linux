@@ -67,6 +67,30 @@ public class RestConsoleClientTests
         Assert.Contains(h.Requests, r => r.Uri.AbsolutePath == "/ReadResponses/" + Sid + "/");
     }
 
+    [Fact]
+    public async Task RunLinesAsync_marks_only_interactive_prompts_case_insensitively()
+    {
+        var reads = 0;
+        var (c, _) = Make(r =>
+        {
+            if (r.Uri.AbsolutePath == "/StartSession/") return (HttpStatusCode.OK, StartOk);
+            if (r.Uri.AbsolutePath == "/SessionCommand/") return (HttpStatusCode.OK, CmdOk);
+            return (HttpStatusCode.OK, Interlocked.Increment(ref reads) switch
+            {
+                1 => Empty,
+                2 => Lines(
+                    ("Grid name:", "false", "false", "false"),   // ordinary output ending in ':'
+                    ("Model name []: ", "True", "False", "false"), // interactive prompt
+                    ("Robust# ", "true", "true", "false")),      // command prompt: dropped
+                _ => Empty,
+            });
+        });
+
+        var lines = await c.RunLinesAsync("x", TimeSpan.FromMilliseconds(100), CancellationToken.None);
+
+        Assert.Equal(new[] { new ConsoleOutput("Grid name:", false), new ConsoleOutput("Model name []: ", true) }, lines);
+    }
+
     private static string Lines(params (string Text, string Prompt, string Command, string Input)[] lines) =>
         "<ConsoleSession>" + string.Concat(lines.Select((l, i) =>
             $"<Line Number=\"{i + 1}\" Level=\"normal\" Prompt=\"{l.Prompt}\" Command=\"{l.Command}\" Input=\"{l.Input}\">{System.Security.SecurityElement.Escape(l.Text)}</Line>")) +
