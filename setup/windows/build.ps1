@@ -73,20 +73,19 @@ if ($SkipCompile) { return }
 
 # --- Compile -----------------------------------------------------------------------------------------------------
 if (-not $Iscc) {
-    # Chocolatey's ISCC.exe on PATH is a shim whose VersionInfo reads 0.0.0, so the Program Files installs come first
-    # and any candidate with FileMajorPart 0 is skipped.
-    $found = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+    # Order: the two Program Files installs, then PATH. Chocolatey's ISCC.exe on PATH is a shim (under \Chocolatey\bin\)
+    # and is skipped. The version is not sniffed from the file's version resource, which is unreliable (it can read 0);
+    # DreamGrid.iss enforces the minimum Inno Setup version itself.
+    $onPath = @(Get-Command ISCC.exe -All -ErrorAction SilentlyContinue | ForEach-Object { $_.Source } |
+        Where-Object { $_ -notlike '*\Chocolatey\bin\*' })
     $candidates = @(
         (Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'),
-        (Join-Path $env:ProgramFiles 'Inno Setup 6\ISCC.exe')) + @(if ($found) { $found.Source })
-    $Iscc = @($candidates | Where-Object { $_ -and (Test-Path -LiteralPath $_) -and (Get-Item -LiteralPath $_).VersionInfo.FileMajorPart -ne 0 })[0]
+        (Join-Path $env:ProgramFiles 'Inno Setup 6\ISCC.exe')) + $onPath
+    $Iscc = @($candidates | Where-Object { $_ -and (Test-Path -LiteralPath $_) })[0]
     if (-not $Iscc) { throw 'Inno Setup 6 (ISCC.exe) was not found. Install it (choco install innosetup) or pass -Iscc <path>.' }
 }
-# DreamGrid.iss uses x64compatible, which needs Inno Setup 6.3 or later.
 $isccInfo = (Get-Item -LiteralPath $Iscc).VersionInfo
-$isccVersion = New-Object Version $isccInfo.FileMajorPart, $isccInfo.FileMinorPart, $isccInfo.FileBuildPart
-if ($isccVersion -lt [Version]'6.3.0') { throw "$Iscc is Inno Setup $isccVersion; DreamGrid.iss needs 6.3 or later." }
-Write-Host "Inno Setup $isccVersion ($Iscc)"
+Write-Host "ISCC: $Iscc (FileVersion '$($isccInfo.FileVersion)', ProductVersion '$($isccInfo.ProductVersion)')"
 & $Iscc "/DAppVersion=$Version" "/DRuntimeVersion=$runtimeVersion" "/DMariaDbVersion=$mariaDbVersion" "/DSource=$staging" `
     "/O$Out" (Join-Path $PSScriptRoot 'DreamGrid.iss')
 if ($LASTEXITCODE -ne 0) { throw "ISCC.exe failed with exit code $LASTEXITCODE" }

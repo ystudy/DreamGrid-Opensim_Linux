@@ -169,7 +169,7 @@ jobs:
           }
 
       # The runner image may already carry Inno Setup (choco refuses to install an older pin over a newer one);
-      # build.ps1 prints the version it finds and refuses an ISCC older than 6.3. Otherwise a pinned version.
+      # build.ps1 prints the ISCC it finds; DreamGrid.iss refuses a compiler older than 6.3. Otherwise a pinned version.
       - name: Install Inno Setup
         run: |
           $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'

@@ -14,6 +14,9 @@
 ; Exit code 10: the files are installed but the service could not be set up or started, or did not stay running, or
 ; the web port could not be changed.
 
+#if VER < EncodeVer(6,3,0)
+  #error DreamGrid.iss needs Inno Setup 6.3 or later (x64compatible).
+#endif
 #ifndef AppVersion
   #error AppVersion is not defined: build with build.ps1 (ISCC /DAppVersion=...)
 #endif
