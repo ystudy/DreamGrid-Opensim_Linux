@@ -46,10 +46,13 @@ public sealed class GridControllerWiringTests : IDisposable
         _grid = NewGrid(TimeProvider.System);
     }
 
+    /// <summary>The folder of the rig's MariaDB, which does not exist.</summary>
+    private const string MissingMariaDb = "no-such-dir";
+
     private GridController NewGrid(TimeProvider time)
     {
         // A MariaDB that cannot start: anything past the port check fails with a non-port error.
-        var missing = Path.Combine(_root, "no-such-dir", "mariadbd");
+        var missing = Path.Combine(_root, MissingMariaDb, "mariadbd");
         return new GridController(_paths, _store, new MariaDbBinaries(missing, missing, null),
             [new LogLevelModule()], _robust, _http, time);
     }
@@ -461,6 +464,41 @@ public sealed class GridControllerWiringTests : IDisposable
         finally { await EndLeftoverRegionAsync(fake); }
     }
 
+    [Theory]
+    [InlineData("refused")]
+    [InlineData("timeout")]
+    public async Task A_failed_adoption_of_an_unfinished_region_does_not_keep_the_database_down(string failure)
+    {
+        // The region's health probe gets a session; the login query after it fails: the console refuses the login
+        // (ConsoleAuthException), or the console HttpClient times out (TaskCanceledException).
+        AddRegion(created: false);
+        var regionPort = _store.LoadOrCreate().RegionConsolePort;
+        var sessions = 0;
+        _http.Override = r =>
+        {
+            if (r.Uri.Port != regionPort) return null;
+            if (failure == "refused" && r.Uri.AbsolutePath == "/StartSession/" && Interlocked.Increment(ref sessions) > 1)
+                return (HttpStatusCode.Unauthorized, "");
+            if (failure == "timeout" && r.Uri.AbsolutePath == "/SessionCommand/")
+                throw new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout of 100 seconds elapsing.",
+                    new TimeoutException());
+            return null;
+        };
+        var fake = StartLeftoverRegion();
+        try
+        {
+            var e = await Record.ExceptionAsync(() => _grid.StartAsync(TestContext.Current.CancellationToken));
+
+            // It went on to the database, which is what fails in this rig.
+            Assert.NotNull(e);
+            Assert.IsNotType<ConsoleAuthException>(e);
+            Assert.IsNotAssignableFrom<OperationCanceledException>(e);
+            Assert.Contains(MissingMariaDb, e.Message);
+            Assert.Equal(ProcessState.Running, _grid.GetStatus().Region?.State); // adopted all the same
+        }
+        finally { await EndLeftoverRegionAsync(fake); }
+    }
+
     [Fact]
     public async Task Region_retry_after_adoption_waits_for_logins_before_content()
     {
@@ -631,6 +669,8 @@ public sealed class GridControllerWiringTests : IDisposable
         public Action<int>? OnCommand { get; set; }
         /// <summary>The output lines for (port, command).</summary>
         public Func<int, string, string[]>? Reply { get; set; }
+        /// <summary>Answers a request instead of the normal server when it returns a reply (it may also throw).</summary>
+        public Func<RecordedRequest, (HttpStatusCode, string)?>? Override { get; set; }
 
         public void Mark(string text) { lock (Log) Log.Add(text); }
 
@@ -643,6 +683,7 @@ public sealed class GridControllerWiringTests : IDisposable
         public HttpClient CreateClient(string name) => new(new StubHandler(r =>
         {
             var port = r.Uri.Port;
+            if (Override?.Invoke(r) is { } overridden) return overridden;
             switch (r.Uri.AbsolutePath)
             {
                 case "/StartSession/":

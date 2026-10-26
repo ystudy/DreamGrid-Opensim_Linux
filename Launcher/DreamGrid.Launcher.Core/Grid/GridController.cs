@@ -73,18 +73,23 @@ public sealed partial class GridController(
             await PrepareAsync(s, ct);
 
             // A region an interrupted region step left running is adopted, never started (CreateRegionAsync finishes
-            // it). It is live already, so it is watched first, whatever happens to the rest of this start; a failed
-            // adoption shows in the region's status and must not keep the database and Robust down.
+            // it). It is live already, so it is watched first, whatever happens to the rest of this start. Whatever goes
+            // wrong with it (a console that refuses the login or times out, too) must not keep the database and Robust
+            // down: it is kept as this start's failure instead, unless a later step fails too.
+            StartFailure? adoptFailure = null;
             if (!s.Setup.RegionCreated && _region is not null && WillAdopt(_region))
             {
                 try { await StartRegionAsync(ct); }
-                catch (Exception e) when (e is InvalidOperationException or HttpRequestException) { }
+                catch (Exception e) when (!ct.IsCancellationRequested)
+                {
+                    adoptFailure = new StartFailure($"The region left running by an interrupted setup could not be adopted: {e.Message}", null);
+                }
             }
             await StartDatabaseAsync(s, ct);
             await StartComponentAsync(_robust!, ct);
             if (s.Setup.RegionCreated && _region is not null)
                 await StartRegionAsync(ct);
-            _startFailure = null;
+            _startFailure = adoptFailure;
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
