@@ -17,6 +17,8 @@ public sealed class RollingFileLoggerProvider : ILoggerProvider
     private readonly TimeProvider _time;
     private StreamWriter? _writer;
     private long _size;
+    private long _rollRetryAt;
+    private bool _disposed;
 
     public RollingFileLoggerProvider(string path, long maxBytes = 10 * 1024 * 1024, int files = 5, TimeProvider? time = null)
     {
@@ -34,6 +36,7 @@ public sealed class RollingFileLoggerProvider : ILoggerProvider
     {
         lock (_gate)
         {
+            _disposed = true;
             _writer?.Dispose();
             _writer = null;
         }
@@ -46,14 +49,15 @@ public sealed class RollingFileLoggerProvider : ILoggerProvider
     {
         lock (_gate)
         {
+            if (_disposed) return; // a late line after shutdown must not reopen the file
             try
             {
                 if (_writer is null) Open();
-                else if (_size >= _maxBytes) Roll();
+                else if (_size >= Math.Max(_maxBytes, _rollRetryAt)) Roll();
                 _writer!.WriteLine(line);
                 _size += Encoding.UTF8.GetByteCount(line) + Environment.NewLine.Length;
             }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            catch (Exception)
             {
                 // Logging must never take a request down; the line is lost and the next write retries.
                 _writer?.Dispose();
@@ -68,17 +72,26 @@ public sealed class RollingFileLoggerProvider : ILoggerProvider
         var stream = new FileStream(FileName(0), FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
         _size = stream.Length;
         _writer = new StreamWriter(stream, new UTF8Encoding(false)) { AutoFlush = true };
-        if (_size >= _maxBytes) Roll();
+        if (_size >= Math.Max(_maxBytes, _rollRetryAt)) Roll();
     }
 
     private void Roll()
     {
         _writer?.Dispose();
         _writer = null;
-        // The current file counts as one of the files, so launcher.{files-1}.log is the oldest kept.
-        File.Delete(FileName(_files - 1));
-        for (var i = _files - 2; i >= 0; i--)
-            if (File.Exists(FileName(i))) File.Move(FileName(i), FileName(i + 1), true);
+        try
+        {
+            // The current file counts as one of the files, so launcher.{files-1}.log is the oldest kept.
+            File.Delete(FileName(_files - 1));
+            for (var i = _files - 2; i >= 0; i--)
+                if (File.Exists(FileName(i))) File.Move(FileName(i), FileName(i + 1), true);
+            _rollRetryAt = 0;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // Keep appending to the current file rather than losing lines, and try again after another file's worth.
+            _rollRetryAt = _size + _maxBytes;
+        }
         Open();
     }
 
@@ -91,9 +104,16 @@ public sealed class RollingFileLoggerProvider : ILoggerProvider
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
         {
             if (!IsEnabled(logLevel)) return;
-            var text = formatter(state, exception);
-            if (exception is not null) text += Environment.NewLine + exception;
-            owner.Write($"{owner._time.GetUtcNow():yyyy-MM-dd HH:mm:ss.fff}Z {Short(logLevel)} {category}: {text}");
+            try
+            {
+                var text = formatter(state, exception);
+                if (exception is not null) text += Environment.NewLine + exception;
+                owner.Write($"{owner._time.GetUtcNow():yyyy-MM-dd HH:mm:ss.fff}Z {Short(logLevel)} {category}: {text}");
+            }
+            catch (Exception)
+            {
+                // Logging never throws into the caller.
+            }
         }
 
         private static string Short(LogLevel l) => l switch

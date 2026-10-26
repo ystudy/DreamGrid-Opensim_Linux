@@ -18,7 +18,7 @@ public sealed class SetupRunner(
     SetupProgress progress,
     LogReader logs,
     Func<LauncherSettings> settings,
-    IHostApplicationLifetime lifetime,
+    BackgroundWork background,
     ILogger<SetupRunner> log)
 {
     private const int ExcerptLines = 40;
@@ -42,8 +42,7 @@ public sealed class SetupRunner(
         var running = s.Database.State == ProcessState.Running && s.Robust.State == ProcessState.Running;
         if (starting || running || Interlocked.Exchange(ref _warming, 1) == 1) return;
 
-        var ct = lifetime.ApplicationStopping;
-        _ = Task.Run(async () =>
+        background.Run("setup warm-up", async ct =>
         {
             try
             {
@@ -57,7 +56,7 @@ public sealed class SetupRunner(
                 log.LogWarning(e, "The grid did not start during setup: {Message}", e.Message);
             }
             finally { Volatile.Write(ref _warming, 0); }
-        }, CancellationToken.None);
+        });
     }
 
     /// <summary>Starts the database, then the grid service, when they are not running; each start is reported first.</summary>
@@ -99,8 +98,7 @@ public sealed class SetupRunner(
     public bool TryStartRegion(string name, string content)
     {
         if (!progress.TryBegin()) return false;
-        var ct = lifetime.ApplicationStopping;
-        _ = Task.Run(() => CreateRegionAsync(name, content, ct), CancellationToken.None);
+        background.Run("setup region", ct => CreateRegionAsync(name, content, ct));
         return true;
     }
 

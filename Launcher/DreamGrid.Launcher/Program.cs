@@ -143,6 +143,9 @@ builder.Services.AddSingleton<GridActions>();
 builder.Services.AddSingleton<SetupProgress>();
 builder.Services.AddSingleton<SetupRunner>();
 builder.Services.AddHostedService<GridHostedService>();
+// Registered after GridHostedService, so it stops first: running work is awaited before the controller detaches.
+builder.Services.AddSingleton<BackgroundWork>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<BackgroundWork>());
 
 var app = builder.Build();
 app.UseStaticFiles();
