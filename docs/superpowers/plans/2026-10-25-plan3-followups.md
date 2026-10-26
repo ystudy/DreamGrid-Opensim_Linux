@@ -2,7 +2,7 @@
 
 Plan 3 (installers, services, releases) was executed task by task with a review after each task and a final whole-branch review (branch `feature/installers`, from `V7` d3ad1dd, plan commit f4ede1b, through the final fix wave). This file keeps what the execution ledger recorded that later plans need.
 
-**CI status:** release.yml and the CI install smoke have not run yet at the time of writing. The Debian install smoke (Debian 12 and 13, including the runtime-change upgrade) ran locally in WSL Docker; the Windows installer has not been compiled or smoke-tested outside CI.
+**CI status:** see "CI results" below.
 
 ## Decisions (rulings) taken during execution
 
@@ -73,3 +73,4 @@ Plan 3 (installers, services, releases) was executed task by task with a review 
 - **Windows installer:** `Check: ServiceRunning` timing for the finish checkbox; reinstalling into a folder that holds only leftover `dotnet-*`/`mariadb-*` folders is rejected; `SettingsWebPort` is a text match; the uninstall smoke does not assert that `{app}` is gone; watch for a name clash with a user-defined helper at the first compile.
 - **Workflows and docs:** `contents: write` on the called workflow relies on release.yml's top-level `read` (add a comment or split later); the release notes' arrow wording; the spec's §4.13 tag format line; the Windows workflow steps lack explicit `$LASTEXITCODE` checks.
 - **Console (after the long-poll recovery):** after a recovered read, earlier commands' output can be attributed to the current command (drop lines up to the current command's echo, or document it); a healthy read answered after more than 30 s loses its lines (logged at Debug); the abandoned read's late-reply and fault paths are untested; the island-terrain check can still fail if a second drop happens late in its 60 s budget; Debug console lines also reach the console provider (systemd journal); the timing-sensitive test `Late_output_from_previous_command_is_not_returned` failed once under heavy parallel load.
+- **Installer failure paths without automated coverage:** Windows `DeinitializeSetup` restart after a failed or cancelled upgrade; the "service stays up" failure; a failing `set-web-port` inside the installer (a port that collides with a changed Robust or region port); the Debian "not active within 30 s" path of `install.sh`; `stop-grid`'s PID-reuse wait (up to 60 s, then exit 5; the uninstaller only logs it).
