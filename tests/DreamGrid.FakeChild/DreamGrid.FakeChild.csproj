@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Stand-in for Robust/OpenSim in the launcher's process tests: crashes, serves /health, or launches another copy of itself. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Only the launch mode uses it: it starts a serve-mode child through ManagedProcess and exits at once. -->
+    <ProjectReference Include="..\..\Launcher\DreamGrid.Launcher.Core\DreamGrid.Launcher.Core.csproj" />
+  </ItemGroup>
+
+</Project>
