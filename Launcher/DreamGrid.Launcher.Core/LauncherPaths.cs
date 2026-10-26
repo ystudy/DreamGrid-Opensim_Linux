@@ -81,18 +81,54 @@ public sealed record LauncherPaths(string Data, string OpenSimProgram, string? M
     }
 
     /// <summary>
-    /// Creates <paramref name="dir"/> mode 0700 on Unix, and narrows an existing one to 0700: the generated INIs and
+    /// Creates <paramref name="dir"/> mode 0700 on Unix (on Windows: a protected ACL for the current user, SYSTEM and
+    /// Administrators only), and narrows an existing one the same way: the generated INIs and
     /// settings.json carry the database passwords, the console password and the MachineID.
     /// </summary>
     public static void CreateOwnerOnly(string dir)
     {
         if (OperatingSystem.IsWindows())
         {
-            Directory.CreateDirectory(dir); // plan 3's installer sets the ACL on %ProgramData%\DreamGrid
+            Directory.CreateDirectory(dir);
+            RestrictToOwnerSystemAdmins(dir);
             return;
         }
         const UnixFileMode OwnerOnly = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
         Directory.CreateDirectory(dir, OwnerOnly);
         if (File.GetUnixFileMode(dir) != OwnerOnly) File.SetUnixFileMode(dir, OwnerOnly);
+    }
+
+    /// <summary>Replaces the directory's DACL with a protected one (no inherited entries): FullControl, inherited by children, for the current user, SYSTEM and Administrators.</summary>
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static void RestrictToOwnerSystemAdmins(string dir)
+    {
+        var sids = new[]
+        {
+            System.Security.Principal.WindowsIdentity.GetCurrent().User!,
+            new System.Security.Principal.SecurityIdentifier(System.Security.Principal.WellKnownSidType.LocalSystemSid, null),
+            new System.Security.Principal.SecurityIdentifier(System.Security.Principal.WellKnownSidType.BuiltinAdministratorsSid, null),
+        }.Distinct().ToArray();
+        const System.Security.AccessControl.InheritanceFlags Inherit =
+            System.Security.AccessControl.InheritanceFlags.ContainerInherit | System.Security.AccessControl.InheritanceFlags.ObjectInherit;
+
+        var info = new DirectoryInfo(dir);
+        var current = info.GetAccessControl();
+        var rules = current.GetAccessRules(true, true, typeof(System.Security.Principal.SecurityIdentifier))
+            .Cast<System.Security.AccessControl.FileSystemAccessRule>().ToList();
+        // Already right: skip the write (this runs on every settings save).
+        if (current.AreAccessRulesProtected && rules.Count == sids.Length && rules.All(r =>
+                !r.IsInherited && r.AccessControlType == System.Security.AccessControl.AccessControlType.Allow
+                && r.FileSystemRights == System.Security.AccessControl.FileSystemRights.FullControl
+                && r.InheritanceFlags == Inherit && r.PropagationFlags == System.Security.AccessControl.PropagationFlags.None
+                && sids.Contains(r.IdentityReference)))
+            return;
+
+        var security = new System.Security.AccessControl.DirectorySecurity();
+        security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+        foreach (var sid in sids)
+            security.AddAccessRule(new System.Security.AccessControl.FileSystemAccessRule(
+                sid, System.Security.AccessControl.FileSystemRights.FullControl, Inherit,
+                System.Security.AccessControl.PropagationFlags.None, System.Security.AccessControl.AccessControlType.Allow));
+        info.SetAccessControl(security);
     }
 }

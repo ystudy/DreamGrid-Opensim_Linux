@@ -151,4 +151,37 @@ public class LauncherPathsTests
                 if (Directory.Exists(d)) Directory.Delete(d, true);
         }
     }
+
+    [Fact]
+    [SupportedOSPlatform("windows")]
+    public void Windows_data_dir_is_owner_system_admins_only()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Windows only");
+        var dir = Path.Combine(Path.GetTempPath(), "dg-acl-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var me = System.Security.Principal.WindowsIdentity.GetCurrent().User!.Value;
+            var expected = new[] { me, "S-1-5-18", "S-1-5-32-544" }.Distinct().Order().ToArray();
+
+            LauncherPaths.CreateOwnerOnly(dir);
+            LauncherPaths.CreateOwnerOnly(dir); // idempotent
+
+            var security = new DirectoryInfo(dir).GetAccessControl();
+            Assert.True(security.AreAccessRulesProtected);
+            Assert.Equal(expected, Sids(security));
+
+            var file = Path.Combine(dir, "secret.txt");
+            File.WriteAllText(file, "x");
+            Assert.Equal(expected, Sids(new FileInfo(file).GetAccessControl()));
+        }
+        finally
+        {
+            if (Directory.Exists(dir)) Directory.Delete(dir, true);
+        }
+
+        static string[] Sids(System.Security.AccessControl.FileSystemSecurity s) =>
+            s.GetAccessRules(true, true, typeof(System.Security.Principal.SecurityIdentifier))
+                .Cast<System.Security.AccessControl.FileSystemAccessRule>()
+                .Select(r => r.IdentityReference.Value).Distinct().Order().ToArray();
+    }
 }
