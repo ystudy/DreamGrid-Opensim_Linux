@@ -160,7 +160,7 @@ $app = $command.App
 $v1 = (Get-Content -LiteralPath (Join-Path $app 'VERSION') -TotalCount 1).Trim()
 $expectedArgs = "--data `"$data`" --opensim `"$app\bin`" --mariadb-bin `"$app\mariadb-"
 if ($command.Image.IndexOf($expectedArgs, [StringComparison]::OrdinalIgnoreCase) -lt 0) { Fail "the service command lacks '$expectedArgs': $($command.Image)" }
-$rules = Get-FirewallRules
+$rules = @(Get-FirewallRules)
 if ($rules.Count -ne 1 -or $rules[0].DisplayName -ne "DreamGrid (dotnet $($command.Runtime))") {
     Fail "expected one firewall rule 'DreamGrid (dotnet $($command.Runtime))', found: $(($rules | ForEach-Object DisplayName) -join ', ')"
 }
@@ -256,7 +256,7 @@ if ($code -ne 0) { Fail "the uninstaller exited $code" }
 if (-not (Wait-Until 180 { -not (Get-Service DreamGrid -ErrorAction SilentlyContinue) })) { Fail 'the DreamGrid service is still installed' }
 if (-not (Wait-Until 60 { -not (Get-Process -Id $regionPid -ErrorAction SilentlyContinue) })) { Fail "the region (PID $regionPid) is still running" }
 if (-not (Test-Path -LiteralPath (Join-Path $data 'settings.json'))) { Fail "the data folder $data was not kept" }
-$rules = Get-FirewallRules
+$rules = @(Get-FirewallRules)
 if ($rules.Count -ne 0) { Fail "firewall rules left behind: $(($rules | ForEach-Object DisplayName) -join ', ')" }
 if (Test-Path -LiteralPath $shortcut) { Fail "the Start menu shortcut $shortcut was left behind" }
 Ok "service removed; region PID $regionPid ended; $data kept; firewall rules and shortcut removed"
