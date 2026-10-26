@@ -139,7 +139,7 @@ main() {
     # launcher re-applied it on every start: that port is saved once more (step 7) and never written to the unit again.
     local pinned=""
     if [ -f "$unit" ]; then
-        pinned=$(grep -oE -- '--web-port [0-9]+' "$unit" | awk '{ print $2 }' | head -n 1 || true)
+        pinned=$(grep -E '^ExecStart=' "$unit" | grep -oE -- '--web-port [0-9]+' | awk '{ print $2 }' | head -n 1 || true)
     fi
     if [ -z "$web_port" ] && [ -n "$pinned" ] && valid_web_port "$pinned"; then
         web_port=$((10#$pinned))

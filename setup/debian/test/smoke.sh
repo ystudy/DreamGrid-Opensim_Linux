@@ -34,6 +34,9 @@ fail() {
 in_container() { docker exec "$container" "$@"; }
 unit=/etc/systemd/system/dreamgrid.service
 
+# The unit's ExecStart line.
+exec_start() { in_container grep '^ExecStart=' "$unit"; }
+
 # The admin website's port saved in settings.json.
 saved_web_port() { in_container sed -nE 's/^[[:space:]]*"webPort":[[:space:]]*([0-9]+).*/\1/p' "$data/settings.json"; }
 
@@ -259,7 +262,7 @@ stage="web-port"
 run_install --from /root/dreamgrid-v2.tar.gz --web-port 8101
 [ "$code" -eq 0 ] || fail "install.sh --web-port 8101 exited $code: $(tail -n 30 <<<"$out")"
 grep -qE 'http://[^ ]+:8101/' <<<"$out" || fail "the printed link is not on port 8101: $out"
-! in_container grep -qF -- --web-port "$unit" || fail "the unit has --web-port: $(in_container grep ExecStart "$unit")"
+! exec_start | grep -qF -- --web-port || fail "the unit has --web-port: $(exec_start)"
 [ "$(saved_web_port)" = 8101 ] || fail "the saved web port is $(saved_web_port), not 8101"
 expect_site_on 8101
 [ "$(in_container cat "$pid_file")" = "$region_pid" ] || fail "the region PID changed from $region_pid"
@@ -271,7 +274,7 @@ in_container sed -i '/^ExecStart=/ s/$/ --web-port 8102/' "$unit"
 in_container systemctl daemon-reload
 run_install --from /root/dreamgrid-v2.tar.gz
 [ "$code" -eq 0 ] || fail "install.sh (pinned unit) exited $code: $(tail -n 30 <<<"$out")"
-! in_container grep -qF -- --web-port "$unit" || fail "the unit still has --web-port: $(in_container grep ExecStart "$unit")"
+! exec_start | grep -qF -- --web-port || fail "the unit still has --web-port: $(exec_start)"
 [ "$(saved_web_port)" = 8102 ] || fail "the pinned port was not saved: the web port is $(saved_web_port), not 8102"
 expect_site_on 8102
 run_install --from /root/dreamgrid-v2.tar.gz
