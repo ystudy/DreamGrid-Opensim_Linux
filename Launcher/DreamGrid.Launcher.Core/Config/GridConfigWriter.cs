@@ -10,7 +10,7 @@ public sealed class GridConfigWriter(LauncherPaths paths)
 
     public void Write(LauncherSettings s, IReadOnlyList<IIniContributor> contributors)
     {
-        var host = s.Hostname ?? HostAddress.Detect();
+        var host = HostAddress.Effective(s.Hostname);
         var rt = paths.RuntimeOpenSim;
         var extra = s.Overrides.Concat(contributors.SelectMany(c => c.Contribute(s))).ToList();
 
@@ -69,6 +69,12 @@ public sealed class GridConfigWriter(LauncherPaths paths)
             os.Set("Estates", "DefaultEstateName", $"{s.GridName} Estate");
             os.Set("Estates", "DefaultEstateOwnerName", $"{owner.FirstName} {owner.LastName}");
             os.Set("Estates", "DefaultEstateOwnerUUID", owner.PrincipalId.ToString());
+        }
+        else
+        {
+            // No owner yet: OpenSim asks for estate details when these are absent, so none may be active.
+            os.CommentOut("Estates", "DefaultEstateOwnerName");
+            os.CommentOut("Estates", "DefaultEstateOwnerUUID");
         }
         os.Set("RegionReady", "enabled", "true");
         os.Set("RegionReady", "alert_uri", $"http://127.0.0.1:{s.WebPort}/dreamgrid/regionready");

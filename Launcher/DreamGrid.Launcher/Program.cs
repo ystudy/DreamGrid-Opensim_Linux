@@ -161,7 +161,7 @@ app.Lifetime.ApplicationStarted.Register(() =>
     var s = app.Services.GetRequiredService<IGridController>().CurrentSettings();
     if (s.SetupToken is { } token && !s.Setup.OwnerCreated)
         app.Logger.LogInformation("Setup link: http://{Host}:{Port}/setup?token={Token}",
-            s.Hostname ?? HostAddress.Detect(), s.WebPort, token);
+            HostAddress.Effective(s.Hostname), s.WebPort, token);
 });
 
 try

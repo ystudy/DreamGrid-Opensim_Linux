@@ -14,7 +14,9 @@ public static class IslandTerrain
 
     public static void WriteR32(string path, int size = 256, int seed = 1)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThan(size, 2);
+        // OpenSim region sizes are multiples of 256 m.
+        if (size <= 0 || size % 256 != 0)
+            throw new ArgumentOutOfRangeException(nameof(size), size, "The island size must be a positive multiple of 256.");
 
         var buffer = new byte[checked(size * size * 4)];
         var half = size / 2f;

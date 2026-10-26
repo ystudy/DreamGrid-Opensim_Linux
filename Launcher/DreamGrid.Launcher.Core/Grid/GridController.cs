@@ -228,7 +228,7 @@ public sealed partial class GridController(
         {
             var next = change(store.LoadOrCreate());
             store.Save(next);
-            _host = next.Hostname ?? HostAddress.Detect();
+            _host = HostAddress.Effective(next.Hostname);
             _settings = next;
             if (writeConfig) WriteConfig(next);
             return next;
@@ -373,7 +373,7 @@ public sealed partial class GridController(
     private LauncherSettings ReloadSettings()
     {
         var s = store.LoadOrCreate();
-        _host = s.Hostname ?? HostAddress.Detect();
+        _host = HostAddress.Effective(s.Hostname);
         _settings = s;
         return s;
     }

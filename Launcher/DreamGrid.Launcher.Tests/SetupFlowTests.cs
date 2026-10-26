@@ -145,7 +145,7 @@ public sealed class SetupFlowTests
         await using var f = Fresh();
         using var client = await SetupClientAsync(f);
 
-        foreach (var bad in new[] { "", "Av", "A<b>c", new string('a', 41) })
+        foreach (var bad in new[] { "", "My \"World\"", "Two\nlines", new string('a', 65) })
         {
             using var resp = await PostFormAsync(client, "/setup/world", new() { ["GridName"] = bad });
             Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
@@ -162,6 +162,20 @@ public sealed class SetupFlowTests
         Assert.True(s.Setup.WorldNamed);
         // GridName goes into the Robust and region INIs.
         Assert.True(f.Grid.UpdateWriteConfig.Last());
+    }
+
+    [Fact]
+    public async Task World_step_shows_the_grid_name_message_for_quotes()
+    {
+        await using var f = Fresh();
+        using var client = await SetupClientAsync(f);
+
+        using var resp = await PostFormAsync(client, "/setup/world", new() { ["GridName"] = "My \"World\"" });
+
+        var page = new HtmlParser().ParseDocument(await resp.Content.ReadAsStringAsync(Ct));
+        Assert.Equal("Use 1 to 64 letters, digits, spaces or punctuation, without quotes.",
+            page.QuerySelector("[data-valmsg-for=GridName]")?.TextContent.Trim());
+        Assert.False(f.Store.LoadOrCreate().Setup.WorldNamed);
     }
 
     [Fact]

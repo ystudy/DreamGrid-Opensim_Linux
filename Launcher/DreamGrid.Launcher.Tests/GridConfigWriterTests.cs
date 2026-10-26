@@ -269,4 +269,33 @@ public sealed class GridConfigWriterTests : IDisposable
         Assert.True(IPAddress.TryParse(ip, out var parsed));
         Assert.Equal(System.Net.Sockets.AddressFamily.InterNetwork, parsed!.AddressFamily);
     }
+
+    [Fact]
+    public void Writer_omits_estate_owner_keys_without_owner()
+    {
+        // A prototype that carries active owner keys must not leak them into a grid with no owner yet.
+        var proto = Path.Combine(_paths.RuntimeOpenSim, "config-include", "Proto", "Robust", "OpenSim.ini");
+        File.AppendAllText(proto, "\n[Estates]\nDefaultEstateOwnerName=Old Owner\nDefaultEstateOwnerUUID=00000000-0000-0000-0000-000000000001\n");
+
+        Write(Make(owner: false));
+
+        var active = Region().ActiveEntries().Where(e => e.Section == "Estates").Select(e => e.Key).ToList();
+        Assert.DoesNotContain("DefaultEstateOwnerName", active);
+        Assert.DoesNotContain("DefaultEstateOwnerUUID", active);
+    }
+
+    [Fact]
+    public void Effective_whitespace_hostname_falls_back_to_detected() =>
+        Assert.Equal(HostAddress.Detect(), HostAddress.Effective("   "));
+
+    [Fact]
+    public void Effective_trims_valid_hostname() =>
+        Assert.Equal("host.lan", HostAddress.Effective(" host.lan "));
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("not a host")]
+    public void Effective_falls_back_to_detected_for_missing_or_invalid(string? configured) =>
+        Assert.Equal(HostAddress.Detect(), HostAddress.Effective(configured));
 }
