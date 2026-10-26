@@ -52,7 +52,7 @@ Plan 3 (installers, services, releases) was executed task by task with a review 
 - The Windows installer compiled (Inno Setup 6.7.1 is preinstalled on the runner), and its smoke passed both variants: install; setup to a region accepting logins; service stop with the region still running and adopted on start; upgrade with no reboot and the region PID unchanged; set-web-port; uninstall keeping %ProgramData%\DreamGrid.
 - Children survive a Windows service stop without CreateProcess breakaway.
 - CI fixes found on the way: the smokes compared HTML-encoded footer text; a pinned choco Inno version can't downgrade the preinstalled one; build.ps1 now picks ISCC without version-resource sniffing (Chocolatey's shim and the real ISCC both report FileVersion 0.x), and DreamGrid.iss enforces Inno ≥ 6.3 via ISPP VER; a PowerShell function returning @() unrolls a single result.
-- Commit c441c68 (console long-poll recovery) is pending its own CI run.
+- Commit c441c68 (console long-poll recovery) passed CI: the PR #4 run on bbcca1e was fully green, all of the above included.
 
 ### Manual release checklist (results pending)
 - [ ] A clean Debian 12 VM and a clean Debian 13 VM (AppArmor enabled): the one-liner from a test tag's release, then Firestorm login from another LAN machine. Result: pending.
