@@ -8,6 +8,7 @@ using DreamGrid.Launcher.Core.Processes;
 using DreamGrid.Launcher.Core.Runtime;
 using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Core.Setup;
+using Microsoft.Extensions.Logging;
 
 namespace DreamGrid.Launcher.Core.Grid;
 
@@ -23,7 +24,8 @@ public sealed partial class GridController(
     IEnumerable<IFeatureModule> modules,
     IRobustClient robust,
     IHttpClientFactory http,
-    TimeProvider time) : IGridController
+    TimeProvider time,
+    ILoggerFactory? loggers = null) : IGridController
 {
     private static readonly TimeSpan ConsoleSettle = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan LoginWait = TimeSpan.FromSeconds(300);
@@ -639,7 +641,8 @@ public sealed partial class GridController(
     }
 
     private RestConsoleClient MakeConsole(LauncherSettings s, int port) =>
-        new(http.CreateClient("DreamGrid.Console"), new Uri($"http://127.0.0.1:{port}"), s.Console.User, s.Console.Password);
+        new(http.CreateClient("DreamGrid.Console"), new Uri($"http://127.0.0.1:{port}"), s.Console.User, s.Console.Password,
+            loggers?.CreateLogger<RestConsoleClient>());
 
     private ProcessStartInfo Dotnet(string dll, params string[] args)
     {

@@ -91,6 +91,8 @@ builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);
 // Routing, page and result lines for every request (the dashboard polls every 5 s) would flood launcher.log.
 // Microsoft.Hosting.Lifetime ("Now listening on…") is outside this category and stays at Information.
 builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
+// Console output a command's reply window missed is discarded; keep it in launcher.log (rare, and echoes are redacted).
+builder.Logging.AddFilter("DreamGrid.Launcher.Core.OpenSim.RestConsoleClient", LogLevel.Debug);
 
 builder.Logging.AddProvider(new RollingFileLoggerProvider(Path.Combine(paths.Logs, "launcher.log")));
 

@@ -75,7 +75,8 @@ public static partial class GridConsoleCommands
     /// True when <c>terrain stats</c> (TerrainModule, which logs load results only to its log file) shows island
     /// relief. The flat default terrain a failed load leaves behind has max == min. The console thread may still be
     /// finishing <c>terrain load</c> when the first <c>terrain stats</c> is sent, so the command is repeated until a
-    /// stats line shows up or <see cref="TerrainStatsWait"/> has passed; only a stats line decides.
+    /// stats line shows up or <see cref="TerrainStatsWait"/> has passed; only a stats line decides. The wait outlasts
+    /// the console client's recovery from a read the server dropped (RestConsoleClient.LostReadAfter, 30 s).
     /// </summary>
     public static async Task<bool> IslandTerrainLoadedAsync(RestConsoleClient console, TimeSpan settle, TimeProvider time, CancellationToken ct)
     {
@@ -93,7 +94,7 @@ public static partial class GridConsoleCommands
         }
     }
 
-    private static readonly TimeSpan TerrainStatsWait = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan TerrainStatsWait = TimeSpan.FromSeconds(60);
 
     private static bool TryParse(string text, out double value) =>
         double.TryParse(text.Trim().Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out value);

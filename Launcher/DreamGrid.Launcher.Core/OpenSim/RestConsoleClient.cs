@@ -34,6 +34,11 @@ public sealed class ConsoleAuthException(string message) : Exception(message);
 /// therefore swallow lines, so reads are never cancelled. The client only stops waiting: the read stays
 /// outstanding and its reply is consumed by the next call (stale replies that completed between calls are
 /// discarded). Each call is bounded by <c>settle</c>, not by the poll.</item>
+/// <item>The server can drop a read without ever answering it: GetEvents throws when a line is written while it builds
+/// the reply (the line counter is bumped outside the scrollback lock) and the poll manager swallows the exception.
+/// The session's lines stay queued, but only a new read gets them. A read still unanswered after
+/// <see cref="LostReadAfter"/> (past the server's 25 s poll limit) is therefore no longer waited for and a new one is
+/// made; the old one is still not cancelled.</item>
 /// <item>Input="true" marks the echo of typed text, Command="true" the command prompt (both dropped by
 /// <see cref="RunAsync"/>); Prompt="true" with Command="false" is an interactive question (kept).</item>
 /// </list>
@@ -49,6 +54,13 @@ public sealed class RestConsoleClient(HttpClient http, Uri baseUri, string user,
     private readonly SemaphoreSlim _gate = new(1, 1);
     private string? _sessionId;
     private Task<List<ConsoleLine>>? _pendingRead;
+    private long _pendingReadStarted; // Stopwatch timestamp
+
+    /// <summary>
+    /// How long a read may stay unanswered before it counts as dropped by the server. The server answers every long
+    /// poll within ~25 s ("no events" on timeout), so a read older than this will never be answered.
+    /// </summary>
+    internal TimeSpan LostReadAfter { get; init; } = TimeSpan.FromSeconds(30);
 
     /// <summary>
     /// True when /StartSession/ answers with a SessionID. Probes with a throwaway session that is closed
@@ -165,8 +177,13 @@ public sealed class RestConsoleClient(HttpClient http, Uri baseUri, string user,
 
     private void LogLate(List<ConsoleLine> lines)
     {
+        if (log is null) return;
         foreach (var l in lines)
-            log?.LogDebug("Discarding late console output: {Line}", l.Text);
+        {
+            // An echo repeats a typed command, which can carry a password: name the command only.
+            if (l.IsInput) log.LogDebug("Discarding late console echo of '{Command}'", Verb(l.Text));
+            else log.LogDebug("Discarding late console output: {Line}", l.Text);
+        }
     }
 
     /// <summary>Forgets the cached session and tells the server to drop it (best effort).</summary>
@@ -254,15 +271,50 @@ public sealed class RestConsoleClient(HttpClient http, Uri baseUri, string user,
     private async Task<List<ConsoleLine>?> TryReadAsync(TimeSpan wait, CancellationToken ct)
     {
         var id = _sessionId ?? throw new InvalidOperationException("No console session.");
-        var read = _pendingRead ??= ReadOnceAsync(id);
-        using var timer = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        var first = await Task.WhenAny(read, Task.Delay(wait, timer.Token));
-        ct.ThrowIfCancellationRequested();
-        if (first != read) return null;
-        timer.Cancel();
+        var deadline = Stopwatch.GetTimestamp() + (long)(wait.TotalSeconds * Stopwatch.Frequency);
+        while (true)
+        {
+            if (_pendingRead is null)
+            {
+                _pendingRead = ReadOnceAsync(id);
+                _pendingReadStarted = Stopwatch.GetTimestamp();
+            }
+            var read = _pendingRead;
+            var untilLost = LostReadAfter - Stopwatch.GetElapsedTime(_pendingReadStarted);
+            var left = Stopwatch.GetElapsedTime(Stopwatch.GetTimestamp(), deadline);
+            var slice = Min(left, untilLost);
+            using var timer = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            var first = slice > TimeSpan.Zero ? await Task.WhenAny(read, Task.Delay(slice, timer.Token)) : null;
+            ct.ThrowIfCancellationRequested();
+            if (first == read || read.IsCompleted)
+            {
+                timer.Cancel();
+                _pendingRead = null;
+                try { return await read; }
+                catch (SessionExpiredException) { _sessionId = null; throw; }
+            }
+            if (Stopwatch.GetElapsedTime(_pendingReadStarted) < LostReadAfter) return null; // nothing in time; the read stays outstanding
+            AbandonLostRead(read);
+            if (Stopwatch.GetTimestamp() >= deadline) return null; // the next call reads again
+        }
+    }
+
+    /// <summary>
+    /// Stops waiting for a read the server has dropped (RemoteConsole.GetEvents can throw when a console line is written
+    /// while it builds the reply, and the poll manager swallows that without answering). The read is not cancelled,
+    /// only no longer waited for; the server did not mark its lines as seen, so the next read returns them. Should it
+    /// answer after all, its lines are logged as late output.
+    /// </summary>
+    private void AbandonLostRead(Task<List<ConsoleLine>> read)
+    {
         _pendingRead = null;
-        try { return await read; }
-        catch (SessionExpiredException) { _sessionId = null; throw; }
+        log?.LogWarning("The REST console at {Uri} left a read unanswered for {Seconds:0} s; reading again.",
+            baseUri, LostReadAfter.TotalSeconds);
+        read.ContinueWith(t =>
+        {
+            if (t.IsCompletedSuccessfully) LogLate(t.Result);
+            else _ = t.Exception;
+        }, TaskScheduler.Default);
     }
 
     private async Task<List<ConsoleLine>> ReadOnceAsync(string id)
