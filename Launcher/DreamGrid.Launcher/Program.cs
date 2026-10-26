@@ -16,8 +16,20 @@ using DreamGrid.Launcher.Security;
 using DreamGrid.Launcher.Setup;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.DataProtection;
+
+// Installer verbs (--version, admin-link, stop-grid, set-web-port) run instead of the host.
+var processEnv = new Dictionary<string, string?>
+{
+    ["DREAMGRID_DATA"] = Environment.GetEnvironmentVariable("DREAMGRID_DATA"),
+    ["DREAMGRID_OPENSIM"] = Environment.GetEnvironmentVariable("DREAMGRID_OPENSIM"),
+    ["DREAMGRID_MARIADB_BIN"] = Environment.GetEnvironmentVariable("DREAMGRID_MARIADB_BIN"),
+    ["ProgramData"] = Environment.GetEnvironmentVariable("ProgramData"),
+};
+if (await CommandLine.RunVerbAsync(args, processEnv, Console.Out, CancellationToken.None) is { } verbExit)
+    return verbExit;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseSystemd();
@@ -33,13 +45,31 @@ var env = new Dictionary<string, string?>
     ["ProgramData"] = Environment.GetEnvironmentVariable("ProgramData"),
 };
 LauncherPaths paths;
+InstanceLock? instanceLock;
 SettingsStore store;
 LauncherSettings settings;
 try
 {
+    var dataDir = LauncherPaths.ResolveData(args, env, OperatingSystem.IsWindows());
+    instanceLock = InstanceLock.TryAcquire(dataDir);
+    if (instanceLock is null)
+    {
+        using var held = LoggerFactory.Create(b => b.AddConsole());
+        held.CreateLogger("DreamGrid.Launcher")
+            .LogCritical("Another DreamGrid launcher is already running with data directory {Data}.", dataDir);
+        return 3;
+    }
     paths = LauncherPaths.Resolve(args, env, OperatingSystem.IsWindows());
     store = new SettingsStore(paths.SettingsFile);
     settings = store.LoadOrCreate();
+    // The --web-port host option (development) is the one settings change made outside the controller: at startup, under
+    // the lock, before anything reads the port. It applies again on every start; the installers use set-web-port instead.
+    if (CommandLine.ParseWebPort(args) is { } webPort)
+    {
+        if (CommandLine.ApplyWebPort(store, webPort) is { } portError)
+            throw new ArgumentException(portError);
+        settings = store.LoadOrCreate();
+    }
     LauncherPaths.CreateOwnerOnly(paths.Data);
     LauncherPaths.CreateOwnerOnly(paths.DataProtectionKeys);
 }
@@ -52,6 +82,7 @@ catch (Exception e) when (e is ArgumentException or SettingsCorruptException or 
     return 2;
 }
 
+using var lockHandle = instanceLock; // held for the host's lifetime
 builder.WebHost.ConfigureKestrel(o => o.Listen(IPAddress.Any, settings.WebPort));
 // The request log line includes the query string, which carries ?password= (MachineId or an avatar's).
 builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.Warning);
@@ -60,10 +91,11 @@ builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);
 // Routing, page and result lines for every request (the dashboard polls every 5 s) would flood launcher.log.
 // Microsoft.Hosting.Lifetime ("Now listening on…") is outside this category and stays at Information.
 builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
+// Console output a command's reply window missed is discarded; keep it in launcher.log (rare, and echoes are redacted).
+builder.Logging.AddFilter("DreamGrid.Launcher.Core.OpenSim.RestConsoleClient", LogLevel.Debug);
 
 builder.Logging.AddProvider(new RollingFileLoggerProvider(Path.Combine(paths.Logs, "launcher.log")));
 
-builder.Services.AddHttpClient();
 // Keys for the sign-in and antiforgery cookies live in the (owner-only) data directory, not the service account's
 // profile, so cookies stay valid across restarts and the keys go wherever the data goes.
 builder.Services.AddDataProtection()
@@ -82,8 +114,10 @@ builder.Services.AddAuthentication(AuthSchemes.Admin).AddCookie(AuthSchemes.Admi
     o.Events.OnRedirectToLogin = c => ApiOr(c, StatusCodes.Status401Unauthorized);
     o.Events.OnRedirectToAccessDenied = c => ApiOr(c, StatusCodes.Status403Forbidden);
 });
+// Whatever has no decision of its own needs the admin role; the open routes say .AllowAnonymous() (or a page convention).
 builder.Services.AddAuthorizationBuilder()
-    .AddPolicy(AuthSchemes.AdminPolicy, p => p.AddAuthenticationSchemes(AuthSchemes.Admin).RequireRole(AuthSchemes.AdminRole));
+    .AddPolicy(AuthSchemes.AdminPolicy, p => p.AddAuthenticationSchemes(AuthSchemes.Admin).RequireRole(AuthSchemes.AdminRole))
+    .SetFallbackPolicy(new AuthorizationPolicyBuilder().AddAuthenticationSchemes(AuthSchemes.Admin).RequireRole(AuthSchemes.AdminRole).Build());
 builder.Services.AddRazorPages(o =>
 {
     // Every page needs the admin role except these; the setup pages are guarded by SetupGate.
@@ -96,35 +130,9 @@ builder.Services.AddRazorPages(o =>
 });
 // The dashboard's script sends the token in this header to /api/grid/*.
 builder.Services.AddAntiforgery(o => o.HeaderName = "RequestVerificationToken");
-builder.Services.AddSingleton(paths);
-builder.Services.AddSingleton(store);
-// Read per request from the controller's cache (never the file), so a change the controller saved is seen at once.
-builder.Services.AddSingleton<Func<LauncherSettings>>(sp => sp.GetRequiredService<IGridController>().CurrentSettings);
+builder.Services.AddGrid(paths, store);
 builder.Services.AddSingleton<LogReader>();
-builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<LoginThrottle>();
-builder.Services.AddSingleton(sp =>
-{
-    try
-    {
-        return MariaDbBinaries.Locate(paths.MariaDbBin, OperatingSystem.IsWindows());
-    }
-    catch (MariaDbNotFoundException e)
-    {
-        // Not fatal: the host still serves the web port and the grid status; the grid start reports this message.
-        return MariaDbBinaries.NotFound(e.Message);
-    }
-});
-// One instance per module, registered under each seam it implements (spec 6.9).
-builder.Services.AddSingleton<LogLevelModule>();
-builder.Services.AddSingleton<IFeatureModule>(sp => sp.GetRequiredService<LogLevelModule>());
-builder.Services.AddSingleton<ISettingsPage>(sp => sp.GetRequiredService<LogLevelModule>());
-builder.Services.AddSingleton<IRobustClient>(sp => new RobustClient(
-    sp.GetRequiredService<IHttpClientFactory>().CreateClient("DreamGrid.Robust"),
-    new Uri($"http://127.0.0.1:{settings.RobustPrivatePort}"),
-    new Uri($"http://127.0.0.1:{settings.RobustPublicPort}")));
-builder.Services.AddSingleton<GridController>();
-builder.Services.AddSingleton<IGridController>(sp => sp.GetRequiredService<GridController>());
 builder.Services.AddSingleton<LegacyCommandApi>();
 builder.Services.AddSingleton<IOnlineUsers>(sp => new OnlineUsers(sp.GetRequiredService<Func<LauncherSettings>>(),
     sp.GetRequiredService<ILogger<OnlineUsers>>()));
@@ -132,6 +140,9 @@ builder.Services.AddSingleton<GridActions>();
 builder.Services.AddSingleton<SetupProgress>();
 builder.Services.AddSingleton<SetupRunner>();
 builder.Services.AddHostedService<GridHostedService>();
+// Registered after GridHostedService, so it stops first: running work is awaited before the controller detaches.
+builder.Services.AddSingleton<BackgroundWork>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<BackgroundWork>());
 
 var app = builder.Build();
 app.UseStaticFiles();
@@ -150,7 +161,7 @@ app.Lifetime.ApplicationStarted.Register(() =>
     var s = app.Services.GetRequiredService<IGridController>().CurrentSettings();
     if (s.SetupToken is { } token && !s.Setup.OwnerCreated)
         app.Logger.LogInformation("Setup link: http://{Host}:{Port}/setup?token={Token}",
-            s.Hostname ?? HostAddress.Detect(), s.WebPort, token);
+            HostAddress.Effective(s.Hostname), s.WebPort, token);
 });
 
 try

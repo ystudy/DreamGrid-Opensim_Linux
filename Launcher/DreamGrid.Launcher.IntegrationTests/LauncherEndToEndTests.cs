@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 using DreamGrid.Launcher.Core;
 using DreamGrid.Launcher.Core.OpenSim;
 using DreamGrid.Launcher.Core.Processes;
@@ -13,6 +14,7 @@ namespace DreamGrid.Launcher.IntegrationTests;
 /// process against a pre-seeded settings.json, and checks the port-8001 contract and adoption across launcher kills.
 /// The website's newcomer path is in WebsiteEndToEndTests.cs (the same class, sharing these helpers).
 /// </summary>
+[Collection(GridCollection.Name)]
 public sealed partial class LauncherEndToEndTests : IDisposable
 {
     private const string GridRunning = "The grid is running.";
@@ -85,7 +87,7 @@ public sealed partial class LauncherEndToEndTests : IDisposable
             try
             {
                 await grid.StartAsync(Ct);
-                await grid.CreateOwnerAsync("Test", "Owner", "pass-word1", null, Ct);
+                await grid.CreateOwnerAsync("Test", "Owner", Password, null, Ct);
                 // The host's /dreamgrid/regionready is not running yet: stand in for it on the web port.
                 using (new AlertListener(s.WebPort, grid.OnRegionAlert))
                     await grid.CreateRegionAsync("Welcome", "island", Ct);
@@ -103,6 +105,7 @@ public sealed partial class LauncherEndToEndTests : IDisposable
             for (var run = 1; run <= 2; run++)
             {
                 var launcher = StartLauncher(paths);
+                var restarted = DateTime.UtcNow;
                 await WaitForAsync(launcher, async () => await GetAsync(s, "?type=Booted") == "ACK", "GET /?type=Booted == ACK");
                 await WaitForAsync(launcher, async () => await GetAsync(s, "?command=RegionStatus") == "Running", "RegionStatus == Running");
                 await WaitForLogAsync(launcher, GridRunning);
@@ -112,6 +115,16 @@ public sealed partial class LauncherEndToEndTests : IDisposable
                 Assert.Equal(expected, actual);
                 Assert.Equal(1, CountProcessesMatching(Path.Combine(paths.RuntimeOpenSim, "OpenSim.dll")));
                 Assert.Equal(1, CountProcessesMatching(Path.Combine(paths.RuntimeOpenSim, "Robust.dll")));
+
+                // Logins_enabled_after_adoption: the launcher itself knows the adopted region takes logins, although
+                // the region's one-time "logins enabled" alert went out before this launcher was listening.
+                using (var web = new WebSession(s.WebPort))
+                {
+                    var page = await web.FollowAsync("/login");
+                    await web.SubmitAsync(page, new() { ["Name"] = "Test Owner", ["Password"] = Password });
+                    await WaitForAsync(launcher, () => AdminSeesLoginsEnabledAsync(web, restarted + TimeSpan.FromSeconds(60)),
+                        "/api/status to report logins enabled", () => "last status: " + _lastStatus);
+                }
 
                 launcher.KillOnly();
                 Assert.True(ProcessImage.IsAlive(expected.Db), $"run {run}: MariaDB died with the launcher");
@@ -202,6 +215,19 @@ public sealed partial class LauncherEndToEndTests : IDisposable
             return false;
         }
         finally { await console.CloseAsync(); }
+    }
+
+    private string _lastStatus = "";
+
+    /// <summary>True once a signed-in admin's <c>/api/status</c> says logins are enabled; fails once <paramref name="deadline"/> has passed.</summary>
+    private async Task<bool> AdminSeesLoginsEnabledAsync(WebSession web, DateTime deadline)
+    {
+        var json = await web.GetStringAsync("/api/status");
+        _lastStatus = json;
+        using var doc = JsonDocument.Parse(json);
+        if (doc.RootElement.GetProperty("grid").GetProperty("loginsEnabled").GetBoolean()) return true;
+        Assert.True(DateTime.UtcNow < deadline, $"/api/status did not report logins enabled within 60 s of the launcher's restart: {json}");
+        return false;
     }
 
     /// <summary>The live PID in a PID file of this data directory; fails when the file is missing or its process is gone.</summary>

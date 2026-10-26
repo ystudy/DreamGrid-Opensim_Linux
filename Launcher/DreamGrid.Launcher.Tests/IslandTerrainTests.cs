@@ -69,4 +69,12 @@ public sealed class IslandTerrainTests : IDisposable
         File.WriteAllBytes(oar, new byte[] { 1 });
         Assert.Equal(oar, StarterContent.StarterOar(_dir));
     }
+
+    [Theory]
+    [InlineData(300)]
+    [InlineData(0)]
+    [InlineData(-256)]
+    [InlineData(255)]
+    public void Island_size_must_be_positive_multiple_of_256(int size) =>
+        Assert.Throws<ArgumentOutOfRangeException>(() => IslandTerrain.WriteR32(Path.Combine(_dir, "bad.r32"), size));
 }

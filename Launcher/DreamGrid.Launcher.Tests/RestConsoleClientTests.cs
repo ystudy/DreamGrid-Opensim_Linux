@@ -1,5 +1,7 @@
+using System.Collections.Concurrent;
 using System.Net;
 using DreamGrid.Launcher.Core.OpenSim;
+using Microsoft.Extensions.Logging;
 using Xunit;
 
 namespace DreamGrid.Launcher.Tests;
@@ -224,6 +226,279 @@ public class RestConsoleClientTests
         var c = new RestConsoleClient(new HttpClient(new ThrowingHandler()), Base, "u", "p");
 
         Assert.False(await c.IsUpAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Late_output_from_previous_command_is_not_returned()
+    {
+        var lateGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reads = 0;
+        var bSent = false;
+        var h = new FuncHandler(async r =>
+        {
+            var path = r.RequestUri!.AbsolutePath;
+            if (path == "/StartSession/") return (HttpStatusCode.OK, StartOk);
+            if (path == "/SessionCommand/")
+            {
+                bSent = (await r.Content!.ReadAsStringAsync()).Contains("COMMAND=b");
+                return (HttpStatusCode.OK, CmdOk);
+            }
+            switch (Interlocked.Increment(ref reads))
+            {
+                case 1: return (HttpStatusCode.OK, Lines(("old scrollback", "false", "false", "false")));
+                case 2: // still outstanding when the first command ends; answers late
+                    await lateGate.Task;
+                    return (HttpStatusCode.OK, Lines(("late from a", "false", "false", "false")));
+                case 3: // long-poll that answers once b has been sent
+                    for (var i = 0; i < 200 && !bSent; i++) await Task.Delay(10, TestContext.Current.CancellationToken);
+                    return (HttpStatusCode.OK, Lines(("b output", "false", "false", "false")));
+                case 4: return (HttpStatusCode.OK, Empty);
+                default: return (HttpStatusCode.OK, Empty);
+            }
+        });
+        var c = new RestConsoleClient(new HttpClient(h), Base, "dg", "pw");
+
+        Assert.Empty(await c.RunAsync("a", TimeSpan.FromMilliseconds(50), CancellationToken.None));
+        _ = Task.Run(async () => { await Task.Delay(20, TestContext.Current.CancellationToken); lateGate.SetResult(); }, TestContext.Current.CancellationToken);
+        var lines = await c.RunAsync("b", TimeSpan.FromMilliseconds(100), CancellationToken.None);
+
+        Assert.Equal(new[] { "b output" }, lines);
+    }
+
+    [Fact]
+    public async Task Read_side_expiry_after_accepted_command_throws_and_does_not_resend()
+    {
+        var starts = 0;
+        var readsPerSession = new Dictionary<string, int>();
+        var (c, h) = Make(r =>
+        {
+            if (r.Uri.AbsolutePath == "/StartSession/")
+                return (HttpStatusCode.OK, StartOk.Replace(Sid, "sid-" + ++starts));
+            if (r.Uri.AbsolutePath == "/SessionCommand/")
+                return (HttpStatusCode.OK, CmdOk);
+            var sid = r.Uri.AbsolutePath.Split('/')[2];
+            var n = readsPerSession[sid] = readsPerSession.GetValueOrDefault(sid) + 1;
+            // The session dies after its scrollback read ("unknown session" -> 404 on read).
+            if (n >= 2) return (HttpStatusCode.NotFound, "");
+            return (HttpStatusCode.OK, Lines(("old scrollback", "false", "false", "false")));
+        });
+
+        var ex = await Assert.ThrowsAnyAsync<HttpRequestException>(() =>
+            c.RunAsync("create user alice secret", TimeSpan.FromMilliseconds(50), CancellationToken.None));
+
+        Assert.Contains("create user", ex.Message);
+        Assert.DoesNotContain("secret", ex.Message);
+        Assert.Single(h.Requests, r => r.Uri.AbsolutePath == "/SessionCommand/");
+        Assert.Equal(1, starts);
+    }
+
+    [Fact]
+    public async Task Send_side_expiry_reopens_and_sends_once()
+    {
+        var starts = 0;
+        var commandsSeen = 0;
+        var readsPerSession = new Dictionary<string, int>();
+        var (c, h) = Make(r =>
+        {
+            if (r.Uri.AbsolutePath == "/StartSession/")
+                return (HttpStatusCode.OK, StartOk.Replace(Sid, "sid-" + ++starts));
+            if (r.Uri.AbsolutePath == "/SessionCommand/")
+                return ++commandsSeen == 1 ? (HttpStatusCode.NotFound, "") : (HttpStatusCode.OK, CmdOk);
+            var sid = r.Uri.AbsolutePath.Split('/')[2];
+            var n = readsPerSession[sid] = readsPerSession.GetValueOrDefault(sid) + 1;
+            return (HttpStatusCode.OK, n switch
+            {
+                1 => Lines(("old scrollback", "false", "false", "false")),
+                2 => Lines(("done", "false", "false", "false")),
+                _ => Empty,
+            });
+        });
+
+        var lines = await c.RunAsync("x", TimeSpan.FromMilliseconds(50), CancellationToken.None);
+
+        Assert.Equal(2, starts);
+        Assert.Equal(new[] { "done" }, lines);
+        var cmds = h.Requests.Where(r => r.Uri.AbsolutePath == "/SessionCommand/").ToList();
+        Assert.Equal(new[] { "sid-1", "sid-2" }, cmds.Select(r => r.Form("ID")));
+    }
+
+    [Fact]
+    public async Task Second_send_side_expiry_in_same_call_throws()
+    {
+        var starts = 0;
+        var (c, h) = Make(r =>
+        {
+            if (r.Uri.AbsolutePath == "/StartSession/")
+                return (HttpStatusCode.OK, StartOk.Replace(Sid, "sid-" + ++starts));
+            if (r.Uri.AbsolutePath == "/SessionCommand/") return (HttpStatusCode.Unauthorized, "");
+            return (HttpStatusCode.OK, Empty);
+        });
+
+        await Assert.ThrowsAnyAsync<HttpRequestException>(() =>
+            c.RunAsync("x", TimeSpan.FromMilliseconds(50), CancellationToken.None));
+
+        Assert.Equal(2, starts); // reopened once, not again
+        Assert.Equal(2, h.Requests.Count(r => r.Uri.AbsolutePath == "/SessionCommand/"));
+    }
+
+    [Fact]
+    public async Task Queued_output_is_drained_even_when_previous_call_left_no_read_outstanding()
+    {
+        var reads = 0;
+        var bSent = false;
+        var bOut = 0;
+        var (c, _) = Make(r =>
+        {
+            if (r.Uri.AbsolutePath == "/StartSession/") return (HttpStatusCode.OK, StartOk);
+            if (r.Uri.AbsolutePath == "/SessionCommand/")
+            {
+                if (r.Form("COMMAND") == "b") bSent = true;
+                return (HttpStatusCode.OK, CmdOk);
+            }
+            return (HttpStatusCode.OK, Interlocked.Increment(ref reads) switch
+            {
+                1 => Lines(("old scrollback", "false", "false", "false")),
+                2 => Empty, // call "a" ends on an answered empty read: nothing outstanding afterwards
+                3 => Lines(("queued 1", "false", "false", "false")),
+                4 => Lines(("queued 2", "false", "false", "false")),
+                _ => bSent && Interlocked.Exchange(ref bOut, 1) == 0 ? Lines(("b output", "false", "false", "false")) : Empty,
+            });
+        });
+
+        Assert.Empty(await c.RunAsync("a", TimeSpan.FromMilliseconds(50), CancellationToken.None));
+        var lines = await c.RunAsync("b", TimeSpan.FromMilliseconds(50), CancellationToken.None);
+
+        Assert.Equal(new[] { "b output" }, lines);
+    }
+
+    [Fact]
+    public async Task A_read_the_server_never_answers_is_given_up_and_the_queued_output_is_read_again()
+    {
+        // RemoteConsole.GetEvents can throw when it runs while the console thread writes a line (the line counter is
+        // bumped outside the scrollback lock), and the poll manager swallows the exception: that /ReadResponses/
+        // request is never answered, not even with the 25 s "no events" reply, and the session's lines stay queued
+        // for the next read. Modelled here: the read after the first command's echo is dropped while the rest of that
+        // command's output is written.
+        var gate = new object();
+        var queued = new List<(string Text, string Prompt, string Command, string Input)>();
+        var delivered = 0;
+        var reads = 0;
+        var commands = 0;
+        var dropNext = false;
+        var droppedReads = 0;
+        var dropped = new TaskCompletionSource<(HttpStatusCode, string)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        void Output() => queued.AddRange([
+            ("Channel 256x256", "false", "false", "false"),
+            ("max/min/avg/sum: 25.8/3.5/9.7/638229", "false", "false", "false"),
+            ("Region (Welcome) # ", "true", "true", "false")]);
+
+        var h = new FuncHandler(async r =>
+        {
+            var path = r.RequestUri!.AbsolutePath;
+            if (path == "/StartSession/") return (HttpStatusCode.OK, StartOk);
+            if (path == "/SessionCommand/")
+            {
+                lock (gate)
+                {
+                    queued.Add(("terrain stats", "false", "false", "true"));
+                    if (++commands > 1) Output();
+                }
+                return (HttpStatusCode.OK, CmdOk);
+            }
+            if (Interlocked.Increment(ref reads) == 1) return (HttpStatusCode.OK, Lines(("old scrollback", "false", "false", "false")));
+            for (var i = 0; i < 100; i++) // a shortened long poll
+            {
+                lock (gate)
+                {
+                    if (dropNext)
+                    {
+                        dropNext = false;
+                        droppedReads++;
+                        Output(); // written while the dropped reply was being built
+                        goto Drop;
+                    }
+                    if (queued.Count > delivered)
+                    {
+                        var batch = queued.Skip(delivered).ToArray();
+                        delivered = queued.Count;
+                        dropNext = commands == 1 && batch.Length == 1; // the first command's echo, alone
+                        return (HttpStatusCode.OK, Lines(batch));
+                    }
+                }
+                await Task.Delay(10, TestContext.Current.CancellationToken);
+            }
+            return (HttpStatusCode.OK, Empty);
+        Drop:
+            return await dropped.Task; // never answered
+        });
+        var logs = new ConcurrentQueue<(LogLevel Level, string Category, string Message)>();
+        using var loggers = LoggerFactory.Create(b => b.AddProvider(new CapturingLoggerProvider(logs)).SetMinimumLevel(LogLevel.Trace));
+        var c = new RestConsoleClient(new HttpClient(h), Base, "dg", "pw", loggers.CreateLogger<RestConsoleClient>())
+        {
+            LostReadAfter = TimeSpan.FromMilliseconds(500),
+        };
+
+        string? stats = null;
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        while (stats is null && clock.Elapsed < TimeSpan.FromSeconds(10))
+            stats = (await c.RunAsync("terrain stats", TimeSpan.FromMilliseconds(100), CancellationToken.None))
+                .FirstOrDefault(l => l.StartsWith("max/min/avg/sum:", StringComparison.Ordinal));
+
+        Assert.Equal(1, droppedReads);
+        Assert.NotNull(stats);
+        Assert.False(dropped.Task.IsCompleted);
+        Assert.Single(logs, l => l.Level == LogLevel.Warning && l.Message.Contains("unanswered"));
+    }
+
+    [Fact]
+    public async Task Late_output_is_logged_and_a_late_echo_names_only_the_command()
+    {
+        var reads = 0;
+        var logs = new ConcurrentQueue<(LogLevel Level, string Category, string Message)>();
+        using var loggers = LoggerFactory.Create(b => b.AddProvider(new CapturingLoggerProvider(logs)).SetMinimumLevel(LogLevel.Trace));
+        var stub = new StubHandler(r =>
+        {
+            if (r.Uri.AbsolutePath == "/StartSession/") return (HttpStatusCode.OK, StartOk);
+            if (r.Uri.AbsolutePath == "/SessionCommand/") return (HttpStatusCode.OK, CmdOk);
+            return (HttpStatusCode.OK, Interlocked.Increment(ref reads) switch
+            {
+                1 => Lines(("old scrollback", "false", "false", "false")),
+                2 => Empty, // the first call ends with nothing outstanding
+                3 => Lines(("reset user password Test Owner s3cret", "false", "false", "true"), ("Password reset", "false", "false", "false")),
+                _ => Empty,
+            });
+        });
+        var c = new RestConsoleClient(new HttpClient(stub), Base, "dg", "pw", loggers.CreateLogger<RestConsoleClient>());
+
+        await c.RunAsync("a", TimeSpan.FromMilliseconds(50), CancellationToken.None);
+        await c.RunAsync("b", TimeSpan.FromMilliseconds(50), CancellationToken.None);
+
+        Assert.Contains(logs, l => l.Level == LogLevel.Debug && l.Message.Contains("Password reset"));
+        Assert.Contains(logs, l => l.Level == LogLevel.Debug && l.Message.Contains("'reset user'"));
+        Assert.DoesNotContain(logs, l => l.Message.Contains("s3cret"));
+    }
+
+    [Fact]
+    public async Task IsUp_true_when_close_times_out()
+    {
+        var h = new FuncHandler(r =>
+        {
+            var path = r.RequestUri!.AbsolutePath;
+            if (path == "/CloseSession/") throw new TaskCanceledException("timed out");
+            return Task.FromResult((HttpStatusCode.OK, StartOk));
+        });
+        var c = new RestConsoleClient(new HttpClient(h), Base, "dg", "pw");
+
+        Assert.True(await c.IsUpAsync(CancellationToken.None));
+    }
+
+    private sealed class FuncHandler(Func<HttpRequestMessage, Task<(HttpStatusCode Status, string Body)>> reply) : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            var (status, body) = await reply(request);
+            return new HttpResponseMessage(status) { Content = new StringContent(body) };
+        }
     }
 
     private sealed class ThrowingHandler : HttpMessageHandler

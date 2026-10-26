@@ -380,4 +380,15 @@ public sealed partial class DashboardTests : IAsyncLifetime
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => online.ListAsync(cts.Token));
     }
+
+    [Fact]
+    public async Task Status_reports_admin_false_anonymously_and_true_signed_in()
+    {
+        using var anonymous = JsonDocument.Parse(await _f.CreateClient().GetStringAsync("/api/status", Ct));
+        using var client = await SignedInAsync();
+        using var signedIn = JsonDocument.Parse(await client.GetStringAsync("/api/status", Ct));
+
+        Assert.False(anonymous.RootElement.GetProperty("admin").GetBoolean());
+        Assert.True(signedIn.RootElement.GetProperty("admin").GetBoolean());
+    }
 }

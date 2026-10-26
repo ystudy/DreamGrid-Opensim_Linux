@@ -60,7 +60,7 @@ public sealed class ManagedProcess(ProcessSpec spec, RestartPolicy policy, TimeP
         RaiseStateChanged(ProcessState.Starting);
 
         var recorded = PidFile.Read(spec.PidFile);
-        if (recorded is { } existing && ProcessImage.Matches(existing, spec.ExpectedImage))
+        if (PidFile.ReadLive(spec.PidFile, spec.ExpectedImage) is { } existing)
         {
             // The child we already track (a second start of a running child) keeps its Process, which the monitor
             // may be awaiting; any other live match is adopted.
@@ -89,6 +89,8 @@ public sealed class ManagedProcess(ProcessSpec spec, RestartPolicy policy, TimeP
             if (current)
             {
                 Attach(launched.Pid, process);
+                // The sidecar first: a new PID file never sits beside an older process's start identity.
+                PidFile.WriteStart(spec.PidFile, launched.Pid);
                 PidFile.Write(spec.PidFile, launched.Pid);
             }
         }
@@ -107,7 +109,7 @@ public sealed class ManagedProcess(ProcessSpec spec, RestartPolicy policy, TimeP
     {
         lock (_gate) { _stopRequested = true; _epoch++; }
 
-        if (Pid is null && PidFile.Read(spec.PidFile) is { } recorded && ProcessImage.Matches(recorded, spec.ExpectedImage))
+        if (Pid is null && PidFile.ReadLive(spec.PidFile, spec.ExpectedImage) is { } recorded)
             lock (_gate) Attach(recorded, process: null); // stop a child left by an earlier launcher run
 
         lock (_gate) _stopping = _process;
@@ -217,7 +219,7 @@ public sealed class ManagedProcess(ProcessSpec spec, RestartPolicy policy, TimeP
 
     private Process Launch()
     {
-        var info = spec.StartInfo();
+        var info = ProcessImage.WithoutServiceManagerEnvironment(spec.StartInfo());
         info.UseShellExecute = false;
         info.RedirectStandardInput = false;
         info.RedirectStandardOutput = true;
@@ -416,7 +418,7 @@ public sealed class ManagedProcess(ProcessSpec spec, RestartPolicy policy, TimeP
                 if (!process.HasExited) process.Kill(entireProcessTree: true);
                 process.WaitForExit(5000);
             }
-            else if (pid is { } p && ProcessImage.Matches(p, spec.ExpectedImage))
+            else if (pid is { } p && PidFile.ReadLive(spec.PidFile, spec.ExpectedImage) == p)
             {
                 using var adopted = Process.GetProcessById(p);
                 adopted.Kill(entireProcessTree: true);

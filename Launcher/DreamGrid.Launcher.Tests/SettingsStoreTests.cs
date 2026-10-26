@@ -24,6 +24,54 @@ public class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public void Settings_tmp_left_by_a_crash_is_ignored_and_removed()
+    {
+        var path = Path.Combine(NewDir(), "settings.json");
+        var good = new SettingsStore(path).LoadOrCreate();
+        File.WriteAllText(path + ".tmp", "{\"webPort\": 80");
+
+        var loaded = new SettingsStore(path).LoadOrCreate();
+
+        Assert.Equal(good.Db.RobustPassword, loaded.Db.RobustPassword);
+        Assert.False(File.Exists(path + ".tmp"));
+    }
+
+    [Fact]
+    public void Save_removes_tmp_when_replace_fails()
+    {
+        var path = Path.Combine(NewDir(), "settings.json");
+        var settings = new SettingsStore(Path.Combine(NewDir(), "x.json")).LoadOrCreate();
+        Directory.CreateDirectory(path);
+
+        Assert.ThrowsAny<Exception>(() => new SettingsStore(path).Save(settings));
+        Assert.False(File.Exists(path + ".tmp"));
+    }
+
+    [Fact]
+    public void Save_does_not_retry_non_sharing_errors()
+    {
+        var path = Path.Combine(NewDir(), "settings.json");
+        var settings = new SettingsStore(Path.Combine(NewDir(), "x.json")).LoadOrCreate();
+        Directory.CreateDirectory(path);
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        Assert.ThrowsAny<Exception>(() => new SettingsStore(path).Save(settings));
+        Assert.True(sw.ElapsedMilliseconds < 500, $"took {sw.ElapsedMilliseconds} ms");
+    }
+
+    [Fact]
+    public void Load_rejects_null_for_required_member()
+    {
+        var path = Path.Combine(NewDir(), "settings.json");
+        new SettingsStore(path).LoadOrCreate();
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+        node["db"] = null;
+        File.WriteAllText(path, node.ToJsonString());
+
+        Assert.Throws<SettingsCorruptException>(() => new SettingsStore(path).LoadOrCreate());
+    }
+
+    [Fact]
     public void LoadOrCreate_creates_file_with_unique_random_secrets()
     {
         var a = new SettingsStore(Path.Combine(NewDir(), "settings.json")).LoadOrCreate();

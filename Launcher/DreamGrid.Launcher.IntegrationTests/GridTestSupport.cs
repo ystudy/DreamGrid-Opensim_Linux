@@ -44,7 +44,7 @@ internal static class GridTestSupport
     }
 
     public static RobustClient NewRobustClient(HttpClient http, LauncherSettings s) =>
-        new(http, new Uri($"http://127.0.0.1:{s.RobustPrivatePort}"), new Uri($"http://127.0.0.1:{s.RobustPublicPort}"));
+        new(http, () => s);
 
     /// <summary>A controller wired the way the host wires it (Program.cs).</summary>
     public static GridController NewController(LauncherPaths paths, SettingsStore store, IRobustClient robust) =>

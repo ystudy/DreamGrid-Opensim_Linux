@@ -91,8 +91,7 @@ public sealed class NetworkModel(IGridController grid, Func<LauncherSettings> se
     private static string Text(int port) => port.ToString(CultureInfo.InvariantCulture);
 
     /// <summary>
-    /// The launcher listens on the web port and talks to Robust on the ports it had at its own start
-    /// (IGridController.RegenerateConfig), so those two changes need the launcher itself restarted.
+    /// The launcher listens on the web port it started with, so a changed web port needs the launcher itself restarted.
     /// </summary>
     private List<string> Notes(LauncherSettings before, LauncherSettings after)
     {
@@ -101,9 +100,6 @@ public sealed class NetworkModel(IGridController grid, Func<LauncherSettings> se
             notes.Add($"The web port changed to {after.WebPort}, so this website's address changes too. It moves when you " +
                       "restart the launcher itself (restart the DreamGrid service, or the computer); restarting your world is not " +
                       $"enough. Afterwards open http://{after.Hostname ?? DetectedAddress}:{after.WebPort}/ instead of this address.");
-        if (before.RobustPublicPort != after.RobustPublicPort || before.RobustPrivatePort != after.RobustPrivatePort)
-            notes.Add("A Robust port changed. The launcher keeps talking to Robust on the old ports until you restart the " +
-                      "launcher itself (restart the DreamGrid service, or the computer); restarting your world is not enough.");
         return notes;
     }
 }

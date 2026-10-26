@@ -46,10 +46,13 @@ public sealed class GridControllerWiringTests : IDisposable
         _grid = NewGrid(TimeProvider.System);
     }
 
+    /// <summary>The folder of the rig's MariaDB, which does not exist.</summary>
+    private const string MissingMariaDb = "no-such-dir";
+
     private GridController NewGrid(TimeProvider time)
     {
         // A MariaDB that cannot start: anything past the port check fails with a non-port error.
-        var missing = Path.Combine(_root, "no-such-dir", "mariadbd");
+        var missing = Path.Combine(_root, MissingMariaDb, "mariadbd");
         return new GridController(_paths, _store, new MariaDbBinaries(missing, missing, null),
             [new LogLevelModule()], _robust, _http, time);
     }
@@ -137,6 +140,25 @@ public sealed class GridControllerWiringTests : IDisposable
         var e = await Record.ExceptionAsync(() => _grid.StartAsync(ct));
         Assert.IsNotType<PortConflictException>(e);
         Assert.Equal(new StartFailure(e!.Message, null), _grid.GetStatus().StartFailure);
+    }
+
+    [Fact]
+    public async Task Stop_all_clears_an_earlier_start_failure()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var s = _store.LoadOrCreate();
+        var robust = new TcpListener(IPAddress.Any, s.RobustPublicPort);
+        robust.Start();
+        try
+        {
+            await Assert.ThrowsAsync<PortConflictException>(() => _grid.StartAsync(ct));
+        }
+        finally { robust.Stop(); }
+        Assert.NotNull(_grid.GetStatus().StartFailure);
+
+        await _grid.StopAllAsync(ct);
+
+        Assert.Null(_grid.GetStatus().StartFailure);
     }
 
     [Fact]
@@ -415,6 +437,171 @@ public sealed class GridControllerWiringTests : IDisposable
         }
     }
 
+    /// <summary>
+    /// A stand-in for the region "Welcome" an earlier launcher run left behind: its command line names the staged
+    /// OpenSim.dll and its PID file is written after it started, so the controller would adopt it.
+    /// </summary>
+    private Process StartLeftoverRegion()
+    {
+        var psi = new ProcessStartInfo(FakeChildExe()) { UseShellExecute = false };
+        psi.ArgumentList.Add("--serve");
+        psi.ArgumentList.Add(FreePorts(1)[0].ToString());
+        psi.ArgumentList.Add(Path.Combine(_paths.RuntimeOpenSim, "OpenSim.dll"));
+        var fake = Process.Start(psi)!;
+        _paths.EnsureCreated();
+        PidFile.Write(Path.Combine(_paths.Pids, "Welcome.pid"), fake.Id);
+        return fake;
+    }
+
+    /// <summary>Stops watching (so no monitor restarts the stand-in), then kills it.</summary>
+    private async Task EndLeftoverRegionAsync(Process fake)
+    {
+        await _grid.DetachAsync();
+        if (!fake.HasExited) fake.Kill();
+        fake.Dispose();
+    }
+
+    private const string IslandStats = "max/min/avg/sum: 26.3/4.8/12.5/819200";
+
+    [Fact]
+    public async Task Start_adopts_running_region_before_region_created()
+    {
+        // The launcher restarted while the region step was still running: the region is live, RegionCreated is not set.
+        AddRegion(created: false);
+        var fake = StartLeftoverRegion();
+        try
+        {
+            var e = await Record.ExceptionAsync(() => _grid.StartAsync(TestContext.Current.CancellationToken));
+
+            Assert.NotNull(e); // MariaDB cannot start in this rig
+            var region = _grid.GetStatus().Region;
+            Assert.NotNull(region);
+            Assert.Equal(ProcessState.Running, region.State);
+            Assert.Equal(fake.Id, region.Pid);
+            Assert.False(fake.HasExited);
+        }
+        finally { await EndLeftoverRegionAsync(fake); }
+    }
+
+    [Theory]
+    [InlineData("refused")]
+    [InlineData("timeout")]
+    public async Task A_failed_adoption_of_an_unfinished_region_does_not_keep_the_database_down(string failure)
+    {
+        // The region's health probe gets a session; the login query after it fails: the console refuses the login
+        // (ConsoleAuthException), or the console HttpClient times out (TaskCanceledException).
+        AddRegion(created: false);
+        var regionPort = _store.LoadOrCreate().RegionConsolePort;
+        var sessions = 0;
+        _http.Override = r =>
+        {
+            if (r.Uri.Port != regionPort) return null;
+            if (failure == "refused" && r.Uri.AbsolutePath == "/StartSession/" && Interlocked.Increment(ref sessions) > 1)
+                return (HttpStatusCode.Unauthorized, "");
+            if (failure == "timeout" && r.Uri.AbsolutePath == "/SessionCommand/")
+                throw new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout of 100 seconds elapsing.",
+                    new TimeoutException());
+            return null;
+        };
+        var fake = StartLeftoverRegion();
+        try
+        {
+            var e = await Record.ExceptionAsync(() => _grid.StartAsync(TestContext.Current.CancellationToken));
+
+            // It went on to the database, which is what fails in this rig.
+            Assert.NotNull(e);
+            Assert.IsNotType<ConsoleAuthException>(e);
+            Assert.IsNotAssignableFrom<OperationCanceledException>(e);
+            Assert.Contains(MissingMariaDb, e.Message);
+            Assert.Equal(ProcessState.Running, _grid.GetStatus().Region?.State); // adopted all the same
+        }
+        finally { await EndLeftoverRegionAsync(fake); }
+    }
+
+    [Fact]
+    public async Task Region_retry_after_adoption_waits_for_logins_before_content()
+    {
+        // The adopted region is still booting: it says logins are disabled, then enables them while that answer is on
+        // its way (its one-time alert arrives during the query). Content waits for logins, and the alert is not lost.
+        var ct = TestContext.Current.CancellationToken;
+        AddRegion(created: false);
+        var regionPort = _store.LoadOrCreate().RegionConsolePort;
+        var fake = StartLeftoverRegion();
+        var id = Guid.NewGuid();
+        var terrain = "max/min/avg/sum: 21/21/21/1376256";
+        _http.Reply = (port, command) =>
+        {
+            if (port != regionPort) return [];
+            if (command == "login status") return ["Login in Welcome are disabled"];
+            if (command == "terrain stats") return [terrain];
+            if (command.StartsWith("terrain load ", StringComparison.Ordinal)) terrain = IslandStats;
+            return [];
+        };
+        _http.OnCommand = port =>
+        {
+            if (port != regionPort || _http.Commands(regionPort).Count(c => c == "login status") != 1) return;
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(300, CancellationToken.None);
+                _http.Mark("alert: logins enabled");
+                _grid.OnRegionAlert(new RegionAlert("region_ready", "enabled", "Welcome", id, null));
+            }, CancellationToken.None);
+        };
+        try
+        {
+            await _grid.CreateRegionAsync("Welcome", "island", ct).WaitAsync(TimeSpan.FromSeconds(60), ct);
+
+            string[] log;
+            lock (_http.Log) log = _http.Log.ToArray();
+            var alert = Array.IndexOf(log, "alert: logins enabled");
+            var firstContent = Array.FindIndex(log, l => l.StartsWith(regionPort + " terrain", StringComparison.Ordinal));
+            Assert.True(alert >= 0, "no alert was sent");
+            Assert.True(firstContent > alert, "content was loaded before logins were enabled: " + string.Join(" | ", log));
+            Assert.True(_store.LoadOrCreate().Setup.RegionCreated);
+        }
+        finally { await EndLeftoverRegionAsync(fake); }
+    }
+
+    [Fact]
+    public async Task Region_retry_switching_to_island_loads_island()
+    {
+        // The first attempt loaded the starter OAR (hilly terrain) and was interrupted; the retry picks the island.
+        var ct = TestContext.Current.CancellationToken;
+        AddRegion(created: false); // Content: "starter"
+        var regionPort = _store.LoadOrCreate().RegionConsolePort;
+        var fake = StartLeftoverRegion();
+        const string starterStats = "max/min/avg/sum: 48.0/2.0/22.1/1441792";
+        var terrain = starterStats;
+        var loadWorks = false;
+        _http.Reply = (port, command) =>
+        {
+            if (port != regionPort) return [];
+            if (command == "login status") return ["Login in Welcome are enabled"];
+            if (command == "terrain stats") return [terrain];
+            if (command.StartsWith("terrain fill ", StringComparison.Ordinal)) terrain = "max/min/avg/sum: 0/0/0/0";
+            if (command.StartsWith("terrain load ", StringComparison.Ordinal) && loadWorks) terrain = IslandStats;
+            return [];
+        };
+        try
+        {
+            // The region could not read the island file: the starter's relief must not pass for the island.
+            var e = await Assert.ThrowsAsync<InvalidOperationException>(() => _grid.CreateRegionAsync("Welcome", "island", ct).WaitAsync(TimeSpan.FromSeconds(60), ct));
+            Assert.Contains("island terrain", e.Message);
+            Assert.False(_store.LoadOrCreate().Setup.RegionCreated);
+
+            loadWorks = true;
+            await _grid.CreateRegionAsync("Welcome", "island", ct).WaitAsync(TimeSpan.FromSeconds(60), ct);
+
+            var commands = _http.Commands(regionPort);
+            Assert.Contains(commands, c => c.StartsWith("terrain load ", StringComparison.Ordinal) && c.Contains("island.r32"));
+            Assert.DoesNotContain(commands, c => c.StartsWith("load oar", StringComparison.Ordinal));
+            var saved = _store.LoadOrCreate();
+            Assert.True(saved.Setup.RegionCreated);
+            Assert.Equal("island", saved.Region?.Content);
+        }
+        finally { await EndLeftoverRegionAsync(fake); }
+    }
+
     [Fact]
     public async Task A_MariaDB_without_our_datadir_is_not_adopted()
     {
@@ -486,25 +673,62 @@ public sealed class GridControllerWiringTests : IDisposable
         public Task<bool> AuthenticateAsync(Guid principal, string plainPassword, CancellationToken ct) => Task.FromResult(true);
     }
 
-    /// <summary>A console server that accepts every command, prints nothing, and records which port each command went to.</summary>
+    /// <summary>
+    /// A console server that accepts every command and records which port each command went to. It prints nothing
+    /// unless <see cref="Reply"/> gives output lines for a command, which the port's next read returns.
+    /// </summary>
     private sealed class ConsoleHttp : IHttpClientFactory
     {
+        private readonly Dictionary<int, Queue<string>> _output = new();
+
         public List<int> CommandPorts { get; } = new();
+        /// <summary>Every command with its port, in order; tests may add their own markers.</summary>
+        public List<string> Log { get; } = new();
         /// <summary>Called with the console port of each command, after it is recorded.</summary>
         public Action<int>? OnCommand { get; set; }
+        /// <summary>The output lines for (port, command).</summary>
+        public Func<int, string, string[]>? Reply { get; set; }
+        /// <summary>Answers a request instead of the normal server when it returns a reply (it may also throw).</summary>
+        public Func<RecordedRequest, (HttpStatusCode, string)?>? Override { get; set; }
+
+        public void Mark(string text) { lock (Log) Log.Add(text); }
+
+        public string[] Commands(int port)
+        {
+            var prefix = port + " ";
+            lock (Log) return Log.Where(l => l.StartsWith(prefix, StringComparison.Ordinal)).Select(l => l[prefix.Length..]).ToArray();
+        }
 
         public HttpClient CreateClient(string name) => new(new StubHandler(r =>
         {
+            var port = r.Uri.Port;
+            if (Override?.Invoke(r) is { } overridden) return overridden;
             switch (r.Uri.AbsolutePath)
             {
                 case "/StartSession/":
                     return (HttpStatusCode.OK, "<ConsoleSession><SessionID>sid</SessionID></ConsoleSession>");
                 case "/SessionCommand/":
-                    lock (CommandPorts) CommandPorts.Add(r.Uri.Port);
-                    OnCommand?.Invoke(r.Uri.Port);
+                    var command = r.Form("COMMAND");
+                    lock (CommandPorts) CommandPorts.Add(port);
+                    Mark(port + " " + command);
+                    if (Reply?.Invoke(port, command) is { } lines)
+                        lock (_output)
+                        {
+                            if (!_output.TryGetValue(port, out var queue)) _output[port] = queue = new();
+                            foreach (var line in lines) queue.Enqueue(line);
+                        }
+                    OnCommand?.Invoke(port);
                     return (HttpStatusCode.OK, "<ConsoleSession><Result>OK</Result></ConsoleSession>");
-                default:
+                case "/CloseSession/":
                     return (HttpStatusCode.OK, "<ConsoleSession></ConsoleSession>");
+                default:
+                    var output = new List<string>();
+                    lock (_output)
+                        if (_output.TryGetValue(port, out var pending))
+                            while (pending.Count > 0) output.Add(pending.Dequeue());
+                    return (HttpStatusCode.OK, "<ConsoleSession>" + string.Concat(output.Select(l =>
+                        $"<Line Number=\"1\" Level=\"normal\" Prompt=\"false\" Command=\"false\" Input=\"false\">{System.Security.SecurityElement.Escape(l)}</Line>"))
+                        + "</ConsoleSession>");
             }
         }));
     }

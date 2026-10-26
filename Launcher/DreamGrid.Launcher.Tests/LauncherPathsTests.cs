@@ -35,6 +35,28 @@ public class LauncherPathsTests
         Assert.Null(defaults.MariaDbBin);
     }
 
+    [Theory]
+    [InlineData("--data")]
+    [InlineData("--opensim")]
+    [InlineData("--mariadb-bin")]
+    public void Resolve_trailing_flag_without_value_throws(string flag)
+    {
+        var env = new Dictionary<string, string?> { ["DREAMGRID_OPENSIM"] = "/o" };
+        var e = Assert.Throws<ArgumentException>(() => LauncherPaths.Resolve(["--other", flag], env, isWindows: false));
+        Assert.Contains(flag, e.Message);
+        Assert.Contains("needs a value", e.Message);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public void Resolve_windows_without_ProgramData_uses_C_ProgramData(string? programData)
+    {
+        var env = new Dictionary<string, string?> { ["DREAMGRID_OPENSIM"] = "/o" };
+        if (programData is not null) env["ProgramData"] = programData;
+        Assert.Equal(Path.Combine(@"C:\ProgramData", "DreamGrid"),LauncherPaths.ResolveData([], env, isWindows: true));
+    }
+
     [Fact]
     public void Resolve_throws_naming_opensim_when_unset()
     {
@@ -127,6 +149,105 @@ public class LauncherPathsTests
         {
             foreach (var d in new[] { data, existing })
                 if (Directory.Exists(d)) Directory.Delete(d, true);
+        }
+    }
+
+    [Fact]
+    [SupportedOSPlatform("windows")]
+    public void Windows_data_dir_is_owner_system_admins_only()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Windows only");
+        var dir = Path.Combine(Path.GetTempPath(), "dg-acl-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var me = System.Security.Principal.WindowsIdentity.GetCurrent().User!.Value;
+            var expected = new[] { me, "S-1-5-18", "S-1-5-32-544" }.Distinct().Order().ToArray();
+
+            LauncherPaths.CreateOwnerOnly(dir);
+            LauncherPaths.CreateOwnerOnly(dir); // idempotent
+
+            var security = new DirectoryInfo(dir).GetAccessControl();
+            Assert.True(security.AreAccessRulesProtected);
+            Assert.Equal(expected, Sids(security));
+
+            var file = Path.Combine(dir, "secret.txt");
+            File.WriteAllText(file, "x");
+            Assert.Equal(expected, Sids(new FileInfo(file).GetAccessControl()));
+        }
+        finally
+        {
+            if (Directory.Exists(dir)) Directory.Delete(dir, true);
+        }
+
+        static string[] Sids(System.Security.AccessControl.FileSystemSecurity s) =>
+            s.GetAccessRules(true, true, typeof(System.Security.Principal.SecurityIdentifier))
+                .Cast<System.Security.AccessControl.FileSystemAccessRule>()
+                .Select(r => r.IdentityReference.Value).Distinct().Order().ToArray();
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static string[] AclSids(System.Security.AccessControl.FileSystemSecurity s, bool inherited = true) =>
+        s.GetAccessRules(true, inherited, typeof(System.Security.Principal.SecurityIdentifier))
+            .Cast<System.Security.AccessControl.FileSystemAccessRule>()
+            .Select(r => r.IdentityReference.Value).Distinct().Order().ToArray();
+
+    [Fact]
+    [SupportedOSPlatform("windows")]
+    public void Rewrite_replaces_inherited_and_extra_entries()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Windows only");
+        var dir = Path.Combine(Path.GetTempPath(), "dg-acl-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var users = new System.Security.Principal.SecurityIdentifier("S-1-5-32-545");
+            var localService = new System.Security.Principal.SecurityIdentifier("S-1-5-19");
+            var info = Directory.CreateDirectory(dir);
+            var seed = info.GetAccessControl();
+            seed.AddAccessRule(new System.Security.AccessControl.FileSystemAccessRule(users,
+                System.Security.AccessControl.FileSystemRights.ReadAndExecute,
+                System.Security.AccessControl.InheritanceFlags.ContainerInherit | System.Security.AccessControl.InheritanceFlags.ObjectInherit,
+                System.Security.AccessControl.PropagationFlags.None, System.Security.AccessControl.AccessControlType.Allow));
+            info.SetAccessControl(seed);
+            var child = Path.Combine(dir, "old.txt");
+            File.WriteAllText(child, "x");
+            Assert.Contains(users.Value, AclSids(new FileInfo(child).GetAccessControl()));
+
+            LauncherPaths.ApplyOwnerOnlyAcl(dir, [localService]);
+
+            var me = System.Security.Principal.WindowsIdentity.GetCurrent().User!.Value;
+            var expected = new[] { me, "S-1-5-18", "S-1-5-32-544", "S-1-5-19" }.Distinct().Order().ToArray();
+            var after = new DirectoryInfo(dir).GetAccessControl();
+            Assert.True(after.AreAccessRulesProtected);
+            Assert.Equal(expected, AclSids(after));
+            Assert.Equal(expected, AclSids(new FileInfo(child).GetAccessControl()));
+        }
+        finally
+        {
+            if (Directory.Exists(dir)) Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    [SupportedOSPlatform("windows")]
+    public void Extra_service_sid_is_kept_on_rerun()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Windows only");
+        var dir = Path.Combine(Path.GetTempPath(), "dg-acl-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var localService = new System.Security.Principal.SecurityIdentifier("S-1-5-19");
+            Directory.CreateDirectory(dir);
+            LauncherPaths.ApplyOwnerOnlyAcl(dir, [localService]);
+            var first = new DirectoryInfo(dir).GetAccessControl().GetSecurityDescriptorSddlForm(System.Security.AccessControl.AccessControlSections.Access);
+
+            LauncherPaths.ApplyOwnerOnlyAcl(dir, [localService]);
+            var second = new DirectoryInfo(dir).GetAccessControl();
+            Assert.Equal(first, second.GetSecurityDescriptorSddlForm(System.Security.AccessControl.AccessControlSections.Access));
+            Assert.Contains("S-1-5-19", AclSids(second));
+        }
+        finally
+        {
+            if (Directory.Exists(dir)) Directory.Delete(dir, true);
         }
     }
 }

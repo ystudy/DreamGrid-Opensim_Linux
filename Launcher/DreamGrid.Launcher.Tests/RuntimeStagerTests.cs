@@ -129,4 +129,42 @@ public sealed class RuntimeStagerTests : IDisposable
         Assert.True(stager.StageIfNeeded());
         Assert.False(stager.NeedsStaging());
     }
+
+    [Fact]
+    public void Stager_skips_excluded_dirs_and_files()
+    {
+        var program = _paths.OpenSimProgram;
+        Directory.CreateDirectory(Path.Combine(program, "Regions"));
+        File.WriteAllText(Path.Combine(program, "Regions", "r.ini"), "x");
+        Directory.CreateDirectory(Path.Combine(program, "addin-db-x"));
+        File.WriteAllText(Path.Combine(program, "addin-db-x", "y"), "y");
+        File.WriteAllText(Path.Combine(program, "a.log"), "log");
+        File.WriteAllText(Path.Combine(program, "OpenSim.ini"), "[Live]");
+        var proto = Path.Combine(program, "config-include", "Proto", "Robust");
+        Directory.CreateDirectory(proto);
+        File.WriteAllText(Path.Combine(proto, "OpenSim.ini"), "[Const]");
+
+        new RuntimeStager(_paths).StageIfNeeded();
+
+        var rt = _paths.RuntimeOpenSim;
+        Assert.False(Directory.Exists(Path.Combine(rt, "Regions")));
+        Assert.False(Directory.Exists(Path.Combine(rt, "addin-db-x")));
+        Assert.False(File.Exists(Path.Combine(rt, "a.log")));
+        Assert.False(File.Exists(Path.Combine(rt, "OpenSim.ini")));
+        Assert.True(File.Exists(Path.Combine(rt, "config-include", "Proto", "Robust", "OpenSim.ini")));
+    }
+
+    [Fact]
+    public void Log_config_path_with_spaces_apostrophe_and_backslash_is_valid_xml()
+    {
+        var data = Path.Combine(_root, "my 'grid' data\\logs");
+        var paths = new LauncherPaths(data, Path.Combine(_root, "program"), null);
+
+        new RuntimeStager(paths).WriteLogConfigs("Region1");
+
+        var robust = XDocument.Load(Path.Combine(paths.RuntimeOpenSim, "dreamgrid-robust.log4net.xml"));
+        var file = robust.Descendants("file").Single().Attribute("value")!.Value;
+        Assert.Equal(Path.Combine(paths.Logs, "robust.log").Replace('\\', '/'), file);
+        Assert.Contains("my 'grid' data", file);
+    }
 }

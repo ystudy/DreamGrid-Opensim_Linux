@@ -1,13 +1,21 @@
+using System.Runtime.InteropServices;
 using System.Text.Json;
 
 namespace DreamGrid.Launcher.Core.Settings;
 
 public sealed class SettingsStore(string path)
 {
-    private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web) { WriteIndented = true };
+    private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web) { WriteIndented = true, RespectNullableAnnotations = true };
+
+    private int _swept;
 
     public LauncherSettings LoadOrCreate()
     {
+        // A .tmp found at the first load is a save that never reached the rename (this process has not saved yet);
+        // the real file is the truth. Later loads leave it alone: it may be a save in flight.
+        if (Interlocked.Exchange(ref _swept, 1) == 0)
+            try { File.Delete(path + ".tmp"); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+
         if (!File.Exists(path))
         {
             var fresh = NewSettings();
@@ -15,6 +23,14 @@ public sealed class SettingsStore(string path)
             return fresh;
         }
 
+        return Read();
+    }
+
+    /// <summary>The saved settings, or null when the file does not exist. Creates nothing.</summary>
+    public LauncherSettings? TryLoad() => File.Exists(path) ? Read() : null;
+
+    private LauncherSettings Read()
+    {
         try
         {
             // ReadWrite | Delete sharing keeps the read from blocking writers longer than it must (see ReplaceWithRetry).
@@ -44,12 +60,41 @@ public sealed class SettingsStore(string path)
             JsonSerializer.Serialize(fs, s, Options);
             fs.Flush(true);
         }
-        ReplaceWithRetry(tmp, path);
+        try
+        {
+            ReplaceWithRetry(tmp, path);
+        }
+        catch
+        {
+            try { File.Delete(tmp); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+            throw;
+        }
+        if (!OperatingSystem.IsWindows()) SyncDirectory(dir);
     }
+
+    /// <summary>Best effort: makes the rename itself durable. Errors are ignored.</summary>
+    private static void SyncDirectory(string? dir)
+    {
+        if (string.IsNullOrEmpty(dir)) return;
+        try
+        {
+            var fd = Open(dir, 0 /* O_RDONLY */);
+            if (fd < 0) return;
+            try { Fsync(fd); }
+            finally { Close(fd); }
+        }
+        catch (Exception e) when (e is DllNotFoundException or EntryPointNotFoundException) { }
+    }
+
+    [DllImport("libc", EntryPoint = "open")] private static extern int Open(string path, int flags);
+    [DllImport("libc", EntryPoint = "fsync")] private static extern int Fsync(int fd);
+    [DllImport("libc", EntryPoint = "close")] private static extern int Close(int fd);
 
     /// <summary>
     /// Atomic replace. On Windows the overwrite fails while another handle has the target open (even with delete
-    /// sharing), so a short read elsewhere is waited out: up to ~2 s, then the last error is thrown.
+    /// sharing), so a short read elsewhere is waited out: up to ~2 s, then the last error is thrown. Only sharing and
+    /// lock violations (HResult 32 and 33) are retried, plus access denied on an existing file: that is how an open
+    /// handle on the target shows up on Windows. Anything else (a directory in the way, say) fails at once.
     /// </summary>
     private static void ReplaceWithRetry(string tmp, string path)
     {
@@ -60,12 +105,19 @@ public sealed class SettingsStore(string path)
                 File.Move(tmp, path, overwrite: true);
                 return;
             }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException && OperatingSystem.IsWindows() && attempt < 40)
+            catch (Exception e) when (attempt < 40 && OperatingSystem.IsWindows() && IsSharingError(e, path))
             {
                 Thread.Sleep(50);
             }
         }
     }
+
+    private static bool IsSharingError(Exception e, string path) => e switch
+    {
+        UnauthorizedAccessException => File.Exists(path),
+        IOException io => (io.HResult & 0xFFFF) is 32 or 33,
+        _ => false,
+    };
 
     private static LauncherSettings NewSettings() => new()
     {

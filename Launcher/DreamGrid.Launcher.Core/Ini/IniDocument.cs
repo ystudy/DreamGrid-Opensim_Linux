@@ -146,6 +146,8 @@ public sealed class IniDocument
 
     public void Set(string section, string key, string value)
     {
+        if (string.IsNullOrWhiteSpace(section)) throw new ArgumentException("An INI section cannot be empty.", nameof(section));
+        if (string.IsNullOrWhiteSpace(key)) throw new ArgumentException("An INI key cannot be empty.", nameof(key));
         // A line break would add lines, even whole sections, to the generated INI.
         foreach (var (name, text) in new[] { (nameof(section), section), (nameof(key), key), (nameof(value), value) })
             if (text.AsSpan().IndexOfAny('\r', '\n') >= 0)
@@ -197,6 +199,8 @@ public sealed class IniDocument
             _lines.InsertRange(start + 1, body.Select(b => new Line(b, Environment.NewLine)));
             return;
         }
+        if (start >= 0)
+            throw new FormatException($"Section [{section}] has the block start marker '{sm}' but no end marker '{em}'.");
         var block = new List<string> { startMarker };
         block.AddRange(body);
         block.Add(endMarker);

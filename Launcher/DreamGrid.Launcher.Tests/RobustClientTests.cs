@@ -1,19 +1,35 @@
 using System.Net;
 using DreamGrid.Launcher.Core.OpenSim;
+using DreamGrid.Launcher.Core.Settings;
 using Xunit;
 
 namespace DreamGrid.Launcher.Tests;
 
 public class RobustClientTests
 {
-    private static readonly Uri Priv = new("http://127.0.0.1:8003/");
-    private static readonly Uri Pub = new("http://127.0.0.1:8002/");
+    private static readonly LauncherSettings Defaults =
+        new SettingsStore(Path.Combine(Path.GetTempPath(), "dg-robust-" + Guid.NewGuid().ToString("N"), "settings.json")).LoadOrCreate();
     private const string Pid = "11111111-2222-3333-4444-555555555555";
 
     private static (RobustClient Client, StubHandler Handler) Make(Func<RecordedRequest, (HttpStatusCode, string)> reply)
     {
         var h = new StubHandler(reply);
-        return (new RobustClient(new HttpClient(h), Priv, Pub), h);
+        return (new RobustClient(new HttpClient(h), () => Defaults), h);
+    }
+
+    [Fact]
+    public async Task Port_change_redirects_next_call()
+    {
+        var h = new StubHandler(r => (HttpStatusCode.OK, "<gridinfo></gridinfo>"));
+        var settings = Defaults;
+        var c = new RobustClient(new HttpClient(h), () => settings);
+
+        Assert.True(await c.IsReadyAsync(CancellationToken.None));
+        settings = settings with { RobustPublicPort = 8102, RobustPrivatePort = 8103 };
+        Assert.True(await c.IsReadyAsync(CancellationToken.None));
+        await c.AuthenticateAsync(Guid.Parse(Pid), "x", CancellationToken.None);
+
+        Assert.Equal([8002, 8102, 8103], h.Requests.Select(q => q.Uri.Port));
     }
 
     [Fact]
@@ -74,7 +90,7 @@ public class RobustClientTests
     [Theory]
     [InlineData(HttpStatusCode.OK, "<gridinfo><gridname>DreamGrid</gridname></gridinfo>", true)]
     [InlineData(HttpStatusCode.OK, "<html>starting</html>", false)]
-    [InlineData(HttpStatusCode.ServiceUnavailable, "<gridinfo/>", false)]
+    [InlineData(HttpStatusCode.ServiceUnavailable, "<gridinfo></gridinfo>", false)]
     public async Task IsReady_requires_200_and_gridinfo(HttpStatusCode status, string body, bool expected)
     {
         var (c, h) = Make(r => (status, body));

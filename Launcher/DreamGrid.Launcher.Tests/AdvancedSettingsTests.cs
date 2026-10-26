@@ -176,7 +176,7 @@ public sealed class AdvancedSettingsTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Network_save_explains_a_changed_web_or_robust_port()
+    public async Task Network_save_explains_a_changed_web_port_but_not_a_robust_port()
     {
         using var client = await SignedInAsync(_f);
 
@@ -185,7 +185,7 @@ public sealed class AdvancedSettingsTests : IAsyncLifetime
 
         Assert.Contains("restart the launcher itself", text);
         Assert.Contains(":9001/", text);
-        Assert.Contains("Robust", text);
+        Assert.DoesNotContain("keeps talking to Robust", text);
     }
 
     [Fact]

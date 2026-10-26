@@ -157,4 +157,36 @@ public class IniDocumentTests
         Assert.Throws<ArgumentException>(() => d.Set(section, key, value));
         Assert.Equal("[A]\nx=0\n", N(d.ToText()));
     }
+
+    [Theory]
+    [InlineData("", "x")]
+    [InlineData("  ", "x")]
+    [InlineData("A", "")]
+    public void Set_with_empty_section_or_key_throws(string section, string key)
+    {
+        var d = IniDocument.Parse("[A]\nx=0\n");
+        Assert.Throws<ArgumentException>(() => d.Set(section, key, "1"));
+        Assert.Equal("[A]\nx=0\n", N(d.ToText()));
+    }
+
+    [Fact]
+    public void ReplaceBlock_with_missing_end_marker_throws()
+    {
+        const string Text = "[A]\n; BEGIN\nold=1\n";
+        var d = IniDocument.Parse(Text);
+        var ex = Assert.Throws<FormatException>(() => d.ReplaceBlock("A", "; BEGIN", "; END", ["new=2"]));
+        Assert.Contains("; END", ex.Message);
+        Assert.Equal(Text, N(d.ToText()));
+    }
+
+    [Fact]
+    public void Duplicate_sections_get_returns_last_value_and_set_updates_last_occurrence()
+    {
+        // Nini merges a section that appears twice; the later value wins.
+        var d = IniDocument.Parse("[A]\nx=1\n[B]\ny=1\n[A]\nx=2\n");
+        Assert.Equal("2", d.Get("A", "x"));
+        d.Set("A", "x", "3");
+        Assert.Equal("[A]\nx=1\n[B]\ny=1\n[A]\nx=3\n", N(d.ToText()));
+        Assert.Equal("3", d.Get("A", "x"));
+    }
 }

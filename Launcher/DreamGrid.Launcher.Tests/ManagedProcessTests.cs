@@ -105,6 +105,7 @@ public sealed class ManagedProcessTests : IAsyncLifetime
         Assert.Equal(ProcessState.Running, mp.State);
         Assert.NotNull(mp.Pid);
         Assert.Equal(mp.Pid, PidFile.Read(pidFile));
+        Assert.Equal(ProcessImage.StartId(mp.Pid!.Value), File.ReadAllText(pidFile + ".start"));
         // setsid is exec'd in place, so the recorded PID is the FakeChild itself and not a wrapper.
         Assert.True(ProcessImage.Matches(mp.Pid!.Value, Image));
         Assert.Contains(ProcessState.Starting, seen);
@@ -128,6 +129,7 @@ public sealed class ManagedProcessTests : IAsyncLifetime
         Assert.Equal(1, counters.GracefulStops);
         Assert.Equal(ProcessState.Stopped, mp.State);
         Assert.False(File.Exists(pidFile));
+        Assert.False(File.Exists(pidFile + ".start"));
         Assert.False(ProcessImage.IsAlive(pid));
         Assert.True(sw.Elapsed < TimeSpan.FromSeconds(8), "graceful stop should not have needed the kill timeout");
     }

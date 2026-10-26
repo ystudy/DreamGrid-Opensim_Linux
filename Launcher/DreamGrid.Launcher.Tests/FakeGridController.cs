@@ -34,7 +34,8 @@ internal sealed class FakeGridController : IGridController
 
     public Task DetachAsync() { Record("DetachAsync"); return Task.CompletedTask; }
 
-    public int CreateOwnerCalls { get; private set; }
+    private int _createOwnerCalls;
+    public int CreateOwnerCalls => Volatile.Read(ref _createOwnerCalls);
 
     /// <summary>The last owner created: (first, last, password, email).</summary>
     public (string First, string Last, string Password, string? Email)? CreatedOwner { get; private set; }
@@ -42,16 +43,20 @@ internal sealed class FakeGridController : IGridController
     /// <summary>Thrown by <see cref="CreateOwnerAsync"/> when set.</summary>
     public Exception? OwnerError { get; set; }
 
+    /// <summary>Runs inside <see cref="CreateOwnerAsync"/> before the owner is saved (blocking probes).</summary>
+    public Func<CancellationToken, Task> OnCreateOwner { get; set; } = _ => Task.CompletedTask;
+
     /// <summary>Like the controller: saves Setup.OwnerCreated and Setup.Owner through <see cref="UpdateSettings"/>.</summary>
-    public Task<RobustAccount> CreateOwnerAsync(string first, string last, string password, string? email, CancellationToken ct)
+    public async Task<RobustAccount> CreateOwnerAsync(string first, string last, string password, string? email, CancellationToken ct)
     {
         Record("CreateOwner " + first + " " + last);
-        CreateOwnerCalls++;
+        Interlocked.Increment(ref _createOwnerCalls);
+        await OnCreateOwner(ct);
         if (OwnerError is { } e) throw e;
         CreatedOwner = (first, last, password, email);
         var account = new RobustAccount(Guid.NewGuid(), first, last, 200, email ?? "");
         UpdateSettings(l => l with { Setup = l.Setup with { OwnerCreated = true, Owner = new OwnerInfo(first, last, account.PrincipalId) } });
-        return Task.FromResult(account);
+        return account;
     }
 
     /// <summary>

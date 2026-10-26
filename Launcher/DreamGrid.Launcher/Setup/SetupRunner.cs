@@ -1,5 +1,6 @@
 using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.Logs;
+using DreamGrid.Launcher.Core.OpenSim;
 using DreamGrid.Launcher.Core.Processes;
 using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Core.Setup;
@@ -9,14 +10,15 @@ namespace DreamGrid.Launcher.Setup;
 
 /// <summary>
 /// The grid work behind the setup checklist that must outlive a request: warming the grid up after step 1 and
-/// creating the region in step 3. Background work is cancelled only when the launcher stops.
+/// creating the region in step 3. Background work is cancelled only when the launcher stops. It also keeps owner
+/// creation (step 2) to one request at a time.
 /// </summary>
 public sealed class SetupRunner(
     IGridController grid,
     SetupProgress progress,
     LogReader logs,
     Func<LauncherSettings> settings,
-    IHostApplicationLifetime lifetime,
+    BackgroundWork background,
     ILogger<SetupRunner> log)
 {
     private const int ExcerptLines = 40;
@@ -40,8 +42,7 @@ public sealed class SetupRunner(
         var running = s.Database.State == ProcessState.Running && s.Robust.State == ProcessState.Running;
         if (starting || running || Interlocked.Exchange(ref _warming, 1) == 1) return;
 
-        var ct = lifetime.ApplicationStopping;
-        _ = Task.Run(async () =>
+        background.Run("setup warm-up", async ct =>
         {
             try
             {
@@ -55,7 +56,7 @@ public sealed class SetupRunner(
                 log.LogWarning(e, "The grid did not start during setup: {Message}", e.Message);
             }
             finally { Volatile.Write(ref _warming, 0); }
-        }, CancellationToken.None);
+        });
     }
 
     /// <summary>Starts the database, then the grid service, when they are not running; each start is reported first.</summary>
@@ -73,12 +74,31 @@ public sealed class SetupRunner(
         }
     }
 
+    private int _creatingOwner;
+
+    /// <summary>True while a request is creating the owner avatar.</summary>
+    public bool CreatingOwner => Volatile.Read(ref _creatingOwner) == 1;
+
+    /// <summary>
+    /// Step 2: starts what the grid still needs, then creates the owner avatar; null, without touching the grid,
+    /// while another request is already creating it (a double submit).
+    /// </summary>
+    public async Task<RobustAccount?> TryCreateOwnerAsync(string first, string last, string password, string? email, CancellationToken ct)
+    {
+        if (Interlocked.Exchange(ref _creatingOwner, 1) == 1) return null;
+        try
+        {
+            await EnsureGridAsync(null, ct);
+            return await grid.CreateOwnerAsync(first, last, password, email, ct);
+        }
+        finally { Volatile.Write(ref _creatingOwner, 0); }
+    }
+
     /// <summary>Step 3: creates the region in the background, reporting to <see cref="SetupProgress"/>; false while one is already being created.</summary>
     public bool TryStartRegion(string name, string content)
     {
         if (!progress.TryBegin()) return false;
-        var ct = lifetime.ApplicationStopping;
-        _ = Task.Run(() => CreateRegionAsync(name, content, ct), CancellationToken.None);
+        background.Run("setup region", ct => CreateRegionAsync(name, content, ct));
         return true;
     }
 

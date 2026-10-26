@@ -1,0 +1,21 @@
+@using DreamGrid.Launcher.Core.Grid
+@using DreamGrid.Launcher.Endpoints
+@inject IGridController Grid
+@{
+    // Shown on every setup step while the last start failed on a taken port. Setup has no way to Advanced Settings,
+    // so the port can be changed right here (POST /setup?handler=Port finds which setting holds it).
+    var status = Grid.GetStatus();
+    var port = StatusApi.ShowsStartFailure(status) ? status.StartFailure!.ConflictPort : null;
+}
+@if (port is { } taken)
+{
+    <div class="error-box">
+        <p>@StatusApi.PortInUse(taken) Close that program, or use a different port:</p>
+        <form method="post" action="/setup?handler=Port" asp-antiforgery="true">
+            <label for="port-conflict-port">Use port</label>
+            <input id="port-conflict-port" name="Port" type="number" min="1024" max="65535" value="@(ViewData["PortValue"] as string)" required>
+            <span class="field-error">@(ViewData["PortError"] as string)</span>
+            <button type="submit">Use this port and try again</button>
+        </form>
+    </div>
+}

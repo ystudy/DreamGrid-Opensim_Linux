@@ -109,6 +109,7 @@ public sealed class LegacyCommandApi(
             new("RestartRegion", AdminLevel, RegionOp((g, ct) => g.RestartComponentAsync("region", ct))),
             new("StartRobust", AdminLevel, Component((g, ct) => g.StartComponentAsync("robust", ct))),
             new("StopRobust", AdminLevel, Component((g, ct) => g.StopComponentAsync("robust", ct))),
+            // A pending upgrade has already stopped any leftover Robust and region before the database is started.
             new("StartMysql", AdminLevel, Component((g, ct) => g.StartComponentAsync("database", ct))),
             new("StopMysql", AdminLevel, Component((g, ct) => g.StopComponentAsync("database", ct))),
         };

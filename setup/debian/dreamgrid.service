@@ -1,0 +1,25 @@
+[Unit]
+Description=DreamGrid (OpenSim grid launcher and admin website)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+User=dreamgrid
+Group=dreamgrid
+UMask=0077
+# The website's content root is the working directory: its styles and scripts are in launcher/wwwroot.
+WorkingDirectory=/opt/dreamgrid/launcher
+Environment=DOTNET_ROOT=/opt/dreamgrid/dotnet DOTNET_HOST_PATH=/opt/dreamgrid/dotnet/dotnet DOTNET_CLI_TELEMETRY_OPTOUT=1
+# install.sh replaces /opt/dreamgrid/dotnet with the versioned runtime folder /opt/dreamgrid-runtime/<version>. The web
+# port is in the settings (install.sh --web-port runs the launcher's set-web-port); --web-port never goes on ExecStart,
+# where the launcher would re-apply it on every start.
+ExecStart=/opt/dreamgrid/dotnet/dotnet /opt/dreamgrid/launcher/DreamGrid.Launcher.dll --data /var/lib/dreamgrid --opensim /opt/dreamgrid/bin --mariadb-bin /usr/sbin
+# Only the launcher stops with the service: MariaDB, Robust and the region keep running and the next start adopts them.
+KillMode=process
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target

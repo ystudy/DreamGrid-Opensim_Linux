@@ -11,6 +11,7 @@ using static DreamGrid.Launcher.IntegrationTests.GridTestSupport;
 namespace DreamGrid.Launcher.IntegrationTests;
 
 /// <summary>Boots the real MariaDB, Robust and one region through <see cref="GridController"/>.</summary>
+[Collection(GridCollection.Name)]
 public sealed class GridBootTests : IDisposable
 {
     private readonly string _root = GridTestSupport.NewDataDir();

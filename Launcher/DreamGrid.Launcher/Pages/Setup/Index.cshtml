@@ -1,2 +1,9 @@
 @page "/setup"
 @model DreamGrid.Launcher.Pages.Setup.IndexModel
+@{
+    // Only a port change that was refused renders this page; everything else redirects to the current step.
+    ViewData["Title"] = "Use a different port";
+}
+<partial name="_Checklist" model="Model.Step" />
+<h1>Use a different port</h1>
+<p>Pick a number from 1024 to 65535 that no other program on this computer uses.</p>

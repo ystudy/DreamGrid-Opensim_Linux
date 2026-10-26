@@ -66,4 +66,31 @@ public sealed class SettingsValidatorTests
         Assert.True(Valid(name).Errors.ContainsKey("Hostname"));
         Assert.True(Valid(new string('a', 64) + ".com").Errors.ContainsKey("Hostname"));
     }
+
+    [Theory]
+    [InlineData("My \"World\"")]
+    [InlineData("Line\nbreak")]
+    [InlineData("Tab\there")]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData(null)]
+    [InlineData("Dream; World")]
+    [InlineData("Dream # World")]
+    [InlineData("A ${Const|PublicPort}")]
+    [InlineData("[World]")]
+    [InlineData("a{b}")]
+    [InlineData("a=b")]
+    [InlineData("a\\b")]
+    public void Grid_name_with_quote_newline_or_ini_symbol_is_rejected(string? name) =>
+        Assert.Equal("Use 1 to 64 letters, digits, spaces or punctuation, without quotes or the symbols ; # $ [ ] { } = \\",
+            SettingsValidator.GridNameError(name));
+
+    [Fact]
+    public void Grid_name_length_is_one_to_sixty_four_after_trimming()
+    {
+        Assert.Null(SettingsValidator.GridNameError("A"));
+        Assert.Null(SettingsValidator.GridNameError("  " + new string('a', 64) + "  "));
+        Assert.NotNull(SettingsValidator.GridNameError(new string('a', 65)));
+        Assert.Null(SettingsValidator.GridNameError("Dream's World - v2!"));
+    }
 }

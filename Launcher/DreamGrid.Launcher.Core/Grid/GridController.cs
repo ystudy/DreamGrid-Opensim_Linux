@@ -8,6 +8,7 @@ using DreamGrid.Launcher.Core.Processes;
 using DreamGrid.Launcher.Core.Runtime;
 using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Core.Setup;
+using Microsoft.Extensions.Logging;
 
 namespace DreamGrid.Launcher.Core.Grid;
 
@@ -23,7 +24,8 @@ public sealed partial class GridController(
     IEnumerable<IFeatureModule> modules,
     IRobustClient robust,
     IHttpClientFactory http,
-    TimeProvider time) : IGridController
+    TimeProvider time,
+    ILoggerFactory? loggers = null) : IGridController
 {
     private static readonly TimeSpan ConsoleSettle = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan LoginWait = TimeSpan.FromSeconds(300);
@@ -46,6 +48,7 @@ public sealed partial class GridController(
     private volatile StartFailure? _startFailure;
     private volatile GridActivity _activity;
     private int? _regionAlertPid;
+    private long _loginAlerts; // "logins enabled|disabled" alerts received; under _alertGate
     private TaskCompletionSource<string>? _oarLoaded;
 
 
@@ -71,11 +74,24 @@ public sealed partial class GridController(
             var s = LoadSettings();
             await PrepareAsync(s, ct);
 
+            // A region an interrupted region step left running is adopted, never started (CreateRegionAsync finishes
+            // it). It is live already, so it is watched first, whatever happens to the rest of this start. Whatever goes
+            // wrong with it (a console that refuses the login or times out, too) must not keep the database and Robust
+            // down: it is kept as this start's failure instead, unless a later step fails too.
+            StartFailure? adoptFailure = null;
+            if (!s.Setup.RegionCreated && _region is not null && WillAdopt(_region))
+            {
+                try { await StartRegionAsync(ct); }
+                catch (Exception e) when (!ct.IsCancellationRequested)
+                {
+                    adoptFailure = new StartFailure($"The region left running by an interrupted setup could not be adopted: {e.Message}", null);
+                }
+            }
             await StartDatabaseAsync(s, ct);
             await StartComponentAsync(_robust!, ct);
             if (s.Setup.RegionCreated && _region is not null)
                 await StartRegionAsync(ct);
-            _startFailure = null;
+            _startFailure = adoptFailure;
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
@@ -94,6 +110,8 @@ public sealed partial class GridController(
         {
             LoadSettings();
             await StopAllCoreAsync(ct);
+            // A deliberate stop ends what an earlier start reported: the dashboard shows a stopped world, not a failed one.
+            _startFailure = null;
         }
         finally { _activity = GridActivity.None; _ops.Release(); }
     }
@@ -228,7 +246,7 @@ public sealed partial class GridController(
         {
             var next = change(store.LoadOrCreate());
             store.Save(next);
-            _host = next.Hostname ?? HostAddress.Detect();
+            _host = HostAddress.Effective(next.Hostname);
             _settings = next;
             if (writeConfig) WriteConfig(next);
             return next;
@@ -339,8 +357,13 @@ public sealed partial class GridController(
         }
         switch (alert.Login.ToLowerInvariant())
         {
-            case "enabled": _loginsEnabled = true; break;
-            case "disabled": _loginsEnabled = false; break;
+            case "enabled" or "disabled":
+                lock (_alertGate)
+                {
+                    _loginAlerts++;
+                    _loginsEnabled = alert.Login.Equals("enabled", StringComparison.OrdinalIgnoreCase);
+                }
+                break;
             case "oarloaded" or "oarnotloaded": _oarLoaded?.TrySetResult(alert.Login.ToLowerInvariant()); break;
         }
     }
@@ -373,7 +396,7 @@ public sealed partial class GridController(
     private LauncherSettings ReloadSettings()
     {
         var s = store.LoadOrCreate();
-        _host = s.Hostname ?? HostAddress.Detect();
+        _host = HostAddress.Effective(s.Hostname);
         _settings = s;
         return s;
     }
@@ -446,9 +469,16 @@ public sealed partial class GridController(
         var running = _region!.Process.State == ProcessState.Running;
         var adopted = running || WillAdopt(_region!);
         if (!running) await StartComponentAsync(_region!, ct);
-        // An adopted region announced its logins before this launcher was listening, so ask it.
+        // An adopted region announced its logins before this launcher was listening, so ask it. One still booting
+        // answers "disabled" and may send its alert while that answer is on its way: the alert is newer and wins.
         if (adopted)
-            _loginsEnabled = await GridConsoleCommands.LoginsEnabledAsync(_region!.Console!, ConsoleSettle, ct) ?? false;
+        {
+            long seen;
+            lock (_alertGate) seen = _loginAlerts;
+            var enabled = await GridConsoleCommands.LoginsEnabledAsync(_region!.Console!, ConsoleSettle, ct) ?? false;
+            lock (_alertGate)
+                if (_loginAlerts == seen) _loginsEnabled = enabled;
+        }
     }
 
     private async Task StopAllCoreAsync(CancellationToken ct)
@@ -493,7 +523,7 @@ public sealed partial class GridController(
 
     /// <summary>True when the component's PID file names a live process with its image: starting it will adopt.</summary>
     private static bool WillAdopt(Component c) =>
-        PidFile.Read(c.Spec.PidFile) is { } pid && ProcessImage.Matches(pid, c.Spec.ExpectedImage);
+        PidFile.ReadLive(c.Spec.PidFile, c.Spec.ExpectedImage) is not null;
 
     /// <summary>Polls Robust until the account satisfies <paramref name="done"/> or <see cref="AccountWait"/> passes; returns the last account seen.</summary>
     private async Task<RobustAccount?> WaitForAccountAsync(string first, string last, Func<RobustAccount, bool> done, CancellationToken ct)
@@ -537,8 +567,11 @@ public sealed partial class GridController(
 
         var r32 = Path.Combine(paths.RegionDir(region.Instance), "island.r32");
         IslandTerrain.WriteR32(r32);
+        // Flatten first: the check below tells the island from flat land, and a starter OAR an earlier attempt
+        // loaded has relief of its own that would pass for the island if this load failed.
+        await console.RunAsync("terrain fill 0", ConsoleSettle, ct);
         await console.RunAsync($"terrain load \"{Fwd(r32)}\"", ConsoleSettle, ct);
-        if (!await GridConsoleCommands.IslandTerrainLoadedAsync(console, ConsoleSettle, ct))
+        if (!await GridConsoleCommands.IslandTerrainLoadedAsync(console, ConsoleSettle, time, ct))
             throw new InvalidOperationException($"The region did not load the island terrain {r32}; see the region log.");
     }
 
@@ -608,7 +641,8 @@ public sealed partial class GridController(
     }
 
     private RestConsoleClient MakeConsole(LauncherSettings s, int port) =>
-        new(http.CreateClient("DreamGrid.Console"), new Uri($"http://127.0.0.1:{port}"), s.Console.User, s.Console.Password);
+        new(http.CreateClient("DreamGrid.Console"), new Uri($"http://127.0.0.1:{port}"), s.Console.User, s.Console.Password,
+            loggers?.CreateLogger<RestConsoleClient>());
 
     private ProcessStartInfo Dotnet(string dll, params string[] args)
     {
