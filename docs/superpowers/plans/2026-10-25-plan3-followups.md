@@ -37,6 +37,7 @@ Plan 3 (installers, services, releases) was executed task by task with a review 
 - Background work (warm-up, region setup, dashboard actions) is awaited at shutdown.
 - "Stop all" clears the last start failure, so the dashboard shows a stopped world rather than "Your world could not start."
 - The launcher writes a child's `.start` sidecar before its PID file.
+- OpenSim's REST console (`OpenSim/Framework/Console/RemoteConsole.cs`) has a race: `Output()` increments the line counter outside the scrollback lock, so `GetEvents()` can then index past the list and throw. `PollServiceRequestManager` swallows the exception, and that `/ReadResponses/` long-poll is never answered (lines stay queued). The launcher abandons, and never cancels, a read unanswered after 30 s (the server's poll limit is 25 s) and reads again. Reproduced 3/178 before the fix, 120/120 after.
 
 ## Open follow-ups
 
@@ -44,11 +45,14 @@ Plan 3 (installers, services, releases) was executed task by task with a review 
 - **linux-arm64 packages:** they need their own runner and install smoke.
 - **Graceful quit at OS shutdown:** systemd and Windows end the children at machine shutdown (MariaDB shuts down cleanly on SIGTERM; OpenSim saves prims as they change). Intercepting shutdown to quit the region and Robust first is not done.
 - **Windows CI runtime-change upgrade:** done in the final fix wave (release.yml builds a third installer with a relabelled `RUNTIME_VERSION` and runs the Windows smoke for both upgrades), but not run yet.
+- **Upstream reports:** report the RemoteConsole line-counter race and the concurrent `/StartSession/` HTTP 500 (KeyNotFoundException in `Commands.GetXml`, seen only under a stress test) upstream at Outworldz/DreamGrid-Opensim; we don't patch `OpenSim/` (spec §4.6).
 
-### Final fix wave, unverified until CI
-- The Windows installer changes (`set-web-port`, the stays-up check after `sc start`, restarting the service from `DeinitializeSetup`, the pinned-binPath migration) are uncompiled; the Windows smoke's new `refused-port` and `web-port` stages have not run. The `DeinitializeSetup` restart, the stays-up failure path and a failing `set-web-port` (a port that collides with a changed Robust or region port) are not covered by any smoke.
-- Debian: the "not active within 30 s" failure path of `install.sh` is not smoke-tested.
-- `stop-grid` waits for every running process a PID file names, without the start-identity check, so a PID reused by an unrelated program holds it for the full 60 s (then exit 5; the uninstaller only logs it).
+### CI results
+- PR #4 (https://github.com/ystudy/DreamGrid-Opensim_Linux/pull/4), CI run on commit 408cf34: fully green. The unit and integration suites passed on Windows and Debian 12/13; the Debian install smoke passed on 12 and 13, including the runtime-change upgrade.
+- The Windows installer compiled (Inno Setup 6.7.1 is preinstalled on the runner), and its smoke passed both variants: install; setup to a region accepting logins; service stop with the region still running and adopted on start; upgrade with no reboot and the region PID unchanged; set-web-port; uninstall keeping %ProgramData%\DreamGrid.
+- Children survive a Windows service stop without CreateProcess breakaway.
+- CI fixes found on the way: the smokes compared HTML-encoded footer text; a pinned choco Inno version can't downgrade the preinstalled one; build.ps1 now picks ISCC without version-resource sniffing (Chocolatey's shim and the real ISCC both report FileVersion 0.x), and DreamGrid.iss enforces Inno ≥ 6.3 via ISPP VER; a PowerShell function returning @() unrolls a single result.
+- Commit c441c68 (console long-poll recovery) is pending its own CI run.
 
 ### Manual release checklist (results pending)
 - [ ] A clean Debian 12 VM and a clean Debian 13 VM (AppArmor enabled): the one-liner from a test tag's release, then Firestorm login from another LAN machine. Result: pending.
@@ -68,3 +72,4 @@ Plan 3 (installers, services, releases) was executed task by task with a review 
 - **Debian smoke and InstallSmoke:** no check of `/opt` permissions after an upgrade or of the download path (`DREAMGRID_RELEASE` included); InstallSmoke ignores the host of `--url`; the `nc` listener can race the probe; restrictive sudoers may drop `DREAMGRID_RELEASE`.
 - **Windows installer:** `Check: ServiceRunning` timing for the finish checkbox; reinstalling into a folder that holds only leftover `dotnet-*`/`mariadb-*` folders is rejected; `SettingsWebPort` is a text match; the uninstall smoke does not assert that `{app}` is gone; watch for a name clash with a user-defined helper at the first compile.
 - **Workflows and docs:** `contents: write` on the called workflow relies on release.yml's top-level `read` (add a comment or split later); the release notes' arrow wording; the spec's §4.13 tag format line; the Windows workflow steps lack explicit `$LASTEXITCODE` checks.
+- **Console (after the long-poll recovery):** after a recovered read, earlier commands' output can be attributed to the current command (drop lines up to the current command's echo, or document it); a healthy read answered after more than 30 s loses its lines (logged at Debug); the abandoned read's late-reply and fault paths are untested; the island-terrain check can still fail if a second drop happens late in its 60 s budget; Debug console lines also reach the console provider (systemd journal); the timing-sensitive test `Late_output_from_previous_command_is_not_returned` failed once under heavy parallel load.
