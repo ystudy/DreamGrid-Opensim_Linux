@@ -63,6 +63,16 @@ another port:
 
 An upgrade keeps the port the service was installed with.
 
+## Testing a pre-release
+
+Pre-releases (tags such as `v0.1.0-rc1`) are never the latest release, so the
+commands above do not pick them up. On Debian, name the tag:
+
+    curl -fsSL https://github.com/ystudy/DreamGrid-Opensim_Linux/releases/download/v0.1.0-rc1/install.sh | sudo DREAMGRID_RELEASE=v0.1.0-rc1 bash
+
+On Windows, download `DreamGridSetup-<version>.exe` from that pre-release's
+page on the [releases list](https://github.com/ystudy/DreamGrid-Opensim_Linux/releases).
+
 # Compiling OpenSim
 
 Please see BUILDING.md

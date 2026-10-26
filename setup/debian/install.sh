@@ -7,6 +7,9 @@
 #   --from <tarball>   install this dreamgrid-*-linux-x64.tar.gz instead of downloading the latest release
 #   --web-port <n>     serve the admin website on port <n> instead of 8001
 #
+# DREAMGRID_RELEASE=<tag> installs that release (for example a pre-release, which is never "latest") instead:
+#   curl -fsSL https://github.com/ystudy/DreamGrid-Opensim_Linux/releases/download/v0.1.0-rc1/install.sh | sudo DREAMGRID_RELEASE=v0.1.0-rc1 bash
+#
 # Re-running it upgrades in place: the program in /opt/dreamgrid is replaced, the data in /var/lib/dreamgrid is never
 # touched, and the running world (database, grid service, region) keeps running through the upgrade.
 #
@@ -14,7 +17,7 @@
 # Commands that might read stdin get </dev/null, since with the one-liner stdin is the rest of this script.
 set -euo pipefail
 
-release=https://github.com/ystudy/DreamGrid-Opensim_Linux/releases/latest/download
+releases=https://github.com/ystudy/DreamGrid-Opensim_Linux/releases
 asset=dreamgrid-linux-x64.tar.gz
 prefix=/opt/dreamgrid
 # The private .NET runtime lives outside $prefix, one folder per version: children that keep running through an
@@ -65,6 +68,13 @@ main() {
         { [[ $web_port =~ ^[0-9]+$ ]] && [ "$web_port" -ge 1 ] && [ "$web_port" -le 65535 ]; } ||
             die "--web-port needs a port number between 1 and 65535."
     fi
+    # The tag goes into a URL: only v<major>.<minor>.<patch> with an optional pre-release suffix.
+    local release=$releases/latest/download
+    if [ -n "${DREAMGRID_RELEASE:-}" ]; then
+        [[ $DREAMGRID_RELEASE =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] ||
+            die "DREAMGRID_RELEASE needs a release tag such as v1.2.3 or v1.2.3-rc1."
+        release=$releases/download/$DREAMGRID_RELEASE
+    fi
 
     # --- 1. Root and Debian 12/13 ---------------------------------------------------------------------------------
     [ "$(id -u)" -eq 0 ] || die "Please run the installer as root, for example with sudo."
@@ -93,7 +103,7 @@ main() {
     work=$(mktemp -d)
     trap 'rm -rf "$work"' EXIT
     if [ -z "$from" ]; then
-        echo "Downloading the latest DreamGrid release..."
+        echo "Downloading the ${DREAMGRID_RELEASE:-latest} DreamGrid release..."
         curl -fsSL -o "$work/$asset" "$release/$asset"
         curl -fsSL -o "$work/SHA256SUMS" "$release/SHA256SUMS"
         local expected actual

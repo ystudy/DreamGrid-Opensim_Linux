@@ -79,6 +79,11 @@ if (-not $Iscc) {
     $Iscc = @($candidates | Where-Object { $_ -and (Test-Path -LiteralPath $_) })[0]
     if (-not $Iscc) { throw 'Inno Setup 6 (ISCC.exe) was not found. Install it (choco install innosetup) or pass -Iscc <path>.' }
 }
+# DreamGrid.iss uses x64compatible, which needs Inno Setup 6.3 or later.
+$isccInfo = (Get-Item -LiteralPath $Iscc).VersionInfo
+$isccVersion = New-Object Version $isccInfo.FileMajorPart, $isccInfo.FileMinorPart, $isccInfo.FileBuildPart
+if ($isccVersion -lt [Version]'6.3.0') { throw "$Iscc is Inno Setup $isccVersion; DreamGrid.iss needs 6.3 or later." }
+Write-Host "Inno Setup $isccVersion ($Iscc)"
 & $Iscc "/DAppVersion=$Version" "/DRuntimeVersion=$runtimeVersion" "/DMariaDbVersion=$mariaDbVersion" "/DSource=$staging" `
     "/O$Out" (Join-Path $PSScriptRoot 'DreamGrid.iss')
 if ($LASTEXITCODE -ne 0) { throw "ISCC.exe failed with exit code $LASTEXITCODE" }

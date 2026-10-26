@@ -2,12 +2,18 @@ name: build-and-smoke
 
 # Builds DreamGrid.sln on .NET 10, runs the unit tests, and boots a real region with the smoke harness
 # (tests/DreamGrid.Smoke) on Windows and Debian 12. msbuildnet.yml is upstream's and only runs on opensim/opensim.
-# When setup/ or Launcher/ changed, it also runs release.yml's packaging and install smokes (without publishing).
+# For pull requests and pushes to V7 that change setup/ or Launcher/, it also runs release.yml's packaging and install
+# smokes (without publishing).
 
 on:
   push:
   pull_request:
   workflow_dispatch:
+
+# A newer push to the same branch (or PR) cancels the run still going for the older one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   windows:
@@ -234,9 +240,10 @@ jobs:
           name: launcher-logs-debian${{ matrix.debian }}
           path: ${{ env.DG_TEST_TEMP }}/Dréam Grid */state/logs/*
 
-  # The install smoke (release.yml without its publish job) when a change touches setup/ or Launcher/. Tags are left
-  # to release.yml itself, which runs the same smoke before it publishes.
+  # The install smoke (release.yml without its publish job) when a pull request or a push to V7 touches setup/ or
+  # Launcher/. Feature-branch pushes skip it (run release.yml by hand there); tags run it in release.yml itself.
   installer-changes:
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/V7')
     runs-on: ubuntu-latest
     outputs:
       changed: ${{ steps.diff.outputs.changed }}
@@ -249,20 +256,13 @@ jobs:
         id: diff
         env:
           EVENT: ${{ github.event_name }}
-          REF_TYPE: ${{ github.ref_type }}
           BEFORE: ${{ github.event.before }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
         run: |
-          case "$EVENT" in
-            pull_request) base=$PR_BASE ;;
-            push) base=$BEFORE ;;
-            *) base="" ;;
-          esac
-          # Unknown base (a new branch, a force push, a manual run): run the smoke.
+          if [ "$EVENT" = pull_request ]; then base=$PR_BASE; else base=$BEFORE; fi
+          # Unknown base (a force push, the branch's first push): run the smoke.
           changed=true
-          if [ "$REF_TYPE" = tag ]; then
-            changed=false
-          elif [ -n "$base" ] && [ "$base" != 0000000000000000000000000000000000000000 ] &&
+          if [ -n "$base" ] && [ "$base" != 0000000000000000000000000000000000000000 ] &&
             git fetch --no-tags --depth=1 origin "$base"; then
             if git diff --name-only "$base" "$GITHUB_SHA" | grep -qE '^(setup|Launcher)/'; then changed=true; else changed=false; fi
           fi

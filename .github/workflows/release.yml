@@ -34,12 +34,18 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
+      # A tag must be v<major>.<minor>.<patch>, optionally with a pre-release suffix (v1.2.3-rc1); anything else fails
+      # here, before it can reach a release.
       - name: Version from the tag, else 0.0.0-dev+<sha>
         id: version
         env:
           REF_TYPE: ${{ github.ref_type }}
         run: |
-          if [ "$REF_TYPE" = tag ] && [[ $GITHUB_REF_NAME == v* ]]; then
+          if [ "$REF_TYPE" = tag ]; then
+            if ! [[ $GITHUB_REF_NAME =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+              echo "::error::Tag $GITHUB_REF_NAME is not v<major>.<minor>.<patch>[-<pre-release>]."
+              exit 1
+            fi
             version=${GITHUB_REF_NAME#v}
           else
             version=0.0.0-dev+${GITHUB_SHA::7}
@@ -161,8 +167,9 @@ jobs:
             if ($LASTEXITCODE -ne 0) { exit 1 }
           }
 
+      # Pinned (a version on the Chocolatey feed); build.ps1 refuses an ISCC older than 6.3.
       - name: Install Inno Setup
-        run: choco install innosetup -y --no-progress
+        run: choco install innosetup --version 6.5.4 -y --no-progress
 
       - name: Build the installers
         run: |
@@ -291,8 +298,9 @@ jobs:
           name: package-windows
           path: ${{ runner.temp }}/windows
 
-      # install.sh downloads releases/latest/download/dreamgrid-linux-x64.tar.gz and checks it against SHA256SUMS,
-      # so the tarball ships under its stable name too and SHA256SUMS lists every asset.
+      # install.sh downloads releases/latest/download/dreamgrid-linux-x64.tar.gz (or releases/download/<tag>/... with
+      # DREAMGRID_RELEASE) and checks it against SHA256SUMS, so the tarball ships under its stable name too and
+      # SHA256SUMS lists every asset. A pre-release (a tag with a '-') is never "latest", so its notes name the tag.
       - name: Assemble the release
         run: |
           release=$RUNNER_TEMP/release
@@ -302,14 +310,22 @@ jobs:
           cp "$RUNNER_TEMP/windows/DreamGridSetup-$VERSION.exe" "$release/"
           cp setup/debian/install.sh "$release/"
           (cd "$release" && sha256sum -- * > SHA256SUMS && cat SHA256SUMS)
+          releases=https://github.com/ystudy/DreamGrid-Opensim_Linux/releases
+          case "$VERSION" in
+            *-*) one_liner="curl -fsSL $releases/download/$GITHUB_REF_NAME/install.sh | sudo DREAMGRID_RELEASE=$GITHUB_REF_NAME bash"
+                 kind="This is a pre-release for testing." ;;
+            *) one_liner="curl -fsSL $releases/latest/download/install.sh | sudo bash"
+               kind="" ;;
+          esac
           cat > "$RUNNER_TEMP/notes.md" <<EOF
           DreamGrid $VERSION
+          $kind
 
           ## Debian 12 and 13 (amd64)
 
           Run this as a user who can use sudo:
 
-              curl -fsSL https://github.com/ystudy/DreamGrid-Opensim_Linux/releases/latest/download/install.sh | sudo bash
+              $one_liner
 
           It installs or upgrades DreamGrid as the \`dreamgrid\` service and prints a link that opens the setup page.
 
@@ -329,6 +345,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           release=$RUNNER_TEMP/release
-          gh release create "$GITHUB_REF_NAME" --verify-tag --title "DreamGrid $VERSION" --notes-file "$RUNNER_TEMP/notes.md" \
+          # A pre-release must never become /releases/latest, which the one-liner and the README link use.
+          flags=()
+          case "$VERSION" in *-*) flags=(--prerelease --latest=false) ;; esac
+          gh release create "$GITHUB_REF_NAME" --verify-tag "${flags[@]}" --title "DreamGrid $VERSION" --notes-file "$RUNNER_TEMP/notes.md" \
             "$release/dreamgrid-$VERSION-linux-x64.tar.gz" "$release/dreamgrid-linux-x64.tar.gz" \
             "$release/DreamGridSetup-$VERSION.exe" "$release/install.sh" "$release/SHA256SUMS"
