@@ -26,7 +26,9 @@ public sealed class ConsoleAuthException(string message) : Exception(message);
 /// session's /ReadResponses/ handler is removed with it). 401 is what /StartSession/ answers to bad
 /// credentials; a 401 on read or send is treated as expiry too. A dropped session whose read handler is
 /// still registered answers an empty reply, which cannot be told apart from "no output". A call that sees
-/// expiry reopens the session once and retries its command once; a second expiry throws.</item>
+/// expiry before or at the POST reopens the session and sends the command once more (a 404 on /SessionCommand/ is
+/// answered before any input is queued, so the command did not run); a second expiry throws. Expiry on a read after
+/// the POST was accepted throws and never resends, as the command may already have run.</item>
 /// <item>/ReadResponses/ is a long poll: with no pending lines the server holds the request for ~25 s, and it
 /// advances the session's "last line seen" marker when it builds the reply. A read the client cancelled could
 /// therefore swallow lines, so reads are never cancelled. The client only stops waiting: the read stays
@@ -109,9 +111,16 @@ public sealed class RestConsoleClient(HttpClient http, Uri baseUri, string user,
                     var fresh = await EnsureSessionAsync(ct);
                     if (!fresh) await DrainLateOutputAsync(ct);
                     await PostCommandAsync(command, ct);
-                    return await CollectAsync(settle, ct);
+                    break;
                 }
                 catch (SessionExpiredException) when (attempt == 0) { _sessionId = null; }
+            }
+            // The server accepted the command: never resend it. A read-side expiry loses only the output.
+            try { return await CollectAsync(settle, ct); }
+            catch (SessionExpiredException)
+            {
+                throw new SessionExpiredException(
+                    $"REST console session expired while waiting for the output of '{Verb(command)}'; the command was sent, its output was lost.");
             }
         }
         finally { _gate.Release(); }
@@ -144,12 +153,13 @@ public sealed class RestConsoleClient(HttpClient http, Uri baseUri, string user,
 
     /// <summary>
     /// Discards output that arrived after an earlier call stopped waiting, so it is not attributed to the
-    /// command about to be sent. Only the outstanding read can hold such output; it gets a short moment to
-    /// answer and, like every read, is never cancelled.
+    /// command about to be sent. Output lives in the outstanding read, or is queued on the server for the next
+    /// one, so at least one bounded read is made (starting one if none is outstanding) and repeated while it
+    /// returns lines. Like every read, it is never cancelled.
     /// </summary>
     private async Task DrainLateOutputAsync(CancellationToken ct)
     {
-        while (_pendingRead is not null && await TryReadAsync(LateOutputWait, ct) is { Count: > 0 } late)
+        while (await TryReadAsync(LateOutputWait, ct) is { Count: > 0 } late)
             LogLate(late);
     }
 
@@ -175,6 +185,9 @@ public sealed class RestConsoleClient(HttpClient http, Uri baseUri, string user,
         }
         finally { _gate.Release(); }
     }
+
+    /// <summary>The first two words of a command, enough to name it without echoing arguments such as passwords.</summary>
+    private static string Verb(string command) => string.Join(' ', command.Split(' ', 3, StringSplitOptions.RemoveEmptyEntries).Take(2));
 
     private static TimeSpan Min(TimeSpan a, TimeSpan b) => a < b ? a : b;
 
@@ -283,7 +296,7 @@ public sealed class RestConsoleClient(HttpClient http, Uri baseUri, string user,
         catch (System.Xml.XmlException) { return null; }
     }
 
-    private sealed class SessionExpiredException() : HttpRequestException("REST console session expired.");
+    private sealed class SessionExpiredException(string message = "REST console session expired.") : HttpRequestException(message);
 
     private sealed record ConsoleLine(string Text, bool IsCommand, bool IsInput, bool IsPrompt);
 }

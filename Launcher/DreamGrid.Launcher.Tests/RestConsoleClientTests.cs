@@ -231,18 +231,26 @@ public class RestConsoleClientTests
     {
         var lateGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var reads = 0;
+        var bSent = false;
         var h = new FuncHandler(async r =>
         {
             var path = r.RequestUri!.AbsolutePath;
             if (path == "/StartSession/") return (HttpStatusCode.OK, StartOk);
-            if (path == "/SessionCommand/") return (HttpStatusCode.OK, CmdOk);
+            if (path == "/SessionCommand/")
+            {
+                bSent = (await r.Content!.ReadAsStringAsync()).Contains("COMMAND=b");
+                return (HttpStatusCode.OK, CmdOk);
+            }
             switch (Interlocked.Increment(ref reads))
             {
                 case 1: return (HttpStatusCode.OK, Lines(("old scrollback", "false", "false", "false")));
                 case 2: // still outstanding when the first command ends; answers late
                     await lateGate.Task;
                     return (HttpStatusCode.OK, Lines(("late from a", "false", "false", "false")));
-                case 3: return (HttpStatusCode.OK, Lines(("b output", "false", "false", "false")));
+                case 3: // long-poll that answers once b has been sent
+                    for (var i = 0; i < 200 && !bSent; i++) await Task.Delay(10, TestContext.Current.CancellationToken);
+                    return (HttpStatusCode.OK, Lines(("b output", "false", "false", "false")));
+                case 4: return (HttpStatusCode.OK, Empty);
                 default: return (HttpStatusCode.OK, Empty);
             }
         });
@@ -256,7 +264,7 @@ public class RestConsoleClientTests
     }
 
     [Fact]
-    public async Task Expired_session_is_reopened_and_command_retried_once()
+    public async Task Read_side_expiry_after_accepted_command_throws_and_does_not_resend()
     {
         var starts = 0;
         var readsPerSession = new Dictionary<string, int>();
@@ -268,8 +276,34 @@ public class RestConsoleClientTests
                 return (HttpStatusCode.OK, CmdOk);
             var sid = r.Uri.AbsolutePath.Split('/')[2];
             var n = readsPerSession[sid] = readsPerSession.GetValueOrDefault(sid) + 1;
-            // The first session dies after its scrollback read ("unknown session" -> 404 on read).
-            if (sid == "sid-1" && n >= 2) return (HttpStatusCode.NotFound, "");
+            // The session dies after its scrollback read ("unknown session" -> 404 on read).
+            if (n >= 2) return (HttpStatusCode.NotFound, "");
+            return (HttpStatusCode.OK, Lines(("old scrollback", "false", "false", "false")));
+        });
+
+        var ex = await Assert.ThrowsAnyAsync<HttpRequestException>(() =>
+            c.RunAsync("create user alice secret", TimeSpan.FromMilliseconds(50), CancellationToken.None));
+
+        Assert.Contains("create user", ex.Message);
+        Assert.DoesNotContain("secret", ex.Message);
+        Assert.Single(h.Requests, r => r.Uri.AbsolutePath == "/SessionCommand/");
+        Assert.Equal(1, starts);
+    }
+
+    [Fact]
+    public async Task Send_side_expiry_reopens_and_sends_once()
+    {
+        var starts = 0;
+        var commandsSeen = 0;
+        var readsPerSession = new Dictionary<string, int>();
+        var (c, h) = Make(r =>
+        {
+            if (r.Uri.AbsolutePath == "/StartSession/")
+                return (HttpStatusCode.OK, StartOk.Replace(Sid, "sid-" + ++starts));
+            if (r.Uri.AbsolutePath == "/SessionCommand/")
+                return ++commandsSeen == 1 ? (HttpStatusCode.NotFound, "") : (HttpStatusCode.OK, CmdOk);
+            var sid = r.Uri.AbsolutePath.Split('/')[2];
+            var n = readsPerSession[sid] = readsPerSession.GetValueOrDefault(sid) + 1;
             return (HttpStatusCode.OK, n switch
             {
                 1 => Lines(("old scrollback", "false", "false", "false")),
@@ -284,31 +318,55 @@ public class RestConsoleClientTests
         Assert.Equal(new[] { "done" }, lines);
         var cmds = h.Requests.Where(r => r.Uri.AbsolutePath == "/SessionCommand/").ToList();
         Assert.Equal(new[] { "sid-1", "sid-2" }, cmds.Select(r => r.Form("ID")));
-        Assert.All(cmds, r => Assert.Equal("x", r.Form("COMMAND")));
     }
 
     [Fact]
-    public async Task Second_expiry_in_same_call_throws()
+    public async Task Second_send_side_expiry_in_same_call_throws()
     {
         var starts = 0;
-        // Every session answers its first (scrollback) read, then reports itself unknown.
-        var reads = new Dictionary<string, int>();
-        var h2 = new FuncHandler(async r =>
+        var (c, h) = Make(r =>
         {
-            await Task.CompletedTask;
-            var path = r.RequestUri!.AbsolutePath;
-            if (path == "/StartSession/") return (HttpStatusCode.OK, StartOk.Replace(Sid, "sid-" + ++starts));
-            if (path == "/SessionCommand/") return (HttpStatusCode.OK, CmdOk);
-            var sid = path.Split('/')[2];
-            var n = reads[sid] = reads.GetValueOrDefault(sid) + 1;
-            return n == 1 ? (HttpStatusCode.OK, Empty) : (HttpStatusCode.Unauthorized, "");
+            if (r.Uri.AbsolutePath == "/StartSession/")
+                return (HttpStatusCode.OK, StartOk.Replace(Sid, "sid-" + ++starts));
+            if (r.Uri.AbsolutePath == "/SessionCommand/") return (HttpStatusCode.Unauthorized, "");
+            return (HttpStatusCode.OK, Empty);
         });
-        var client = new RestConsoleClient(new HttpClient(h2), Base, "dg", "pw");
 
         await Assert.ThrowsAnyAsync<HttpRequestException>(() =>
-            client.RunAsync("x", TimeSpan.FromMilliseconds(50), CancellationToken.None));
+            c.RunAsync("x", TimeSpan.FromMilliseconds(50), CancellationToken.None));
 
         Assert.Equal(2, starts); // reopened once, not again
+        Assert.Equal(2, h.Requests.Count(r => r.Uri.AbsolutePath == "/SessionCommand/"));
+    }
+
+    [Fact]
+    public async Task Queued_output_is_drained_even_when_previous_call_left_no_read_outstanding()
+    {
+        var reads = 0;
+        var bSent = false;
+        var bOut = 0;
+        var (c, _) = Make(r =>
+        {
+            if (r.Uri.AbsolutePath == "/StartSession/") return (HttpStatusCode.OK, StartOk);
+            if (r.Uri.AbsolutePath == "/SessionCommand/")
+            {
+                if (r.Form("COMMAND") == "b") bSent = true;
+                return (HttpStatusCode.OK, CmdOk);
+            }
+            return (HttpStatusCode.OK, Interlocked.Increment(ref reads) switch
+            {
+                1 => Lines(("old scrollback", "false", "false", "false")),
+                2 => Empty, // call "a" ends on an answered empty read: nothing outstanding afterwards
+                3 => Lines(("queued 1", "false", "false", "false")),
+                4 => Lines(("queued 2", "false", "false", "false")),
+                _ => bSent && Interlocked.Exchange(ref bOut, 1) == 0 ? Lines(("b output", "false", "false", "false")) : Empty,
+            });
+        });
+
+        Assert.Empty(await c.RunAsync("a", TimeSpan.FromMilliseconds(50), CancellationToken.None));
+        var lines = await c.RunAsync("b", TimeSpan.FromMilliseconds(50), CancellationToken.None);
+
+        Assert.Equal(new[] { "b output" }, lines);
     }
 
     [Fact]
