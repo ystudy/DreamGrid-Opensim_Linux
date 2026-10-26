@@ -90,7 +90,8 @@ public sealed record LauncherPaths(string Data, string OpenSimProgram, string? M
         if (OperatingSystem.IsWindows())
         {
             Directory.CreateDirectory(dir);
-            RestrictToOwnerSystemAdmins(dir);
+            var extra = ServiceSid();
+            ApplyOwnerOnlyAcl(dir, extra is null ? [] : [extra]);
             return;
         }
         const UnixFileMode OwnerOnly = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
@@ -98,16 +99,48 @@ public sealed record LauncherPaths(string Data, string OpenSimProgram, string? M
         if (File.GetUnixFileMode(dir) != OwnerOnly) File.SetUnixFileMode(dir, OwnerOnly);
     }
 
-    /// <summary>Replaces the directory's DACL with a protected one (no inherited entries): FullControl, inherited by children, for the current user, SYSTEM and Administrators.</summary>
+    /// <summary>The installed service's virtual-account SID, or null when the service is not installed.</summary>
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
-    private static void RestrictToOwnerSystemAdmins(string dir)
+    private static System.Security.Principal.SecurityIdentifier? ServiceSid()
+    {
+        try
+        {
+            return (System.Security.Principal.SecurityIdentifier)new System.Security.Principal.NTAccount("NT SERVICE", "DreamGrid")
+                .Translate(typeof(System.Security.Principal.SecurityIdentifier));
+        }
+        catch (System.Security.Principal.IdentityNotMappedException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Replaces the directory's DACL with a protected one (no inherited entries): FullControl, inherited by children, for the
+    /// current user, SYSTEM, Administrators and <paramref name="extra"/> (the service account, so a hand run by an admin keeps it).
+    /// </summary>
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    internal static void ApplyOwnerOnlyAcl(string dir, IEnumerable<System.Security.Principal.SecurityIdentifier> extra)
+    {
+        try
+        {
+            ApplyAcl(dir, extra);
+        }
+        catch (UnauthorizedAccessException e)
+        {
+            throw new UnauthorizedAccessException(
+                $"The data directory {dir} belongs to another account and this account cannot use it. Run the launcher as the account that created it, or reset the folder's permissions.", e);
+        }
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static void ApplyAcl(string dir, IEnumerable<System.Security.Principal.SecurityIdentifier> extra)
     {
         var sids = new[]
         {
             System.Security.Principal.WindowsIdentity.GetCurrent().User!,
             new System.Security.Principal.SecurityIdentifier(System.Security.Principal.WellKnownSidType.LocalSystemSid, null),
             new System.Security.Principal.SecurityIdentifier(System.Security.Principal.WellKnownSidType.BuiltinAdministratorsSid, null),
-        }.Distinct().ToArray();
+        }.Concat(extra).Distinct().ToArray();
         const System.Security.AccessControl.InheritanceFlags Inherit =
             System.Security.AccessControl.InheritanceFlags.ContainerInherit | System.Security.AccessControl.InheritanceFlags.ObjectInherit;
 

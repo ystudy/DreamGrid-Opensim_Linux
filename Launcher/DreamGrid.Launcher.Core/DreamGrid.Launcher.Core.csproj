@@ -12,4 +12,8 @@
     <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.13" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="DreamGrid.Launcher.Tests" />
+  </ItemGroup>
+
 </Project>
