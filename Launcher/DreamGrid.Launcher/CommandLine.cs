@@ -16,16 +16,11 @@ namespace DreamGrid.Launcher;
 /// </summary>
 public static class CommandLine
 {
-    /// <summary>The build version without the "+source revision" suffix; the site footer shows the same text.</summary>
-    public static string Version()
-    {
-        var v = typeof(CommandLine).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
-        if (string.IsNullOrEmpty(v)) return "dev";
-        var plus = v.IndexOf('+');
-        return plus < 0 ? v : v[..plus];
-    }
+    /// <summary>The assembly's InformationalVersion as built (e.g. 0.0.0-dev+abc1234); the site footer shows the same text.</summary>
+    public static string Version() =>
+        typeof(CommandLine).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion is { Length: > 0 } v ? v : "dev";
 
-    /// <summary>The verb's exit code, or null when <paramref name="args"/> names no verb (the host runs).</summary>
+    /// <summary>The verb's exit code, or null when <paramref name="args"/> names no verb (the host runs). A verb is recognised only as the first argument.</summary>
     public static async Task<int?> RunVerbAsync(string[] args, IDictionary<string, string?> env, TextWriter output, CancellationToken ct)
     {
         switch (args.FirstOrDefault())

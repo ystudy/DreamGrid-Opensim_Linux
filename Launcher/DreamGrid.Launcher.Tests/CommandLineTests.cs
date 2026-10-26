@@ -1,5 +1,6 @@
 using DreamGrid.Launcher.Core;
 using DreamGrid.Launcher.Core.Settings;
+using System.Reflection;
 using Xunit;
 
 namespace DreamGrid.Launcher.Tests;
@@ -37,8 +38,7 @@ public class CommandLineTests : IDisposable
 
         Assert.Equal(0, code);
         Assert.Equal(CommandLine.Version(), output);
-        Assert.DoesNotContain('+', output);
-        Assert.NotEmpty(output);
+        Assert.Equal(typeof(Program).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion, output);
     }
 
     [Fact]
@@ -91,6 +91,18 @@ public class CommandLineTests : IDisposable
 
         Assert.Equal(3, code);
         Assert.Contains("already running", output);
+    }
+
+    [Fact]
+    public async Task Stop_grid_with_nothing_running_succeeds_and_leaves_settings()
+    {
+        NewStore();
+        var before = File.ReadAllText(SettingsFile);
+
+        var (code, _) = await RunAsync("stop-grid", "--data", DataDir, "--opensim", Path.Combine(_root, "program"));
+
+        Assert.Equal(0, code);
+        Assert.Equal(before, File.ReadAllText(SettingsFile));
     }
 
     [Fact]
