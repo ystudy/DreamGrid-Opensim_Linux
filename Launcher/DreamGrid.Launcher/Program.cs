@@ -135,8 +135,8 @@ builder.Services.AddSingleton<IFeatureModule>(sp => sp.GetRequiredService<LogLev
 builder.Services.AddSingleton<ISettingsPage>(sp => sp.GetRequiredService<LogLevelModule>());
 builder.Services.AddSingleton<IRobustClient>(sp => new RobustClient(
     sp.GetRequiredService<IHttpClientFactory>().CreateClient("DreamGrid.Robust"),
-    new Uri($"http://127.0.0.1:{settings.RobustPrivatePort}"),
-    new Uri($"http://127.0.0.1:{settings.RobustPublicPort}")));
+    // Resolved per call: the controller itself depends on this client.
+    () => sp.GetRequiredService<IGridController>().CurrentSettings()));
 builder.Services.AddSingleton<GridController>();
 builder.Services.AddSingleton<IGridController>(sp => sp.GetRequiredService<GridController>());
 builder.Services.AddSingleton<LegacyCommandApi>();

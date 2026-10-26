@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Xml.Linq;
+using DreamGrid.Launcher.Core.Settings;
 
 namespace DreamGrid.Launcher.Core.OpenSim;
 
@@ -13,14 +14,20 @@ public interface IRobustClient
     Task<bool> AuthenticateAsync(Guid principal, string plainPassword, CancellationToken ct);
 }
 
-/// <summary>Robust's public grid-info endpoint plus the private account and auth services.</summary>
-public sealed class RobustClient(HttpClient http, Uri privateBase, Uri publicBase) : IRobustClient
+/// <summary>
+/// Robust's public grid-info endpoint plus the private account and auth services. The ports are read from the
+/// settings on every call, so a changed Robust port applies at once.
+/// </summary>
+public sealed class RobustClient(HttpClient http, Func<LauncherSettings> settings) : IRobustClient
 {
+    private Uri PrivateBase => new($"http://127.0.0.1:{settings().RobustPrivatePort}");
+    private Uri PublicBase => new($"http://127.0.0.1:{settings().RobustPublicPort}");
+
     public async Task<bool> IsReadyAsync(CancellationToken ct)
     {
         try
         {
-            using var resp = await http.GetAsync(new Uri(publicBase, "/get_grid_info"), ct);
+            using var resp = await http.GetAsync(new Uri(PublicBase, "/get_grid_info"), ct);
             if (!resp.IsSuccessStatusCode) return false;
             var body = await resp.Content.ReadAsStringAsync(ct);
             return body.Contains("<gridinfo>", StringComparison.OrdinalIgnoreCase)
@@ -54,7 +61,7 @@ public sealed class RobustClient(HttpClient http, Uri privateBase, Uri publicBas
     private async Task<XElement?> PostAsync(string path, CancellationToken ct, params (string Key, string Value)[] fields)
     {
         using var content = new FormUrlEncodedContent(fields.Select(f => new KeyValuePair<string, string>(f.Key, f.Value)));
-        using var resp = await http.PostAsync(new Uri(privateBase, path), content, ct);
+        using var resp = await http.PostAsync(new Uri(PrivateBase, path), content, ct);
         resp.EnsureSuccessStatusCode();
         try { return XDocument.Parse(await resp.Content.ReadAsStringAsync(ct)).Root; }
         catch (System.Xml.XmlException) { return null; }
