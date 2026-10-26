@@ -73,11 +73,13 @@ if ($SkipCompile) { return }
 
 # --- Compile -----------------------------------------------------------------------------------------------------
 if (-not $Iscc) {
+    # Chocolatey's ISCC.exe on PATH is a shim whose VersionInfo reads 0.0.0, so the Program Files installs come first
+    # and any candidate with FileMajorPart 0 is skipped.
     $found = Get-Command ISCC.exe -ErrorAction SilentlyContinue
-    $candidates = @(if ($found) { $found.Source }) + @(
+    $candidates = @(
         (Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'),
-        (Join-Path $env:ProgramFiles 'Inno Setup 6\ISCC.exe'))
-    $Iscc = @($candidates | Where-Object { $_ -and (Test-Path -LiteralPath $_) })[0]
+        (Join-Path $env:ProgramFiles 'Inno Setup 6\ISCC.exe')) + @(if ($found) { $found.Source })
+    $Iscc = @($candidates | Where-Object { $_ -and (Test-Path -LiteralPath $_) -and (Get-Item -LiteralPath $_).VersionInfo.FileMajorPart -ne 0 })[0]
     if (-not $Iscc) { throw 'Inno Setup 6 (ISCC.exe) was not found. Install it (choco install innosetup) or pass -Iscc <path>.' }
 }
 # DreamGrid.iss uses x64compatible, which needs Inno Setup 6.3 or later.
