@@ -463,8 +463,7 @@ public sealed class SetupFlowTests
         using var anonymous = f.CreateClient(new() { AllowAutoRedirect = false });
         using var resp = await anonymous.GetAsync("/api/setup/progress", Ct);
 
-        Assert.Equal(HttpStatusCode.Redirect, resp.StatusCode);
-        Assert.Equal("/setup-done", Location(resp));
+        Assert.Equal(HttpStatusCode.Unauthorized, resp.StatusCode);
         Assert.DoesNotContain("stage", await resp.Content.ReadAsStringAsync(Ct));
 
         using var admin = await SignedInClientAsync(f);
@@ -490,5 +489,103 @@ public sealed class SetupFlowTests
 
         Assert.Equal("/", Location(resp));
         Assert.True(f.Store.LoadOrCreate().Setup.Finished);
+    }
+
+    [Fact]
+    public async Task Setup_resumes_after_the_sign_in_cookie_is_gone()
+    {
+        await using var f = AfterOwner();
+        f.Robust.Add("Test", "Owner", 200, "pass-word1");
+        // A new browser session: no sign-in cookie, no setup cookie, the old setup link.
+        using var client = f.CreateClient(new() { AllowAutoRedirect = false });
+
+        using var link = await client.GetAsync("/setup?token=" + Token, Ct);
+        Assert.Equal("/login?ReturnUrl=%2Fsetup", Location(link));
+
+        using var signIn = await PostFormAsync(client, "/login?ReturnUrl=%2Fsetup", new() { ["Name"] = "Test Owner", ["Password"] = "pass-word1" });
+        Assert.Equal("/setup", Location(signIn));
+
+        using var next = await client.GetAsync("/setup", Ct);
+        Assert.Equal("/setup/region", Location(next));
+    }
+
+    private static readonly ComponentStatus StoppedDb = new("database", ProcessState.Stopped, null, null, null, null);
+
+    [Fact]
+    public async Task Avatar_step_names_the_taken_port_when_the_grid_cannot_start()
+    {
+        await using var f = Fresh(s => s with { WorldNamed = true });
+        f.Grid.Status = new GridStatus(StoppedDb, StoppedDb with { Name = "robust" }, null, false, "http://127.0.0.1:8002");
+        f.Grid.ComponentError = new PortConflictException("Port 8002 (Robust public) is already in use by another program.", 8002);
+        using var client = await SetupClientAsync(f);
+
+        using var resp = await PostFormAsync(client, "/setup/avatar", Avatar());
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var box = new HtmlParser().ParseDocument(await resp.Content.ReadAsStringAsync(Ct)).QuerySelector(".error-box > p")!.TextContent;
+        Assert.Equal("Port 8002 is already in use by another program, so your world can't start. Close that program, then try again.", box);
+        Assert.Equal(0, f.Grid.CreateOwnerCalls);
+    }
+
+    [Fact]
+    public async Task Avatar_step_names_the_taken_port_from_the_last_failed_start()
+    {
+        await using var f = Fresh(s => s with { WorldNamed = true });
+        f.Grid.Status = new GridStatus(StoppedDb, StoppedDb with { Name = "robust" }, null, false, "http://127.0.0.1:8002",
+            new StartFailure("Port 8004 (Robust private) is already in use by another program.", 8004));
+        f.Grid.OwnerError = new InvalidOperationException("Robust is not running.");
+        using var client = await SetupClientAsync(f);
+
+        using var resp = await PostFormAsync(client, "/setup/avatar", Avatar());
+
+        var html = await resp.Content.ReadAsStringAsync(Ct);
+        Assert.Contains("Port 8004 is already in use by another program", html);
+        Assert.Contains("Close that program, then try again.", html);
+        Assert.DoesNotContain("Advanced Settings", html);
+    }
+
+    [Fact]
+    public async Task Avatar_step_treats_a_timeout_as_a_failure_not_a_crash()
+    {
+        await using var f = Fresh(s => s with { WorldNamed = true });
+        f.Grid.OwnerError = new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout.");
+        using var client = await SetupClientAsync(f);
+
+        using var resp = await PostFormAsync(client, "/setup/avatar", Avatar());
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        Assert.Contains("could not be created", await resp.Content.ReadAsStringAsync(Ct));
+        Assert.Equal(Token, f.Store.LoadOrCreate().SetupToken);
+    }
+
+    [Fact]
+    public async Task Region_step_names_the_taken_port()
+    {
+        await using var f = AfterOwner();
+        f.Grid.OnCreateRegion = (_, _) => throw new PortConflictException("Port 9000 (Region) is already in use by another program.", 9000);
+        using var client = await SignedInClientAsync(f);
+
+        (await PostFormAsync(client, "/setup/region", new() { ["RegionName"] = "Welcome", ["Content"] = "island" })).Dispose();
+
+        var failed = await WaitForProgressAsync(client, p => !p.GetProperty("running").GetBoolean() && Str(p, "error") is not null);
+        Assert.Equal("Port 9000 is already in use by another program, so your world can't start. Close that program, then try again.", Str(failed, "error"));
+    }
+
+    [Fact]
+    public async Task Region_step_shows_ready_when_the_region_already_exists()
+    {
+        // After a restart the progress is empty, but the region was created before it.
+        await using var f = AfterOwner(regionCreated: true);
+        using var client = await SignedInClientAsync(f);
+
+        var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/region", Ct));
+
+        Assert.Contains("Your region is ready.", page.QuerySelector(".ok-box")?.TextContent);
+        Assert.NotNull(page.QuerySelector("a[href='/setup/connect']"));
+        Assert.Null(page.QuerySelector("form input[name=RegionName]"));
+
+        using var post = await PostFormAsync(client, "/setup/region", new() { ["RegionName"] = "Other", ["Content"] = "island" }, tokenFrom: "/setup/connect");
+        Assert.Equal("/setup/region", Location(post));
+        Assert.DoesNotContain(f.Grid.Snapshot(), c => c.StartsWith("CreateRegion", StringComparison.Ordinal));
     }
 }

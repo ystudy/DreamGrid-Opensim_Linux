@@ -5,6 +5,7 @@ using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.Processes;
 using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Endpoints;
+using Microsoft.Extensions.Logging;
 using Xunit;
 
 namespace DreamGrid.Launcher.Tests;
@@ -354,4 +355,29 @@ public sealed partial class DashboardTests : IAsyncLifetime
 
     [GeneratedRegex("<[^>]+>")]
     private static partial Regex TagPattern();
+
+    [Fact]
+    public async Task Online_users_turns_an_unexpected_failure_into_unavailable_and_warns_once()
+    {
+        var logs = new System.Collections.Concurrent.ConcurrentQueue<(LogLevel Level, string Category, string Message)>();
+        using var factory = LoggerFactory.Create(b => b.AddProvider(new CapturingLoggerProvider(logs)).SetMinimumLevel(LogLevel.Trace));
+        // Stands in for an odd row (a NULL name gives an invalid cast): anything but cancellation.
+        var online = new OnlineUsers(() => throw new InvalidCastException("NULL name"), factory.CreateLogger<OnlineUsers>());
+
+        Assert.Equal(OnlineList.Unavailable, await online.ListAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(OnlineList.Unavailable, await online.ListAsync(TestContext.Current.CancellationToken));
+
+        Assert.Single(logs, l => l.Level == LogLevel.Warning);
+        Assert.Single(logs, l => l.Level == LogLevel.Debug);
+    }
+
+    [Fact]
+    public async Task Online_users_lets_the_callers_cancellation_through()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        var online = new OnlineUsers(() => throw new OperationCanceledException(cts.Token));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => online.ListAsync(cts.Token));
+    }
 }

@@ -17,6 +17,7 @@ using DreamGrid.Launcher.Setup;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Connections;
+using Microsoft.AspNetCore.DataProtection;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseSystemd();
@@ -39,6 +40,8 @@ try
     paths = LauncherPaths.Resolve(args, env, OperatingSystem.IsWindows());
     store = new SettingsStore(paths.SettingsFile);
     settings = store.LoadOrCreate();
+    LauncherPaths.CreateOwnerOnly(paths.Data);
+    LauncherPaths.CreateOwnerOnly(paths.DataProtectionKeys);
 }
 catch (Exception e) when (e is ArgumentException or SettingsCorruptException or IOException or UnauthorizedAccessException)
 {
@@ -54,10 +57,18 @@ builder.WebHost.ConfigureKestrel(o => o.Listen(IPAddress.Any, settings.WebPort))
 builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.Warning);
 // Health polls of children that are still booting would log a stack trace every few seconds.
 builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);
+// Routing, page and result lines for every request (the dashboard polls every 5 s) would flood launcher.log.
+// Microsoft.Hosting.Lifetime ("Now listening on…") is outside this category and stays at Information.
+builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
 
 builder.Logging.AddProvider(new RollingFileLoggerProvider(Path.Combine(paths.Logs, "launcher.log")));
 
 builder.Services.AddHttpClient();
+// Keys for the sign-in and antiforgery cookies live in the (owner-only) data directory, not the service account's
+// profile, so cookies stay valid across restarts and the keys go wherever the data goes.
+builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(paths.DataProtectionKeys))
+    .SetApplicationName("DreamGrid");
 builder.Services.AddSingleton<Microsoft.AspNetCore.Routing.MatcherPolicy, LegacyRootPolicy>();
 builder.Services.AddAuthentication(AuthSchemes.Admin).AddCookie(AuthSchemes.Admin, o =>
 {
@@ -115,7 +126,8 @@ builder.Services.AddSingleton<IRobustClient>(sp => new RobustClient(
 builder.Services.AddSingleton<GridController>();
 builder.Services.AddSingleton<IGridController>(sp => sp.GetRequiredService<GridController>());
 builder.Services.AddSingleton<LegacyCommandApi>();
-builder.Services.AddSingleton<IOnlineUsers>(sp => new OnlineUsers(sp.GetRequiredService<Func<LauncherSettings>>()));
+builder.Services.AddSingleton<IOnlineUsers>(sp => new OnlineUsers(sp.GetRequiredService<Func<LauncherSettings>>(),
+    sp.GetRequiredService<ILogger<OnlineUsers>>()));
 builder.Services.AddSingleton<GridActions>();
 builder.Services.AddSingleton<SetupProgress>();
 builder.Services.AddSingleton<SetupRunner>();

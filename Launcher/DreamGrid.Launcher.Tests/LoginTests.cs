@@ -178,4 +178,18 @@ public sealed class LoginTests
         Assert.Equal(HttpStatusCode.Redirect, after.StatusCode);
         Assert.Equal("/login", after.Headers.Location?.AbsolutePath);
     }
+
+    [Fact]
+    public async Task A_refused_sign_in_logs_only_the_cleaned_first_name()
+    {
+        await using var f = Factory();
+        await LoginAsync(Client(f), "Te\u0007st Owner", "pass-word1");
+        await LoginAsync(Client(f), "my-secret-pw", "pass-word1"); // a password typed into the name field
+
+        var refused = f.Logs.Where(l => l.Message.Contains("refused")).Select(l => l.Message).ToList();
+        Assert.Equal(2, refused.Count);
+        Assert.Contains(refused, m => m.Contains("Te?st"));
+        Assert.DoesNotContain(refused, m => m.Contains("Owner") || m.Contains('\u0007'));
+        Assert.DoesNotContain(f.Logs, l => l.Message.Contains("my-secret-pw"));
+    }
 }

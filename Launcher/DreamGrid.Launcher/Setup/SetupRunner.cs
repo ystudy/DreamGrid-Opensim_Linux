@@ -3,6 +3,7 @@ using DreamGrid.Launcher.Core.Logs;
 using DreamGrid.Launcher.Core.Processes;
 using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Core.Setup;
+using DreamGrid.Launcher.Endpoints;
 
 namespace DreamGrid.Launcher.Setup;
 
@@ -19,6 +20,13 @@ public sealed class SetupRunner(
     ILogger<SetupRunner> log)
 {
     private const int ExcerptLines = 40;
+
+    /// <summary>What to do after a port conflict on a setup page (Advanced Settings is out of reach before setup ends).</summary>
+    public const string CloseThatProgram = " Close that program, then try again.";
+
+    /// <summary>The plain port sentence when <paramref name="e"/> (or the last failed start) was a port conflict; else null.</summary>
+    public string? PortConflictText(Exception e) =>
+        StatusApi.ConflictPort(e, grid.GetStatus()) is { } port ? StatusApi.PortInUse(port) + CloseThatProgram : null;
     private int _warming;
 
     /// <summary>
@@ -94,7 +102,7 @@ public sealed class SetupRunner(
             // The headline stays plain newcomer text; the technical message leads the details, above the log lines.
             var where = stage == "" ? "" : $" It stopped at \"{stage}\".";
             var excerpt = Excerpt();
-            progress.Fail($"Your region could not be set up.{where} Check the details, then try again.",
+            progress.Fail(PortConflictText(e) ?? $"Your region could not be set up.{where} Check the details, then try again.",
                 excerpt is null ? e.Message : e.Message + "\n\n" + excerpt);
         }
         finally

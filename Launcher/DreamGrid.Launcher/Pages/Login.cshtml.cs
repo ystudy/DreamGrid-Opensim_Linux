@@ -27,28 +27,24 @@ public sealed class LoginModel(IRobustClient robust, LoginThrottle throttle, ILo
 
     public async Task<IActionResult> OnPostAsync(CancellationToken ct)
     {
-        var name = (Name ?? "").Trim();
         var password = Password ?? "";
-        // First name up to the first space; the rest is the last name. The throttle key is the normalised
-        // "First Last", so extra spaces cannot give one account several lock states.
-        var space = name.IndexOf(' ');
-        var first = space < 0 ? "" : name[..space];
-        var last = space < 0 ? "" : name[(space + 1)..].Trim();
-        var key = first.Length == 0 || last.Length == 0 ? name : $"{first} {last}";
-        if (throttle.IsLocked(key))
+        // The throttle key is the normalised "First Last" (shared with the port-8001 API), so extra spaces cannot
+        // give one account several lock states.
+        var name = AvatarName.Parse(Name);
+        if (throttle.IsLocked(name.Key))
         {
             Error = "Too many attempts. Try again in a few minutes.";
             return Page();
         }
 
-        if (first.Length == 0 || last.Length == 0)
-            return Fail(key);
+        if (!name.IsComplete)
+            return Fail(name);
 
         bool ok;
         RobustAccount? account;
         try
         {
-            account = await robust.GetAccountAsync(first, last, ct);
+            account = await robust.GetAccountAsync(name.First, name.Last, ct);
             ok = account is not null && await robust.AuthenticateAsync(account.PrincipalId, password, ct)
                 && account.UserLevel >= AdminLevel;
         }
@@ -60,17 +56,18 @@ public sealed class LoginModel(IRobustClient robust, LoginThrottle throttle, ILo
             return Page();
         }
 
-        if (!ok) return Fail(key);
+        if (!ok) return Fail(name);
 
-        throttle.RecordSuccess(key);
+        throttle.RecordSuccess(name.Key);
         await AdminSignIn.SignInAsync(HttpContext, account!.FirstName, account.LastName, account.PrincipalId);
         return LocalRedirect(Url.IsLocalUrl(ReturnUrl) ? ReturnUrl! : "/");
     }
 
-    private IActionResult Fail(string name)
+    private IActionResult Fail(AvatarName name)
     {
-        throttle.RecordFailure(name);
-        log.LogInformation("Sign-in: a sign-in for {Name} was refused", name);
+        throttle.RecordFailure(name.Key);
+        // Only the cleaned first name: the rest could be a password typed into the wrong field.
+        log.LogInformation("Sign-in: a sign-in for first name {First} was refused", name.ForLog);
         Error = Generic;
         return Page();
     }

@@ -15,6 +15,8 @@ public sealed record LauncherPaths(string Data, string OpenSimProgram, string? M
     public string ScriptEngines => Path.Combine(Data, "state", "scriptengines");
     public string Logs => Path.Combine(Data, "state", "logs");
     public string Pids => Path.Combine(Data, "state", "pids");
+    /// <summary>The website's ASP.NET Core data-protection keys (they sign the sign-in and antiforgery cookies).</summary>
+    public string DataProtectionKeys => Path.Combine(Data, "keys");
 
     public string RegionDir(string instance) => Path.Combine(RegionsRoot, instance);
     public string RegionDefinitionDir(string instance) => Path.Combine(RegionDir(instance), "Region");
@@ -60,7 +62,7 @@ public sealed record LauncherPaths(string Data, string OpenSimProgram, string? M
         foreach (var dir in new[]
         {
             Data, MariaDbData, MariaDbTmp, RuntimeOpenSim, RegionsRoot, AssetCache, FsAssetsData, FsAssetsSpool,
-            ScriptEngines, Logs, Pids,
+            ScriptEngines, Logs, Pids, DataProtectionKeys,
         })
             Directory.CreateDirectory(dir);
     }

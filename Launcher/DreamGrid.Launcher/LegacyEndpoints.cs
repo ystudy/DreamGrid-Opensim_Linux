@@ -1,4 +1,5 @@
 using System.Net;
+using DreamGrid.Launcher.Core;
 using DreamGrid.Launcher.Core.Api;
 using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.OpenSim;
@@ -6,7 +7,6 @@ using DreamGrid.Launcher.Core.Settings;
 
 namespace DreamGrid.Launcher;
 
-/// <summary>The port-8001 contract (spec 5) that the patched OpenSim and Robust call, on the web port.</summary>
 /// <summary>Marks the port-8001 handler on "/".</summary>
 internal sealed class LegacyRootMetadata;
 
@@ -34,6 +34,7 @@ internal sealed class LegacyRootPolicy : Microsoft.AspNetCore.Routing.MatcherPol
     }
 }
 
+/// <summary>The port-8001 contract (spec 5) that the patched OpenSim and Robust call, on the web port.</summary>
 public static class LegacyEndpoints
 {
     private const string TextPlain = "text/plain; charset=utf-8";
@@ -81,12 +82,7 @@ public static class LegacyEndpoints
         IPAddress.IsLoopback(remote.IsIPv4MappedToIPv6 ? remote.MapToIPv4() : remote);
 
     /// <summary>An untrusted value made safe for a log line: control characters become '?', at most 64 characters.</summary>
-    private static string Clean(string? value)
-    {
-        if (string.IsNullOrEmpty(value)) return "";
-        var chars = value.Take(MaxLoggedChars).Select(c => char.IsControl(c) ? '?' : c).ToArray();
-        return new string(chars) + (value.Length > MaxLoggedChars ? "..." : "");
-    }
+    private static string Clean(string? value) => LogText.Clean(value, MaxLoggedChars);
 
     private static IResult Text(HttpContext ctx, string body)
     {

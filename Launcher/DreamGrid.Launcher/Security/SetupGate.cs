@@ -4,8 +4,10 @@ using DreamGrid.Launcher.Core.Settings;
 namespace DreamGrid.Launcher.Security;
 
 /// <summary>
-/// Access rules around setup. Before the owner exists only the setup link (and its cookie) opens /setup*;
-/// afterwards /setup* is closed except for the signed-in admin until setup is finished.
+/// Access rules around setup. Before the owner exists only the setup link (and its cookie) opens /setup*.
+/// Afterwards, until setup is finished, /setup* is for the signed-in admin: anyone else is sent to sign in first (the
+/// sign-in cookie lasts only for the browser session, so this is how an interrupted setup is resumed), and the admin's
+/// home "/" leads back to the checklist. Once setup is finished /setup* shows "Setup is already finished".
 /// Static files (served before this) and the port-8001 legacy routes always pass.
 /// </summary>
 public sealed class SetupGate(RequestDelegate next, Func<LauncherSettings> settings)
@@ -48,18 +50,30 @@ public sealed class SetupGate(RequestDelegate next, Func<LauncherSettings> setti
 
         if (isSetup)
         {
-            if (!s.Setup.Finished && await IsAdminAsync(ctx))
-                await next(ctx);
-            else
+            if (s.Setup.Finished)
                 ctx.Response.Redirect("/setup-done");
+            else if (await IsAdminAsync(ctx))
+                await next(ctx);
+            else if (path.StartsWithSegments("/api"))
+                ctx.Response.StatusCode = StatusCodes.Status401Unauthorized; // API callers never get a redirect
+            else
+                ctx.Response.Redirect("/login?ReturnUrl=%2Fsetup"); // no dg-setup cookie: the token is spent
             return;
         }
 
         // The legacy root handler has no authorization of its own; the bare "/" is the admin home.
-        if (path == "/" && !await IsAdminAsync(ctx))
+        if (path == "/")
         {
-            await ctx.ChallengeAsync(AuthSchemes.Admin);
-            return;
+            if (!await IsAdminAsync(ctx))
+            {
+                await ctx.ChallengeAsync(AuthSchemes.Admin);
+                return;
+            }
+            if (!s.Setup.Finished)
+            {
+                ctx.Response.Redirect("/setup");
+                return;
+            }
         }
 
         await next(ctx);

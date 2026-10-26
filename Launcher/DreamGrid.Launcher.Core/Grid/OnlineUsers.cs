@@ -1,5 +1,6 @@
 using DreamGrid.Launcher.Core.Database;
 using DreamGrid.Launcher.Core.Settings;
+using Microsoft.Extensions.Logging;
 using MySqlConnector;
 
 namespace DreamGrid.Launcher.Core.Grid;
@@ -22,9 +23,12 @@ public interface IOnlineUsers
 /// <summary>
 /// Reads Robust's presence data (an avatar in a region has a non-zero RegionID) as robustuser. The settings are read
 /// per call, so a changed port or password is used at once. Each call is its own result, safe for concurrent requests.
+/// Any failure but the caller's cancellation (a database that is down, an odd row) gives "unavailable", never an error page.
 /// </summary>
-public sealed class OnlineUsers(Func<LauncherSettings> settings) : IOnlineUsers
+public sealed class OnlineUsers(Func<LauncherSettings> settings, ILogger<OnlineUsers>? log = null) : IOnlineUsers
 {
+    private int _warned;
+
     // Short: the dashboard polls this and must never hang on a database that is down.
     private const uint TimeoutSeconds = 3;
 
@@ -34,9 +38,9 @@ public sealed class OnlineUsers(Func<LauncherSettings> settings) : IOnlineUsers
 
     public async Task<OnlineList> ListAsync(CancellationToken ct)
     {
-        var s = settings();
         try
         {
+            var s = settings();
             await using var conn = new MySqlConnection(MariaDbServer.ConnectionString(s, "robust", "robustuser", s.Db.RobustPassword, TimeoutSeconds));
             await conn.OpenAsync(ct);
             await using var cmd = new MySqlCommand(Query, conn);
@@ -53,6 +57,13 @@ public sealed class OnlineUsers(Func<LauncherSettings> settings) : IOnlineUsers
         }
         catch (Exception e) when (e is MySqlException or InvalidOperationException or TimeoutException or System.Net.Sockets.SocketException)
         {
+            return OnlineList.Unavailable; // the database is down or still starting: expected, not logged
+        }
+        catch (Exception e) when (e is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            // Unexpected (a NULL name, a cast): warn once, then only at Debug, since the dashboard polls every few seconds.
+            var level = Interlocked.Exchange(ref _warned, 1) == 0 ? LogLevel.Warning : LogLevel.Debug;
+            log?.Log(level, "Who's online could not be read ({Error}: {Message}).", e.GetType().Name, e.Message);
             return OnlineList.Unavailable;
         }
     }

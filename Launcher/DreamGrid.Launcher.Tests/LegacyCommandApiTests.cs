@@ -6,8 +6,10 @@ using DreamGrid.Launcher.Core.Config;
 using DreamGrid.Launcher.Core.Modules;
 using DreamGrid.Launcher.Core.Processes;
 using DreamGrid.Launcher.Core.OpenSim;
+using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Core.Settings;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Time.Testing;
 using Xunit;
 
 namespace DreamGrid.Launcher.Tests;
@@ -30,11 +32,15 @@ public sealed class LegacyCommandApiTests
     };
 
     private readonly ConcurrentQueue<(LogLevel Level, string Category, string Message)> _logs = new();
+    private readonly FakeTimeProvider _time = new();
+    private readonly LoginThrottle _throttle;
+
+    public LegacyCommandApiTests() => _throttle = new LoginThrottle(_time);
 
     private LegacyCommandApi Api(params IFeatureModule[] modules) => Api(_robust, modules);
 
     private LegacyCommandApi Api(IRobustClient robust, params IFeatureModule[] modules) =>
-        new(_grid, robust, () => _settings, modules,
+        new(_grid, robust, () => _settings, modules, _throttle,
             LoggerFactory.Create(b => b.AddProvider(new CapturingLoggerProvider(_logs))).CreateLogger<LegacyCommandApi>());
 
     private static LegacyRequest Req(string command, string? avatar = null, string? password = null,
@@ -223,6 +229,68 @@ public sealed class LegacyCommandApiTests
 
         Assert.StartsWith("NAK You do not have permission", await api.HandleAsync(Req("StopMysql", password: MachineId), Ct));
         Assert.Equal("ACK", await api.HandleAsync(Req("StopMysql", password: "rotated-machine-id-000000000"), Ct));
+    }
+
+    [Fact]
+    public async Task Five_bad_passwords_lock_the_avatar_and_a_locked_avatar_never_reaches_Robust()
+    {
+        var api = Api();
+        for (var i = 0; i < LoginThrottle.MaxFailures; i++)
+            Assert.StartsWith("NAK You do not have permission to StopRobust", await api.HandleAsync(Req("StopRobust", "God Owner", "wrong"), Ct));
+        var lookups = _robust.Lookups;
+
+        // The right password, with other spacing and case, is refused like a bad one while the name is locked.
+        var reply = await api.HandleAsync(Req("StopRobust", "god   owner", "godpw"), Ct);
+
+        Assert.StartsWith("NAK You do not have permission to StopRobust", reply);
+        Assert.Equal(lookups, _robust.Lookups);
+        Assert.Empty(_grid.Snapshot());
+        Assert.True(_throttle.IsLocked("God Owner"));
+
+        _time.Advance(LoginThrottle.Window + TimeSpan.FromSeconds(1));
+        Assert.Equal("ACK", await api.HandleAsync(Req("StopRobust", "God Owner", "godpw"), Ct));
+    }
+
+    [Fact]
+    public async Task A_name_locked_on_the_website_is_refused_here_too()
+    {
+        // The sign-in page and this API share one throttle keyed on the normalised name.
+        for (var i = 0; i < LoginThrottle.MaxFailures; i++) _throttle.RecordFailure(AvatarName.Parse("God  Owner").Key);
+
+        Assert.StartsWith("NAK You do not have permission", await Api().HandleAsync(Req("StopRobust", "God Owner", "godpw"), Ct));
+        Assert.Equal(0, _robust.Lookups);
+    }
+
+    [Fact]
+    public async Task A_good_password_clears_earlier_failures()
+    {
+        var api = Api();
+        for (var i = 0; i < LoginThrottle.MaxFailures - 1; i++) await api.HandleAsync(Req("StopRobust", "God Owner", "wrong"), Ct);
+        Assert.Equal("ACK", await api.HandleAsync(Req("StopRobust", "God Owner", "godpw"), Ct));
+
+        await api.HandleAsync(Req("StopRobust", "God Owner", "wrong"), Ct);
+
+        Assert.False(_throttle.IsLocked("God Owner"));
+    }
+
+    [Fact]
+    public async Task The_MachineId_is_not_throttled()
+    {
+        var api = Api();
+        for (var i = 0; i < LoginThrottle.MaxFailures + 2; i++) await api.HandleAsync(Req("StopMysql", password: MachineId + "x"), Ct);
+
+        Assert.Equal("ACK", await api.HandleAsync(Req("StopMysql", password: MachineId), Ct));
+    }
+
+    [Fact]
+    public async Task A_refused_locked_name_is_logged_by_first_name_only()
+    {
+        for (var i = 0; i < LoginThrottle.MaxFailures; i++) _throttle.RecordFailure("God Owner");
+
+        await Api().HandleAsync(Req("StopRobust", "God Owner", "godpw"), Ct);
+
+        Assert.Contains(_logs, l => l.Message.Contains("God") && l.Message.Contains("refused"));
+        Assert.DoesNotContain(_logs, l => l.Message.Contains("Owner") || l.Message.Contains("godpw"));
     }
 
     public static TheoryData<Exception> RobustFailures() => new()

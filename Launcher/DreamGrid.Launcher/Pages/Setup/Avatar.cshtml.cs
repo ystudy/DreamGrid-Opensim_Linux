@@ -48,12 +48,14 @@ public sealed partial class AvatarModel(
             await runner.EnsureGridAsync(null, ct);
             account = await grid.CreateOwnerAsync(first, last, password, email, ct);
         }
-        catch (Exception e) when (e is not OperationCanceledException)
+        // Only the launcher stopping is a cancellation; an HttpClient timeout (TaskCanceledException) is a failure.
+        catch (Exception e) when (!lifetime.ApplicationStopping.IsCancellationRequested)
         {
             // Console transcripts can end up in the message: keep the password out of the log and the page.
             var message = e.Message.Replace(password, "********", StringComparison.Ordinal);
             log.LogError("Setup: the owner avatar {First} {Last} could not be created: {Message}", first, last, message);
-            Error = "Your avatar could not be created. The grid may still be starting: wait a minute, then try again.";
+            Error = runner.PortConflictText(e)
+                ?? "Your avatar could not be created. The grid may still be starting: wait a minute, then try again.";
             Details = message;
             return Page();
         }

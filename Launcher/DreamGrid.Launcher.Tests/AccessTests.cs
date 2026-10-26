@@ -59,7 +59,7 @@ public sealed class AccessTests
         Assert.DoesNotContain("token=", resp.Headers.Location!.OriginalString);
         var cookie = Assert.Single(resp.Headers.GetValues("Set-Cookie"), c => c.StartsWith("dg-setup=", StringComparison.Ordinal));
         Assert.Contains("httponly", cookie, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("samesite=strict", cookie, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("samesite=lax", cookie, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -100,9 +100,10 @@ public sealed class AccessTests
     }
 
     [Fact]
-    public async Task After_owner_exists_setup_link_shows_setup_done()
+    public async Task After_setup_is_finished_setup_link_shows_setup_done()
     {
-        await using var f = AfterOwner();
+        // Review Focus 2: a second device opening the old link after setup is told so, and nothing more.
+        await using var f = AfterOwner(finished: true);
         using var client = NoRedirect(f);
 
         using var withToken = await client.GetAsync("/setup?token=" + Token, Ct);
@@ -115,8 +116,42 @@ public sealed class AccessTests
             Assert.Equal("/setup-done", r.Headers.Location?.OriginalString);
             Assert.False(r.Headers.Contains("Set-Cookie"));
         }
-        var page = await client.GetStringAsync("/setup-done", Ct);
-        Assert.Contains("Setup is already finished", page);
+        var page = new AngleSharp.Html.Parser.HtmlParser().ParseDocument(await client.GetStringAsync("/setup-done", Ct));
+        Assert.Equal("Setup is already finished", page.QuerySelector("h1")?.TextContent);
+        Assert.NotNull(page.QuerySelector("main a[href='/login']"));
+        Assert.DoesNotContain("Setup is already finished", page.QuerySelector("main p")?.TextContent);
+    }
+
+    [Fact]
+    public async Task Before_setup_is_finished_the_setup_link_asks_to_sign_in_first()
+    {
+        await using var f = AfterOwner(finished: false);
+        using var client = NoRedirect(f);
+
+        using var withToken = await client.GetAsync("/setup?token=" + Token, Ct);
+        using var plain = await client.GetAsync("/setup/region", Ct);
+        using var api = await client.GetAsync("/api/setup/progress", Ct);
+
+        foreach (var r in new[] { withToken, plain })
+        {
+            Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
+            Assert.Equal("/login?ReturnUrl=%2Fsetup", r.Headers.Location?.OriginalString);
+            Assert.False(r.Headers.Contains("Set-Cookie"));
+        }
+        Assert.Equal(HttpStatusCode.Unauthorized, api.StatusCode);
+    }
+
+    [Fact]
+    public async Task Signed_in_admin_home_leads_to_setup_until_it_is_finished()
+    {
+        await using var f = AfterOwner(finished: false);
+        using var client = NoRedirect(f);
+        (await client.GetAsync("/__test/signin", Ct)).Dispose();
+
+        using var resp = await client.GetAsync("/", Ct);
+
+        Assert.Equal(HttpStatusCode.Redirect, resp.StatusCode);
+        Assert.Equal("/setup", resp.Headers.Location?.OriginalString);
     }
 
     [Fact]

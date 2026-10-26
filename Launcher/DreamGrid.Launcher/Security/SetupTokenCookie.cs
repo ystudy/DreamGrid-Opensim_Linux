@@ -15,11 +15,15 @@ public static class SetupTokenCookie
         return CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(expected), Encoding.UTF8.GetBytes(given));
     }
 
+    /// <summary>
+    /// Lax, not Strict: a setup link clicked inside webmail or a chat app arrives cross-site, and the redirect that
+    /// follows would otherwise drop the cookie. Every setup form also carries an antiforgery token.
+    /// </summary>
     public static void Issue(HttpResponse response, string token) =>
         response.Cookies.Append(Name, token, new CookieOptions
         {
             HttpOnly = true,
-            SameSite = SameSiteMode.Strict,
+            SameSite = SameSiteMode.Lax,
             Path = "/",
             IsEssential = true,
         });

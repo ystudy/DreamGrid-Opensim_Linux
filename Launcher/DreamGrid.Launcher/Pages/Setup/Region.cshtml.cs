@@ -23,7 +23,9 @@ public sealed class RegionModel(Func<LauncherSettings> settings, LauncherPaths p
     public SetupProgressSnapshot Progress { get; private set; } = new("", 0, false, null, null);
     /// <summary>True to show the progress view (running, failed or ready) instead of only the form.</summary>
     public bool ShowProgress { get; private set; }
-    public bool Ready => ShowProgress && !Progress.Running && Progress.Error is null && Progress.Stage == SetupProgress.Ready;
+    /// <summary>True when the region exists (also after a restart, when the progress is empty) or this run just made it.</summary>
+    public bool Ready => !Progress.Running && (RegionCreated || (ShowProgress && Progress.Error is null && Progress.Stage == SetupProgress.Ready));
+    private bool RegionCreated { get; set; }
     public bool ShowForm => !Progress.Running && !Ready;
 
     public IActionResult OnGet(string? working)
@@ -41,6 +43,7 @@ public sealed class RegionModel(Func<LauncherSettings> settings, LauncherPaths p
         if (Closed() is { } closed) return closed;
         if (progress.Running) return Redirect(WorkingUrl);
         Load();
+        if (RegionCreated) return Redirect("/setup/region"); // shows "ready"; a second region is not set up here
 
         if (string.IsNullOrEmpty(RegionName))
             ModelState.AddModelError(nameof(RegionName), "Give your region a name.");
@@ -61,5 +64,6 @@ public sealed class RegionModel(Func<LauncherSettings> settings, LauncherPaths p
     {
         StarterAvailable = StarterContent.StarterOar(paths) is not null;
         Progress = progress.Snapshot();
+        RegionCreated = settings().Setup.RegionCreated;
     }
 }
