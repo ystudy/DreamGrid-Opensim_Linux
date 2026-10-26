@@ -19,7 +19,7 @@ namespace DreamGrid.Launcher;
 /// <remarks>
 /// The installers set the web port with <c>set-web-port</c>, once, while the service is stopped. The host option
 /// <c>--web-port &lt;n&gt;</c> (for development) applies the port again on every start, so a port changed later in
-/// Advanced, Network would be undone at the next start: it never goes into a service's command line.
+/// Advanced Settings → Network would be undone at the next start: it never goes into a service's command line.
 /// </remarks>
 public static class CommandLine
 {
@@ -188,14 +188,14 @@ public static class CommandLine
         return 0;
     }
 
-    /// <summary>The live processes named by the PID files in <paramref name="pidsDir"/> (none when it does not exist).</summary>
+    /// <summary>The running processes named by the PID files in <paramref name="pidsDir"/> (none when it does not exist); one this account may not inspect counts as running.</summary>
     public static IReadOnlyList<int> LiveChildPids(string pidsDir)
     {
         if (!Directory.Exists(pidsDir)) return [];
         return Directory.EnumerateFiles(pidsDir, "*.pid")
             .Select(PidFile.Read)
             .OfType<int>()
-            .Where(ProcessImage.IsAlive)
+            .Where(MayBeRunning)
             .Distinct()
             .ToList();
     }

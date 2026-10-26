@@ -48,6 +48,7 @@ Plan 3 (installers, services, releases) was executed task by task with a review 
 ### Final fix wave, unverified until CI
 - The Windows installer changes (`set-web-port`, the stays-up check after `sc start`, restarting the service from `DeinitializeSetup`, the pinned-binPath migration) are uncompiled; the Windows smoke's new `refused-port` and `web-port` stages have not run. The `DeinitializeSetup` restart, the stays-up failure path and a failing `set-web-port` (a port that collides with a changed Robust or region port) are not covered by any smoke.
 - Debian: the "not active within 30 s" failure path of `install.sh` is not smoke-tested.
+- `stop-grid` waits for every running process a PID file names, without the start-identity check, so a PID reused by an unrelated program holds it for the full 60 s (then exit 5; the uninstaller only logs it).
 
 ### Manual release checklist (results pending)
 - [ ] A clean Debian 12 VM and a clean Debian 13 VM (AppArmor enabled): the one-liner from a test tag's release, then Firestorm login from another LAN machine. Result: pending.
