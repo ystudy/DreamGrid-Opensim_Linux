@@ -1,4 +1,8 @@
 using System.Net;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace DreamGrid.Launcher.Tests;
@@ -245,5 +249,45 @@ public sealed class AccessTests
         (await NoRedirect(f).GetAsync("/setup?token=" + Token, Ct)).Dispose();
 
         Assert.DoesNotContain(f.Logs, l => l.Message.Contains(Token) && !l.Message.StartsWith("Setup link:", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// With the admin policy as the fallback, every endpoint is admin-only unless it carries IAllowAnonymous, so this
+    /// list is the whole open surface. Minimal APIs carry it through .AllowAnonymous(); a Razor page carries it
+    /// through the AllowAnonymousToPage/Folder conventions (they put IAllowAnonymous in the page endpoint's metadata,
+    /// told apart here by its PageActionDescriptor). A new endpoint that is not listed fails this test.
+    /// </summary>
+    [Fact]
+    public async Task Anonymous_endpoints_are_exactly_the_allowlist()
+    {
+        await using var f = Before();
+        using var client = NoRedirect(f); // starts the host
+
+        var open = f.Services.GetRequiredService<EndpointDataSource>().Endpoints.OfType<RouteEndpoint>()
+            .Where(e => e.Metadata.GetMetadata<IAllowAnonymous>() is not null)
+            .Select(e => (e.Metadata.GetMetadata<PageActionDescriptor>() is null ? "route " : "page ") + e.RoutePattern.RawText)
+            .Distinct().Order(StringComparer.Ordinal).ToList();
+
+        string[] allowlist =
+        [
+            // The port-8001 contract (the bare "/" is split from the dashboard by LegacyRootPolicy; SetupGate guards it).
+            "route /",
+            "route /dreamgrid/regionready",
+            // Names and states only; avatar names only for an admin.
+            "route /api/status",
+            // Guarded by SetupGate, like the setup pages.
+            "route /api/setup/progress",
+            "page login",
+            "page logout",
+            "page setup",
+            "page setup-done",
+            "page setup/avatar",
+            "page setup/connect",
+            "page setup/region",
+            "page setup/world",
+            "page waiting",
+            "page welcome",
+        ];
+        Assert.Equal(allowlist.Order(StringComparer.Ordinal), open);
     }
 }

@@ -10,5 +10,5 @@ public static class SetupApi
         {
             ctx.Response.Headers.CacheControl = "no-store";
             return Results.Json(progress.Snapshot());
-        });
+        }).AllowAnonymous();
 }

@@ -138,6 +138,8 @@
     });
 
     function render(s) {
+        // The page was rendered for an admin whose sign-in has since expired.
+        if (s.admin === false) { signInAgain(); return; }
         var headline = document.getElementById("headline");
         headline.textContent = s.headline;
         headline.className = "headline" + (s.problem ? " problem" : "");

@@ -16,6 +16,7 @@ using DreamGrid.Launcher.Security;
 using DreamGrid.Launcher.Setup;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.DataProtection;
 
@@ -93,8 +94,10 @@ builder.Services.AddAuthentication(AuthSchemes.Admin).AddCookie(AuthSchemes.Admi
     o.Events.OnRedirectToLogin = c => ApiOr(c, StatusCodes.Status401Unauthorized);
     o.Events.OnRedirectToAccessDenied = c => ApiOr(c, StatusCodes.Status403Forbidden);
 });
+// Whatever has no decision of its own needs the admin role; the open routes say .AllowAnonymous() (or a page convention).
 builder.Services.AddAuthorizationBuilder()
-    .AddPolicy(AuthSchemes.AdminPolicy, p => p.AddAuthenticationSchemes(AuthSchemes.Admin).RequireRole(AuthSchemes.AdminRole));
+    .AddPolicy(AuthSchemes.AdminPolicy, p => p.AddAuthenticationSchemes(AuthSchemes.Admin).RequireRole(AuthSchemes.AdminRole))
+    .SetFallbackPolicy(new AuthorizationPolicyBuilder().AddAuthenticationSchemes(AuthSchemes.Admin).RequireRole(AuthSchemes.AdminRole).Build());
 builder.Services.AddRazorPages(o =>
 {
     // Every page needs the admin role except these; the setup pages are guarded by SetupGate.

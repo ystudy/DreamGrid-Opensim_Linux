@@ -15,6 +15,11 @@ function poll(url, intervalMs, onJson) {
     return function stop() { stopped = true; };
 }
 
+// signInAgain() reloads to the sign-in page, which returns here: the admin's sign-in expired while the page was open.
+function signInAgain() {
+    window.location.href = "/login?ReturnUrl=" + encodeURIComponent(window.location.pathname + window.location.search);
+}
+
 // copyButton(source, button) shows button, which copies the text of source. The clipboard API needs a secure
 // context (localhost); elsewhere the text is selected for Ctrl+C.
 function copyButton(source, button) {

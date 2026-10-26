@@ -43,8 +43,9 @@ public static class LegacyEndpoints
 
     public static void Map(WebApplication app)
     {
-        app.MapMethods("/", [HttpMethods.Get, HttpMethods.Post], Root).WithMetadata(new LegacyRootMetadata());
-        app.MapPost("/dreamgrid/regionready", RegionReady);
+        // Open on purpose: the patched OpenSim and Robust call these without signing in (SetupGate and the loopback check guard them).
+        app.MapMethods("/", [HttpMethods.Get, HttpMethods.Post], Root).WithMetadata(new LegacyRootMetadata()).AllowAnonymous();
+        app.MapPost("/dreamgrid/regionready", RegionReady).AllowAnonymous();
     }
 
     private static async Task<IResult> Root(HttpContext ctx, LegacyCommandApi api, IHostApplicationLifetime lifetime, ILoggerFactory logs)

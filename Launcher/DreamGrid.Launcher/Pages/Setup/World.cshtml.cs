@@ -1,5 +1,6 @@
 using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.Settings;
+using DreamGrid.Launcher.Endpoints;
 using DreamGrid.Launcher.Setup;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -11,7 +12,23 @@ public sealed class WorldModel(IGridController grid, Func<LauncherSettings> sett
 {
     [BindProperty] public string? GridName { get; set; }
 
-    public void OnGet() => GridName = settings().GridName;
+    /// <summary>The last failed start that is not a port conflict (that one gets the port form), shown like on the avatar step.</summary>
+    public string? Error { get; private set; }
+    public string? Details { get; private set; }
+
+    public void OnGet()
+    {
+        GridName = settings().GridName;
+        ShowStartFailure();
+    }
+
+    private void ShowStartFailure()
+    {
+        var status = grid.GetStatus();
+        if (!StatusApi.ShowsStartFailure(status) || status.StartFailure!.ConflictPort is not null) return;
+        Error = StatusApi.CouldNotStart;
+        Details = status.StartFailure.Message;
+    }
 
     public IActionResult OnPost()
     {
@@ -20,7 +37,11 @@ public sealed class WorldModel(IGridController grid, Func<LauncherSettings> sett
             ModelState.AddModelError(nameof(GridName), "Give your world a name.");
         else if (SettingsValidator.GridNameError(name) is { } nameError)
             ModelState.AddModelError(nameof(GridName), nameError);
-        if (!ModelState.IsValid) return Page();
+        if (!ModelState.IsValid)
+        {
+            ShowStartFailure();
+            return Page();
+        }
 
         // The name goes into the generated INIs ([Const] GridName, [GridInfoService] gridname, the estate name).
         grid.UpdateSettings(s => s with { GridName = name, Setup = s.Setup with { WorldNamed = true } }, writeConfig: true);

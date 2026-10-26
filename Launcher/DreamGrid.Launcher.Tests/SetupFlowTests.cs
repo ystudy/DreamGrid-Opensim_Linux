@@ -633,4 +633,144 @@ public sealed class SetupFlowTests
         Assert.Equal("/setup/region", Location(post));
         Assert.DoesNotContain(f.Grid.Snapshot(), c => c.StartsWith("CreateRegion", StringComparison.Ordinal));
     }
+
+    private const string PortConflictMessage = "Port 8002 (Robust public) is already in use by another program.";
+
+    /// <summary>The grid is not running and its last start failed.</summary>
+    private static void Fail(LauncherFactory f, StartFailure failure)
+    {
+        f.Grid.RegionState = ProcessState.Stopped;
+        f.Grid.StartFailure = failure;
+    }
+
+    private static async Task WaitForCallsAsync(LauncherFactory f, int count)
+    {
+        for (var i = 0; i < 100 && f.Grid.Snapshot().Length < count; i++) await Task.Delay(50, Ct);
+    }
+
+    [Fact]
+    public async Task Setup_shows_port_change_form_on_conflict()
+    {
+        await using var f = Fresh(s => s with { WorldNamed = true });
+        Fail(f, new StartFailure(PortConflictMessage, 8002));
+        using var client = await SetupClientAsync(f);
+
+        var html = await client.GetStringAsync("/setup/avatar", Ct);
+
+        var page = new HtmlParser().ParseDocument(html);
+        var form = page.QuerySelector("form[action='/setup?handler=Port']");
+        Assert.NotNull(form);
+        Assert.Equal("post", form.GetAttribute("method"), ignoreCase: true);
+        Assert.NotNull(form.QuerySelector("input[name=Port][type=number]"));
+        Assert.NotNull(form.QuerySelector("input[name=__RequestVerificationToken]"));
+        Assert.Contains("Use port", form.TextContent);
+        Assert.Contains("Port 8002 is already in use by another program, so your world can't start.", page.Body!.TextContent);
+        Assert.DoesNotContain("Robust", html);
+    }
+
+    [Fact]
+    public async Task Setup_shows_no_port_form_without_a_conflict()
+    {
+        await using var f = Fresh(s => s with { WorldNamed = true });
+        using var client = await SetupClientAsync(f);
+
+        var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/avatar", Ct));
+
+        Assert.Null(page.QuerySelector("form[action='/setup?handler=Port']"));
+    }
+
+    [Fact]
+    public async Task Setup_port_change_saves_robust_public_port_and_starts()
+    {
+        await using var f = Fresh(s => s with { WorldNamed = true });
+        Fail(f, new StartFailure(PortConflictMessage, 8002));
+        using var client = await SetupClientAsync(f);
+        await f.Grid.Started.Task.WaitAsync(TimeSpan.FromSeconds(5), Ct); // the launcher's own start at boot
+        var before = f.Grid.Snapshot().Length;
+
+        using var resp = await PostFormAsync(client, "/setup?handler=Port", new() { ["Port"] = "8102" }, tokenFrom: "/setup/avatar");
+
+        Assert.Equal(HttpStatusCode.Redirect, resp.StatusCode);
+        Assert.Equal("/setup/avatar", Location(resp));
+        await WaitForCallsAsync(f, before + 2);
+        var saved = f.Store.LoadOrCreate();
+        Assert.Equal(8102, saved.RobustPublicPort);
+        Assert.Equal(8003, saved.RobustPrivatePort);
+        Assert.Equal(["UpdateSettings", "StartAsync"], f.Grid.Snapshot()[before..]);
+        Assert.True(f.Grid.UpdateWriteConfig[^1]);
+    }
+
+    [Fact]
+    public async Task Setup_port_change_rejects_duplicate_port()
+    {
+        await using var f = Fresh(s => s with { WorldNamed = true });
+        Fail(f, new StartFailure(PortConflictMessage, 8002));
+        using var client = await SetupClientAsync(f);
+        await f.Grid.Started.Task.WaitAsync(TimeSpan.FromSeconds(5), Ct);
+        var before = f.Grid.Snapshot().Length;
+
+        using var resp = await PostFormAsync(client, "/setup?handler=Port", new() { ["Port"] = "8003" }, tokenFrom: "/setup/avatar");
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var page = new HtmlParser().ParseDocument(await resp.Content.ReadAsStringAsync(Ct));
+        Assert.Contains("Port 8003 is already used by another part of DreamGrid", page.QuerySelector(".field-error")!.TextContent);
+        Assert.Equal(8002, f.Store.LoadOrCreate().RobustPublicPort);
+        Assert.Equal(before, f.Grid.Snapshot().Length);
+    }
+
+    [Fact]
+    public async Task Setup_port_change_rejects_text_and_does_nothing_without_a_conflict()
+    {
+        await using var f = Fresh(s => s with { WorldNamed = true });
+        using var client = await SetupClientAsync(f);
+
+        using var none = await PostFormAsync(client, "/setup?handler=Port", new() { ["Port"] = "8102" }, tokenFrom: "/setup/avatar");
+        Fail(f, new StartFailure(PortConflictMessage, 8002));
+        using var text = await PostFormAsync(client, "/setup?handler=Port", new() { ["Port"] = "abc" }, tokenFrom: "/setup/avatar");
+
+        Assert.Equal(HttpStatusCode.Redirect, none.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, text.StatusCode);
+        Assert.Contains("whole number", await text.Content.ReadAsStringAsync(Ct));
+        Assert.Equal(8002, f.Store.LoadOrCreate().RobustPublicPort);
+        Assert.DoesNotContain("UpdateSettings", f.Grid.Snapshot());
+    }
+
+    [Fact]
+    public async Task Setup_port_change_needs_the_antiforgery_token()
+    {
+        await using var f = Fresh(s => s with { WorldNamed = true });
+        Fail(f, new StartFailure(PortConflictMessage, 8002));
+        using var client = await SetupClientAsync(f);
+
+        using var resp = await client.PostAsync("/setup?handler=Port", new FormUrlEncodedContent(new Dictionary<string, string> { ["Port"] = "8102" }), Ct);
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        Assert.Equal(8002, f.Store.LoadOrCreate().RobustPublicPort);
+    }
+
+    [Fact]
+    public async Task World_step_shows_start_failure()
+    {
+        await using var f = Fresh();
+        Fail(f, new StartFailure("Could not open C:\\secret\\path", null));
+        using var client = await SetupClientAsync(f);
+
+        var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/world", Ct));
+
+        Assert.Equal("Your world could not start.", page.QuerySelector(".error-box > p")!.TextContent);
+        Assert.Null(page.QuerySelector("form[action='/setup?handler=Port']"));
+    }
+
+    [Fact]
+    public async Task World_step_names_the_taken_port_and_offers_another()
+    {
+        await using var f = Fresh();
+        Fail(f, new StartFailure(PortConflictMessage, 8002));
+        using var client = await SetupClientAsync(f);
+
+        var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/world", Ct));
+
+        Assert.Contains("Port 8002 is already in use by another program", page.Body!.TextContent);
+        Assert.NotNull(page.QuerySelector("form[action='/setup?handler=Port'] input[name=Port]"));
+    }
 }

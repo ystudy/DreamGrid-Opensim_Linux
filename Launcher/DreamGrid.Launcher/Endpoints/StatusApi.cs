@@ -12,8 +12,9 @@ public sealed record ComponentView(string Name, string Label, string State, stri
 
 public sealed record GridView(ComponentView Database, ComponentView Robust, ComponentView? Region, bool LoginsEnabled, string LoginUri);
 
+/// <param name="Admin">True when the caller is signed in as an admin; the dashboard reloads to sign in when it turns false.</param>
 /// <summary>What the dashboard shows and <c>GET /api/status</c> returns: names and states only, no paths or secrets.</summary>
-public sealed record StatusView(GridView Grid, IReadOnlyList<string> Online, bool OnlineAvailable, string? Problem, string Headline);
+public sealed record StatusView(GridView Grid, IReadOnlyList<string> Online, bool OnlineAvailable, string? Problem, string Headline, bool Admin);
 
 public static class StatusApi
 {
@@ -24,7 +25,7 @@ public static class StatusApi
         {
             ctx.Response.Headers.CacheControl = "no-store";
             return Results.Json(await BuildAsync(grid, online, ctx.User.IsInRole(AuthSchemes.AdminRole), ctx.RequestAborted));
-        });
+        }).AllowAnonymous();
 
         app.MapPost("/api/grid/{action}", async (string action, HttpContext ctx, IAntiforgery antiforgery, GridActions actions) =>
         {
@@ -45,7 +46,7 @@ public static class StatusApi
         return new StatusView(
             new GridView(View(s.Database, "Database"), View(s.Robust, "Grid service"),
                 s.Region is { } r ? View(r, "Your region") : null, s.LoginsEnabled, s.LoginUri),
-            people.Avatars.Select(a => a.Name).ToList(), people.Available, problem, problem ?? Headline(s));
+            people.Avatars.Select(a => a.Name).ToList(), people.Available, problem, problem ?? Headline(s), withOnline);
     }
 
     public const string CouldNotStart = "Your world could not start.";

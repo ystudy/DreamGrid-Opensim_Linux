@@ -6,6 +6,16 @@
 <partial name="_Checklist" model="1" />
 <h1>Name your world</h1>
 <p>This is the name people see when they pick your world in Firestorm. You can use letters, digits, spaces, hyphens and apostrophes.</p>
+@if (Model.Error is not null)
+{
+    <div class="error-box">
+        <p>@Model.Error</p>
+        @if (Model.Details is not null)
+        {
+            <details><summary>Show details</summary><pre>@Model.Details</pre></details>
+        }
+    </div>
+}
 <form method="post">
     <label asp-for="GridName">World name</label>
     <input asp-for="GridName" maxlength="64" autocomplete="off" required>
