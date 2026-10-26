@@ -8,6 +8,7 @@ using static DreamGrid.Launcher.IntegrationTests.GridTestSupport;
 namespace DreamGrid.Launcher.IntegrationTests;
 
 /// <summary>Who's online against the real Robust tables (created by Robust's own migrations).</summary>
+[Collection(GridCollection.Name)]
 public sealed class OnlineUsersTests : IDisposable
 {
     private readonly string _root = NewDataDir();

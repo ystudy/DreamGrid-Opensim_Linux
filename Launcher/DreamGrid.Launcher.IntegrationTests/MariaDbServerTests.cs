@@ -9,6 +9,7 @@ using Xunit;
 
 namespace DreamGrid.Launcher.IntegrationTests;
 
+[Collection(GridCollection.Name)]
 public sealed class MariaDbServerTests : IDisposable
 {
     private readonly string _root =

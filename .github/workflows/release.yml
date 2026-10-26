@@ -1,0 +1,334 @@
+name: release
+
+# Builds the release packages (setup/package.ps1), the Windows installer (setup/windows/build.ps1) and runs the
+# install smokes on Debian 12/13 (setup/debian/test/smoke.sh) and Windows (setup/windows/test/smoke.ps1).
+# A pushed v* tag also publishes the GitHub release that install.sh's one-liner downloads from. workflow_dispatch and
+# the call from build-and-smoke (when setup/ or Launcher/ changed) build and smoke-test but publish nothing.
+#
+# Each package is built twice, as <version> and <version>-upgradetest, so the smokes can install one and upgrade to
+# the other. Debian 13 also upgrades to a copy of the second tarball whose RUNTIME_VERSION is relabelled, which
+# exercises the "the adopted region keeps its old runtime folder" path without a second runtime download.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      smoke-only:
+        description: Build and smoke-test only; never publish.
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+env:
+  MARIADB_VERSION: 11.4.9
+  # From https://archive.mariadb.org/mariadb-11.4.9/winx64-packages/sha256sums.txt (the same as build-and-smoke)
+  MARIADB_SHA256: 802f9f40a9dca774a3ba62f39c21093942954f178d6d7d458dc51453929bcdda
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Version from the tag, else 0.0.0-dev+<sha>
+        id: version
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          if [ "$REF_TYPE" = tag ] && [[ $GITHUB_REF_NAME == v* ]]; then
+            version=${GITHUB_REF_NAME#v}
+          else
+            version=0.0.0-dev+${GITHUB_SHA::7}
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "DreamGrid $version"
+
+  package-linux:
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      # The second package pins the first one's runtime, so a runtime released mid-run cannot split them.
+      - name: Package (linux-x64, twice)
+        shell: pwsh
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP 'pkg'
+          ./setup/package.ps1 -Rid linux-x64 -Version $env:VERSION -Out "$out/v1"
+          $runtime = (Get-Content "$out/v1/dreamgrid/RUNTIME_VERSION" -TotalCount 1).Trim()
+          ./setup/package.ps1 -Rid linux-x64 -Version "$env:VERSION-upgradetest" -Out "$out/v2" -RuntimeVersion $runtime
+
+      - name: Check the packages
+        shell: pwsh
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP 'pkg'
+          foreach ($package in "$out/v1/dreamgrid", "$out/v2/dreamgrid") {
+            ./setup/test/Test-Package.ps1 -Package $package
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+          }
+
+      - name: Collect the artifact
+        run: |
+          out=$RUNNER_TEMP/pkg
+          artifact=$RUNNER_TEMP/artifact
+          mkdir -p "$artifact"
+          mv "$out/v1/dreamgrid-$VERSION-linux-x64.tar.gz" "$out/v2/dreamgrid-$VERSION-upgradetest-linux-x64.tar.gz" "$artifact/"
+          # The same v2 build with another RUNTIME_VERSION (same runtime files): a runtime change on upgrade.
+          runtime=$(head -n 1 "$out/v2/dreamgrid/RUNTIME_VERSION")
+          printf '%s\n' "$runtime-upgradetest" > "$out/v2/dreamgrid/RUNTIME_VERSION"
+          tar -czf "$artifact/dreamgrid-$VERSION-upgradetest-rt-linux-x64.tar.gz" --owner=0 --group=0 -C "$out/v2" dreamgrid
+          dotnet publish tests/DreamGrid.InstallSmoke -c Release -o "$artifact/installsmoke"
+          ls -l "$artifact"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-linux
+          path: ${{ runner.temp }}/artifact
+          retention-days: 7
+
+  package-windows:
+    needs: version
+    runs-on: windows-latest
+    timeout-minutes: 50
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - name: Allow long paths
+        run: git config --system core.longpaths true
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      # The MariaDB steps match build-and-smoke's launcher-windows job (same cache key, same checksum).
+      - name: Restore MariaDB from the cache
+        id: mariadb-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}\mariadb-dist
+          key: mariadb-${{ env.MARIADB_VERSION }}-winx64
+
+      - name: Download MariaDB
+        id: mariadb-download
+        if: steps.mariadb-cache.outputs.cache-hit != 'true'
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP "mariadb-$env:MARIADB_VERSION-winx64.zip"
+          Invoke-WebRequest -Uri "https://archive.mariadb.org/mariadb-$env:MARIADB_VERSION/winx64-packages/mariadb-$env:MARIADB_VERSION-winx64.zip" -OutFile $zip
+          $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash
+          if ($hash -ne $env:MARIADB_SHA256) { throw "mariadb zip SHA256 $hash does not match $env:MARIADB_SHA256" }
+          Expand-Archive -Path $zip -DestinationPath (Join-Path $env:RUNNER_TEMP 'mariadb-dist')
+          Remove-Item $zip
+
+      # The cache holds the checked, extracted zip; build.ps1 takes a zip with the one mariadb-<v>-winx64\ top folder.
+      - name: Zip MariaDB for the installer
+        run: |
+          $dist = Join-Path $env:RUNNER_TEMP 'mariadb-dist'
+          if (-not (Test-Path (Join-Path $dist "mariadb-$env:MARIADB_VERSION-winx64\bin\mariadbd.exe"))) { throw "no mariadbd.exe in $dist" }
+          $zip = Join-Path $env:RUNNER_TEMP "mariadb-$env:MARIADB_VERSION-winx64.zip"
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          [IO.Compression.ZipFile]::CreateFromDirectory($dist, $zip)
+          "MARIADB_ZIP=$zip" >> $env:GITHUB_ENV
+
+      - name: Package (win-x64, twice)
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP 'pkg'
+          ./setup/package.ps1 -Rid win-x64 -Version $env:VERSION -Out "$out\v1"
+          $runtime = (Get-Content "$out\v1\dreamgrid\RUNTIME_VERSION" -TotalCount 1).Trim()
+          ./setup/package.ps1 -Rid win-x64 -Version "$env:VERSION-upgradetest" -Out "$out\v2" -RuntimeVersion $runtime
+
+      - name: Check the packages
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP 'pkg'
+          foreach ($package in "$out\v1\dreamgrid", "$out\v2\dreamgrid") {
+            ./setup/test/Test-Package.ps1 -Package $package
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+          }
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Build the installers
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP 'pkg'
+          $artifact = Join-Path $env:RUNNER_TEMP 'artifact'
+          ./setup/windows/build.ps1 -Package "$out\v1\dreamgrid" -MariaDbZip $env:MARIADB_ZIP -Version $env:VERSION -Out "$out\setup1"
+          ./setup/windows/build.ps1 -Package "$out\v2\dreamgrid" -MariaDbZip $env:MARIADB_ZIP -Version "$env:VERSION-upgradetest" -Out "$out\setup2"
+          New-Item -ItemType Directory -Force $artifact | Out-Null
+          Move-Item "$out\setup1\DreamGridSetup-$env:VERSION.exe", "$out\setup2\DreamGridSetup-$env:VERSION-upgradetest.exe" $artifact
+          dotnet publish tests/DreamGrid.InstallSmoke -c Release -o "$artifact\installsmoke"
+          if ($LASTEXITCODE -ne 0) { throw "dotnet publish exited $LASTEXITCODE" }
+          Get-ChildItem $artifact
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-windows
+          path: ${{ runner.temp }}/artifact
+          retention-days: 7
+
+      # Saved even when a later step failed, but only a download that passed its checksum.
+      - name: Save MariaDB to the cache
+        if: always() && steps.mariadb-cache.outputs.cache-hit != 'true' && steps.mariadb-download.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}\mariadb-dist
+          key: mariadb-${{ env.MARIADB_VERSION }}-winx64
+
+  smoke-debian:
+    needs: [version, package-linux]
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - debian: '12'
+            upgrade: upgradetest
+          - debian: '13'
+            upgrade: upgradetest
+          - debian: '13'
+            upgrade: upgradetest-rt
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: package-linux
+          path: ${{ runner.temp }}/package
+
+      - name: Install smoke (Debian ${{ matrix.debian }}, ${{ matrix.upgrade }})
+        env:
+          UPGRADE: ${{ matrix.upgrade }}
+          DEBIAN: ${{ matrix.debian }}
+        run: |
+          package=$RUNNER_TEMP/package
+          export INSTALL_SMOKE_DIR=$package/installsmoke
+          export SMOKE_LOGS=$RUNNER_TEMP/smoke-logs
+          bash setup/debian/test/smoke.sh "$DEBIAN" \
+            "$package/dreamgrid-$VERSION-linux-x64.tar.gz" "$package/dreamgrid-$VERSION-$UPGRADE-linux-x64.tar.gz"
+
+      - name: Upload smoke logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-logs-debian${{ matrix.debian }}-${{ matrix.upgrade }}
+          path: ${{ runner.temp }}/smoke-logs
+
+  # windows-latest runners are elevated, as the smoke requires; it installs the service for real.
+  smoke-windows:
+    needs: [version, package-windows]
+    runs-on: windows-latest
+    timeout-minutes: 40
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: package-windows
+          path: ${{ runner.temp }}\package
+
+      - name: Install smoke (Windows)
+        shell: powershell
+        run: |
+          $package = Join-Path $env:RUNNER_TEMP 'package'
+          $env:INSTALL_SMOKE_DIR = Join-Path $package 'installsmoke'
+          $env:SMOKE_LOGS = Join-Path $env:RUNNER_TEMP 'smoke-logs'
+          & ./setup/windows/test/smoke.ps1 -Installer (Join-Path $package "DreamGridSetup-$env:VERSION.exe") `
+            -InstallerV2 (Join-Path $package "DreamGridSetup-$env:VERSION-upgradetest.exe")
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload smoke logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-logs-windows
+          path: ${{ runner.temp }}/smoke-logs
+
+  publish:
+    needs: [version, smoke-debian, smoke-windows]
+    if: github.event_name == 'push' && github.ref_type == 'tag' && !inputs.smoke-only
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: package-linux
+          path: ${{ runner.temp }}/linux
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: package-windows
+          path: ${{ runner.temp }}/windows
+
+      # install.sh downloads releases/latest/download/dreamgrid-linux-x64.tar.gz and checks it against SHA256SUMS,
+      # so the tarball ships under its stable name too and SHA256SUMS lists every asset.
+      - name: Assemble the release
+        run: |
+          release=$RUNNER_TEMP/release
+          mkdir -p "$release"
+          cp "$RUNNER_TEMP/linux/dreamgrid-$VERSION-linux-x64.tar.gz" "$release/"
+          cp "$RUNNER_TEMP/linux/dreamgrid-$VERSION-linux-x64.tar.gz" "$release/dreamgrid-linux-x64.tar.gz"
+          cp "$RUNNER_TEMP/windows/DreamGridSetup-$VERSION.exe" "$release/"
+          cp setup/debian/install.sh "$release/"
+          (cd "$release" && sha256sum -- * > SHA256SUMS && cat SHA256SUMS)
+          cat > "$RUNNER_TEMP/notes.md" <<EOF
+          DreamGrid $VERSION
+
+          ## Debian 12 and 13 (amd64)
+
+          Run this as a user who can use sudo:
+
+              curl -fsSL https://github.com/ystudy/DreamGrid-Opensim_Linux/releases/latest/download/install.sh | sudo bash
+
+          It installs or upgrades DreamGrid as the \`dreamgrid\` service and prints a link that opens the setup page.
+
+          ## Windows 10 and 11 (x64)
+
+          Download \`DreamGridSetup-$VERSION.exe\` below and run it. The installer is not signed, so Windows
+          SmartScreen may say "Windows protected your PC": click **More info**, then **Run anyway**. When the
+          installer finishes, it opens the setup page in your browser.
+
+          To upgrade, run the same command or the new installer again. Your world's data is kept.
+
+          SHA256SUMS lists the SHA-256 of every file in this release.
+          EOF
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release=$RUNNER_TEMP/release
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "DreamGrid $VERSION" --notes-file "$RUNNER_TEMP/notes.md" \
+            "$release/dreamgrid-$VERSION-linux-x64.tar.gz" "$release/dreamgrid-linux-x64.tar.gz" \
+            "$release/DreamGridSetup-$VERSION.exe" "$release/install.sh" "$release/SHA256SUMS"

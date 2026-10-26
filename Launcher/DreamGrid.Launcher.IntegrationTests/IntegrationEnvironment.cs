@@ -2,6 +2,16 @@ using Xunit;
 
 namespace DreamGrid.Launcher.IntegrationTests;
 
+/// <summary>
+/// The test classes that start MariaDB, Robust, regions or the launcher: they share ports (2b saw a port-contention
+/// flake), so they run one at a time and never beside another collection.
+/// </summary>
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class GridCollection
+{
+    public const string Name = "Grid";
+}
+
 /// <summary>Locates the external programs the integration tests need.</summary>
 public static class IntegrationEnvironment
 {

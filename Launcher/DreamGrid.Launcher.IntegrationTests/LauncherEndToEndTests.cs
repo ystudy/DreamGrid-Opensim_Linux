@@ -14,6 +14,7 @@ namespace DreamGrid.Launcher.IntegrationTests;
 /// process against a pre-seeded settings.json, and checks the port-8001 contract and adoption across launcher kills.
 /// The website's newcomer path is in WebsiteEndToEndTests.cs (the same class, sharing these helpers).
 /// </summary>
+[Collection(GridCollection.Name)]
 public sealed partial class LauncherEndToEndTests : IDisposable
 {
     private const string GridRunning = "The grid is running.";

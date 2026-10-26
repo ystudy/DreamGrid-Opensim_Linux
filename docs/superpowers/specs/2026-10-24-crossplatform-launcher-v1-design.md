@@ -229,6 +229,16 @@ Re-running the script on an installed system upgrades in place and never wipes d
 
 Installer technology is the builder's choice (e.g. Inno Setup or WiX).
 
+#### Recorded during plans 2–3 (installers)
+- **Private runtime, pinned per release.** Release packages carry a private ASP.NET Core runtime, resolved by `setup/package.ps1` from Microsoft's .NET 10 `releases.json` (latest 10.0 runtime unless `-RuntimeVersion` pins one, SHA-512 checked). Debian no longer installs .NET via `dotnet-install` or a package feed. CI's `dotnet-install` fallback pins the SDK from `global.json`; release runtimes are pinned by `package.ps1`.
+- **The runtime lives in a versioned folder outside the program folder on both OSes:** Debian `/opt/dreamgrid-runtime/<RUNTIME_VERSION>/`, Windows `{app}\dotnet-<ver>\` (and MariaDB in `{app}\mariadb-<ver>\`). An upgrade adds the new folder beside the old one; an old folder is deleted only when no running process uses it, so children adopted through an upgrade keep loading from the runtime they started with.
+- **Debian paths:** program `/opt/dreamgrid` (root-owned, read-only), data `/var/lib/dreamgrid` (user `dreamgrid`, 0700), unit `dreamgrid.service` with `KillMode=process` and `WorkingDirectory=/opt/dreamgrid/launcher` (the website's static files resolve from there). An upgrade unpacks to `/opt/dreamgrid.new`, stops the service, renames the old program folder to `/opt/dreamgrid.old` (deleting the previous `.old`) and swaps the new one in.
+- **Windows paths:** program `C:\Program Files\DreamGrid`, data `%ProgramData%\DreamGrid`, service `DreamGrid` running as the virtual account `NT SERVICE\DreamGrid`. The Start menu entry is a plain `http://localhost:<WebPort>/` shortcut; the installer's finish page opens the setup link as the original (unelevated) user.
+- **Adoption across restarts and upgrades** uses a `<pidfile>.start` sidecar holding a clock-independent start identity of the process, so a reused PID is never taken for a child (2a follow-up: PID-reuse hardening).
+- **`--web-port` / `/WEBPORT=`** is applied by the launcher at startup, before the host is built, under the instance lock and with `SettingsStore` directly: the one documented exception to "settings change only through `UpdateSettings`". An upgrade keeps the installed port.
+- **Releases:** a `v<major>.<minor>.<patch>` tag runs `.github/workflows/release.yml`, which packages both OSes, runs the Debian 12/13 and Windows install smokes (install, setup, login, upgrade) and publishes `dreamgrid-<version>-linux-x64.tar.gz` (also as `dreamgrid-linux-x64.tar.gz` for the one-liner), `DreamGridSetup-<version>.exe`, `install.sh` and `SHA256SUMS`. Untagged builds are version `0.0.0-dev+<short sha>`.
+- **Not done in version 1:** linux-arm64 packages (they need their own runner and smoke) and intercepting machine shutdown (systemd/Windows end the children at OS shutdown; MariaDB shuts down cleanly on SIGTERM; OpenSim saves prims as they change).
+
 ### 6.2 First-run checklist (web)
 Reached only through the one-time setup link. Steps, each saved as it completes so a refresh or restart resumes in place:
 
@@ -306,6 +316,18 @@ Saving regenerates the INIs and offers a restart. Every later module adds its ow
 - the override list.
 
 Secrets are stored with file permissions limited to the service account. Encryption at rest is not required in version 1.
+
+#### Recorded during plans 2–3 (data directory, settings, status)
+- **The whole data directory is secret** (generated INIs hold database passwords, the console password and `MachineID`): 0700 for the `dreamgrid` user on Linux, a protected ACL (the service account, SYSTEM and Administrators only) on `%ProgramData%\DreamGrid` on Windows.
+- `<data>/mariadb/tmp` is MariaDB's private tmpdir (a shared `/tmp` let one MariaDB delete another's temp tables).
+- `<data>/keys` holds the ASP.NET Core data-protection keys (sign-in and antiforgery cookies), application name `DreamGrid`, created owner-only like `<data>`.
+- OpenSim's log4net pattern carries the level: `%date{HH:mm:ss} - [%level] %message%newline` (Robust and region logs); the log viewer's level filter anchors to that prefix.
+- `GridStatus` gained `Activity` (`None`, `Starting`, `Stopping`, `Restarting`) and `StartFailure` (`Message`, `ConflictPort`); `IGridController.CreateRegionAsync` gained an optional `IProgress<string>`.
+- The `dg-setup` cookie is `SameSite=Lax` (a setup link opened from webmail or chat arrives cross-site); `dg-auth` stays `Strict`.
+- The port-8001 command API and the sign-in page share one `LoginThrottle`, keyed on the normalised "First Last" name.
+- Bare `GET /` is the website; the old "Test Completed" probe is gone (`/?type=...` still answers `ACK`).
+- Region `login status` answers "Login in NAME are enabled|disabled"; enable/disable answer "Logins are enabled|disabled for region NAME".
+- Every settings change goes through `IGridController.UpdateSettings`, except `--web-port` at startup (§6.1 above).
 
 ### 6.9 Module (feature) extension model
 **My call; the exact API is left to the builder.** A feature module is a C# component the launcher discovers at startup. It can contribute:

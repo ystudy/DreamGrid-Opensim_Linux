@@ -10,6 +10,59 @@ C#, and can run under Mono or the Microsoft .NET runtimes.
 This is considered an alpha release.  Some stuff works, a lot doesn't.
 If it breaks, you get to keep *both* pieces.
 
+# Install DreamGrid
+
+DreamGrid packages OpenSim with its own database, grid services and an admin
+website, and runs them as a service. Each install ends with a link: open it in
+your browser to name your world and create your avatar.
+
+## Debian 12 and 13 (amd64)
+
+Run this as a user who can use sudo:
+
+    curl -fsSL https://github.com/ystudy/DreamGrid-Opensim_Linux/releases/latest/download/install.sh | sudo bash
+
+It installs the system packages DreamGrid needs (MariaDB, libgdiplus, ICU),
+downloads the latest release and checks it against the release's SHA256SUMS,
+creates a `dreamgrid` system user, and installs and starts the `dreamgrid`
+systemd service. It then prints the setup link.
+
+## Windows 10 and 11 (x64)
+
+Download `DreamGridSetup-<version>.exe` from the
+[latest release](https://github.com/ystudy/DreamGrid-Opensim_Linux/releases/latest)
+and run it. The installer is not signed, so Windows SmartScreen may say
+"Windows protected your PC": click **More info → Run anyway**. Allow
+DreamGrid through the firewall if Windows asks. The installer sets up the
+DreamGrid service and opens the setup link in your browser when it finishes;
+the Start menu entry "DreamGrid admin page" opens the admin website later.
+
+## Where things live
+
+| | Debian | Windows |
+|---|---|---|
+| Your world's data (database, regions, settings, logs) | `/var/lib/dreamgrid` | `C:\ProgramData\DreamGrid` |
+| The program | `/opt/dreamgrid` (its .NET runtime: `/opt/dreamgrid-runtime`) | `C:\Program Files\DreamGrid` |
+
+Installing, upgrading and uninstalling never change, move or delete the data
+folder.
+
+## Upgrading
+
+Run the same command again on Debian, or the newer installer on Windows. Your
+world keeps running while the program is replaced, and the data is kept.
+
+## Another web port
+
+The admin website uses port 8001. If another program already uses it, pick
+another port:
+
+    curl -fsSL https://github.com/ystudy/DreamGrid-Opensim_Linux/releases/latest/download/install.sh | sudo bash -s -- --web-port 8101
+
+    DreamGridSetup-<version>.exe /WEBPORT=8101
+
+An upgrade keeps the port the service was installed with.
+
 # Compiling OpenSim
 
 Please see BUILDING.md
