@@ -32,6 +32,39 @@ fail() {
     exit 1
 }
 in_container() { docker exec "$container" "$@"; }
+unit=/etc/systemd/system/dreamgrid.service
+
+# The admin website's port saved in settings.json.
+saved_web_port() { in_container sed -nE 's/^[[:space:]]*"webPort":[[:space:]]*([0-9]+).*/\1/p' "$data/settings.json"; }
+
+# Fails the stage unless the website serves /css/site.css on port $1 within 60 s.
+expect_site_on() {
+    local _
+    for _ in $(seq 1 60); do
+        in_container curl -fsS -o /dev/null "http://127.0.0.1:$1/css/site.css" 2>/dev/null && return 0
+        sleep 1
+    done
+    fail "the website does not answer on port $1"
+}
+
+# Starts "nc -l $1" in the container and waits until it runs.
+listen_on() {
+    docker exec -d "$container" nc -l "$1"
+    local _
+    for _ in $(seq 1 50); do
+        in_container pgrep -x nc >/dev/null && return 0
+        sleep 0.1
+    done
+    fail "nc -l $1 did not start"
+}
+
+# Runs install.sh in the container with the given options; sets $out and $code.
+run_install() {
+    set +e
+    out=$(in_container bash /root/install.sh "$@" 2>&1)
+    code=$?
+    set -e
+}
 
 on_exit() {
     local code=$?
@@ -95,15 +128,8 @@ ok "debian $debian booted with systemd ($state); packages $v1 and $v2"
 
 # --- Busy port (Review Focus 3) ----------------------------------------------------------------------------------
 stage=busy-port
-docker exec -d "$container" nc -l 8001
-for _ in $(seq 1 50); do
-    in_container pgrep -x nc >/dev/null && break
-    sleep 0.1
-done
-set +e
-out=$(in_container bash /root/install.sh --from /root/dreamgrid-v1.tar.gz 2>&1)
-code=$?
-set -e
+listen_on 8001
+run_install --from /root/dreamgrid-v1.tar.gz
 in_container pkill -x nc || true
 [ "$code" -eq 1 ] || fail "install.sh exited $code with port 8001 taken, not 1: $out"
 sentence="Port 8001 is already used by another program. Re-run with --web-port <free port>, for example --web-port 8101."
@@ -201,6 +227,58 @@ else
     runtimes="runtime $runtime2"
 fi
 ok "footer shows $v2; logins enabled; region PID $region_pid unchanged; settings.json byte-identical; $runtimes"
+
+# --- Ports the launcher refuses: a plain message before anything changes -------------------------------------------
+stage="refused-port"
+unit_before=$(in_container sha256sum "$unit")
+settings_before=$(in_container sha256sum "$data/settings.json")
+main_pid=$(in_container systemctl show -p MainPID --value dreamgrid)
+for refused in 80 8002 70000 abc; do
+    run_install --from /root/dreamgrid-v2.tar.gz --web-port "$refused"
+    [ "$code" -eq 1 ] || fail "install.sh --web-port $refused exited $code, not 1: $out"
+    grep -qF -- "--web-port needs a port number from 1024 to 65535 that DreamGrid does not use itself" <<<"$out" ||
+        fail "install.sh --web-port $refused did not say why: $out"
+done
+[ "$(in_container sha256sum "$unit")" = "$unit_before" ] || fail "the unit changed"
+[ "$(in_container sha256sum "$data/settings.json")" = "$settings_before" ] || fail "settings.json changed"
+[ "$(in_container systemctl show -p MainPID --value dreamgrid)" = "$main_pid" ] || fail "the service was restarted"
+ok "80, 8002, 70000 and abc refused with the port message; unit, settings and service unchanged"
+
+# --- A new port that is taken, while the service runs on its own one ------------------------------------------------
+stage="taken-new-port"
+listen_on 8103
+run_install --from /root/dreamgrid-v2.tar.gz --web-port 8103
+in_container pkill -x nc || true
+[ "$code" -eq 1 ] || fail "install.sh --web-port 8103 exited $code with 8103 taken, not 1: $out"
+grep -qF "Port 8103 is already used by another program." <<<"$out" || fail "install.sh did not name the taken port: $out"
+[ "$(saved_web_port)" = 8001 ] || fail "the saved web port is $(saved_web_port), not 8001"
+ok "refused with the port sentence; the web port is still 8001"
+
+# --- Another web port through the installer: saved in the settings, never in the unit ------------------------------
+stage="web-port"
+run_install --from /root/dreamgrid-v2.tar.gz --web-port 8101
+[ "$code" -eq 0 ] || fail "install.sh --web-port 8101 exited $code: $(tail -n 30 <<<"$out")"
+grep -qE 'http://[^ ]+:8101/' <<<"$out" || fail "the printed link is not on port 8101: $out"
+! in_container grep -qF -- --web-port "$unit" || fail "the unit has --web-port: $(in_container grep ExecStart "$unit")"
+[ "$(saved_web_port)" = 8101 ] || fail "the saved web port is $(saved_web_port), not 8101"
+expect_site_on 8101
+[ "$(in_container cat "$pid_file")" = "$region_pid" ] || fail "the region PID changed from $region_pid"
+ok "settings.json has 8101, the unit has no --web-port, the website answers on 8101; region PID $region_pid unchanged"
+
+# --- A unit from an older installer that pinned --web-port: saved once, then dropped -------------------------------
+stage="pinned-port"
+in_container sed -i '/^ExecStart=/ s/$/ --web-port 8102/' "$unit"
+in_container systemctl daemon-reload
+run_install --from /root/dreamgrid-v2.tar.gz
+[ "$code" -eq 0 ] || fail "install.sh (pinned unit) exited $code: $(tail -n 30 <<<"$out")"
+! in_container grep -qF -- --web-port "$unit" || fail "the unit still has --web-port: $(in_container grep ExecStart "$unit")"
+[ "$(saved_web_port)" = 8102 ] || fail "the pinned port was not saved: the web port is $(saved_web_port), not 8102"
+expect_site_on 8102
+run_install --from /root/dreamgrid-v2.tar.gz
+[ "$code" -eq 0 ] || fail "install.sh (after the pinned unit) exited $code: $(tail -n 30 <<<"$out")"
+[ "$(saved_web_port)" = 8102 ] || fail "a plain upgrade changed the web port to $(saved_web_port)"
+expect_site_on 8102
+ok "the pinned 8102 went into settings.json and out of the unit; the next upgrade kept it"
 
 stage=finished
 echo "Debian $debian install smoke: all stages passed"

@@ -5,13 +5,14 @@
 #
 # Options (with the one-liner: ... | sudo bash -s -- --web-port 8101):
 #   --from <tarball>   install this dreamgrid-*-linux-x64.tar.gz instead of downloading the latest release
-#   --web-port <n>     serve the admin website on port <n> instead of 8001
+#   --web-port <n>     serve the admin website on port <n> instead of 8001 (1024-65535, not one of DreamGrid's own
+#                      ports 3307, 8002, 8003, 8004, 8010, 8011); saved in the settings, so later upgrades keep it
 #
 # DREAMGRID_RELEASE=<tag> installs that release (for example a pre-release, which is never "latest") instead:
 #   curl -fsSL https://github.com/ystudy/DreamGrid-Opensim_Linux/releases/download/v0.1.0-rc1/install.sh | sudo DREAMGRID_RELEASE=v0.1.0-rc1 bash
 #
 # Re-running it upgrades in place: the program in /opt/dreamgrid is replaced, the data in /var/lib/dreamgrid is never
-# touched, and the running world (database, grid service, region) keeps running through the upgrade.
+# touched, and the world keeps running (the grid service and region restart briefly when a release updates OpenSim).
 #
 # Everything runs from main(), called on the last line: a download cut short defines nothing and so does nothing.
 # Commands that might read stdin get </dev/null, since with the one-liner stdin is the rest of this script.
@@ -35,6 +36,24 @@ die() {
 os_release() {
     [ -r /etc/os-release ] || return 0
     sed -n "s/^$1=//p" /etc/os-release | tr -d '"' | head -n 1
+}
+
+# True when $1 is a web port the launcher accepts: 1024-65535 and none of DreamGrid's own default ports.
+valid_web_port() {
+    [[ $1 =~ ^[0-9]{1,5}$ ]] || return 1
+    local n=$((10#$1))
+    [ "$n" -ge 1024 ] && [ "$n" -le 65535 ] || return 1
+    case "$n" in 3307 | 8002 | 8003 | 8004 | 8010 | 8011) return 1 ;; esac
+}
+
+# True once dreamgrid.service is active, waiting up to 30 s; a launcher that keeps failing never gets there.
+wait_active() {
+    local _
+    for _ in $(seq 1 30); do
+        systemctl is-active --quiet dreamgrid && return 0
+        sleep 1
+    done
+    return 1
 }
 
 # True when a running process executes from, or has mapped a file under, directory $1.
@@ -65,8 +84,9 @@ main() {
         esac
     done
     if [ -n "$web_port" ]; then
-        { [[ $web_port =~ ^[0-9]+$ ]] && [ "$web_port" -ge 1 ] && [ "$web_port" -le 65535 ]; } ||
-            die "--web-port needs a port number between 1 and 65535."
+        valid_web_port "$web_port" ||
+            die "--web-port needs a port number from 1024 to 65535 that DreamGrid does not use itself (not 3307, 8002, 8003, 8004, 8010 or 8011)."
+        web_port=$((10#$web_port))
     fi
     # The tag goes into a URL: only v<major>.<minor>.<patch> with an optional pre-release suffix.
     local release=$releases/latest/download
@@ -115,12 +135,21 @@ main() {
     fi
 
     # --- 4. The web port -------------------------------------------------------------------------------------------
-    # An upgrade keeps the port the service was installed with.
-    if [ -z "$web_port" ] && [ -f "$unit" ]; then
-        web_port=$(grep -oE -- '--web-port [0-9]+' "$unit" | awk '{ print $2 }' || true)
+    # The port lives in the settings; an upgrade keeps it. An older unit pinned --web-port on ExecStart, where the
+    # launcher re-applied it on every start: that port is saved once more (step 7) and never written to the unit again.
+    local pinned=""
+    if [ -f "$unit" ]; then
+        pinned=$(grep -oE -- '--web-port [0-9]+' "$unit" | awk '{ print $2 }' | head -n 1 || true)
     fi
-    local port=${web_port:-8001}
-    if ! systemctl is-active --quiet dreamgrid && [ -n "$(ss -ltnH "sport = :$port")" ]; then
+    if [ -z "$web_port" ] && [ -n "$pinned" ] && valid_web_port "$pinned"; then
+        web_port=$((10#$pinned))
+    fi
+    local current
+    current=$(sed -nE 's/^[[:space:]]*"webPort":[[:space:]]*([0-9]+).*/\1/p' "$data/settings.json" 2>/dev/null | head -n 1 || true)
+    current=${current:-8001}
+    local port=${web_port:-$current}
+    # A running DreamGrid holds its own port; any other port it is about to move to must be free.
+    if { ! systemctl is-active --quiet dreamgrid || [ "$port" != "$current" ]; } && [ -n "$(ss -ltnH "sport = :$port")" ]; then
         die "Port $port is already used by another program. Re-run with --web-port <free port>, for example --web-port 8101."
     fi
 
@@ -170,16 +199,23 @@ main() {
 
     # --- 7. The service --------------------------------------------------------------------------------------------
     local template=$prefix/setup/debian/dreamgrid.service
-    if [ -n "$web_port" ]; then
-        sed -e "/^#/! s|/opt/dreamgrid/dotnet|$runtime|g" -e "/^ExecStart=/ s/\$/ --web-port $web_port/" "$template" >"$unit"
-    else
-        sed -e "/^#/! s|/opt/dreamgrid/dotnet|$runtime|g" "$template" >"$unit"
-    fi
+    sed -e "/^#/! s|/opt/dreamgrid/dotnet|$runtime|g" "$template" >"$unit"
     chmod 644 "$unit"
     systemctl daemon-reload
     systemctl enable --quiet dreamgrid
-    # restart also starts a stopped service.
-    systemctl restart dreamgrid
+    # The port is saved in the settings, once: set-web-port takes the data directory's lock, so the launcher must not
+    # run (an upgrade stopped it above). A refused port leaves the settings as they were; the service still starts.
+    local port_error=""
+    if [ -n "$web_port" ]; then
+        systemctl stop dreamgrid 2>/dev/null || true
+        if port_error=$(runuser -u dreamgrid -- "$dotnet" "$launcher" set-web-port "$web_port" --data "$data" </dev/null 2>&1); then
+            port_error=""
+        fi
+    fi
+    # restart also starts a stopped service. A launcher that fails at once (a taken port, say) restarts every few
+    # seconds and is never active: that is a failed install, not a successful one.
+    systemctl restart dreamgrid || true
+    wait_active || die "DreamGrid did not start. See what happened with: journalctl -u dreamgrid"
     if [ -n "$old_version" ]; then
         echo "Upgraded DreamGrid $old_version → $new_version."
     else
@@ -205,6 +241,10 @@ main() {
         *) echo "Your world's admin page:" ;;
     esac
     echo "  $link"
+    if [ -n "$port_error" ]; then
+        echo "$port_error" >&2
+        die "The admin website could not be moved to port $web_port; it still uses its previous port."
+    fi
 }
 
 main "$@"
