@@ -20,6 +20,7 @@ $ProgressPreference = 'SilentlyContinue'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
 $data = Join-Path $env:ProgramData 'DreamGrid'
 $serviceKey = 'HKLM:\SYSTEM\CurrentControlSet\Services\DreamGrid'
+$shortcut = Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\DreamGrid admin page.url'
 $work = Join-Path ([IO.Path]::GetTempPath()) ('dreamgrid-smoke-' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
 New-Item -ItemType Directory -Force $work | Out-Null
 $script:stage = 'prepare'
@@ -147,6 +148,10 @@ $rules = Get-FirewallRules
 if ($rules.Count -ne 1 -or $rules[0].DisplayName -ne "DreamGrid (dotnet $($command.Runtime))") {
     Fail "expected one firewall rule 'DreamGrid (dotnet $($command.Runtime))', found: $(($rules | ForEach-Object DisplayName) -join ', ')"
 }
+if (-not (Test-Path -LiteralPath $shortcut)) { Fail "there is no Start menu shortcut $shortcut" }
+if ((Get-Content -LiteralPath $shortcut -Raw) -notmatch '(?m)^URL=http://localhost:8001/\s*$') {
+    Fail "the Start menu shortcut does not point at http://localhost:8001/: $(Get-Content -LiteralPath $shortcut -Raw)"
+}
 # The website's styles come from launcher\wwwroot, which only the service's content root makes reachable.
 if (-not (Wait-Until 60 { $null -ne (Get-Http '/css/site.css') })) { Fail 'the website does not serve /css/site.css' }
 $link = (& $command.Dotnet (Join-Path $app 'launcher\DreamGrid.Launcher.dll') admin-link --wait 120) -join "`n"
@@ -221,7 +226,8 @@ if (-not (Wait-Until 60 { -not (Get-Process -Id $regionPid -ErrorAction Silently
 if (-not (Test-Path -LiteralPath (Join-Path $data 'settings.json'))) { Fail "the data folder $data was not kept" }
 $rules = Get-FirewallRules
 if ($rules.Count -ne 0) { Fail "firewall rules left behind: $(($rules | ForEach-Object DisplayName) -join ', ')" }
-Ok "service removed; region PID $regionPid ended; $data kept; firewall rules removed"
+if (Test-Path -LiteralPath $shortcut) { Fail "the Start menu shortcut $shortcut was left behind" }
+Ok "service removed; region PID $regionPid ended; $data kept; firewall rules and shortcut removed"
 
 $script:stage = 'finished'
 Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue

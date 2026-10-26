@@ -8,6 +8,7 @@
 ; keep running through a service stop and an upgrade, and still use the folders they started from.
 ;
 ; Command line: /WEBPORT=<n> serves the admin website on port <n> instead of 8001.
+; Exit code 10: the files are installed but the service could not be set up or started.
 
 #ifndef AppVersion
   #error AppVersion is not defined: build with build.ps1 (ISCC /DAppVersion=...)
@@ -67,14 +68,16 @@ Source: "{#Source}\mariadb-{#MariaDbVersion}\*"; DestDir: "{app}\mariadb-{#Maria
 Source: "{#Source}\VERSION"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Source}\RUNTIME_VERSION"; DestDir: "{app}"; Flags: ignoreversion
 
-[Icons]
-; Runs as administrator (AfterInstall): only the service account, SYSTEM and Administrators can read the settings.
-Name: "{autoprograms}\DreamGrid admin page"; Filename: "{app}\dotnet-{#RuntimeVersion}\dotnet.exe"; Parameters: """{app}\launcher\DreamGrid.Launcher.dll"" admin-link --open"; WorkingDir: "{app}\launcher"; Comment: "Opens your world's admin page in the browser."; AfterInstall: SetElevationBit('{autoprograms}\DreamGrid admin page.lnk')
+[INI]
+; Start menu: a plain Internet shortcut to the admin page, opened in the user's own browser without elevation.
+Filename: "{autoprograms}\DreamGrid admin page.url"; Section: "InternetShortcut"; Key: "URL"; String: "http://localhost:{code:WebPortValue}/"
 
 [Run]
-Filename: "{app}\dotnet-{#RuntimeVersion}\dotnet.exe"; Parameters: """{app}\launcher\DreamGrid.Launcher.dll"" admin-link --data ""{commonappdata}\DreamGrid"" --wait 120 --open"; WorkingDir: "{app}\launcher"; Description: "Open the setup page"; Flags: postinstall nowait runhidden runascurrentuser skipifsilent
+; Opened as the user who started setup (postinstall runs as the original user), with the link read in [Code].
+Filename: "{code:SetupLink}"; Description: "Open the setup page"; Flags: postinstall shellexec nowait skipifsilent; Check: ServiceRunning
 
 [UninstallDelete]
+Type: files; Name: "{autoprograms}\DreamGrid admin page.url"
 ; Runtime folders kept by an upgrade because a running process still used them.
 Type: filesandordirs; Name: "{app}\dotnet-*"
 Type: filesandordirs; Name: "{app}\mariadb-*"
@@ -83,9 +86,12 @@ Type: filesandordirs; Name: "{app}\mariadb-*"
 const
   ServiceName = 'DreamGrid';
   DefaultWebPort = 8001;
+  ServiceFailedExitCode = 10;
 
 var
   WebPortParam: String; { the /WEBPORT value, '' when not given }
+  Link: String;         { the admin page link for the finish page, '' until read }
+  ServiceError: String; { what went wrong with the service, '' when it was set up and started }
 
 function DataDir: String;
 begin
@@ -126,6 +132,11 @@ begin
   Result := RegKeyExists(HKLM, 'SYSTEM\CurrentControlSet\Services\' + ServiceName);
 end;
 
+function HasSuffix(const S, Suffix: String): Boolean;
+begin
+  Result := (Length(S) >= Length(Suffix)) and (Copy(S, Length(S) - Length(Suffix) + 1, Length(Suffix)) = Suffix);
+end;
+
 function RunHidden(const Filename, Params: String): Integer;
 var
   Code: Integer;
@@ -133,6 +144,24 @@ begin
   if not Exec(Filename, Params, '', SW_HIDE, ewWaitUntilTerminated, Code) then
     Code := -1;
   Log(Filename + ' ' + Params + ' -> ' + IntToStr(Code));
+  Result := Code;
+end;
+
+{ Runs Command through cmd.exe with its output in a temp file, which is read into Lines and deleted at once (it may
+  hold the setup token). Returns the exit code, -1 when it could not run. Nothing of the output is logged. }
+function Capture(const Command: String; var Lines: TArrayOfString): Integer;
+var
+  OutFile: String;
+  Code: Integer;
+begin
+  SetArrayLength(Lines, 0);
+  OutFile := GenerateUniqueName(GetTempDir, '.txt');
+  if not Exec(ExpandConstant('{cmd}'), '/S /C "' + Command + ' > "' + OutFile + '""', '', SW_HIDE,
+    ewWaitUntilTerminated, Code) then
+    Code := -1
+  else if not LoadStringsFromFile(OutFile, Lines) then
+    SetArrayLength(Lines, 0);
+  DeleteFile(OutFile);
   Result := Code;
 end;
 
@@ -163,15 +192,83 @@ begin
   Result := '"' + T + '"';
 end;
 
-{ Stops the service (only the launcher: the world keeps running) and waits up to 60 s; true once it is stopped or absent. }
+{ Stops the service (only the launcher: the world keeps running). Waits up to 60 s for the Stopped state and then up
+  to 60 s more for the launcher's process to end, since the service reports Stopped before dotnet.exe has exited and
+  released the launcher's files. True once both happened or the service is absent. }
 function StopService: Boolean;
 begin
   Result := True;
   if not ServiceExists then
     exit;
-  Sc('stop ' + ServiceName);
-  Result := PowerShell('$s = Get-Service ' + ServiceName + ' -ErrorAction SilentlyContinue; ' +
-    'if ($s) { try { $s.WaitForStatus(''Stopped'', ''00:01:00'') } catch { exit 1 } }; exit 0') = 0;
+  Result := PowerShell('$svc = Get-CimInstance Win32_Service | Where-Object Name -eq ' + ServiceName + '; ' +
+    'if (-not $svc) { exit 0 }; ' +
+    'sc.exe stop ' + ServiceName + ' | Out-Null; ' +
+    'try { (Get-Service ' + ServiceName + ').WaitForStatus(''Stopped'', ''00:01:00'') } catch { exit 1 }; ' +
+    'if ($svc.ProcessId) { $p = Get-Process -Id $svc.ProcessId -ErrorAction SilentlyContinue; ' +
+    'if ($p -and -not $p.WaitForExit(60000)) { exit 1 } }; exit 0') = 0;
+end;
+
+{ --- Web port and links ------------------------------------------------------------------------------------------ }
+
+{ The webPort saved in settings.json (setup runs elevated and may read it), or 0 when there is none. }
+function SettingsWebPort: Integer;
+var
+  Raw: AnsiString;
+  Text, Digits: String;
+  I: Integer;
+begin
+  Result := 0;
+  if not LoadStringFromFile(DataDir + '\settings.json', Raw) then
+    exit;
+  Text := Raw;
+  I := Pos('"webPort"', Text);
+  if I = 0 then
+    exit;
+  I := I + Length('"webPort"');
+  while (I <= Length(Text)) and ((Text[I] = ' ') or (Text[I] = ':') or (Text[I] = #9) or (Text[I] = #13) or (Text[I] = #10)) do
+    I := I + 1;
+  Digits := '';
+  while (I <= Length(Text)) and (Text[I] >= '0') and (Text[I] <= '9') do
+  begin
+    Digits := Digits + Text[I];
+    I := I + 1;
+  end;
+  Result := StrToIntDef(Digits, 0);
+end;
+
+{ The admin website's port: /WEBPORT, else the saved one, else 8001. }
+function WebPortValue(Param: String): String;
+begin
+  if WebPortParam <> '' then
+    Result := WebPortParam
+  else if SettingsWebPort > 0 then
+    Result := IntToStr(SettingsWebPort)
+  else
+    Result := IntToStr(DefaultWebPort);
+end;
+
+{ The setup link (or the admin page once set up) from admin-link, run elevated since only elevated processes can read
+  the settings; the address of the admin page when it gives none. }
+function SetupLink(Param: String): String;
+var
+  Lines: TArrayOfString;
+  Code: Integer;
+begin
+  if Link = '' then
+  begin
+    Code := Capture('"' + DotnetExe + '" "' + LauncherDll + '" admin-link --data "' + DataDir + '" --wait 120', Lines);
+    Log('admin-link -> ' + IntToStr(Code));
+    if (Code = 0) and (GetArrayLength(Lines) > 0) and (Pos('http://', Trim(Lines[0])) = 1) then
+      Link := Trim(Lines[0])
+    else
+      Link := 'http://localhost:' + WebPortValue('') + '/';
+  end;
+  Result := Link;
+end;
+
+function ServiceRunning: Boolean;
+begin
+  Result := ServiceError = '';
 end;
 
 { --- Busy web port ------------------------------------------------------------------------------------------------ }
@@ -194,36 +291,27 @@ begin
   end;
 end;
 
-function EndsWith(const S, Suffix: String): Boolean;
-begin
-  Result := (Length(S) >= Length(Suffix)) and (Copy(S, Length(S) - Length(Suffix) + 1, Length(Suffix)) = Suffix);
-end;
-
 { True when a TCP socket listens on Port. Reads netstat -ano by columns (protocol, local, foreign address): a listening
   socket's foreign address is 0.0.0.0:0 or [::]:0, which, unlike the state column, is not translated. }
 function PortInUse(Port: Integer): Boolean;
 var
-  OutFile, Line, Proto, Local, Foreign: String;
+  Line, Proto, Local, Foreign: String;
   Lines: TArrayOfString;
-  I, Code: Integer;
+  I: Integer;
 begin
   Result := False;
-  OutFile := GenerateUniqueName(GetTempDir, '.txt');
-  if not Exec(ExpandConstant('{cmd}'), '/S /C ""' + ExpandConstant('{sys}\netstat.exe') + '" -ano > "' + OutFile + '""',
-    '', SW_HIDE, ewWaitUntilTerminated, Code) or (Code <> 0) or not LoadStringsFromFile(OutFile, Lines) then
+  if (Capture('"' + ExpandConstant('{sys}\netstat.exe') + '" -ano', Lines) <> 0) or (GetArrayLength(Lines) = 0) then
   begin
     Log('netstat -ano could not be read; the web port is not checked.');
-    DeleteFile(OutFile);
     exit;
   end;
-  DeleteFile(OutFile);
   for I := 0 to GetArrayLength(Lines) - 1 do
   begin
     Line := Lines[I];
     Proto := NextToken(Line);
     Local := NextToken(Line);
     Foreign := NextToken(Line);
-    if (CompareText(Proto, 'TCP') = 0) and EndsWith(Local, ':' + IntToStr(Port)) and
+    if (CompareText(Proto, 'TCP') = 0) and HasSuffix(Local, ':' + IntToStr(Port)) and
       ((Foreign = '0.0.0.0:0') or (Foreign = '[::]:0')) then
     begin
       Log('Listening on port ' + IntToStr(Port) + ': ' + Lines[I]);
@@ -265,34 +353,63 @@ begin
   end;
 end;
 
+{ --- Install folder ----------------------------------------------------------------------------------------------- }
+
+function DirIsEmpty(const Dir: String): Boolean;
+var
+  Rec: TFindRec;
+begin
+  Result := True;
+  if FindFirst(AddBackslash(Dir) + '*', Rec) then
+  try
+    repeat
+      if (Rec.Name <> '.') and (Rec.Name <> '..') then
+        Result := False;
+    until not Result or not FindNext(Rec);
+  finally
+    FindClose(Rec);
+  end;
+end;
+
+{ '' when Dir can take DreamGrid's program files, else the reason it cannot. The program folder is emptied on every
+  install, so it must not be (or be inside) the data folder, nor a folder of other files. }
+function CheckInstallDir(const Dir: String): String;
+begin
+  Result := '';
+  if Pos(Lowercase(AddBackslash(DataDir)), Lowercase(AddBackslash(Dir))) = 1 then
+    Result := 'DreamGrid cannot be installed in its data folder (' + DataDir + '). Please choose another folder.'
+  else if DirExists(Dir) and not FileExists(AddBackslash(Dir) + 'VERSION') and
+    not FileExists(AddBackslash(Dir) + 'launcher\DreamGrid.Launcher.dll') and not DirIsEmpty(Dir) then
+    Result := 'The folder ' + Dir + ' already has other files in it. Please choose an empty or new folder for DreamGrid.';
+end;
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+var
+  Msg: String;
+begin
+  Result := True;
+  if CurPageID = wpSelectDir then
+  begin
+    Msg := CheckInstallDir(WizardDirValue);
+    if Msg <> '' then
+    begin
+      SuppressibleMsgBox(Msg, mbError, MB_OK, IDOK);
+      Result := False;
+    end;
+  end;
+end;
+
 { --- Install ------------------------------------------------------------------------------------------------------ }
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   NeedsRestart := False;
-  Result := '';
+  { Again here for silent installs (/DIR=), which skip the folder page; before [InstallDelete] empties anything. }
+  Result := CheckInstallDir(ExpandConstant('{app}'));
+  if Result <> '' then
+    exit;
   if not StopService then
     Result := 'The DreamGrid service did not stop within 60 seconds. Please try again in a minute.';
-end;
-
-{ Sets "Run as administrator" on a shortcut (bit 0x20 of the .lnk header's byte 21, in LinkFlags). }
-procedure SetElevationBit(Filename: String);
-var
-  Buffer: AnsiString;
-  Stream: TStream;
-begin
-  Filename := ExpandConstant(Filename);
-  Stream := TFileStream.Create(Filename, fmOpenReadWrite);
-  try
-    Stream.Seek(21, soFromBeginning);
-    SetLength(Buffer, 1);
-    Stream.ReadBuffer(Buffer, 1);
-    Buffer[1] := Chr(Ord(Buffer[1]) or $20);
-    Stream.Seek(-1, soFromCurrent);
-    Stream.WriteBuffer(Buffer, 1);
-  finally
-    Stream.Free;
-  end;
 end;
 
 { Deletes the program folder's <Prefix>* folders other than Current. A folder that a running process still uses
@@ -320,7 +437,7 @@ begin
   for I := 0 to GetArrayLength(Names) - 1 do
   begin
     Path := ExpandConstant('{app}\') + Names[I];
-    if EndsWith(Names[I], '.removing') then
+    if HasSuffix(Names[I], '.removing') then
       Doomed := Path
     else
       Doomed := Path + '.removing';
@@ -333,16 +450,18 @@ end;
 
 procedure SetUpService;
 var
-  Common: String;
+  Common, Msg: String;
+  Code: Integer;
 begin
   Common := ServiceName + ' start= auto obj= "NT SERVICE\' + ServiceName + '" DisplayName= "DreamGrid" binPath= ' +
     ScQuoted(ServiceCommand);
   { Created before its first start, so the launcher gives NT SERVICE\DreamGrid access to the data folder. }
   if ServiceExists then
-    Sc('config ' + Common)
-  else if Sc('create ' + Common) <> 0 then
-    SuppressibleMsgBox('Windows did not accept the DreamGrid service. The setup log in ' + GetTempDir + ' says why.',
-      mbCriticalError, MB_OK, IDOK);
+    Code := Sc('config ' + Common)
+  else
+    Code := Sc('create ' + Common);
+  if Code <> 0 then
+    ServiceError := 'its Windows service could not be set up (error ' + IntToStr(Code) + ')';
   Sc('description ' + ServiceName + ' "Runs your DreamGrid world and its admin website."');
   Sc('failure ' + ServiceName + ' reset= 86400 actions= restart/5000/restart/5000/restart/60000');
 
@@ -356,13 +475,45 @@ begin
     '$p = ($_ | Get-NetFirewallApplicationFilter).Program; ' +
     'if (-not $p -or -not (Test-Path -LiteralPath (Split-Path -Parent $p))) { $_ | Remove-NetFirewallRule } }');
 
-  Sc('start ' + ServiceName);
+  if ServiceError = '' then
+  begin
+    Code := Sc('start ' + ServiceName);
+    if Code <> 0 then
+      ServiceError := 'its Windows service could not be started (error ' + IntToStr(Code) + ')';
+  end;
+
+  if ServiceError <> '' then
+  begin
+    Msg := 'DreamGrid is installed, but ' + ServiceError + '. Restart the computer and run this installer again. ' +
+      'If that does not help, the setup log in ' + GetTempDir + ' says what went wrong.';
+    Log(Msg);
+    SuppressibleMsgBox(Msg, mbCriticalError, MB_OK, IDOK);
+  end
+  else if not WizardSilent then
+    { Read now, while the progress page shows, rather than after Finish is clicked. }
+    SetupLink('');
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
     SetUpService;
+end;
+
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  if (CurPageID = wpFinished) and (ServiceError <> '') then
+    WizardForm.FinishedLabel.Caption := 'DreamGrid is installed, but ' + ServiceError + '.' + #13#10#13#10 +
+      'Restart the computer and run this installer again.';
+end;
+
+{ A silent install whose service failed must not report success. }
+function GetCustomSetupExitCode: Integer;
+begin
+  if ServiceError <> '' then
+    Result := ServiceFailedExitCode
+  else
+    Result := 0;
 end;
 
 { --- Uninstall ---------------------------------------------------------------------------------------------------- }
