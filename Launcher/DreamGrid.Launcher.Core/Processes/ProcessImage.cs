@@ -35,9 +35,13 @@ public static class ProcessImage
             var end = stat.LastIndexOf(')');
             return end >= 0 && end + 2 < stat.Length && stat[end + 2] is 'Z' or 'X';
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        catch (Exception e) when (e is FileNotFoundException or DirectoryNotFoundException)
         {
             return true; // /proc entry gone: the process is gone
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return false; // exists but unreadable (e.g. another user's hidepid /proc): not known to be a zombie
         }
     }
 

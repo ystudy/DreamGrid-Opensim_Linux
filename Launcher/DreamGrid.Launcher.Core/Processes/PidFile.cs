@@ -19,6 +19,27 @@ public static class PidFile
         }
     }
 
+    /// <summary>
+    /// The PID in the file only when it names a live process with <paramref name="expectedImage"/> that started no later
+    /// than the file's last write plus a 2 s slack. Every genuine child is started before its PID file is written, so a
+    /// process that started later is an unrelated program that reused the PID.
+    /// </summary>
+    public static int? ReadLive(string path, string? expectedImage)
+    {
+        if (Read(path) is not { } pid || !ProcessImage.Matches(pid, expectedImage)) return null;
+        try
+        {
+            var written = File.GetLastWriteTimeUtc(path);
+            using var process = System.Diagnostics.Process.GetProcessById(pid);
+            return process.StartTime.ToUniversalTime() <= written + TimeSpan.FromSeconds(2) ? pid : null;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException
+            or InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            return null; // gone, or start time unreadable: never adopt on doubt
+        }
+    }
+
     public static void Write(string path, int pid)
     {
         var dir = Path.GetDirectoryName(Path.GetFullPath(path));

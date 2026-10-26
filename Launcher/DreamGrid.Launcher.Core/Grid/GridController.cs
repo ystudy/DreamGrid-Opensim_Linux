@@ -493,7 +493,7 @@ public sealed partial class GridController(
 
     /// <summary>True when the component's PID file names a live process with its image: starting it will adopt.</summary>
     private static bool WillAdopt(Component c) =>
-        PidFile.Read(c.Spec.PidFile) is { } pid && ProcessImage.Matches(pid, c.Spec.ExpectedImage);
+        PidFile.ReadLive(c.Spec.PidFile, c.Spec.ExpectedImage) is not null;
 
     /// <summary>Polls Robust until the account satisfies <paramref name="done"/> or <see cref="AccountWait"/> passes; returns the last account seen.</summary>
     private async Task<RobustAccount?> WaitForAccountAsync(string first, string last, Func<RobustAccount, bool> done, CancellationToken ct)
