@@ -50,18 +50,21 @@ folder.
 ## Upgrading
 
 Run the same command again on Debian, or the newer installer on Windows. Your
-world keeps running while the program is replaced, and the data is kept.
+world keeps running while the program is replaced, and the data is kept. The
+grid service and region restart briefly when a release updates OpenSim.
 
 ## Another web port
 
 The admin website uses port 8001. If another program already uses it, pick
-another port:
+another port from 1024 to 65535 (not one DreamGrid uses itself: 3307, 8002,
+8003, 8004, 8010 or 8011):
 
     curl -fsSL https://github.com/ystudy/DreamGrid-Opensim_Linux/releases/latest/download/install.sh | sudo bash -s -- --web-port 8101
 
     DreamGridSetup-<version>.exe /WEBPORT=8101
 
-An upgrade keeps the port the service was installed with.
+The installer saves the port in your world's settings, so upgrades keep it, and
+you can change it later in Advanced Settings → Network.
 
 ## Testing a pre-release
 

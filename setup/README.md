@@ -27,3 +27,14 @@ powershell -File setup/test/Test-Package.ps1 -Package $env:TEMP\dgpkg\dreamgrid
 `-RuntimeVersion 10.0.n` pins the ASP.NET Core runtime; without it the script uses `latest-runtime` from the .NET 10 `releases.json`. The runtime archive is downloaded to a temp cache outside the repo and its SHA-512 is checked against `releases.json`.
 
 `Test-Package.ps1` checks the layout, that `launcher --version` prints exactly `VERSION`, that `OpenSim.dll` and `Robust.dll` are present and that no `*.pdb` files shipped.
+
+## Installer verbs of the launcher
+
+The installers call the launcher (`dotnet launcher/DreamGrid.Launcher.dll <verb> …`) with these verbs as the first argument:
+
+- `--version` prints the build version.
+- `admin-link --data <dir> [--wait <s>] [--open]` prints the setup link while setup is open, else the admin page's address; it never creates the settings (exit 4 when none appear in time).
+- `set-web-port <n> --data <dir>` saves the admin website's port. It needs the service stopped (exit 3 while a launcher holds the data directory), refuses a port the launcher would refuse with the same message (exit 2: 1024–65535, not another DreamGrid port) and creates the settings when there are none. `install.sh --web-port` and `DreamGridSetup.exe /WEBPORT=` use it; neither puts `--web-port` into the service's command line.
+- `stop-grid --data <dir> --opensim <dir> [--mariadb-bin <dir>]` stops the region, Robust and MariaDB (the uninstaller) and waits up to 60 s for them to exit (exit 5 otherwise).
+
+The host option `--web-port <n>` (for development) applies the port again on every start, so a port changed later in Advanced Settings → Network would be undone at the next start.
