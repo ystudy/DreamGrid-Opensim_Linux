@@ -1,6 +1,9 @@
+using System.Diagnostics;
+using System.Net;
+using System.Net.Sockets;
+using System.Reflection;
 using DreamGrid.Launcher.Core;
 using DreamGrid.Launcher.Core.Settings;
-using System.Reflection;
 using Xunit;
 
 namespace DreamGrid.Launcher.Tests;
@@ -129,4 +132,122 @@ public class CommandLineTests : IDisposable
         Assert.Throws<ArgumentException>(() => CommandLine.ParseWebPort(["--web-port", "abc"]));
         Assert.Throws<ArgumentException>(() => CommandLine.ParseWebPort(["--web-port"]));
     }
+    [Fact]
+    public async Task Set_web_port_refuses_while_lock_is_held()
+    {
+        NewStore();
+        var before = File.ReadAllText(SettingsFile);
+        using var held = InstanceLock.TryAcquire(DataDir);
+        Assert.NotNull(held);
+
+        var (code, output) = await RunAsync("set-web-port", "8101", "--data", DataDir);
+
+        Assert.Equal(3, code);
+        Assert.Contains("Stop the service first", output);
+        Assert.Equal(before, File.ReadAllText(SettingsFile));
+    }
+
+    [Fact]
+    public async Task Set_web_port_rejects_a_port_the_launcher_rejects_and_keeps_the_settings()
+    {
+        NewStore();
+        var before = File.ReadAllText(SettingsFile);
+
+        var (code, output) = await RunAsync("set-web-port", "8002", "--data", DataDir); // the Robust public port
+
+        Assert.Equal(2, code);
+        Assert.Contains("8002", output);
+        Assert.Equal(before, File.ReadAllText(SettingsFile));
+    }
+
+    [Theory]
+    [InlineData("set-web-port")]
+    [InlineData("set-web-port", "abc")]
+    [InlineData("set-web-port", "--data")]
+    public async Task Set_web_port_needs_a_number(params string[] args)
+    {
+        var (code, output) = await RunAsync([.. args, "--data", DataDir]);
+
+        Assert.Equal(2, code);
+        Assert.Contains("set-web-port", output);
+        Assert.False(File.Exists(SettingsFile));
+    }
+
+    [Fact]
+    public async Task Set_web_port_saves_the_port()
+    {
+        var token = NewStore().LoadOrCreate().SetupToken;
+
+        var (code, _) = await RunAsync("set-web-port", "8101", "--data", DataDir);
+
+        Assert.Equal(0, code);
+        var s = new SettingsStore(SettingsFile).LoadOrCreate();
+        Assert.Equal(8101, s.WebPort);
+        Assert.Equal(token, s.SetupToken);
+    }
+
+    [Fact]
+    public async Task Set_web_port_creates_the_settings_when_there_are_none()
+    {
+        var (code, _) = await RunAsync("set-web-port", "8101", "--data", DataDir);
+
+        Assert.Equal(0, code);
+        var s = new SettingsStore(SettingsFile).TryLoad();
+        Assert.NotNull(s);
+        Assert.Equal(8101, s.WebPort);
+        Assert.NotNull(s.SetupToken);
+    }
+
+    [Fact]
+    public async Task Set_web_port_refused_creates_no_settings()
+    {
+        var (code, _) = await RunAsync("set-web-port", "80", "--data", DataDir);
+
+        Assert.Equal(2, code);
+        Assert.False(File.Exists(SettingsFile));
+    }
+
+    [Fact]
+    public void Live_child_pids_are_read_from_the_pid_files()
+    {
+        var pids = Path.Combine(DataDir, "state", "pids");
+        Directory.CreateDirectory(pids);
+        File.WriteAllText(Path.Combine(pids, "robust.pid"), Environment.ProcessId.ToString());
+        File.WriteAllText(Path.Combine(pids, "gone.pid"), int.MaxValue.ToString());
+        File.WriteAllText(Path.Combine(pids, "junk.pid"), "x");
+
+        Assert.Equal([Environment.ProcessId], CommandLine.LiveChildPids(pids));
+        Assert.Empty(CommandLine.LiveChildPids(Path.Combine(_root, "no-such-dir")));
+    }
+
+    [Fact]
+    public async Task Wait_until_gone_waits_for_a_running_child_to_exit()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var dir = typeof(CommandLineTests).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
+            .Single(a => a.Key == "FakeChildDir").Value!;
+        var exe = Path.Combine(dir, OperatingSystem.IsWindows() ? "DreamGrid.FakeChild.exe" : "DreamGrid.FakeChild");
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        listener.Stop();
+        using var child = Process.Start(new ProcessStartInfo(exe) { ArgumentList = { "--serve", port.ToString() } })!;
+        try
+        {
+            Assert.False(await CommandLine.WaitUntilGoneAsync([child.Id], TimeSpan.FromMilliseconds(500), ct));
+
+            var waiting = CommandLine.WaitUntilGoneAsync([child.Id], TimeSpan.FromSeconds(30), ct);
+            child.Kill();
+            Assert.True(await waiting);
+            Assert.True(child.HasExited);
+        }
+        finally
+        {
+            if (!child.HasExited) child.Kill();
+        }
+    }
+
+    [Fact]
+    public async Task Wait_until_gone_with_no_children_returns_at_once() =>
+        Assert.True(await CommandLine.WaitUntilGoneAsync([], TimeSpan.Zero, TestContext.Current.CancellationToken));
 }

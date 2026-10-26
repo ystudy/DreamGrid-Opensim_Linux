@@ -20,7 +20,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.DataProtection;
 
-// Installer verbs (--version, admin-link, stop-grid) run instead of the host.
+// Installer verbs (--version, admin-link, stop-grid, set-web-port) run instead of the host.
 var processEnv = new Dictionary<string, string?>
 {
     ["DREAMGRID_DATA"] = Environment.GetEnvironmentVariable("DREAMGRID_DATA"),
@@ -62,7 +62,8 @@ try
     paths = LauncherPaths.Resolve(args, env, OperatingSystem.IsWindows());
     store = new SettingsStore(paths.SettingsFile);
     settings = store.LoadOrCreate();
-    // --web-port is the one settings change made outside the controller: at startup, under the lock, before anything reads the port.
+    // The --web-port host option (development) is the one settings change made outside the controller: at startup, under
+    // the lock, before anything reads the port. It applies again on every start; the installers use set-web-port instead.
     if (CommandLine.ParseWebPort(args) is { } webPort)
     {
         if (CommandLine.ApplyWebPort(store, webPort) is { } portError)
