@@ -5,10 +5,19 @@ using DreamGrid.Launcher.Core.Api;
 using DreamGrid.Launcher.Core.Config;
 using DreamGrid.Launcher.Core.Database;
 using DreamGrid.Launcher.Core.Grid;
+using DreamGrid.Launcher.Core.Logs;
+using DreamGrid.Launcher.Endpoints;
 using DreamGrid.Launcher.Core.Modules;
 using DreamGrid.Launcher.Core.OpenSim;
 using DreamGrid.Launcher.Core.Settings;
+using DreamGrid.Launcher.Core.Security;
+using DreamGrid.Launcher.Core.Setup;
+using DreamGrid.Launcher.Security;
+using DreamGrid.Launcher.Setup;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Connections;
+using Microsoft.AspNetCore.DataProtection;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseSystemd();
@@ -31,6 +40,8 @@ try
     paths = LauncherPaths.Resolve(args, env, OperatingSystem.IsWindows());
     store = new SettingsStore(paths.SettingsFile);
     settings = store.LoadOrCreate();
+    LauncherPaths.CreateOwnerOnly(paths.Data);
+    LauncherPaths.CreateOwnerOnly(paths.DataProtectionKeys);
 }
 catch (Exception e) when (e is ArgumentException or SettingsCorruptException or IOException or UnauthorizedAccessException)
 {
@@ -46,13 +57,52 @@ builder.WebHost.ConfigureKestrel(o => o.Listen(IPAddress.Any, settings.WebPort))
 builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.Warning);
 // Health polls of children that are still booting would log a stack trace every few seconds.
 builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);
+// Routing, page and result lines for every request (the dashboard polls every 5 s) would flood launcher.log.
+// Microsoft.Hosting.Lifetime ("Now listening on…") is outside this category and stays at Information.
+builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
+
+builder.Logging.AddProvider(new RollingFileLoggerProvider(Path.Combine(paths.Logs, "launcher.log")));
 
 builder.Services.AddHttpClient();
+// Keys for the sign-in and antiforgery cookies live in the (owner-only) data directory, not the service account's
+// profile, so cookies stay valid across restarts and the keys go wherever the data goes.
+builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(paths.DataProtectionKeys))
+    .SetApplicationName("DreamGrid");
+builder.Services.AddSingleton<Microsoft.AspNetCore.Routing.MatcherPolicy, LegacyRootPolicy>();
+builder.Services.AddAuthentication(AuthSchemes.Admin).AddCookie(AuthSchemes.Admin, o =>
+{
+    o.Cookie.Name = "dg-auth";
+    o.Cookie.HttpOnly = true;
+    o.Cookie.SameSite = SameSiteMode.Strict;
+    o.LoginPath = "/login";
+    o.ExpireTimeSpan = AdminSignIn.Expiry;
+    o.SlidingExpiration = true;
+    // API callers get a status code, never a redirect to the login page.
+    o.Events.OnRedirectToLogin = c => ApiOr(c, StatusCodes.Status401Unauthorized);
+    o.Events.OnRedirectToAccessDenied = c => ApiOr(c, StatusCodes.Status403Forbidden);
+});
+builder.Services.AddAuthorizationBuilder()
+    .AddPolicy(AuthSchemes.AdminPolicy, p => p.AddAuthenticationSchemes(AuthSchemes.Admin).RequireRole(AuthSchemes.AdminRole));
+builder.Services.AddRazorPages(o =>
+{
+    // Every page needs the admin role except these; the setup pages are guarded by SetupGate.
+    o.Conventions.AuthorizeFolder("/", AuthSchemes.AdminPolicy);
+    foreach (var open in new[] { "/Login", "/Logout", "/Welcome", "/Waiting", "/SetupDone", "/Setup" })
+        o.Conventions.AllowAnonymousToPage(open);
+    o.Conventions.AllowAnonymousToFolder("/Setup");
+    // The dashboard's forms post here: a POST to "/" belongs to the port-8001 contract (LegacyRootPolicy).
+    o.Conventions.AddPageRoute("/Index", "dashboard");
+});
+// The dashboard's script sends the token in this header to /api/grid/*.
+builder.Services.AddAntiforgery(o => o.HeaderName = "RequestVerificationToken");
 builder.Services.AddSingleton(paths);
 builder.Services.AddSingleton(store);
 // Read per request from the controller's cache (never the file), so a change the controller saved is seen at once.
 builder.Services.AddSingleton<Func<LauncherSettings>>(sp => sp.GetRequiredService<IGridController>().CurrentSettings);
+builder.Services.AddSingleton<LogReader>();
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<LoginThrottle>();
 builder.Services.AddSingleton(sp =>
 {
     try
@@ -65,7 +115,10 @@ builder.Services.AddSingleton(sp =>
         return MariaDbBinaries.NotFound(e.Message);
     }
 });
-builder.Services.AddSingleton<IFeatureModule, LogLevelModule>();
+// One instance per module, registered under each seam it implements (spec 6.9).
+builder.Services.AddSingleton<LogLevelModule>();
+builder.Services.AddSingleton<IFeatureModule>(sp => sp.GetRequiredService<LogLevelModule>());
+builder.Services.AddSingleton<ISettingsPage>(sp => sp.GetRequiredService<LogLevelModule>());
 builder.Services.AddSingleton<IRobustClient>(sp => new RobustClient(
     sp.GetRequiredService<IHttpClientFactory>().CreateClient("DreamGrid.Robust"),
     new Uri($"http://127.0.0.1:{settings.RobustPrivatePort}"),
@@ -73,10 +126,23 @@ builder.Services.AddSingleton<IRobustClient>(sp => new RobustClient(
 builder.Services.AddSingleton<GridController>();
 builder.Services.AddSingleton<IGridController>(sp => sp.GetRequiredService<GridController>());
 builder.Services.AddSingleton<LegacyCommandApi>();
+builder.Services.AddSingleton<IOnlineUsers>(sp => new OnlineUsers(sp.GetRequiredService<Func<LauncherSettings>>(),
+    sp.GetRequiredService<ILogger<OnlineUsers>>()));
+builder.Services.AddSingleton<GridActions>();
+builder.Services.AddSingleton<SetupProgress>();
+builder.Services.AddSingleton<SetupRunner>();
 builder.Services.AddHostedService<GridHostedService>();
 
 var app = builder.Build();
+app.UseStaticFiles();
+app.UseAuthentication();
+app.UseMiddleware<SetupGate>();
+app.UseAuthorization();
 LegacyEndpoints.Map(app);
+LogsApi.Map(app);
+StatusApi.Map(app);
+SetupApi.Map(app);
+app.MapRazorPages();
 
 app.Lifetime.ApplicationStarted.Register(() =>
 {
@@ -102,6 +168,15 @@ catch (Exception e) when (IsAddressInUse(e))
 await app.WaitForShutdownAsync();
 await app.DisposeAsync();
 return 0;
+
+static Task ApiOr(RedirectContext<CookieAuthenticationOptions> c, int apiStatus)
+{
+    if (c.Request.Path.StartsWithSegments("/api"))
+        c.Response.StatusCode = apiStatus;
+    else
+        c.Response.Redirect(c.RedirectUri);
+    return Task.CompletedTask;
+}
 
 static bool IsAddressInUse(Exception? e)
 {

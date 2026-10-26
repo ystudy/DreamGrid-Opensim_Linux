@@ -27,16 +27,21 @@ internal sealed class LauncherFactory : WebApplicationFactory<Program>
         var s = Store.LoadOrCreate();
         Store.Save(seed is null ? s : seed(s));
         Grid.SettingsSource = Store.LoadOrCreate;
+        Grid.SettingsSink = Store.Save;
     }
 
     public LauncherPaths Paths { get; }
     public SettingsStore Store { get; }
     public FakeGridController Grid { get; } = new();
     public FakeRobustAccounts Robust { get; } = new();
+    public FakeOnlineUsers OnlineUsers { get; } = new();
     public ConcurrentQueue<(LogLevel Level, string Category, string Message)> Logs { get; } = new();
 
     /// <summary>Runs before the app's own middleware (e.g. to fake the remote address).</summary>
     public Action<Microsoft.AspNetCore.Builder.IApplicationBuilder>? Before { get; init; }
+
+    /// <summary>Extra test-only registrations (e.g. a module), added after the fakes.</summary>
+    public Action<IServiceCollection>? ExtraServices { get; init; }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -49,8 +54,11 @@ internal sealed class LauncherFactory : WebApplicationFactory<Program>
             services.AddSingleton<IGridController>(Grid);
             services.RemoveAll<IRobustClient>();
             services.AddSingleton<IRobustClient>(Robust);
+            services.RemoveAll<IOnlineUsers>();
+            services.AddSingleton<IOnlineUsers>(OnlineUsers);
             if (Before is { } before)
                 services.AddSingleton<Microsoft.AspNetCore.Hosting.IStartupFilter>(new BeforeFilter(before));
+            ExtraServices?.Invoke(services);
         });
     }
 

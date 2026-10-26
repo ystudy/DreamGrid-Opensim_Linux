@@ -1,0 +1,19 @@
+@page "/login"
+@model LoginModel
+@{
+    ViewData["Title"] = "Sign in";
+}
+<h1>Sign in</h1>
+<p>Use the name and password of your administrator avatar.</p>
+@if (Model.Error is not null)
+{
+    <div class="error-box error" role="alert">@Model.Error</div>
+}
+<form method="post">
+    <input type="hidden" name="ReturnUrl" value="@Model.ReturnUrl">
+    <label asp-for="Name">Avatar name</label>
+    <input asp-for="Name" maxlength="64" autocomplete="username" placeholder="First Last" required>
+    <label asp-for="Password">Password</label>
+    <input asp-for="Password" type="password" value="" autocomplete="current-password" required>
+    <button type="submit">Sign in</button>
+</form>

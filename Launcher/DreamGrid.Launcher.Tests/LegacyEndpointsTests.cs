@@ -51,12 +51,6 @@ public sealed class LegacyEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Bare_root_returns_Test_Completed()
-    {
-        Assert.Equal("Test Completed", await GetAsync("/"));
-    }
-
-    [Fact]
     public async Task Parameter_names_are_case_insensitive()
     {
         var capital = await GetAsync("/?Command=RegionStatus&RegionName=Welcome");
@@ -80,6 +74,43 @@ public sealed class LegacyEndpointsTests : IAsyncLifetime
 
         Assert.Equal("ACK", await resp.Content.ReadAsStringAsync(Ct));
         Assert.Contains("Stop database", _factory.Grid.Snapshot());
+    }
+
+    [Fact]
+    public async Task With_the_dashboard_on_root_legacy_calls_still_reach_the_legacy_handler()
+    {
+        await using var f = new LauncherFactory(s => s with
+        {
+            Setup = s.Setup with { OwnerCreated = true, Finished = true },
+            Region = new RegionSettings("Welcome", "Welcome", Guid.Parse(Rid)),
+        })
+        {
+            Before = TestAuth.Apply,
+        };
+        using var client = f.CreateClient(new() { AllowAutoRedirect = false });
+        // Signed in, so the dashboard page is a valid candidate for "/" as well.
+        (await client.GetAsync("/__test/signin", Ct)).Dispose();
+        var machineId = f.Store.LoadOrCreate().MachineId;
+
+        using var type = await client.GetAsync("/?type=Booted", Ct);
+        using var command = await client.GetAsync("/?command=RegionStatus&RegionName=x", Ct);
+        using var post = await client.PostAsync("/", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["command"] = "StopMysql",
+            ["password"] = machineId,
+        }), Ct);
+        using var postNoKey = await client.PostAsync("/", new FormUrlEncodedContent(new Dictionary<string, string>()), Ct);
+        using var page = await client.GetAsync("/", Ct);
+
+        Assert.Equal("ACK", await type.Content.ReadAsStringAsync(Ct));
+        Assert.Equal(HttpStatusCode.OK, command.StatusCode);
+        Assert.Equal("text/plain", command.Content.Headers.ContentType?.MediaType);
+        Assert.Equal("ACK", await post.Content.ReadAsStringAsync(Ct));
+        Assert.Contains("Stop database", f.Grid.Snapshot());
+        // A POST with no known key: the legacy handler's 404, as before the dashboard existed.
+        Assert.Equal(HttpStatusCode.NotFound, postNoKey.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, page.StatusCode);
+        Assert.Contains("Your world", await page.Content.ReadAsStringAsync(Ct));
     }
 
     [Fact]
@@ -174,7 +205,7 @@ public sealed class LegacyEndpointsTests : IAsyncLifetime
     {
         _factory.Grid.OnStart = _ => throw new PortConflictException("Port 8002 (Robust public) is already in use by another program.");
 
-        Assert.Equal("Test Completed", await GetAsync("/"));
+        Assert.Equal("ACK", await GetAsync("/?type=Booted"));
         await _factory.Grid.Started.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
 
         Assert.True(await _factory.WaitForLogAsync(l =>
@@ -187,7 +218,7 @@ public sealed class LegacyEndpointsTests : IAsyncLifetime
     {
         _factory.Grid.OnStart = _ => throw new InvalidOperationException("MariaDB did not start");
 
-        Assert.Equal("Test Completed", await GetAsync("/"));
+        Assert.Equal("ACK", await GetAsync("/?type=Booted"));
         await _factory.Grid.Started.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
 
         Assert.True(await _factory.WaitForLogAsync(l => l.Level == LogLevel.Error && l.Message.Contains("MariaDB did not start")));
@@ -258,7 +289,6 @@ public sealed class LegacyEndpointsTests : IAsyncLifetime
 
     [Theory]
     [InlineData("/?alt=x")]
-    [InlineData("/")]
     [InlineData("/?type=Booted")]
     [InlineData("/?command=RegionStatus")]
     public async Task Text_replies_are_not_sniffed(string url)

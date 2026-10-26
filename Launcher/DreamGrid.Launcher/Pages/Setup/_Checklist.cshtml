@@ -1,0 +1,16 @@
+@using DreamGrid.Launcher.Core.Settings
+@using DreamGrid.Launcher.Setup
+@model int
+@inject Func<LauncherSettings> Settings
+@{
+    // The model is the current step (1-4).
+    var setup = Settings().Setup;
+}
+<ol class="checklist">
+    @for (var i = 1; i <= SetupSteps.All.Count; i++)
+    {
+        var done = SetupSteps.IsDone(setup, i);
+        var css = string.Join(' ', new[] { done ? "done" : null, i == Model ? "current" : null }.OfType<string>());
+        <li class="@css">@SetupSteps.All[i - 1].Title@(done ? " (done)" : "")</li>
+    }
+</ol>

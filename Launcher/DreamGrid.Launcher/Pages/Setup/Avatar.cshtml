@@ -1,0 +1,43 @@
+@page "/setup/avatar"
+@model DreamGrid.Launcher.Pages.Setup.AvatarModel
+@{
+    ViewData["Title"] = "Create your avatar";
+}
+<partial name="_Checklist" model="2" />
+<h1>Create your avatar</h1>
+<p>This avatar owns your world and is the one you sign in to this website with. Names use letters and digits only, as Firestorm requires.</p>
+@if (Model.Error is not null)
+{
+    <div class="error-box">
+        <p>@Model.Error</p>
+        @if (Model.Details is not null)
+        {
+            <details><summary>Show details</summary><pre>@Model.Details</pre></details>
+        }
+    </div>
+}
+<form method="post">
+    <div class="name-row">
+        <div>
+            <label asp-for="FirstName">First name</label>
+            <input asp-for="FirstName" maxlength="31" autocomplete="off" required>
+            <span asp-validation-for="FirstName" class="field-error"></span>
+        </div>
+        <div>
+            <label asp-for="LastName">Last name</label>
+            <input asp-for="LastName" maxlength="31" autocomplete="off" required>
+            <span asp-validation-for="LastName" class="field-error"></span>
+        </div>
+    </div>
+    <label asp-for="Password">Password</label>
+    <input asp-for="Password" type="password" minlength="8" autocomplete="new-password" required>
+    <span class="hint">At least 8 characters, no spaces.</span>
+    <span asp-validation-for="Password" class="field-error"></span>
+    <label asp-for="Confirm">Type the password again</label>
+    <input asp-for="Confirm" type="password" autocomplete="new-password" required>
+    <span asp-validation-for="Confirm" class="field-error"></span>
+    <label asp-for="Email">E-mail (optional)</label>
+    <input asp-for="Email" type="email" autocomplete="email">
+    <span asp-validation-for="Email" class="field-error"></span>
+    <button type="submit">Create my avatar</button>
+</form>

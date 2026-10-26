@@ -1,0 +1,14 @@
+@page "/setup/world"
+@model DreamGrid.Launcher.Pages.Setup.WorldModel
+@{
+    ViewData["Title"] = "Name your world";
+}
+<partial name="_Checklist" model="1" />
+<h1>Name your world</h1>
+<p>This is the name people see when they pick your world in Firestorm. You can use letters, digits, spaces, hyphens and apostrophes.</p>
+<form method="post">
+    <label asp-for="GridName">World name</label>
+    <input asp-for="GridName" maxlength="40" autocomplete="off" required>
+    <span asp-validation-for="GridName" class="field-error"></span>
+    <button type="submit">Save and continue</button>
+</form>

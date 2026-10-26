@@ -1,0 +1,58 @@
+@page "/logs"
+@model LogsModel
+@{
+    ViewData["Title"] = "Logs";
+}
+<h1>Logs</h1>
+<form method="get" action="/logs" class="log-controls">
+    <label>Log
+        <select name="source" id="log-source">
+            @foreach (var s in Model.Sources)
+            {
+                <option value="@s" selected="@(s == Model.Source)">@s</option>
+            }
+        </select>
+    </label>
+    <label>Show
+        <select name="level" id="log-level">
+            <option value="" selected="@(Model.Level == "")">Everything</option>
+            <option value="INFO" selected="@(Model.Level == "INFO")">Info and above</option>
+            <option value="WARN" selected="@(Model.Level == "WARN")">Warnings and errors</option>
+            <option value="ERROR" selected="@(Model.Level == "ERROR")">Errors only</option>
+        </select>
+    </label>
+    <button type="submit">Show</button>
+    <label class="log-auto"><input type="checkbox" id="log-auto"> Refresh every 5 seconds</label>
+</form>
+<p class="muted" id="log-note">@(Model.Tail.Truncated ? "Showing the last " + Model.Tail.Lines.Count + " lines." : "")</p>
+<pre id="log-lines" class="log-lines">@string.Join('\n', Model.Tail.Lines)</pre>
+
+@section Scripts {
+<script>
+(function () {
+    var auto = document.getElementById("log-auto");
+    var pre = document.getElementById("log-lines");
+    var note = document.getElementById("log-note");
+    var stop = null;
+    function url() {
+        return "/api/logs?source=" + encodeURIComponent(document.getElementById("log-source").value) +
+            "&level=" + encodeURIComponent(document.getElementById("log-level").value);
+    }
+    function show(tail) {
+        var atEnd = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 20;
+        pre.textContent = tail.lines.join("\n");
+        note.textContent = tail.truncated ? "Showing the last " + tail.lines.length + " lines." : "";
+        if (atEnd) pre.scrollTop = pre.scrollHeight;
+    }
+    auto.addEventListener("change", function () {
+        if (stop) { stop(); stop = null; }
+        if (auto.checked) stop = poll(url(), 5000, show);
+    });
+    // A changed picker restarts the polling for the new log.
+    ["log-source", "log-level"].forEach(function (id) {
+        document.getElementById(id).addEventListener("change", function () { if (auto.checked) auto.dispatchEvent(new Event("change")); });
+    });
+    pre.scrollTop = pre.scrollHeight;
+})();
+</script>
+}

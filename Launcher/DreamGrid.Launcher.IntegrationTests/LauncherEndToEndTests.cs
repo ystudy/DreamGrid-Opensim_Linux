@@ -11,8 +11,9 @@ namespace DreamGrid.Launcher.IntegrationTests;
 /// <summary>
 /// Runs the real launcher (<c>dotnet DreamGrid.Launcher.dll --data ... --opensim ... --mariadb-bin ...</c>) as a child
 /// process against a pre-seeded settings.json, and checks the port-8001 contract and adoption across launcher kills.
+/// The website's newcomer path is in WebsiteEndToEndTests.cs (the same class, sharing these helpers).
 /// </summary>
-public sealed class LauncherEndToEndTests : IDisposable
+public sealed partial class LauncherEndToEndTests : IDisposable
 {
     private const string GridRunning = "The grid is running.";
     private const string GridFailed = "The grid did not start";
@@ -43,7 +44,7 @@ public sealed class LauncherEndToEndTests : IDisposable
         await RunWithCleanupAsync(paths, store, async () =>
         {
             var launcher = StartLauncher(paths);
-            await WaitForAsync(launcher, async () => await GetAsync(s, "") == "Test Completed", "GET / == Test Completed");
+            await WaitForAsync(launcher, async () => await GetAsync(s, "?type=Booted") == "ACK", "GET /?type=Booted == ACK");
             // No password needed; with no region yet the reply is the "no region" answer, not a permission NAK.
             Assert.Equal("NAK No region has been created yet.", await GetAsync(s, "?command=RegionStatus"));
             Assert.StartsWith("NAK You do not have permission", await GetAsync(s, "?command=StopRobust"));
@@ -102,7 +103,7 @@ public sealed class LauncherEndToEndTests : IDisposable
             for (var run = 1; run <= 2; run++)
             {
                 var launcher = StartLauncher(paths);
-                await WaitForAsync(launcher, async () => await GetAsync(s, "") == "Test Completed", "GET / == Test Completed");
+                await WaitForAsync(launcher, async () => await GetAsync(s, "?type=Booted") == "ACK", "GET /?type=Booted == ACK");
                 await WaitForAsync(launcher, async () => await GetAsync(s, "?command=RegionStatus") == "Running", "RegionStatus == Running");
                 await WaitForLogAsync(launcher, GridRunning);
                 await WaitForAsync(launcher, () => RegionLoginsEnabledAsync(s), "the region reports logins enabled", () => "last console reply: " + _lastConsoleReply);

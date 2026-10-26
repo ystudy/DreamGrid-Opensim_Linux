@@ -1,0 +1,176 @@
+@page "/"
+@model IndexModel
+@{
+    ViewData["Title"] = "Your world";
+    var g = Model.Status.Grid;
+    var parts = new[] { g.Database, g.Robust, g.Region }.Where(c => c is not null).Select(c => c!);
+}
+<h1>Your world</h1>
+
+<section class="card">
+    <p id="headline" class="headline@(Model.Status.Problem is null ? "" : " problem")">@Model.Status.Headline</p>
+    <ul id="components" class="components">
+        @foreach (var c in parts)
+        {
+            <li>
+                <span class="component-label">@c.Label</span>
+                <span class="badge state-@c.State.ToLowerInvariant()">@c.StateText</span>
+                <span class="muted">@c.Detail</span>
+            </li>
+        }
+    </ul>
+    @if (Model.FailedLogs.Count > 0)
+    {
+        <details class="failed-details">
+            <summary>Show details</summary>
+            @foreach (var (label, lines) in Model.FailedLogs)
+            {
+                <p class="component-label">@label</p>
+                <pre>@string.Join('\n', lines)</pre>
+            }
+        </details>
+    }
+</section>
+
+<section class="card">
+    <h2>Controls</h2>
+    <form id="controls" method="post" action="/dashboard?handler=run" asp-antiforgery="true">
+        <div class="button-row">
+            <button type="submit" name="gridAction" value="start">Start all</button>
+            <button type="submit" name="gridAction" value="stop" class="secondary">Stop all</button>
+            <button type="submit" name="gridAction" value="restart" class="secondary">Restart</button>
+        </div>
+        <details>
+            <summary>More</summary>
+            <p class="hint">Restart one part of your world.</p>
+            <div class="button-row">
+                <button type="submit" name="gridAction" value="restart-database" class="secondary">Restart the database</button>
+                <button type="submit" name="gridAction" value="restart-robust" class="secondary">Restart the grid service</button>
+                @if (g.Region is not null)
+                {
+                    <button type="submit" name="gridAction" value="restart-region" class="secondary">Restart your region</button>
+                }
+            </div>
+        </details>
+    </form>
+    <p id="notice" class="notice" role="status">@Model.Notice</p>
+</section>
+
+<section class="card">
+    <h2>Who's online</h2>
+    <ul id="online" class="online" hidden="@(Model.Status.Online.Count == 0)">
+        @foreach (var name in Model.Status.Online)
+        {
+            <li>@name</li>
+        }
+    </ul>
+    <p id="online-note" class="muted" hidden="@(Model.Status.Online.Count > 0)">
+        @(Model.Status.OnlineAvailable ? "Nobody is in-world right now." : "This list shows once the database is running.")
+    </p>
+</section>
+
+<section class="card">
+    <h2>Connect</h2>
+    <p>Your world's address, for the Grid Manager in Firestorm:</p>
+    <div class="copy-row">
+        <code id="login-uri" class="login-uri">@g.LoginUri</code>
+        <button type="button" id="copy-uri" hidden>Copy</button>
+    </div>
+</section>
+
+@if (Model.Switches.Count > 0)
+{
+    <section id="features" class="card">
+        <h2>Features</h2>
+        <ul class="features">
+            @foreach (var (sw, on) in Model.Switches)
+            {
+                <li>
+                    <span class="component-label">@sw.Label</span>
+                    <span class="badge@(on ? " state-running" : "")">@(on ? "On" : "Off")</span>
+                    <span class="hint">@sw.Description</span>
+                    <form method="post" action="/dashboard?handler=switch" asp-antiforgery="true">
+                        <input type="hidden" name="moduleId" value="@sw.ModuleId">
+                        <button type="submit" name="on" value="@(on ? "false" : "true")" class="secondary">@(on ? "Turn off" : "Turn on")</button>
+                    </form>
+                </li>
+            }
+        </ul>
+    </section>
+}
+
+<section class="card">
+    <h2>Coming soon</h2>
+    <p class="muted">Your world will grow. These are on the way:</p>
+    <ul class="coming-soon">
+        <li>Backups</li>
+        <li>Visitors from the internet</li>
+        <li>Hypergrid</li>
+        <li>More regions</li>
+        <li>SmartStart</li>
+        <li>Voice</li>
+        <li>Birds</li>
+        <li>Tides</li>
+    </ul>
+</section>
+
+@section Scripts {
+<script>
+(function () {
+    copyButton(document.getElementById("login-uri"), document.getElementById("copy-uri"));
+
+    var form = document.getElementById("controls");
+    var notice = document.getElementById("notice");
+    var token = form.querySelector("input[name=__RequestVerificationToken]").value;
+    // With JavaScript the controls call /api/grid/* and the page stays put; without it the form posts.
+    form.addEventListener("submit", function (e) {
+        var button = e.submitter;
+        if (!button || !window.fetch) return;
+        e.preventDefault();
+        fetch("/api/grid/" + encodeURIComponent(button.value), {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { RequestVerificationToken: token, Accept: "application/json" }
+        })
+            .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
+            .then(function (j) { notice.textContent = j.notice; })
+            .catch(function () { notice.textContent = "That did not work. Reload the page and try again."; });
+    });
+
+    function render(s) {
+        var headline = document.getElementById("headline");
+        headline.textContent = s.headline;
+        headline.className = "headline" + (s.problem ? " problem" : "");
+
+        var list = document.getElementById("components");
+        list.textContent = "";
+        [s.grid.database, s.grid.robust, s.grid.region].forEach(function (c) {
+            if (!c) return;
+            var li = document.createElement("li");
+            [["component-label", c.label], ["badge state-" + c.state.toLowerCase(), c.stateText], ["muted", c.detail]].forEach(function (p) {
+                var span = document.createElement("span");
+                span.className = p[0];
+                span.textContent = p[1];
+                li.appendChild(span);
+                li.appendChild(document.createTextNode(" "));
+            });
+            list.appendChild(li);
+        });
+
+        var online = document.getElementById("online");
+        var note = document.getElementById("online-note");
+        online.textContent = "";
+        s.online.forEach(function (name) {
+            var li = document.createElement("li");
+            li.textContent = name;
+            online.appendChild(li);
+        });
+        online.hidden = s.online.length === 0;
+        note.hidden = s.online.length > 0;
+        note.textContent = s.onlineAvailable ? "Nobody is in-world right now." : "This list shows once the database is running.";
+    }
+
+    poll("/api/status", 5000, render);
+})();
+</script>
+}

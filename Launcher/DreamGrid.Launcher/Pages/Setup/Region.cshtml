@@ -1,0 +1,84 @@
+@page "/setup/region"
+@model DreamGrid.Launcher.Pages.Setup.RegionModel
+@{
+    ViewData["Title"] = "Choose your first region";
+    var p = Model.Progress;
+}
+@section Head {
+    @if (p.Running)
+    {
+        @* Without JavaScript the page reloads itself; with it, the progress is polled instead. *@
+        <noscript><meta http-equiv="refresh" content="3"></noscript>
+    }
+}
+<partial name="_Checklist" model="3" />
+<h1>Choose your first region</h1>
+
+@if (p.Running)
+{
+    <div class="progress-box" id="setup-progress">
+        <p>Setting up your region. This can take a few minutes; you can leave this page open.</p>
+        <p class="stage" id="setup-stage">@(p.Stage == "" ? "Getting ready" : p.Stage)…</p>
+        <progress id="setup-bar" max="100" value="@p.Percent">@p.Percent %</progress>
+    </div>
+}
+else if (Model.Ready)
+{
+    <div class="ok-box">
+        <p>Your region is ready.</p>
+        <a class="button" href="/setup/connect">Continue</a>
+    </div>
+}
+else if (Model.ShowProgress && p.Error is not null)
+{
+    <div class="error-box">
+        <p>@p.Error</p>
+        @if (p.LogExcerpt is not null)
+        {
+            <details><summary>Show details</summary><pre class="log-lines">@p.LogExcerpt</pre></details>
+        }
+        <p>You can change the choices below and try again.</p>
+    </div>
+}
+
+@if (Model.ShowForm)
+{
+    <form method="post">
+        <label asp-for="RegionName">Region name</label>
+        <input asp-for="RegionName" maxlength="32" autocomplete="off" required>
+        <span asp-validation-for="RegionName" class="field-error"></span>
+
+        <fieldset>
+            <legend>What should it look like?</legend>
+            @if (Model.StarterAvailable)
+            {
+                <label class="choice"><input type="radio" name="Content" value="starter" checked="@(Model.RegionContent == "starter")"> Starter island (trees, greenery and an info kiosk)</label>
+            }
+            <label class="choice"><input type="radio" name="Content" value="island" checked="@(Model.RegionContent == "island")"> Empty island</label>
+            <span asp-validation-for="RegionContent" class="field-error"></span>
+        </fieldset>
+        <button type="submit">Create my region</button>
+    </form>
+}
+
+@section Scripts {
+@if (p.Running)
+{
+    <script>
+    (function () {
+        var stage = document.getElementById("setup-stage");
+        var bar = document.getElementById("setup-bar");
+        poll("/api/setup/progress", 2000, function (s) {
+            if (!s.running) {
+                // Finished or failed: the page itself shows the result.
+                window.location.replace("/setup/region?working=1");
+                return;
+            }
+            stage.textContent = (s.stage || "Getting ready") + "…";
+            bar.value = s.percent;
+            bar.textContent = s.percent + " %";
+        });
+    })();
+    </script>
+}
+}

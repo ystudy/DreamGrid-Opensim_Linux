@@ -1,10 +1,38 @@
 using System.Net;
+using DreamGrid.Launcher.Core;
 using DreamGrid.Launcher.Core.Api;
 using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.OpenSim;
 using DreamGrid.Launcher.Core.Settings;
 
 namespace DreamGrid.Launcher;
+
+/// <summary>Marks the port-8001 handler on "/".</summary>
+internal sealed class LegacyRootMetadata;
+
+/// <summary>
+/// Chooses between the legacy handler and the dashboard page, which both match "/". A GET or HEAD without alt, type
+/// or command is the website's; a POST, or a GET or HEAD with one of those keys, is the legacy contract's (the
+/// dashboard's own forms post to /dashboard).
+/// </summary>
+internal sealed class LegacyRootPolicy : Microsoft.AspNetCore.Routing.MatcherPolicy, Microsoft.AspNetCore.Routing.Matching.IEndpointSelectorPolicy
+{
+    private static readonly string[] Keys = ["alt", "type", "command"];
+
+    public override int Order => -1000;
+
+    public bool AppliesToEndpoints(IReadOnlyList<Endpoint> endpoints) => endpoints.Any(e => e.Metadata.GetMetadata<LegacyRootMetadata>() is not null);
+
+    public Task ApplyAsync(HttpContext ctx, Microsoft.AspNetCore.Routing.Matching.CandidateSet candidates)
+    {
+        var method = ctx.Request.Method;
+        var legacy = !(HttpMethods.IsGet(method) || HttpMethods.IsHead(method)) || Keys.Any(ctx.Request.Query.ContainsKey);
+        for (var i = 0; i < candidates.Count; i++)
+            if ((candidates[i].Endpoint.Metadata.GetMetadata<LegacyRootMetadata>() is not null) != legacy)
+                candidates.SetValidity(i, false);
+        return Task.CompletedTask;
+    }
+}
 
 /// <summary>The port-8001 contract (spec 5) that the patched OpenSim and Robust call, on the web port.</summary>
 public static class LegacyEndpoints
@@ -15,9 +43,8 @@ public static class LegacyEndpoints
 
     public static void Map(WebApplication app)
     {
-        app.MapMethods("/", [HttpMethods.Get, HttpMethods.Post], Root);
+        app.MapMethods("/", [HttpMethods.Get, HttpMethods.Post], Root).WithMetadata(new LegacyRootMetadata());
         app.MapPost("/dreamgrid/regionready", RegionReady);
-        app.MapGet("/welcome", Welcome);
     }
 
     private static async Task<IResult> Root(HttpContext ctx, LegacyCommandApi api, IHostApplicationLifetime lifetime, ILoggerFactory logs)
@@ -46,7 +73,8 @@ public static class LegacyEndpoints
             return Text(ctx, reply);
         }
 
-        return Text(ctx, "Test Completed"); // the old DreamGrid port probe
+        // Unreachable for a bare GET (LegacyRootPolicy leaves that to the website); a POST with no known key.
+        return Results.NotFound();
     }
 
     /// <summary>True for 127.0.0.0/8 and ::1, including IPv4-mapped forms such as ::ffff:127.0.0.1.</summary>
@@ -54,12 +82,7 @@ public static class LegacyEndpoints
         IPAddress.IsLoopback(remote.IsIPv4MappedToIPv6 ? remote.MapToIPv4() : remote);
 
     /// <summary>An untrusted value made safe for a log line: control characters become '?', at most 64 characters.</summary>
-    private static string Clean(string? value)
-    {
-        if (string.IsNullOrEmpty(value)) return "";
-        var chars = value.Take(MaxLoggedChars).Select(c => char.IsControl(c) ? '?' : c).ToArray();
-        return new string(chars) + (value.Length > MaxLoggedChars ? "..." : "");
-    }
+    private static string Clean(string? value) => LogText.Clean(value, MaxLoggedChars);
 
     private static IResult Text(HttpContext ctx, string body)
     {
@@ -86,15 +109,5 @@ public static class LegacyEndpoints
         if (RegionAlert.Parse(new string(buffer, 0, read)) is not { } alert) return Results.BadRequest();
         grid.OnRegionAlert(alert);
         return Results.Ok();
-    }
-
-    /// <summary>The GridInfoService welcome page; plan 2b replaces it.</summary>
-    private static IResult Welcome(Func<LauncherSettings> settings)
-    {
-        var name = WebUtility.HtmlEncode(settings().GridName);
-        return Results.Content(
-            $"<!DOCTYPE html>\n<html><head><meta charset=\"utf-8\"><title>{name}</title></head>"
-            + $"<body><h1>Welcome to {name}</h1></body></html>\n",
-            "text/html; charset=utf-8");
     }
 }

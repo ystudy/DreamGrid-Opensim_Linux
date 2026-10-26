@@ -44,6 +44,21 @@ public sealed class MariaDbServer(MariaDbBinaries bin, LauncherPaths paths, Laun
             ConnectionTimeout = 5,
         }.ConnectionString;
 
+    /// <summary>Connection string for one of the grid's database users over TCP to the private port.</summary>
+    internal static string ConnectionString(LauncherSettings s, string database, string user, string password, uint timeoutSeconds) =>
+        new MySqlConnectionStringBuilder
+        {
+            Server = "127.0.0.1",
+            Port = (uint)s.MariaDbPort,
+            Database = database,
+            UserID = user,
+            Password = password,
+            Pooling = false,
+            SslMode = MySqlSslMode.Disabled,
+            ConnectionTimeout = timeoutSeconds,
+            DefaultCommandTimeout = timeoutSeconds,
+        }.ConnectionString;
+
     /// <summary>
     /// Creates the datadir and secures root. The marker is written only once root has its password; any
     /// failure empties the datadir (an uninitialized one holds no user data) so a retry starts clean.

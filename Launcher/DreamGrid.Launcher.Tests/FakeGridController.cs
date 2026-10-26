@@ -34,17 +34,63 @@ internal sealed class FakeGridController : IGridController
 
     public Task DetachAsync() { Record("DetachAsync"); return Task.CompletedTask; }
 
-    public Task<RobustAccount> CreateOwnerAsync(string first, string last, string password, string? email, CancellationToken ct) =>
-        throw new NotSupportedException();
+    public int CreateOwnerCalls { get; private set; }
 
-    public Task CreateRegionAsync(string name, string content, CancellationToken ct) => throw new NotSupportedException();
+    /// <summary>The last owner created: (first, last, password, email).</summary>
+    public (string First, string Last, string Password, string? Email)? CreatedOwner { get; private set; }
+
+    /// <summary>Thrown by <see cref="CreateOwnerAsync"/> when set.</summary>
+    public Exception? OwnerError { get; set; }
+
+    /// <summary>Like the controller: saves Setup.OwnerCreated and Setup.Owner through <see cref="UpdateSettings"/>.</summary>
+    public Task<RobustAccount> CreateOwnerAsync(string first, string last, string password, string? email, CancellationToken ct)
+    {
+        Record("CreateOwner " + first + " " + last);
+        CreateOwnerCalls++;
+        if (OwnerError is { } e) throw e;
+        CreatedOwner = (first, last, password, email);
+        var account = new RobustAccount(Guid.NewGuid(), first, last, 200, email ?? "");
+        UpdateSettings(l => l with { Setup = l.Setup with { OwnerCreated = true, Owner = new OwnerInfo(first, last, account.PrincipalId) } });
+        return Task.FromResult(account);
+    }
+
+    /// <summary>
+    /// Runs inside <see cref="CreateRegionAsync"/> before the region is saved (blocking probes, thrown exceptions);
+    /// the default reports the controller's three stages.
+    /// </summary>
+    public Func<IProgress<string>?, CancellationToken, Task> OnCreateRegion { get; set; } = (progress, _) =>
+    {
+        progress?.Report("Creating your region");
+        progress?.Report("Loading the region content");
+        progress?.Report("Waiting for the region to accept logins");
+        return Task.CompletedTask;
+    };
+
+    /// <summary>Like the controller: saves the region, then Setup.RegionCreated, through <see cref="UpdateSettings"/>.</summary>
+    public async Task CreateRegionAsync(string name, string content, CancellationToken ct, IProgress<string>? progress = null)
+    {
+        Record("CreateRegion " + name + " " + content);
+        await OnCreateRegion(progress, ct);
+        UpdateSettings(l => l with
+        {
+            Region = new RegionSettings(GridController.SafeFolderName(name), name, Guid.NewGuid(), Content: content),
+            Setup = l.Setup with { RegionCreated = true },
+        });
+    }
+
+    /// <summary>The <see cref="GridStatus.StartFailure"/> of the status built from the other properties.</summary>
+    public StartFailure? StartFailure { get; set; }
+
+    /// <summary>When set, <see cref="GetStatus"/> returns it instead of the status built from the other properties.</summary>
+    public GridStatus? Status { get; set; }
 
     public GridStatus GetStatus()
     {
+        if (Status is { } fixedStatus) return fixedStatus;
         var running = new ComponentStatus("x", ProcessState.Running, null, null, null, null);
         return new GridStatus(running with { Name = "database" }, running with { Name = "robust" },
             HasRegion ? new ComponentStatus("region", RegionState, null, null, null, null) : null,
-            _loginsEnabled, "http://127.0.0.1:8002");
+            _loginsEnabled, "http://127.0.0.1:8002", StartFailure);
     }
 
     /// <summary>Thrown by the component operations when set.</summary>
@@ -55,6 +101,12 @@ internal sealed class FakeGridController : IGridController
 
     /// <summary>What <see cref="CurrentSettings"/> returns (the controller's cached settings in the real host).</summary>
     public Func<LauncherSettings>? SettingsSource { get; set; }
+
+    /// <summary>Where <see cref="UpdateSettings"/> saves (the settings file in the test host); nothing is saved when null.</summary>
+    public Action<LauncherSettings>? SettingsSink { get; set; }
+
+    /// <summary>The writeConfig argument of every <see cref="UpdateSettings"/> call, in order.</summary>
+    public List<bool> UpdateWriteConfig { get; } = new();
 
     public LauncherSettings CurrentSettings() =>
         (SettingsSource ?? throw new InvalidOperationException("No settings source set on the fake grid."))();
@@ -76,8 +128,14 @@ internal sealed class FakeGridController : IGridController
 
     public LauncherSettings UpdateSettings(Func<LauncherSettings, LauncherSettings> change, bool writeConfig = true)
     {
-        Record("UpdateSettings");
-        return change(CurrentSettings());
+        lock (UpdateWriteConfig)
+        {
+            Record("UpdateSettings");
+            UpdateWriteConfig.Add(writeConfig);
+            var next = change(CurrentSettings());
+            SettingsSink?.Invoke(next);
+            return next;
+        }
     }
 
     public void OnRegionAlert(RegionAlert alert)
@@ -94,6 +152,9 @@ internal sealed class FakeRobustAccounts : IRobustClient
 
     public int Lookups { get; private set; }
 
+    /// <summary>Simulates Robust not running: lookups and sign-in checks fail like a refused connection.</summary>
+    public bool Down { get; set; }
+
     public FakeRobustAccounts Add(string first, string last, int level, string password)
     {
         _accounts[(first, last)] = (new RobustAccount(Guid.NewGuid(), first, last, level, ""), password);
@@ -105,9 +166,18 @@ internal sealed class FakeRobustAccounts : IRobustClient
     public Task<RobustAccount?> GetAccountAsync(string first, string last, CancellationToken ct)
     {
         Lookups++;
+        if (Down) throw new HttpRequestException("Connection refused");
         return Task.FromResult(_accounts.TryGetValue((first, last), out var a) ? a.Account : null);
     }
 
     public Task<bool> AuthenticateAsync(Guid principal, string plainPassword, CancellationToken ct) =>
-        Task.FromResult(_accounts.Values.Any(a => a.Account.PrincipalId == principal && a.Password == plainPassword));
+        Down ? throw new HttpRequestException("Connection refused") : Task.FromResult(_accounts.Values.Any(a => a.Account.PrincipalId == principal && a.Password == plainPassword));
+}
+
+/// <summary>Who's online without a database: returns <see cref="Result"/>.</summary>
+internal sealed class FakeOnlineUsers : IOnlineUsers
+{
+    public OnlineList Result { get; set; } = new([], true);
+
+    public Task<OnlineList> ListAsync(CancellationToken ct) => Task.FromResult(Result);
 }

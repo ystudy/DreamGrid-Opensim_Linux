@@ -4,6 +4,7 @@ using System.Text.Json;
 using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.Modules;
 using DreamGrid.Launcher.Core.OpenSim;
+using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Core.Settings;
 using Microsoft.Extensions.Logging;
 
@@ -12,13 +13,15 @@ namespace DreamGrid.Launcher.Core.Api;
 /// <summary>
 /// The port-8001 command API (spec 5, <c>API.txt</c>): <c>RegionStatus</c> and <c>regionlist</c> need no password,
 /// every process command needs level 200; module commands are appended. Replies are "ACK", data, or "NAK reason".
-/// <paramref name="settings"/> is read per request, so a changed MachineId or region is seen at once.
+/// <paramref name="settings"/> is read per request, so a changed MachineId or region is seen at once. Avatar password
+/// checks share the website's <see cref="LoginThrottle"/>: a locked name is refused without asking Robust.
 /// </summary>
 public sealed class LegacyCommandApi(
     IGridController grid,
     IRobustClient robust,
     Func<LauncherSettings> settings,
     IEnumerable<IFeatureModule> modules,
+    LoginThrottle throttle,
     ILogger<LegacyCommandApi> log)
 {
     public const int MachineLevel = 1000;
@@ -52,13 +55,23 @@ public sealed class LegacyCommandApi(
         if (string.IsNullOrEmpty(r.Password)) return 0;
         if (FixedEquals(r.Password, settings().MachineId)) return MachineLevel;
 
-        var parts = (r.Avatar ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (parts.Length != 2) return 0;
+        var name = AvatarName.Parse(r.Avatar);
+        if (!name.IsComplete) return 0;
+        if (throttle.IsLocked(name.Key))
+        {
+            log.LogInformation("Avatar check for first name {First} refused: too many failed attempts.", name.ForLog);
+            return 0;
+        }
         try
         {
-            var account = await robust.GetAccountAsync(parts[0], parts[1], ct);
-            if (account is null) return 0;
-            return await robust.AuthenticateAsync(account.PrincipalId, r.Password, ct) ? account.UserLevel : 0;
+            var account = await robust.GetAccountAsync(name.First, name.Last, ct);
+            if (account is null || !await robust.AuthenticateAsync(account.PrincipalId, r.Password, ct))
+            {
+                throttle.RecordFailure(name.Key);
+                return 0;
+            }
+            throttle.RecordSuccess(name.Key);
+            return account.UserLevel;
         }
         catch (Exception e) when (!ct.IsCancellationRequested)
         {
