@@ -2,7 +2,8 @@
 # Install smoke for setup/debian/install.sh in a systemd-booted Debian container.
 #
 # Usage: smoke.sh <debian-version> <tarball> <tarball-v2>
-#   <tarball-v2> is the same build packaged with another -Version (the upgrade step).
+#   <tarball-v2> is the same build packaged with another -Version (the upgrade step). When its RUNTIME_VERSION
+#   differs too, the upgrade stage also checks that the runtime the adopted region still uses is kept.
 #   INSTALL_SMOKE_DIR  a published tests/DreamGrid.InstallSmoke (default: published here with dotnet).
 #   SMOKE_LOGS         a directory that receives the journal and the launcher's logs when a stage fails.
 #   KEEP_CONTAINER=1   leaves the container running afterwards.
@@ -52,10 +53,12 @@ on_exit() {
 }
 trap on_exit EXIT
 
-version_of() { tar -xzOf "$1" dreamgrid/VERSION | head -n 1; }
-v1=$(version_of "$tarball")
-v2=$(version_of "$tarball_v2")
+version_of() { tar -xzOf "$1" "dreamgrid/$2" | head -n 1; }
+v1=$(version_of "$tarball" VERSION)
+v2=$(version_of "$tarball_v2" VERSION)
 [ "$v1" != "$v2" ] || fail "both tarballs are version $v1"
+runtime1=/opt/dreamgrid-runtime/$(version_of "$tarball" RUNTIME_VERSION)
+runtime2=/opt/dreamgrid-runtime/$(version_of "$tarball_v2" RUNTIME_VERSION)
 
 work=$(mktemp -d)
 if [ -n "${INSTALL_SMOKE_DIR:-}" ]; then
@@ -110,8 +113,9 @@ ok "install.sh refused with the port sentence"
 
 # --- Install -----------------------------------------------------------------------------------------------------
 stage=install
+# As the one-liner runs it: the script on stdin, so nothing it starts may read stdin.
 set +e
-out=$(in_container bash /root/install.sh --from /root/dreamgrid-v1.tar.gz 2>&1)
+out=$(in_container sh -c 'cat /root/install.sh | bash -s -- --from /root/dreamgrid-v1.tar.gz' 2>&1)
 code=$?
 set -e
 [ "$code" -eq 0 ] || fail "install.sh exited $code: $(tail -n 30 <<<"$out")"
@@ -130,11 +134,14 @@ for _ in $(seq 1 30); do
     sleep 1
 done
 in_container curl -fsS -o /dev/null http://127.0.0.1:8001/css/site.css || fail "the website does not serve /css/site.css"
-ok "service active as dreamgrid; link $link"
+in_container grep -qF "ExecStart=$runtime1/dotnet " /etc/systemd/system/dreamgrid.service ||
+    fail "the unit does not run the launcher on $runtime1"
+[ "$(in_container stat -c '%U %a' "$runtime1")" = "root 755" ] || fail "$runtime1 is not root-owned 755"
+ok "installed in pipe mode; service active as dreamgrid on $runtime1; link $link"
 
 # --- Setup, logins, service stop/start with adoption (InstallSmoke) -----------------------------------------------
 stage=installsmoke
-in_container env DOTNET_ROOT=/opt/dreamgrid/dotnet /opt/dreamgrid/dotnet/dotnet /root/installsmoke/DreamGrid.InstallSmoke.dll \
+in_container env DOTNET_ROOT="$runtime1" "$runtime1/dotnet" /root/installsmoke/DreamGrid.InstallSmoke.dll \
     --url http://127.0.0.1:8001 --setup-link "$link" --data "$data" --robust-port 8002 \
     --stop "systemctl stop dreamgrid" --start "systemctl start dreamgrid" || fail "InstallSmoke failed"
 ok "InstallSmoke passed"
@@ -143,7 +150,7 @@ ok "InstallSmoke passed"
 stage=second-launcher
 main_pid=$(in_container systemctl show -p MainPID --value dreamgrid)
 set +e
-out=$(in_container runuser -u dreamgrid -- /opt/dreamgrid/dotnet/dotnet /opt/dreamgrid/launcher/DreamGrid.Launcher.dll \
+out=$(in_container runuser -u dreamgrid -- "$runtime1/dotnet" /opt/dreamgrid/launcher/DreamGrid.Launcher.dll \
     --data "$data" --opensim /opt/dreamgrid/bin --mariadb-bin /usr/sbin 2>&1)
 code=$?
 set -e
@@ -182,7 +189,18 @@ done
 [ "$(in_container cat "$pid_file")" = "$region_pid" ] || fail "the region PID changed from $region_pid"
 in_container kill -0 "$region_pid" || fail "the region (PID $region_pid) is gone"
 [ "$(in_container sha256sum "$data/settings.json")" = "$settings_before" ] || fail "settings.json changed"
-ok "footer shows $v2; region PID $region_pid unchanged; settings.json byte-identical"
+in_container grep -qF "ExecStart=$runtime2/dotnet " /etc/systemd/system/dreamgrid.service ||
+    fail "the unit does not run the launcher on $runtime2"
+in_container test -x "$runtime2/dotnet" || fail "$runtime2 is missing"
+region_exe=$(in_container readlink "/proc/$region_pid/exe")
+if [ "$runtime1" != "$runtime2" ]; then
+    [ "$region_exe" = "$runtime1/dotnet" ] || fail "the adopted region runs $region_exe, not $runtime1/dotnet"
+    in_container test -x "$runtime1/dotnet" || fail "$runtime1 was removed while the adopted region still uses it"
+    runtimes="kept $runtime1 for the adopted region, launcher on $runtime2"
+else
+    runtimes="runtime $runtime2"
+fi
+ok "footer shows $v2; logins enabled; region PID $region_pid unchanged; settings.json byte-identical; $runtimes"
 
 stage=finished
 echo "Debian $debian install smoke: all stages passed"
