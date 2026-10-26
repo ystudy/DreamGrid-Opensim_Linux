@@ -203,7 +203,7 @@ set -e
 grep -qF "Upgraded DreamGrid $v1 → $v2." <<<"$out" || fail "no upgrade line: $out"
 footer=""
 for _ in $(seq 1 60); do
-    footer=$(in_container curl -fsS http://127.0.0.1:8001/login 2>/dev/null | grep -oE '<footer>[^<]*</footer>' || true)
+    footer=$(in_container curl -fsS http://127.0.0.1:8001/login 2>/dev/null | grep -oE '<footer>[^<]*</footer>' | sed -e 's/&#x2B;/+/g' -e 's/&#43;/+/g' -e 's/&amp;/\&/g' || true)
     [ -n "$footer" ] && break
     sleep 2
 done

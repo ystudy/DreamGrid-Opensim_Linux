@@ -73,19 +73,27 @@ public static partial class GridConsoleCommands
 
     /// <summary>
     /// True when <c>terrain stats</c> (TerrainModule, which logs load results only to its log file) shows island
-    /// relief. The flat default terrain a failed load leaves behind has max == min.
+    /// relief. The flat default terrain a failed load leaves behind has max == min. The console thread may still be
+    /// finishing <c>terrain load</c> when the first <c>terrain stats</c> is sent, so the command is repeated until a
+    /// stats line shows up or <see cref="TerrainStatsWait"/> has passed; only a stats line decides.
     /// </summary>
-    public static async Task<bool> IslandTerrainLoadedAsync(RestConsoleClient console, TimeSpan settle, CancellationToken ct)
+    public static async Task<bool> IslandTerrainLoadedAsync(RestConsoleClient console, TimeSpan settle, TimeProvider time, CancellationToken ct)
     {
-        foreach (var line in await console.RunAsync("terrain stats", settle, ct))
+        var deadline = time.GetUtcNow() + TerrainStatsWait;
+        while (true)
         {
-            var m = StatsPattern().Match(line);
-            if (!m.Success) continue;
-            if (!TryParse(m.Groups[1].Value, out var max) || !TryParse(m.Groups[2].Value, out var min)) return false;
-            return max - min >= 10;
+            foreach (var line in await console.RunAsync("terrain stats", settle, ct))
+            {
+                var m = StatsPattern().Match(line);
+                if (!m.Success) continue;
+                if (!TryParse(m.Groups[1].Value, out var max) || !TryParse(m.Groups[2].Value, out var min)) return false;
+                return max - min >= 10;
+            }
+            if (time.GetUtcNow() >= deadline) return false;
         }
-        return false;
     }
+
+    private static readonly TimeSpan TerrainStatsWait = TimeSpan.FromSeconds(30);
 
     private static bool TryParse(string text, out double value) =>
         double.TryParse(text.Trim().Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out value);

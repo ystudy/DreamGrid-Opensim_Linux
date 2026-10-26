@@ -168,9 +168,13 @@ jobs:
             if ($LASTEXITCODE -ne 0) { exit 1 }
           }
 
-      # Pinned (a version on the Chocolatey feed); build.ps1 refuses an ISCC older than 6.3.
+      # The runner image may already carry Inno Setup (choco refuses to install an older pin over a newer one);
+      # build.ps1 prints the version it finds and refuses an ISCC older than 6.3. Otherwise a pinned version.
       - name: Install Inno Setup
-        run: choco install innosetup --version 6.5.4 -y --no-progress
+        run: |
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if (Test-Path -LiteralPath $iscc) { Write-Host "Using the preinstalled $iscc" }
+          else { choco install innosetup --version 6.5.4 -y --no-progress; if ($LASTEXITCODE -ne 0) { exit 1 } }
 
       - name: Build the installers
         run: |

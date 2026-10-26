@@ -204,7 +204,7 @@ if ($v2 -eq $v1) { Fail "both installers are version $v1" }
 $footer = $null
 Wait-Until 120 {
     $page = Get-Http '/login'
-    if ($page -and $page -match '<footer>[^<]*</footer>') { $script:footer = $Matches[0] }
+    if ($page -and $page -match '<footer>[^<]*</footer>') { $script:footer = [System.Net.WebUtility]::HtmlDecode($Matches[0]) }
     $script:footer -eq "<footer>DreamGrid $v2</footer>"
 } | Out-Null
 if ($footer -ne "<footer>DreamGrid $v2</footer>") { Fail "the /login footer is '$footer', not version $v2" }

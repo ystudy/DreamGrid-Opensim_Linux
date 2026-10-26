@@ -569,7 +569,7 @@ public sealed partial class GridController(
         // loaded has relief of its own that would pass for the island if this load failed.
         await console.RunAsync("terrain fill 0", ConsoleSettle, ct);
         await console.RunAsync($"terrain load \"{Fwd(r32)}\"", ConsoleSettle, ct);
-        if (!await GridConsoleCommands.IslandTerrainLoadedAsync(console, ConsoleSettle, ct))
+        if (!await GridConsoleCommands.IslandTerrainLoadedAsync(console, ConsoleSettle, time, ct))
             throw new InvalidOperationException($"The region did not load the island terrain {r32}; see the region log.");
     }
 
