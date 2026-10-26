@@ -49,6 +49,17 @@ public sealed class PidFileTests : IDisposable
     }
 
     [Fact]
+    public void WriteStart_creates_the_folder_so_it_can_come_before_the_pid_file()
+    {
+        var file = Path.Combine(_dir, "new", "child.pid");
+
+        PidFile.WriteStart(file, Environment.ProcessId);
+        PidFile.Write(file, Environment.ProcessId);
+
+        Assert.Equal(Environment.ProcessId, PidFile.ReadLive(file, Environment.ProcessPath));
+    }
+
+    [Fact]
     public void Delete_removes_the_sidecar_too()
     {
         var file = Path.Combine(_dir, "gone.pid");

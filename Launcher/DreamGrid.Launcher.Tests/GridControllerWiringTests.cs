@@ -143,6 +143,25 @@ public sealed class GridControllerWiringTests : IDisposable
     }
 
     [Fact]
+    public async Task Stop_all_clears_an_earlier_start_failure()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var s = _store.LoadOrCreate();
+        var robust = new TcpListener(IPAddress.Any, s.RobustPublicPort);
+        robust.Start();
+        try
+        {
+            await Assert.ThrowsAsync<PortConflictException>(() => _grid.StartAsync(ct));
+        }
+        finally { robust.Stop(); }
+        Assert.NotNull(_grid.GetStatus().StartFailure);
+
+        await _grid.StopAllAsync(ct);
+
+        Assert.Null(_grid.GetStatus().StartFailure);
+    }
+
+    [Fact]
     public async Task A_port_conflict_on_a_component_start_is_kept_in_the_status()
     {
         var s = _store.LoadOrCreate();

@@ -108,6 +108,8 @@ public sealed partial class GridController(
         {
             LoadSettings();
             await StopAllCoreAsync(ct);
+            // A deliberate stop ends what an earlier start reported: the dashboard shows a stopped world, not a failed one.
+            _startFailure = null;
         }
         finally { _activity = GridActivity.None; _ops.Release(); }
     }

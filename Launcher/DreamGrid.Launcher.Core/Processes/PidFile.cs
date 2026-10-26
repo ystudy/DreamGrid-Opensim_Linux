@@ -48,6 +48,7 @@ public static class PidFile
     public static void WriteStart(string path, int pid)
     {
         var sidecar = StartPath(path);
+        CreateFolder(path);
         if (ProcessImage.StartId(pid) is not { } id)
         {
             try { File.Delete(sidecar); }
@@ -61,11 +62,16 @@ public static class PidFile
 
     public static void Write(string path, int pid)
     {
-        var dir = Path.GetDirectoryName(Path.GetFullPath(path));
-        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+        CreateFolder(path);
         var temp = path + ".tmp";
         File.WriteAllText(temp, pid.ToString(CultureInfo.InvariantCulture));
         File.Move(temp, path, overwrite: true);
+    }
+
+    private static void CreateFolder(string path)
+    {
+        var dir = Path.GetDirectoryName(Path.GetFullPath(path));
+        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
     }
 
     public static void Delete(string path)

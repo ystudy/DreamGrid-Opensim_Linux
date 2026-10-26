@@ -154,6 +154,11 @@ static int ReadPid(string file)
     return int.TryParse(text, out var pid) && pid > 0 ? pid : throw new SmokeFailure($"no PID in {file}");
 }
 
+/// <summary>
+/// True while the process exists. The region runs as the service's account, which an unelevated smoke may not inspect:
+/// access denied (Win32Exception) means it exists, so it counts as alive; a process that is not there (ArgumentException)
+/// or that exited while being looked at (InvalidOperationException) counts as gone.
+/// </summary>
 static bool IsAlive(int pid)
 {
     try
@@ -162,6 +167,8 @@ static bool IsAlive(int pid)
         return !process.HasExited;
     }
     catch (ArgumentException) { return false; }
+    catch (InvalidOperationException) { return false; }
+    catch (System.ComponentModel.Win32Exception) { return true; }
 }
 
 /// <summary>Runs a service command through the shell; a non-zero exit fails the stage with its output.</summary>

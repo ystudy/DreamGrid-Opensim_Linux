@@ -89,8 +89,9 @@ public sealed class ManagedProcess(ProcessSpec spec, RestartPolicy policy, TimeP
             if (current)
             {
                 Attach(launched.Pid, process);
-                PidFile.Write(spec.PidFile, launched.Pid);
+                // The sidecar first: a new PID file never sits beside an older process's start identity.
                 PidFile.WriteStart(spec.PidFile, launched.Pid);
+                PidFile.Write(spec.PidFile, launched.Pid);
             }
         }
         if (!current)
