@@ -20,6 +20,17 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.DataProtection;
 
+// Installer verbs (--version, admin-link, stop-grid) run instead of the host.
+var processEnv = new Dictionary<string, string?>
+{
+    ["DREAMGRID_DATA"] = Environment.GetEnvironmentVariable("DREAMGRID_DATA"),
+    ["DREAMGRID_OPENSIM"] = Environment.GetEnvironmentVariable("DREAMGRID_OPENSIM"),
+    ["DREAMGRID_MARIADB_BIN"] = Environment.GetEnvironmentVariable("DREAMGRID_MARIADB_BIN"),
+    ["ProgramData"] = Environment.GetEnvironmentVariable("ProgramData"),
+};
+if (await CommandLine.RunVerbAsync(args, processEnv, Console.Out, CancellationToken.None) is { } verbExit)
+    return verbExit;
+
 var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseSystemd();
 builder.Host.UseWindowsService(o => o.ServiceName = "DreamGrid");
@@ -51,6 +62,13 @@ try
     paths = LauncherPaths.Resolve(args, env, OperatingSystem.IsWindows());
     store = new SettingsStore(paths.SettingsFile);
     settings = store.LoadOrCreate();
+    // --web-port is the one settings change made outside the controller: at startup, under the lock, before anything reads the port.
+    if (CommandLine.ParseWebPort(args) is { } webPort)
+    {
+        if (CommandLine.ApplyWebPort(store, webPort) is { } portError)
+            throw new ArgumentException(portError);
+        settings = store.LoadOrCreate();
+    }
     LauncherPaths.CreateOwnerOnly(paths.Data);
     LauncherPaths.CreateOwnerOnly(paths.DataProtectionKeys);
 }
@@ -75,7 +93,6 @@ builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
 
 builder.Logging.AddProvider(new RollingFileLoggerProvider(Path.Combine(paths.Logs, "launcher.log")));
 
-builder.Services.AddHttpClient();
 // Keys for the sign-in and antiforgery cookies live in the (owner-only) data directory, not the service account's
 // profile, so cookies stay valid across restarts and the keys go wherever the data goes.
 builder.Services.AddDataProtection()
@@ -110,35 +127,9 @@ builder.Services.AddRazorPages(o =>
 });
 // The dashboard's script sends the token in this header to /api/grid/*.
 builder.Services.AddAntiforgery(o => o.HeaderName = "RequestVerificationToken");
-builder.Services.AddSingleton(paths);
-builder.Services.AddSingleton(store);
-// Read per request from the controller's cache (never the file), so a change the controller saved is seen at once.
-builder.Services.AddSingleton<Func<LauncherSettings>>(sp => sp.GetRequiredService<IGridController>().CurrentSettings);
+builder.Services.AddGrid(paths, store);
 builder.Services.AddSingleton<LogReader>();
-builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<LoginThrottle>();
-builder.Services.AddSingleton(sp =>
-{
-    try
-    {
-        return MariaDbBinaries.Locate(paths.MariaDbBin, OperatingSystem.IsWindows());
-    }
-    catch (MariaDbNotFoundException e)
-    {
-        // Not fatal: the host still serves the web port and the grid status; the grid start reports this message.
-        return MariaDbBinaries.NotFound(e.Message);
-    }
-});
-// One instance per module, registered under each seam it implements (spec 6.9).
-builder.Services.AddSingleton<LogLevelModule>();
-builder.Services.AddSingleton<IFeatureModule>(sp => sp.GetRequiredService<LogLevelModule>());
-builder.Services.AddSingleton<ISettingsPage>(sp => sp.GetRequiredService<LogLevelModule>());
-builder.Services.AddSingleton<IRobustClient>(sp => new RobustClient(
-    sp.GetRequiredService<IHttpClientFactory>().CreateClient("DreamGrid.Robust"),
-    // Resolved per call: the controller itself depends on this client.
-    () => sp.GetRequiredService<IGridController>().CurrentSettings()));
-builder.Services.AddSingleton<GridController>();
-builder.Services.AddSingleton<IGridController>(sp => sp.GetRequiredService<GridController>());
 builder.Services.AddSingleton<LegacyCommandApi>();
 builder.Services.AddSingleton<IOnlineUsers>(sp => new OnlineUsers(sp.GetRequiredService<Func<LauncherSettings>>(),
     sp.GetRequiredService<ILogger<OnlineUsers>>()));

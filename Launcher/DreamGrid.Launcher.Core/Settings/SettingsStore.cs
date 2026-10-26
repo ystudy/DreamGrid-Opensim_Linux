@@ -23,6 +23,14 @@ public sealed class SettingsStore(string path)
             return fresh;
         }
 
+        return Read();
+    }
+
+    /// <summary>The saved settings, or null when the file does not exist. Creates nothing.</summary>
+    public LauncherSettings? TryLoad() => File.Exists(path) ? Read() : null;
+
+    private LauncherSettings Read()
+    {
         try
         {
             // ReadWrite | Delete sharing keeps the read from blocking writers longer than it must (see ReplaceWithRetry).

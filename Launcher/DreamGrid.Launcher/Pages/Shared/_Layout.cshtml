@@ -2,7 +2,7 @@
 @using DreamGrid.Launcher.Core.Settings
 @inject Func<LauncherSettings> Settings
 @{
-    var version = typeof(Program).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "dev";
+    var version = DreamGrid.Launcher.CommandLine.Version();
     var gridName = Settings().GridName;
 }
 <!DOCTYPE html>
