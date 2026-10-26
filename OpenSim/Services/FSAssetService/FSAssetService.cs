@@ -77,6 +77,10 @@ namespace OpenSim.Services.FSAssetService
         private static bool m_mainInitialized;
         private static object m_initLock = new object();
 
+        // Two saves of the same content must not write the same file at once. Static because
+        // the asset service and the HG asset service share one folder in the same process.
+        private static readonly object[] m_hashLocks = CreateHashLocks(256);
+
         private bool m_isMainInstance;
 
         public FSAssetConnector(IConfigSource config)
@@ -247,13 +251,40 @@ namespace OpenSim.Services.FSAssetService
             }
         }
 
+        private static object[] CreateHashLocks(int count)
+        {
+            object[] locks = new object[count];
+            for (int i = 0; i < count; i++)
+                locks[i] = new object();
+            return locks;
+        }
+
+        private static object HashLock(string hash)
+        {
+            return m_hashLocks[(uint)StringComparer.OrdinalIgnoreCase.GetHashCode(hash) % (uint)m_hashLocks.Length];
+        }
+
+        // Store now writes the final file itself. This thread only drains *.asset files that
+        // older versions left in the spool folder, and it never throws: an exception on this
+        // thread used to stop all of Robust.
         private void Writer()
         {
             m_log.InfoFormat("[FSASSETS]: Writer started with spooldir {0} and basedir {1}", m_SpoolDirectory, m_FSBase);
 
+            ReportStaleSpoolTemps();
+
             while (true)
             {
-                string[] files = Directory.GetFiles(m_SpoolDirectory);
+                string[] files;
+                try
+                {
+                    files = Directory.GetFiles(m_SpoolDirectory, "*.asset");
+                }
+                catch (Exception e)
+                {
+                    m_log.ErrorFormat("[FSASSETS]: Cannot read spool folder {0}: {1}", m_SpoolDirectory, e.Message);
+                    files = Array.Empty<string>();
+                }
 
                 if (files.Length > 0)
                 {
@@ -261,92 +292,17 @@ namespace OpenSim.Services.FSAssetService
                     for (int i = 0 ; i < files.Length ; i++)
                     {
                         string hash = Path.GetFileNameWithoutExtension(files[i]);
-                        string s = HashToFile(hash);
-                        string diskFile = Path.Combine(m_FSBase, s);
-                        bool pathOk = false;
-
-                        // The cure for chicken bones!
-                        while(true)
+                        try
                         {
-                            try
+                            lock (HashLock(hash))
                             {
-                                // Try to make the directory we need for this file
-                                Directory.CreateDirectory(Path.GetDirectoryName(diskFile));
-                                pathOk = true;
-                                break;
-                            }
-                            catch (System.IO.IOException)
-                            {
-                                // Creating the directory failed. This can't happen unless
-                                // a part of the path already exists as a file. Sadly the
-                                // SRAS data contains such files.
-                                string d = Path.GetDirectoryName(diskFile);
-
-                                // Test each path component in turn. If we can successfully
-                                // make a directory, the level below must be the chicken bone.
-                                while (d.Length > 0)
-                                {
-                                    Console.WriteLine(d);
-                                    try
-                                    {
-                                        Directory.CreateDirectory(Path.GetDirectoryName(d));
-                                    }
-                                    catch (System.IO.IOException)
-                                    {
-                                        d = Path.GetDirectoryName(d);
-
-                                        // We failed making the directory and need to
-                                        // go up a bit more
-                                        continue;
-                                    }
-
-                                    // We succeeded in making the directory and (d) is
-                                    // the chicken bone
-                                    break;
-                                }
-
-                                // Is the chicken alive?
-                                if (d.Length > 0)
-                                {
-                                    Console.WriteLine(d);
-
-                                    FileAttributes attr = File.GetAttributes(d);
-
-                                    if ((attr & FileAttributes.Directory) == 0)
-                                    {
-                                        // The chicken bone should be resolved.
-                                        // Return to writing the file.
-                                        File.Delete(d);
-                                        continue;
-                                    }
-                                }
-                            }
-                            // Could not resolve, skipping
-                            m_log.ErrorFormat("[FSASSETS]: Could not resolve path creation error for {0}", diskFile);
-                            break;
-                        }
-
-                        if (pathOk)
-                        {
-                            try
-                            {
-                                byte[] data = File.ReadAllBytes(files[i]);
-
-                                using (GZipStream gz = new GZipStream(new FileStream(diskFile + ".gz", FileMode.Create), CompressionMode.Compress))
-                                {
-                                    gz.Write(data, 0, data.Length);
-                                }
-                                File.Delete(files[i]);
-
-                                //File.Move(files[i], diskFile);
-                            }
-                            catch(System.IO.IOException e)
-                            {
-                                if (e.Message.StartsWith("Win32 IO returned ERROR_ALREADY_EXISTS"))
+                                if (AssetExists(hash) || WriteGzAtomic(hash, File.ReadAllBytes(files[i])))
                                     File.Delete(files[i]);
-                                else
-                                    throw;
                             }
+                        }
+                        catch (Exception e)
+                        {
+                            m_log.ErrorFormat("[FSASSETS]: Could not move spool file {0}: {1}", files[i], e.Message);
                         }
                     }
 
@@ -358,6 +314,135 @@ namespace OpenSim.Services.FSAssetService
                 }
 
                 Thread.Sleep(1000);
+            }
+        }
+
+        // spool\spool\*.asset are temp files that never got renamed (old Store, two saves of the
+        // same content at once). Those whose asset is safely on disk are deleted; any other is
+        // left alone for a person to look at, as it may be the only copy.
+        private void ReportStaleSpoolTemps()
+        {
+            try
+            {
+                foreach (string file in Directory.GetFiles(Path.Combine(m_SpoolDirectory, "spool"), "*.asset"))
+                {
+                    string hash = Path.GetFileNameWithoutExtension(file);
+                    lock (HashLock(hash))
+                    {
+                        if (AssetExists(hash))
+                            File.Delete(file);
+                        else
+                            m_log.WarnFormat("[FSASSETS]: Unfinished spool file {0} has no asset file", file);
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                m_log.ErrorFormat("[FSASSETS]: Spool clean-up failed: {0}", e.Message);
+            }
+        }
+
+        // Makes the folder for an asset file. False when it cannot be made.
+        private bool MakeAssetFolder(string diskFile)
+        {
+            // The cure for chicken bones!
+            while(true)
+            {
+                try
+                {
+                    // Try to make the directory we need for this file
+                    Directory.CreateDirectory(Path.GetDirectoryName(diskFile));
+                    return true;
+                }
+                catch (System.IO.IOException)
+                {
+                    // Creating the directory failed. This can't happen unless
+                    // a part of the path already exists as a file. Sadly the
+                    // SRAS data contains such files.
+                    string d = Path.GetDirectoryName(diskFile);
+
+                    // Test each path component in turn. If we can successfully
+                    // make a directory, the level below must be the chicken bone.
+                    while (d.Length > 0)
+                    {
+                        Console.WriteLine(d);
+                        try
+                        {
+                            Directory.CreateDirectory(Path.GetDirectoryName(d));
+                        }
+                        catch (System.IO.IOException)
+                        {
+                            d = Path.GetDirectoryName(d);
+
+                            // We failed making the directory and need to
+                            // go up a bit more
+                            continue;
+                        }
+
+                        // We succeeded in making the directory and (d) is
+                        // the chicken bone
+                        break;
+                    }
+
+                    // Is the chicken alive?
+                    if (d.Length > 0)
+                    {
+                        Console.WriteLine(d);
+
+                        FileAttributes attr = File.GetAttributes(d);
+
+                        if ((attr & FileAttributes.Directory) == 0)
+                        {
+                            // The chicken bone should be resolved.
+                            // Return to writing the file.
+                            File.Delete(d);
+                            continue;
+                        }
+                    }
+                }
+                // Could not resolve, skipping
+                m_log.ErrorFormat("[FSASSETS]: Could not resolve path creation error for {0}", diskFile);
+                return false;
+            }
+        }
+
+        // Writes hash.gz so that it is either complete or not there at all: gzip into hash.gz.tmp,
+        // force it to the disk, then rename. A crash or power cut can no longer leave a broken
+        // hash.gz behind. Call with HashLock(hash) held.
+        private bool WriteGzAtomic(string hash, byte[] data)
+        {
+            string diskFile = Path.Combine(m_FSBase, HashToFile(hash));
+            string finalFile = diskFile + ".gz";
+            string tempFile = finalFile + ".tmp";
+
+            try
+            {
+                if (!MakeAssetFolder(diskFile))
+                    return false;
+
+                using (FileStream fs = new FileStream(tempFile, FileMode.Create, FileAccess.Write, FileShare.None))
+                {
+                    using (GZipStream gz = new GZipStream(fs, CompressionMode.Compress, true))
+                    {
+                        gz.Write(data, 0, data.Length);
+                    }
+                    fs.Flush(true);
+                }
+
+                File.Move(tempFile, finalFile, true);
+                return true;
+            }
+            catch (Exception e)
+            {
+                m_log.ErrorFormat("[FSASSETS]: Could not write asset file {0}: {1}", finalFile, e.Message);
+                try
+                {
+                    File.Delete(tempFile);
+                }
+                catch
+                {
+                }
+                return false;
             }
         }
 
@@ -399,10 +484,40 @@ namespace OpenSim.Services.FSAssetService
             string s = HashToFile(hash);
             string diskFile = Path.Combine(m_FSBase, s);
 
-            if (File.Exists(diskFile + ".gz") || File.Exists(diskFile))
-                return true;
+            // An empty or zero-filled file (power cut before it reached the disk) does not count,
+            // so the next save of the same content writes it again.
+            return IsGoodGz(diskFile + ".gz") || IsNotEmpty(diskFile);
+        }
 
-            return false;
+        private static bool IsGoodGz(string path)
+        {
+            if (!File.Exists(path))
+                return false;
+
+            try
+            {
+                using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                {
+                    return fs.ReadByte() == 0x1f && fs.ReadByte() == 0x8b;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool IsNotEmpty(string path)
+        {
+            try
+            {
+                FileInfo fi = new FileInfo(path);
+                return fi.Exists && fi.Length > 0;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         public virtual bool[] AssetsExist(string[] ids)
@@ -646,12 +761,12 @@ namespace OpenSim.Services.FSAssetService
                 asset.Description = assetDescription;
             }
 
-            if (!AssetExists(hash))
+            // The file is written, complete and on the disk, before the database row. A row can
+            // then never point at a file that is not there. A crash in between only leaves an
+            // unused file, which the next save of the same content reuses.
+            lock (HashLock(hash))
             {
-                string tempFile = Path.Combine(Path.Combine(m_SpoolDirectory, "spool"), hash + ".asset");
-                string finalFile = Path.Combine(m_SpoolDirectory, hash + ".asset");
-
-                if (!File.Exists(finalFile))
+                if (!AssetExists(hash))
                 {
                     // Deal with bug introduced in Oct. 20 (1eb3e6cc43e2a7b4053bc1185c7c88e22356c5e8)
                     // Fix bad assets before storing on this server
@@ -661,13 +776,8 @@ namespace OpenSim.Services.FSAssetService
                         asset.Data = Utils.StringToBytes(xml);
                     }
 
-                    FileStream fs = File.Create(tempFile);
-
-                    fs.Write(asset.Data, 0, asset.Data.Length);
-
-                    fs.Close();
-
-                    File.Move(tempFile, finalFile);
+                    if (!WriteGzAtomic(hash, asset.Data))
+                        return UUID.Zero.ToString();
                 }
             }
 
