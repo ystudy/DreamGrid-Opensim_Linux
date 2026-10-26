@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Drives a real install (Debian service or Windows service) through the website's setup to a running region, then
+       stops and starts the service and checks that the region was adopted, not restarted. No launcher references:
+       it only talks HTTP to the installed launcher and reads the region's PID file. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>DreamGrid.InstallSmoke</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The end-to-end test's browser stand-in, shared as source; it reports failures with xunit's Assert. -->
+    <Compile Include="..\..\Launcher\DreamGrid.Launcher.IntegrationTests\WebSession.cs" Link="WebSession.cs" />
+    <PackageReference Include="xunit.v3.assert" Version="4.0.2" />
+    <PackageReference Include="xunit.v3.extensibility.core" Version="4.0.2" />
+    <PackageReference Include="AngleSharp" Version="1.8.6" />
+  </ItemGroup>
+
+</Project>

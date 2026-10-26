@@ -21,3 +21,6 @@
 *.so  binary
 *.dylib binary
 *.anim binary
+
+# Shell scripts, the unit and the smoke image run on Linux: keep LF in every checkout.
+setup/debian/** text eol=lf
