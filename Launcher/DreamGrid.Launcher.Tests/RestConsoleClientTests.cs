@@ -226,6 +226,114 @@ public class RestConsoleClientTests
         Assert.False(await c.IsUpAsync(CancellationToken.None));
     }
 
+    [Fact]
+    public async Task Late_output_from_previous_command_is_not_returned()
+    {
+        var lateGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reads = 0;
+        var h = new FuncHandler(async r =>
+        {
+            var path = r.RequestUri!.AbsolutePath;
+            if (path == "/StartSession/") return (HttpStatusCode.OK, StartOk);
+            if (path == "/SessionCommand/") return (HttpStatusCode.OK, CmdOk);
+            switch (Interlocked.Increment(ref reads))
+            {
+                case 1: return (HttpStatusCode.OK, Lines(("old scrollback", "false", "false", "false")));
+                case 2: // still outstanding when the first command ends; answers late
+                    await lateGate.Task;
+                    return (HttpStatusCode.OK, Lines(("late from a", "false", "false", "false")));
+                case 3: return (HttpStatusCode.OK, Lines(("b output", "false", "false", "false")));
+                default: return (HttpStatusCode.OK, Empty);
+            }
+        });
+        var c = new RestConsoleClient(new HttpClient(h), Base, "dg", "pw");
+
+        Assert.Empty(await c.RunAsync("a", TimeSpan.FromMilliseconds(50), CancellationToken.None));
+        _ = Task.Run(async () => { await Task.Delay(20, TestContext.Current.CancellationToken); lateGate.SetResult(); }, TestContext.Current.CancellationToken);
+        var lines = await c.RunAsync("b", TimeSpan.FromMilliseconds(100), CancellationToken.None);
+
+        Assert.Equal(new[] { "b output" }, lines);
+    }
+
+    [Fact]
+    public async Task Expired_session_is_reopened_and_command_retried_once()
+    {
+        var starts = 0;
+        var readsPerSession = new Dictionary<string, int>();
+        var (c, h) = Make(r =>
+        {
+            if (r.Uri.AbsolutePath == "/StartSession/")
+                return (HttpStatusCode.OK, StartOk.Replace(Sid, "sid-" + ++starts));
+            if (r.Uri.AbsolutePath == "/SessionCommand/")
+                return (HttpStatusCode.OK, CmdOk);
+            var sid = r.Uri.AbsolutePath.Split('/')[2];
+            var n = readsPerSession[sid] = readsPerSession.GetValueOrDefault(sid) + 1;
+            // The first session dies after its scrollback read ("unknown session" -> 404 on read).
+            if (sid == "sid-1" && n >= 2) return (HttpStatusCode.NotFound, "");
+            return (HttpStatusCode.OK, n switch
+            {
+                1 => Lines(("old scrollback", "false", "false", "false")),
+                2 => Lines(("done", "false", "false", "false")),
+                _ => Empty,
+            });
+        });
+
+        var lines = await c.RunAsync("x", TimeSpan.FromMilliseconds(50), CancellationToken.None);
+
+        Assert.Equal(2, starts);
+        Assert.Equal(new[] { "done" }, lines);
+        var cmds = h.Requests.Where(r => r.Uri.AbsolutePath == "/SessionCommand/").ToList();
+        Assert.Equal(new[] { "sid-1", "sid-2" }, cmds.Select(r => r.Form("ID")));
+        Assert.All(cmds, r => Assert.Equal("x", r.Form("COMMAND")));
+    }
+
+    [Fact]
+    public async Task Second_expiry_in_same_call_throws()
+    {
+        var starts = 0;
+        // Every session answers its first (scrollback) read, then reports itself unknown.
+        var reads = new Dictionary<string, int>();
+        var h2 = new FuncHandler(async r =>
+        {
+            await Task.CompletedTask;
+            var path = r.RequestUri!.AbsolutePath;
+            if (path == "/StartSession/") return (HttpStatusCode.OK, StartOk.Replace(Sid, "sid-" + ++starts));
+            if (path == "/SessionCommand/") return (HttpStatusCode.OK, CmdOk);
+            var sid = path.Split('/')[2];
+            var n = reads[sid] = reads.GetValueOrDefault(sid) + 1;
+            return n == 1 ? (HttpStatusCode.OK, Empty) : (HttpStatusCode.Unauthorized, "");
+        });
+        var client = new RestConsoleClient(new HttpClient(h2), Base, "dg", "pw");
+
+        await Assert.ThrowsAnyAsync<HttpRequestException>(() =>
+            client.RunAsync("x", TimeSpan.FromMilliseconds(50), CancellationToken.None));
+
+        Assert.Equal(2, starts); // reopened once, not again
+    }
+
+    [Fact]
+    public async Task IsUp_true_when_close_times_out()
+    {
+        var h = new FuncHandler(r =>
+        {
+            var path = r.RequestUri!.AbsolutePath;
+            if (path == "/CloseSession/") throw new TaskCanceledException("timed out");
+            return Task.FromResult((HttpStatusCode.OK, StartOk));
+        });
+        var c = new RestConsoleClient(new HttpClient(h), Base, "dg", "pw");
+
+        Assert.True(await c.IsUpAsync(CancellationToken.None));
+    }
+
+    private sealed class FuncHandler(Func<HttpRequestMessage, Task<(HttpStatusCode Status, string Body)>> reply) : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            var (status, body) = await reply(request);
+            return new HttpResponseMessage(status) { Content = new StringContent(body) };
+        }
+    }
+
     private sealed class ThrowingHandler : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) =>

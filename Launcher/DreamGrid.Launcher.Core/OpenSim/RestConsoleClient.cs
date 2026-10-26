@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net;
 using System.Xml.Linq;
+using Microsoft.Extensions.Logging;
 
 namespace DreamGrid.Launcher.Core.OpenSim;
 
@@ -20,6 +21,12 @@ public sealed class ConsoleAuthException(string message) : Exception(message);
 /// <item>A new session is sent the console scrollback (up to 1000 lines) on its first read. Every session this
 /// client creates (first use, or restart after a 401/404) has that scrollback read and discarded before a
 /// command is sent.</item>
+/// <item>The server reports an unknown or expired session as HTTP 404 (/SessionCommand/ and /CloseSession/ with
+/// an ID missing from its connection table; sessions are dropped after ~500 s without a read, and the
+/// session's /ReadResponses/ handler is removed with it). 401 is what /StartSession/ answers to bad
+/// credentials; a 401 on read or send is treated as expiry too. A dropped session whose read handler is
+/// still registered answers an empty reply, which cannot be told apart from "no output". A call that sees
+/// expiry reopens the session once and retries its command once; a second expiry throws.</item>
 /// <item>/ReadResponses/ is a long poll: with no pending lines the server holds the request for ~25 s, and it
 /// advances the session's "last line seen" marker when it builds the reply. A read the client cancelled could
 /// therefore swallow lines, so reads are never cancelled. The client only stops waiting: the read stays
@@ -29,10 +36,12 @@ public sealed class ConsoleAuthException(string message) : Exception(message);
 /// <see cref="RunAsync"/>); Prompt="true" with Command="false" is an interactive question (kept).</item>
 /// </list>
 /// </remarks>
-public sealed class RestConsoleClient(HttpClient http, Uri baseUri, string user, string password)
+public sealed class RestConsoleClient(HttpClient http, Uri baseUri, string user, string password,
+    ILogger<RestConsoleClient>? log = null)
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan DrainWait = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan LateOutputWait = TimeSpan.FromMilliseconds(100);
     private const int MaxSettleMultiple = 20;
 
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -51,6 +60,7 @@ public sealed class RestConsoleClient(HttpClient http, Uri baseUri, string user,
             var probe = await StartSessionAsync(ct);
             try { using var _ = await http.PostAsync(Url("CloseSession"), Form(("ID", probe)), ct); }
             catch (HttpRequestException) { }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested) { } // the session opened: it is up
             return true;
         }
         catch (HttpRequestException) { return false; }
@@ -63,8 +73,17 @@ public sealed class RestConsoleClient(HttpClient http, Uri baseUri, string user,
         await _gate.WaitAsync(ct);
         try
         {
-            await EnsureSessionAsync(ct);
-            await PostCommandAsync(command, ct);
+            for (var attempt = 0; ; attempt++)
+            {
+                try
+                {
+                    var fresh = await EnsureSessionAsync(ct);
+                    if (!fresh) await DrainLateOutputAsync(ct);
+                    await PostCommandAsync(command, ct);
+                    return;
+                }
+                catch (SessionExpiredException) when (attempt == 0) { _sessionId = null; }
+            }
         }
         finally { _gate.Release(); }
     }
@@ -83,32 +102,61 @@ public sealed class RestConsoleClient(HttpClient http, Uri baseUri, string user,
         await _gate.WaitAsync(ct);
         try
         {
-            await EnsureSessionAsync(ct);
-            await PostCommandAsync(command, ct);
-
-            var result = new List<ConsoleOutput>();
-            var clock = Stopwatch.StartNew();
-            var lastNew = TimeSpan.Zero;
-            var cap = settle * MaxSettleMultiple;
-            while (true)
+            for (var attempt = 0; ; attempt++)
             {
-                var wait = Min(settle - (clock.Elapsed - lastNew), cap - clock.Elapsed);
-                if (wait <= TimeSpan.Zero) break;
-                var lines = await TryReadAsync(wait, ct);
-                if (lines is null) break; // nothing arrived in time; the read stays outstanding
-                if (lines.Count > 0)
+                try
                 {
-                    lastNew = clock.Elapsed;
-                    result.AddRange(lines.Where(l => !l.IsInput && !l.IsCommand).Select(l => new ConsoleOutput(l.Text, l.IsPrompt)));
+                    var fresh = await EnsureSessionAsync(ct);
+                    if (!fresh) await DrainLateOutputAsync(ct);
+                    await PostCommandAsync(command, ct);
+                    return await CollectAsync(settle, ct);
                 }
-                else
-                {
-                    await Task.Delay(PollInterval, ct);
-                }
+                catch (SessionExpiredException) when (attempt == 0) { _sessionId = null; }
             }
-            return result;
         }
         finally { _gate.Release(); }
+    }
+
+    private async Task<IReadOnlyList<ConsoleOutput>> CollectAsync(TimeSpan settle, CancellationToken ct)
+    {
+        var result = new List<ConsoleOutput>();
+        var clock = Stopwatch.StartNew();
+        var lastNew = TimeSpan.Zero;
+        var cap = settle * MaxSettleMultiple;
+        while (true)
+        {
+            var wait = Min(settle - (clock.Elapsed - lastNew), cap - clock.Elapsed);
+            if (wait <= TimeSpan.Zero) break;
+            var lines = await TryReadAsync(wait, ct);
+            if (lines is null) break; // nothing arrived in time; the read stays outstanding
+            if (lines.Count > 0)
+            {
+                lastNew = clock.Elapsed;
+                result.AddRange(lines.Where(l => !l.IsInput && !l.IsCommand).Select(l => new ConsoleOutput(l.Text, l.IsPrompt)));
+            }
+            else
+            {
+                await Task.Delay(PollInterval, ct);
+            }
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Discards output that arrived after an earlier call stopped waiting, so it is not attributed to the
+    /// command about to be sent. Only the outstanding read can hold such output; it gets a short moment to
+    /// answer and, like every read, is never cancelled.
+    /// </summary>
+    private async Task DrainLateOutputAsync(CancellationToken ct)
+    {
+        while (_pendingRead is not null && await TryReadAsync(LateOutputWait, ct) is { Count: > 0 } late)
+            LogLate(late);
+    }
+
+    private void LogLate(List<ConsoleLine> lines)
+    {
+        foreach (var l in lines)
+            log?.LogDebug("Discarding late console output: {Line}", l.Text);
     }
 
     /// <summary>Forgets the cached session and tells the server to drop it (best effort).</summary>
@@ -148,18 +196,23 @@ public sealed class RestConsoleClient(HttpClient http, Uri baseUri, string user,
         return sid;
     }
 
-    /// <summary>Makes sure a session exists. A new one has its scrollback drained before first use.</summary>
-    private async Task EnsureSessionAsync(CancellationToken ct)
+    /// <summary>
+    /// Makes sure a session exists; true when a new one was started. A new one has its scrollback drained
+    /// before first use.
+    /// </summary>
+    private async Task<bool> EnsureSessionAsync(CancellationToken ct)
     {
         if (_pendingRead is { IsCompleted: true } done)
         {
             // Reply that arrived between calls: stale output, or a dead session.
             _pendingRead = null;
-            try { await done; }
+            try { LogLate(await done); }
             catch (SessionExpiredException) { _sessionId = null; }
             catch (HttpRequestException) { }
         }
-        if (_sessionId is null) await StartFreshSessionAsync(ct);
+        if (_sessionId is not null) return false;
+        await StartFreshSessionAsync(ct);
+        return true;
     }
 
     /// <summary>
@@ -215,20 +268,13 @@ public sealed class RestConsoleClient(HttpClient http, Uri baseUri, string user,
     private static bool IsTrue(XElement e, string attr) =>
         string.Equals((string?)e.Attribute(attr), "true", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>POSTs the command. On 401/404 (session expired) starts a new session and retries once.</summary>
+    /// <summary>POSTs the command; 401/404 (session expired) throws <see cref="SessionExpiredException"/>.</summary>
     private async Task PostCommandAsync(string command, CancellationToken ct)
     {
-        for (var attempt = 0; ; attempt++)
-        {
-            using var resp = await http.PostAsync(Url("SessionCommand"), Form(("ID", _sessionId!), ("COMMAND", command)), ct);
-            if (resp.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.NotFound && attempt == 0)
-            {
-                await StartFreshSessionAsync(ct);
-                continue;
-            }
-            resp.EnsureSuccessStatusCode();
-            return;
-        }
+        using var resp = await http.PostAsync(Url("SessionCommand"), Form(("ID", _sessionId!), ("COMMAND", command)), ct);
+        if (resp.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.NotFound)
+            throw new SessionExpiredException();
+        resp.EnsureSuccessStatusCode();
     }
 
     private static XElement? ParseXml(string text)
