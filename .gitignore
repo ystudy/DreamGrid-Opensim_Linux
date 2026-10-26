@@ -5,7 +5,6 @@ bin/WifiPages-Custom/*
 bin/fsassets/*
 .project
 .settings
-*.csproj
 *.csproj.user
 *.build
 *.mdb
@@ -90,7 +89,6 @@ bin/*.manifest
 bin/crashes/
 Examples/*.dll
 OpenSim.build
-OpenSim.sln
 OpenSim.userprefs
 Prebuild/Prebuild.build
 Prebuild/Prebuild.sln
@@ -124,3 +122,14 @@ doc/doxygen.error.log
 bin/OpenSim.ini
 
 *.patch
+
+# Build outputs (see MERGING.md): only third-party binaries are tracked in bin/
+bin/*.runtimeconfig.json
+bin/System.Drawing.Common.dll
+# Linux apphosts (no extension) the build writes next to the .dll
+/bin/OpenSim
+/bin/Robust
+/bin/pCampBot
+/bin/OpenSim.ConsoleClient
+/bin/OpenSim.Tools.Configger
+/bin/Diva.Wifi.ProcessorTest

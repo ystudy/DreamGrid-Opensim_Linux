@@ -92,6 +92,7 @@ namespace OpenSim.Server
 
         public static int Main(string[] args)
         {
+            global::OpenSim.Framework.BinaryFormatterCompat.Register(); // DreamGrid: .NET 10 BinaryFormatter package
             Culture.SetCurrentCulture();
             Culture.SetDefaultCurrentCulture();
 

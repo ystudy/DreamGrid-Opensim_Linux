@@ -1,0 +1,9 @@
+<Project>
+  <!-- Shared settings for every project in DreamGrid.sln. Projects do not set TargetFramework themselves. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <!-- Repo root with trailing separator; reference HintPaths use it instead of machine-specific absolute paths. -->
+    <DgRoot>$(MSBuildThisFileDirectory)</DgRoot>
+  </PropertyGroup>
+</Project>

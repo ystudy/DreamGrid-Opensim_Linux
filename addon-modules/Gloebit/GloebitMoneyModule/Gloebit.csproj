@@ -1,7 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
     <PreserveCompilationContext>false</PreserveCompilationContext>
     <OutputType>Library</OutputType>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
@@ -157,12 +156,6 @@
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="GMMLoginBalanceRequest.cs">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="obj\Debug\.NETCoreApp,Version=v8.0.AssemblyAttributes.cs">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="obj\Release\.NETCoreApp,Version=v8.0.AssemblyAttributes.cs">
       <SubType>Code</SubType>
     </Compile>
     <EmbeddedResource Include="Resources\GloebitSubscriptionsMySQL.migrations">

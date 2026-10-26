@@ -2,58 +2,51 @@
 
 get or update source from git
 
- `git clone git://opensimulator.org/git/opensim`
-	
+ `git clone -c core.longpaths=true https://github.com/ystudy/DreamGrid-Opensim_Linux.git`
 
+On Windows the repository has paths longer than 260 characters, so `core.longpaths` is required.
+
+# Project files
+
+The `.csproj` files and `DreamGrid.sln` are checked in. Prebuild is no longer run:
+`prebuild.xml` is kept only as a reference when merging from Outworldz/DreamGrid-Opensim; see `MERGING.md`.
+Shared settings (target framework `net10.0`) live in `Directory.Build.props` and `Directory.Build.targets`.
 
 # Building on Windows
 
 ## Requirements
-  To building under Windows, the following is required:
 
-  * [dotnet 8.0 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/8.0)
+  * [dotnet 10.0 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)
 
 optionally also
 
-  * [Visual Studio .NET](https://visualstudio.microsoft.com/vs/features/net-development/), version 2022 or later
-  
+  * [Visual Studio](https://visualstudio.microsoft.com/vs/features/net-development/), version 2022 17.14 or later
 
 ### Building
- To create the project files, run   
 
-  `runprebuild.bat`
-
-run 
+run
   `compile.bat`
 
-Or load the generated OpenSim.sln into Visual Studio and build the solution.
+which is `dotnet build -c Release DreamGrid.sln`. Or open `DreamGrid.sln` in Visual Studio and build the solution.
 
 Configure, see below
 
 Now just run `OpenSim.exe` from the `bin` folder, and set up the region.
 
-# Building on Linux / Mac
+# Building on Linux (Debian)
 
 ## Requirements
 
- * [dotnet 8.0 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/8.0)
- * libgdiplus 
- 
- if you have mono 6.x complete, you already have libgdiplus, otherwise you need to install it
- using a package manager for your operating system, like apt, brew, macports, etc
- for example on debian:
- 
- `apt-get update && apt-get install -y apt-utils libgdiplus libc6-dev`
+ * [dotnet 10.0 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)
+ * libgdiplus
+
+ `apt-get update && apt-get install -y libgdiplus libc6-dev`
 
 ### Building
-  To create the project files, run:
 
-  `./runprebuild.sh`
+ `dotnet build -c Release DreamGrid.sln`
 
-  then run
-
- `dotnet build --configuration Release OpenSim.sln`
-  
+The build copies the Linux `System.Drawing.Common.dll` into `bin/` by itself.
 
 Configure. See below
 

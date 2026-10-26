@@ -1,0 +1,98 @@
+name: build-and-smoke
+
+# Builds DreamGrid.sln on .NET 10, runs the unit tests, and boots a real region with the smoke harness
+# (tests/DreamGrid.Smoke) on Windows and Debian 12. msbuildnet.yml is upstream's and only runs on opensim/opensim.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - name: Allow long paths
+        run: git config --system core.longpaths true
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build
+        run: dotnet build -c Release DreamGrid.sln
+
+      - name: Unit tests
+        run: dotnet test --project tests/DreamGrid.Platform.Tests -c Release
+
+      - name: Smoke (ubODE)
+        run: dotnet run --project tests/DreamGrid.Smoke -c Release -- --bin bin --keep --physics ubODE
+        env:
+          TMP: ${{ runner.temp }}
+          TEMP: ${{ runner.temp }}
+
+      - name: Smoke (BulletSim)
+        run: dotnet run --project tests/DreamGrid.Smoke -c Release -- --bin bin --keep --physics BulletSim
+        env:
+          TMP: ${{ runner.temp }}
+          TEMP: ${{ runner.temp }}
+
+      - name: Upload smoke logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-logs-windows
+          path: ${{ runner.temp }}/dg smoke */bin/smoke.log
+
+  debian:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        debian: ['12', '13']
+    # Official Debian images: the .NET 10 SDK images are Ubuntu-based, so .NET is installed the way the
+    # Debian setup script will install it.
+    container: debian:${{ matrix.debian }}
+    env:
+      DOTNET_ROOT: /usr/share/dotnet
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+    steps:
+      - name: Install .NET 10, libgdiplus, locales, git
+        run: |
+          apt-get update
+          apt-get install -y curl ca-certificates libicu-dev libgdiplus locales git
+          sed -i 's/# de_DE.UTF-8/de_DE.UTF-8/' /etc/locale.gen
+          locale-gen
+          curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
+          bash /tmp/dotnet-install.sh --channel 10.0 --install-dir /usr/share/dotnet
+          echo /usr/share/dotnet >> "$GITHUB_PATH"
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Build
+        run: dotnet build -c Release DreamGrid.sln
+
+      - name: Unit tests
+        run: dotnet test --project tests/DreamGrid.Platform.Tests -c Release
+
+      - name: Smoke (ubODE)
+        run: dotnet run --project tests/DreamGrid.Smoke -c Release -- --bin bin --keep --physics ubODE
+
+      - name: Smoke (BulletSim)
+        run: dotnet run --project tests/DreamGrid.Smoke -c Release -- --bin bin --keep --physics BulletSim
+
+      - name: Smoke (ubODE, German locale)
+        run: dotnet run --project tests/DreamGrid.Smoke -c Release -- --bin bin --keep --physics ubODE --culture de_DE.UTF-8
+
+      - name: Upload smoke logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-logs-debian${{ matrix.debian }}
+          path: /tmp/dg smoke */bin/smoke.log

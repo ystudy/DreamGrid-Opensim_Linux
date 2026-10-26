@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Boots a standalone OpenSim region from a copy of bin/ and checks the paths most likely to break on .NET 10 / Linux.
+       No OpenSim project references: it only drives the built bin/. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>DreamGrid.Smoke</RootNamespace>
+  </PropertyGroup>
+
+</Project>

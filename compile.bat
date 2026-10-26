@@ -1,1 +1,1 @@
-dotnet build --configuration Release OpenSim.sln 
+dotnet build -c Release DreamGrid.sln
