@@ -19,25 +19,44 @@ public static class PidFile
         }
     }
 
+    /// <summary>The sidecar holding the start identity of the process the launcher recorded in <paramref name="path"/>.</summary>
+    private static string StartPath(string path) => path + ".start";
+
     /// <summary>
-    /// The PID in the file only when it names a live process with <paramref name="expectedImage"/> that started no later
-    /// than the file's last write plus a 2 s slack. Every genuine child is started before its PID file is written, so a
-    /// process that started later is an unrelated program that reused the PID.
+    /// The PID in the file only when it names a live process with <paramref name="expectedImage"/>, and, when the
+    /// launcher recorded the process's start identity beside the file, only when that identity still matches (a PID
+    /// reused by an unrelated program has another one). The identity does not depend on the wall clock, which steps on
+    /// some hosts. Without a sidecar (an older install, or a PID file the child wrote itself) the image match decides.
     /// </summary>
     public static int? ReadLive(string path, string? expectedImage)
     {
         if (Read(path) is not { } pid || !ProcessImage.Matches(pid, expectedImage)) return null;
+        string? recorded;
         try
         {
-            var written = File.GetLastWriteTimeUtc(path);
-            using var process = System.Diagnostics.Process.GetProcessById(pid);
-            return process.StartTime.ToUniversalTime() <= written + TimeSpan.FromSeconds(2) ? pid : null;
+            recorded = File.Exists(StartPath(path)) ? File.ReadAllText(StartPath(path)).Trim() : null;
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException
-            or InvalidOperationException or System.ComponentModel.Win32Exception)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            return null; // gone, or start time unreadable: never adopt on doubt
+            return null; // present but unreadable: never adopt on doubt
         }
+        if (recorded is null) return pid;
+        return ProcessImage.StartId(pid) is { } live && live == recorded ? pid : null;
+    }
+
+    /// <summary>Records the start identity of <paramref name="pid"/> beside the PID file (no sidecar when it cannot be read).</summary>
+    public static void WriteStart(string path, int pid)
+    {
+        var sidecar = StartPath(path);
+        if (ProcessImage.StartId(pid) is not { } id)
+        {
+            try { File.Delete(sidecar); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+            return;
+        }
+        var temp = sidecar + ".tmp";
+        File.WriteAllText(temp, id);
+        File.Move(temp, sidecar, overwrite: true);
     }
 
     public static void Write(string path, int pid)
@@ -51,7 +70,10 @@ public static class PidFile
 
     public static void Delete(string path)
     {
-        try { File.Delete(path); }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+        foreach (var file in new[] { path, StartPath(path) })
+        {
+            try { File.Delete(file); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+        }
     }
 }

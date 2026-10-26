@@ -189,7 +189,7 @@ public sealed class MariaDbServer(MariaDbBinaries bin, LauncherPaths paths, Laun
     {
         psi.UseShellExecute = false;
         psi.CreateNoWindow = true;
-        return psi;
+        return Processes.ProcessImage.WithoutServiceManagerEnvironment(psi);
     }
 
     private async Task RunInstallDb(CancellationToken ct)

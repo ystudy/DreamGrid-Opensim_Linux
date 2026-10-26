@@ -45,6 +45,51 @@ public static class ProcessImage
         }
     }
 
+    /// <summary>
+    /// A value that identifies one process instance and does not move when the wall clock steps: the Linux boot-relative
+    /// start tick, or the Windows creation FILETIME. Null when unknown or unreadable.
+    /// </summary>
+    public static string? StartId(int pid)
+    {
+        try
+        {
+            if (OperatingSystem.IsLinux())
+            {
+                // Field 22 of "pid (comm) S ...": counted from the state (field 3) after the last ')'.
+                var stat = File.ReadAllText($"/proc/{pid}/stat");
+                var end = stat.LastIndexOf(')');
+                if (end < 0) return null;
+                var fields = stat[(end + 1)..].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                return fields.Length > 19 && long.TryParse(fields[19], System.Globalization.NumberStyles.None,
+                    System.Globalization.CultureInfo.InvariantCulture, out var ticks)
+                    ? ticks.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    : null;
+            }
+            if (OperatingSystem.IsWindows())
+            {
+                using var p = Process.GetProcessById(pid);
+                return p.StartTime.ToUniversalTime().ToFileTimeUtc().ToString(System.Globalization.CultureInfo.InvariantCulture);
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException
+            or InvalidOperationException or NotSupportedException or System.ComponentModel.Win32Exception)
+        {
+            // gone or unreadable: unknown
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Children must not inherit the launcher's service-manager variables: a systemd Type=notify launcher's
+    /// NOTIFY_SOCKET would let a child send readiness messages for the unit, and LISTEN_* describe the launcher's sockets.
+    /// </summary>
+    public static ProcessStartInfo WithoutServiceManagerEnvironment(ProcessStartInfo psi)
+    {
+        foreach (var name in new[] { "NOTIFY_SOCKET", "LISTEN_FDS", "LISTEN_PID", "LISTEN_FDNAMES" })
+            psi.Environment.Remove(name);
+        return psi;
+    }
+
     public static bool Matches(int pid, string? expectedImage)
     {
         if (string.IsNullOrEmpty(expectedImage) || !IsAlive(pid)) return false;

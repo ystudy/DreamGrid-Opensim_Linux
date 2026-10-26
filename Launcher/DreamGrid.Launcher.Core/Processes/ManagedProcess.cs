@@ -90,6 +90,7 @@ public sealed class ManagedProcess(ProcessSpec spec, RestartPolicy policy, TimeP
             {
                 Attach(launched.Pid, process);
                 PidFile.Write(spec.PidFile, launched.Pid);
+                PidFile.WriteStart(spec.PidFile, launched.Pid);
             }
         }
         if (!current)
@@ -217,7 +218,7 @@ public sealed class ManagedProcess(ProcessSpec spec, RestartPolicy policy, TimeP
 
     private Process Launch()
     {
-        var info = spec.StartInfo();
+        var info = ProcessImage.WithoutServiceManagerEnvironment(spec.StartInfo());
         info.UseShellExecute = false;
         info.RedirectStandardInput = false;
         info.RedirectStandardOutput = true;
