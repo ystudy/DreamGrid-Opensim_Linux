@@ -270,6 +270,37 @@ public sealed class SetupFlowTests
     }
 
     [Fact]
+    public async Task Avatar_double_submit_creates_owner_once()
+    {
+        await using var f = Fresh(s => s with { WorldNamed = true });
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        f.Grid.OnCreateOwner = async _ =>
+        {
+            entered.TrySetResult();
+            await release.Task;
+        };
+        using var client = await SetupClientAsync(f);
+        var page = await client.GetStringAsync("/setup/avatar", Ct);
+        var token = new HtmlParser().ParseDocument(page).QuerySelector("input[name=__RequestVerificationToken]")!.GetAttribute("value")!;
+        var form = new Dictionary<string, string>(Avatar()) { ["__RequestVerificationToken"] = token };
+
+        var first = client.PostAsync("/setup/avatar", new FormUrlEncodedContent(form), Ct);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
+        // The second submit (a double click) comes in while the first is still creating the avatar.
+        using (var second = await client.PostAsync("/setup/avatar", new FormUrlEncodedContent(form), Ct).WaitAsync(TimeSpan.FromSeconds(10), Ct))
+        {
+            Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+            Assert.Contains("Creating your avatar…", await second.Content.ReadAsStringAsync(Ct));
+        }
+
+        release.SetResult();
+        using var done = await first.WaitAsync(TimeSpan.FromSeconds(10), Ct);
+        Assert.Equal("/setup", Location(done));
+        Assert.Equal(1, f.Grid.CreateOwnerCalls);
+    }
+
+    [Fact]
     public async Task Resume_after_restart_skips_completed_steps()
     {
         await using var f = AfterOwner();

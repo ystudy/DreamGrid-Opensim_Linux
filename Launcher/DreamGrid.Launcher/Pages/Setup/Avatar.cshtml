@@ -3,9 +3,23 @@
 @{
     ViewData["Title"] = "Create your avatar";
 }
+@section Head {
+    @if (Model.Creating)
+    {
+        @* Another submit is creating the avatar: reload until it is done, which moves on to the next step. *@
+        <meta http-equiv="refresh" content="3; url=/setup/avatar">
+    }
+}
 <partial name="_Checklist" model="2" />
 <h1>Create your avatar</h1>
 <p>This avatar owns your world and is the one you sign in to this website with. Names use letters and digits only, as Firestorm requires.</p>
+@if (Model.Creating)
+{
+    <div class="progress-box">
+        <p>Creating your avatar… This page moves on by itself when it is done.</p>
+    </div>
+    return;
+}
 @if (Model.Error is not null)
 {
     <div class="error-box">

@@ -29,8 +29,15 @@ public sealed partial class AvatarModel(
 
     public string? Error { get; private set; }
     public string? Details { get; private set; }
+    /// <summary>True when another submit is already creating the avatar.</summary>
+    public bool Creating { get; private set; }
 
-    public IActionResult OnGet() => Closed() ?? Page();
+    public IActionResult OnGet()
+    {
+        if (Closed() is { } closed) return closed;
+        Creating = runner.CreatingOwner;
+        return Page();
+    }
 
     public async Task<IActionResult> OnPostAsync()
     {
@@ -40,13 +47,11 @@ public sealed partial class AvatarModel(
 
         var (first, last, password) = (FirstName!, LastName!, Password!);
         var email = string.IsNullOrWhiteSpace(Email) ? null : Email.Trim();
-        RobustAccount account;
+        RobustAccount? account;
         try
         {
             // Not the request's token: an abandoned page must not cut account creation off halfway.
-            var ct = lifetime.ApplicationStopping;
-            await runner.EnsureGridAsync(null, ct);
-            account = await grid.CreateOwnerAsync(first, last, password, email, ct);
+            account = await runner.TryCreateOwnerAsync(first, last, password, email, lifetime.ApplicationStopping);
         }
         // Only the launcher stopping is a cancellation; an HttpClient timeout (TaskCanceledException) is a failure.
         catch (Exception e) when (!lifetime.ApplicationStopping.IsCancellationRequested)
@@ -57,6 +62,12 @@ public sealed partial class AvatarModel(
             Error = runner.PortConflictText(e)
                 ?? "Your avatar could not be created. The grid may still be starting: wait a minute, then try again.";
             Details = message;
+            return Page();
+        }
+        if (account is null)
+        {
+            // A second submit while the first is still creating the avatar: that one finishes the step.
+            Creating = true;
             return Page();
         }
 

@@ -46,6 +46,7 @@ public sealed partial class GridController(
     private volatile StartFailure? _startFailure;
     private volatile GridActivity _activity;
     private int? _regionAlertPid;
+    private long _loginAlerts; // "logins enabled|disabled" alerts received; under _alertGate
     private TaskCompletionSource<string>? _oarLoaded;
 
 
@@ -71,6 +72,14 @@ public sealed partial class GridController(
             var s = LoadSettings();
             await PrepareAsync(s, ct);
 
+            // A region an interrupted region step left running is adopted, never started (CreateRegionAsync finishes
+            // it). It is live already, so it is watched first, whatever happens to the rest of this start; a failed
+            // adoption shows in the region's status and must not keep the database and Robust down.
+            if (!s.Setup.RegionCreated && _region is not null && WillAdopt(_region))
+            {
+                try { await StartRegionAsync(ct); }
+                catch (Exception e) when (e is InvalidOperationException or HttpRequestException) { }
+            }
             await StartDatabaseAsync(s, ct);
             await StartComponentAsync(_robust!, ct);
             if (s.Setup.RegionCreated && _region is not null)
@@ -339,8 +348,13 @@ public sealed partial class GridController(
         }
         switch (alert.Login.ToLowerInvariant())
         {
-            case "enabled": _loginsEnabled = true; break;
-            case "disabled": _loginsEnabled = false; break;
+            case "enabled" or "disabled":
+                lock (_alertGate)
+                {
+                    _loginAlerts++;
+                    _loginsEnabled = alert.Login.Equals("enabled", StringComparison.OrdinalIgnoreCase);
+                }
+                break;
             case "oarloaded" or "oarnotloaded": _oarLoaded?.TrySetResult(alert.Login.ToLowerInvariant()); break;
         }
     }
@@ -446,9 +460,16 @@ public sealed partial class GridController(
         var running = _region!.Process.State == ProcessState.Running;
         var adopted = running || WillAdopt(_region!);
         if (!running) await StartComponentAsync(_region!, ct);
-        // An adopted region announced its logins before this launcher was listening, so ask it.
+        // An adopted region announced its logins before this launcher was listening, so ask it. One still booting
+        // answers "disabled" and may send its alert while that answer is on its way: the alert is newer and wins.
         if (adopted)
-            _loginsEnabled = await GridConsoleCommands.LoginsEnabledAsync(_region!.Console!, ConsoleSettle, ct) ?? false;
+        {
+            long seen;
+            lock (_alertGate) seen = _loginAlerts;
+            var enabled = await GridConsoleCommands.LoginsEnabledAsync(_region!.Console!, ConsoleSettle, ct) ?? false;
+            lock (_alertGate)
+                if (_loginAlerts == seen) _loginsEnabled = enabled;
+        }
     }
 
     private async Task StopAllCoreAsync(CancellationToken ct)
@@ -537,6 +558,9 @@ public sealed partial class GridController(
 
         var r32 = Path.Combine(paths.RegionDir(region.Instance), "island.r32");
         IslandTerrain.WriteR32(r32);
+        // Flatten first: the check below tells the island from flat land, and a starter OAR an earlier attempt
+        // loaded has relief of its own that would pass for the island if this load failed.
+        await console.RunAsync("terrain fill 0", ConsoleSettle, ct);
         await console.RunAsync($"terrain load \"{Fwd(r32)}\"", ConsoleSettle, ct);
         if (!await GridConsoleCommands.IslandTerrainLoadedAsync(console, ConsoleSettle, ct))
             throw new InvalidOperationException($"The region did not load the island terrain {r32}; see the region log.");
