@@ -33,10 +33,20 @@ var env = new Dictionary<string, string?>
     ["ProgramData"] = Environment.GetEnvironmentVariable("ProgramData"),
 };
 LauncherPaths paths;
+InstanceLock? instanceLock;
 SettingsStore store;
 LauncherSettings settings;
 try
 {
+    var dataDir = LauncherPaths.ResolveData(args, env, OperatingSystem.IsWindows());
+    instanceLock = InstanceLock.TryAcquire(dataDir);
+    if (instanceLock is null)
+    {
+        using var held = LoggerFactory.Create(b => b.AddConsole());
+        held.CreateLogger("DreamGrid.Launcher")
+            .LogCritical("Another DreamGrid launcher is already running with data directory {Data}.", dataDir);
+        return 3;
+    }
     paths = LauncherPaths.Resolve(args, env, OperatingSystem.IsWindows());
     store = new SettingsStore(paths.SettingsFile);
     settings = store.LoadOrCreate();
@@ -52,6 +62,7 @@ catch (Exception e) when (e is ArgumentException or SettingsCorruptException or 
     return 2;
 }
 
+using var lockHandle = instanceLock; // held for the host's lifetime
 builder.WebHost.ConfigureKestrel(o => o.Listen(IPAddress.Any, settings.WebPort));
 // The request log line includes the query string, which carries ?password= (MachineId or an avatar's).
 builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.Warning);

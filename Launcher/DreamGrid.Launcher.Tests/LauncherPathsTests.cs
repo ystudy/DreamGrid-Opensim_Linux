@@ -35,6 +35,28 @@ public class LauncherPathsTests
         Assert.Null(defaults.MariaDbBin);
     }
 
+    [Theory]
+    [InlineData("--data")]
+    [InlineData("--opensim")]
+    [InlineData("--mariadb-bin")]
+    public void Resolve_trailing_flag_without_value_throws(string flag)
+    {
+        var env = new Dictionary<string, string?> { ["DREAMGRID_OPENSIM"] = "/o" };
+        var e = Assert.Throws<ArgumentException>(() => LauncherPaths.Resolve(["--other", flag], env, isWindows: false));
+        Assert.Contains(flag, e.Message);
+        Assert.Contains("needs a value", e.Message);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public void Resolve_windows_without_ProgramData_uses_C_ProgramData(string? programData)
+    {
+        var env = new Dictionary<string, string?> { ["DREAMGRID_OPENSIM"] = "/o" };
+        if (programData is not null) env["ProgramData"] = programData;
+        Assert.Equal(@"C:\ProgramData\DreamGrid", LauncherPaths.ResolveData([], env, isWindows: true));
+    }
+
     [Fact]
     public void Resolve_throws_naming_opensim_when_unset()
     {

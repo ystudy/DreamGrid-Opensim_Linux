@@ -21,18 +21,24 @@ public sealed record LauncherPaths(string Data, string OpenSimProgram, string? M
     public string RegionDir(string instance) => Path.Combine(RegionsRoot, instance);
     public string RegionDefinitionDir(string instance) => Path.Combine(RegionDir(instance), "Region");
 
-    /// <summary>Resolves paths: argument, then environment, then OS default.</summary>
-    public static LauncherPaths Resolve(string[] args, IDictionary<string, string?> env, bool isWindows)
+    /// <summary>Picks a flag's value from the arguments, else the environment variable; a flag with nothing after it throws.</summary>
+    private static string? Pick(string[] args, IDictionary<string, string?> env, string arg, string envKey)
     {
-        string? Pick(string arg, string envKey)
+        for (var i = 0; i < args.Length; i++)
         {
-            for (var i = 0; i < args.Length - 1; i++)
-                if (args[i] == arg && !string.IsNullOrWhiteSpace(args[i + 1]))
-                    return args[i + 1];
-            return env.TryGetValue(envKey, out var v) && !string.IsNullOrWhiteSpace(v) ? v : null;
+            if (args[i] != arg) continue;
+            if (i == args.Length - 1)
+                throw new ArgumentException($"{arg} needs a value.");
+            if (!string.IsNullOrWhiteSpace(args[i + 1]))
+                return args[i + 1];
         }
+        return env.TryGetValue(envKey, out var v) && !string.IsNullOrWhiteSpace(v) ? v : null;
+    }
 
-        var data = Pick("--data", "DREAMGRID_DATA");
+    /// <summary>Resolves the data directory: argument, then environment, then OS default.</summary>
+    public static string ResolveData(string[] args, IDictionary<string, string?> env, bool isWindows)
+    {
+        var data = Pick(args, env, "--data", "DREAMGRID_DATA");
         if (data is null)
         {
             if (isWindows)
@@ -45,12 +51,19 @@ public sealed record LauncherPaths(string Data, string OpenSimProgram, string? M
                 data = "/var/lib/dreamgrid";
             }
         }
+        return data;
+    }
 
-        var opensim = Pick("--opensim", "DREAMGRID_OPENSIM")
+    /// <summary>Resolves paths: argument, then environment, then OS default.</summary>
+    public static LauncherPaths Resolve(string[] args, IDictionary<string, string?> env, bool isWindows)
+    {
+        var data = ResolveData(args, env, isWindows);
+
+        var opensim = Pick(args, env, "--opensim", "DREAMGRID_OPENSIM")
             ?? throw new ArgumentException("The OpenSim program directory is required: pass --opensim <dir> or set DREAMGRID_OPENSIM.");
 
         // Children run with other working directories, so every path is made absolute here.
-        var mariaDbBin = Pick("--mariadb-bin", "DREAMGRID_MARIADB_BIN");
+        var mariaDbBin = Pick(args, env, "--mariadb-bin", "DREAMGRID_MARIADB_BIN");
         return new LauncherPaths(Path.GetFullPath(data), Path.GetFullPath(opensim),
             mariaDbBin is null ? null : Path.GetFullPath(mariaDbBin));
     }
