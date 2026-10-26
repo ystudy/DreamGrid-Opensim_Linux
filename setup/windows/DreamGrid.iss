@@ -7,8 +7,12 @@
 ; runtime and MariaDB live in versioned folders beside each other (dotnet-<v>\, mariadb-<v>\): the world's processes
 ; keep running through a service stop and an upgrade, and still use the folders they started from.
 ;
-; Command line: /WEBPORT=<n> serves the admin website on port <n> instead of 8001.
-; Exit code 10: the files are installed but the service could not be set up or started.
+; Command line: /WEBPORT=<n> serves the admin website on port <n> instead of 8001 (1024-65535, none of DreamGrid's own
+; ports 3307, 8002, 8003, 8004, 8010, 8011). The port is saved in the settings with the launcher's set-web-port while
+; the service is stopped, so later upgrades keep it; it never goes into the service's command line, where the launcher
+; would re-apply it on every start.
+; Exit code 10: the files are installed but the service could not be set up or started, or did not stay running, or
+; the web port could not be changed.
 
 #ifndef AppVersion
   #error AppVersion is not defined: build with build.ps1 (ISCC /DAppVersion=...)
@@ -89,9 +93,12 @@ const
   ServiceFailedExitCode = 10;
 
 var
-  WebPortParam: String; { the /WEBPORT value, '' when not given }
-  Link: String;         { the admin page link for the finish page, '' until read }
-  ServiceError: String; { what went wrong with the service, '' when it was set up and started }
+  RequestedPort: String;       { the port to save: /WEBPORT, else one an older installer pinned; '' for neither }
+  Link: String;                { the admin page link for the finish page, '' until read }
+  ServiceError: String;        { what went wrong with the service, '' when it was set up and started }
+  PortError: String;           { why the requested port could not be saved, '' when it was (or none was requested) }
+  StoppedService: Boolean;     { PrepareToInstall stopped a running service }
+  ReachedServiceStart: Boolean; { SetUpService got as far as starting the service }
 
 function DataDir: String;
 begin
@@ -115,11 +122,10 @@ begin
     ExpandConstant('{app}\mariadb-{#MariaDbVersion}\bin') + '"';
 end;
 
+{ No --web-port: the port is in the settings (see the header). }
 function ServiceCommand: String;
 begin
   Result := '"' + DotnetExe + '" "' + LauncherDll + '" ' + LauncherArgs;
-  if WebPortParam <> '' then
-    Result := Result + ' --web-port ' + WebPortParam;
 end;
 
 function FirewallRuleName: String;
@@ -236,15 +242,48 @@ begin
   Result := StrToIntDef(Digits, 0);
 end;
 
-{ The admin website's port: /WEBPORT, else the saved one, else 8001. }
+{ The port the admin website uses now: the saved one, else 8001. }
+function ConfiguredWebPort: Integer;
+begin
+  Result := SettingsWebPort;
+  if Result <= 0 then
+    Result := DefaultWebPort;
+end;
+
+{ The admin website's port after this install: the requested one (unless saving it failed), else the configured one. }
 function WebPortValue(Param: String): String;
 begin
-  if WebPortParam <> '' then
-    Result := WebPortParam
-  else if SettingsWebPort > 0 then
-    Result := IntToStr(SettingsWebPort)
+  if (RequestedPort <> '') and (PortError = '') then
+    Result := RequestedPort
   else
-    Result := IntToStr(DefaultWebPort);
+    Result := IntToStr(ConfiguredWebPort);
+end;
+
+{ The ports the launcher accepts for its website: 1024-65535 and none of DreamGrid's own default ports. }
+function ValidWebPort(Port: Integer): Boolean;
+begin
+  Result := (Port >= 1024) and (Port <= 65535) and (Port <> 3307) and (Port <> 8002) and (Port <> 8003) and
+    (Port <> 8004) and (Port <> 8010) and (Port <> 8011);
+end;
+
+{ The port an older installer pinned with --web-port in the service's command line, or '' when there is none. }
+function PinnedWebPort: String;
+var
+  Image: String;
+  I: Integer;
+begin
+  Result := '';
+  if not RegQueryStringValue(HKLM, 'SYSTEM\CurrentControlSet\Services\' + ServiceName, 'ImagePath', Image) then
+    exit;
+  I := Pos(' --web-port ', Image);
+  if I = 0 then
+    exit;
+  I := I + Length(' --web-port ');
+  while (I <= Length(Image)) and (Image[I] >= '0') and (Image[I] <= '9') do
+  begin
+    Result := Result + Image[I];
+    I := I + 1;
+  end;
 end;
 
 { The setup link (or the admin page once set up) from admin-link, run elevated since only elevated processes can read
@@ -269,6 +308,20 @@ end;
 function ServiceRunning: Boolean;
 begin
   Result := ServiceError = '';
+end;
+
+{ True when the DreamGrid service is installed and running (or starting or stopping). }
+function ServiceIsRunning: Boolean;
+var
+  Lines: TArrayOfString;
+  I: Integer;
+begin
+  Result := False;
+  if not ServiceExists or (Capture('"' + ExpandConstant('{sys}\sc.exe') + '" query ' + ServiceName, Lines) <> 0) then
+    exit;
+  for I := 0 to GetArrayLength(Lines) - 1 do
+    if (Pos('STATE', Lines[I]) > 0) and (Pos('STOPPED', Lines[I]) = 0) then
+      Result := True;
 end;
 
 { --- Busy web port ------------------------------------------------------------------------------------------------ }
@@ -323,27 +376,42 @@ end;
 
 function InitializeSetup: Boolean;
 var
-  Port: Integer;
-  Msg: String;
+  Port, Current: Integer;
+  Param, Pinned, Msg: String;
 begin
   Result := True;
-  WebPortParam := Trim(ExpandConstant('{param:WEBPORT|}'));
-  Port := DefaultWebPort;
-  if WebPortParam <> '' then
+  Param := Trim(ExpandConstant('{param:WEBPORT|}'));
+  if Param <> '' then
   begin
-    Port := StrToIntDef(WebPortParam, 0);
-    if (Port < 1) or (Port > 65535) then
+    Port := StrToIntDef(Param, 0);
+    if not ValidWebPort(Port) then
     begin
-      Msg := '/WEBPORT needs a port number between 1 and 65535.';
+      Msg := '/WEBPORT needs a port number from 1024 to 65535 that DreamGrid does not use itself ' +
+        '(not 3307, 8002, 8003, 8004, 8010 or 8011).';
       Log(Msg);
       SuppressibleMsgBox(Msg, mbCriticalError, MB_OK, IDOK);
       Result := False;
       exit;
     end;
-    WebPortParam := IntToStr(Port);
+    RequestedPort := IntToStr(Port);
+  end
+  else
+  begin
+    { Saved once into the settings; the new service command line no longer carries it. }
+    Pinned := PinnedWebPort;
+    if (Pinned <> '') and ValidWebPort(StrToIntDef(Pinned, 0)) then
+    begin
+      RequestedPort := IntToStr(StrToIntDef(Pinned, 0));
+      Log('The service command line pins --web-port ' + RequestedPort + '; it is saved in the settings instead.');
+    end;
   end;
-  { An upgrade finds the port taken by DreamGrid itself, so only a fresh install checks it. }
-  if not ServiceExists and PortInUse(Port) then
+  Current := ConfiguredWebPort;
+  if RequestedPort <> '' then
+    Port := StrToIntDef(RequestedPort, 0)
+  else
+    Port := Current;
+  { A running DreamGrid holds its own port; a port it is about to move to must be free. }
+  if ((Port <> Current) or not ServiceIsRunning) and PortInUse(Port) then
   begin
     Msg := 'Port ' + IntToStr(Port) + ' is already used by another program.' + #13#10#13#10 +
       'Close that program, or run this installer with /WEBPORT=8101 to use another port.';
@@ -408,6 +476,7 @@ begin
   Result := CheckInstallDir(ExpandConstant('{app}'));
   if Result <> '' then
     exit;
+  StoppedService := ServiceIsRunning;
   if not StopService then
     Result := 'The DreamGrid service did not stop within 60 seconds. Please try again in a minute.';
 end;
@@ -448,6 +517,41 @@ begin
   end;
 end;
 
+{ Saves RequestedPort with the launcher's set-web-port (the service is stopped, so the launcher's lock is free). }
+procedure SaveWebPort;
+var
+  Lines: TArrayOfString;
+  Code, I: Integer;
+  Output: String;
+begin
+  Code := Capture('"' + DotnetExe + '" "' + LauncherDll + '" set-web-port ' + RequestedPort + ' --data "' + DataDir + '"',
+    Lines);
+  Output := '';
+  for I := 0 to GetArrayLength(Lines) - 1 do
+    Output := Trim(Output + ' ' + Trim(Lines[I]));
+  Log('set-web-port ' + RequestedPort + ' -> ' + IntToStr(Code) + ': ' + Output);
+  if Code <> 0 then
+  begin
+    if Output = '' then
+      Output := 'error ' + IntToStr(Code);
+    PortError := 'the admin website could not be moved to port ' + RequestedPort + ' (' + Output + ')';
+  end;
+end;
+
+{ True when the service is still Running a moment after its start and the admin website answers: a launcher that fails
+  at once (a taken port, say) stops, and Windows restarts it every few seconds without it ever serving. }
+function ServiceStaysUp: Boolean;
+begin
+  Result := PowerShell('$s = Get-Service ' + ServiceName + '; ' +
+    'try { $s.WaitForStatus(''Running'', ''00:01:00'') } catch { exit 1 }; ' +
+    '$deadline = (Get-Date).AddSeconds(60); ' +
+    'while ((Get-Date) -lt $deadline) { Start-Sleep -Seconds 2; $s.Refresh(); ' +
+    'if ($s.Status -ne ''Running'') { exit 1 }; ' +
+    '$c = New-Object Net.Sockets.TcpClient; ' +
+    'try { $c.Connect(''127.0.0.1'', ' + IntToStr(ConfiguredWebPort) + '); exit 0 } catch { } finally { $c.Close() } }; ' +
+    'exit 2') = 0;
+end;
+
 procedure SetUpService;
 var
   Common, Msg: String;
@@ -463,6 +567,9 @@ begin
   if Code <> 0 then
     ServiceError := 'its Windows service could not be set up (error ' + IntToStr(Code) + ')';
   Sc('description ' + ServiceName + ' "Runs your DreamGrid world and its admin website."');
+  { After the service exists, so the launcher keeps NT SERVICE\DreamGrid in the data folder's permissions. }
+  if (ServiceError = '') and (RequestedPort <> '') then
+    SaveWebPort;
   Sc('failure ' + ServiceName + ' reset= 86400 actions= restart/5000/restart/5000/restart/60000');
 
   if Netsh('show rule name="' + FirewallRuleName + '"') <> 0 then
@@ -477,9 +584,13 @@ begin
 
   if ServiceError = '' then
   begin
+    ReachedServiceStart := True;
     Code := Sc('start ' + ServiceName);
     if Code <> 0 then
-      ServiceError := 'its Windows service could not be started (error ' + IntToStr(Code) + ')';
+      ServiceError := 'its Windows service could not be started (error ' + IntToStr(Code) + ')'
+    else if not ServiceStaysUp then
+      ServiceError := 'its Windows service stopped again or its website did not answer (' + DataDir +
+        '\state\logs\launcher.log says why)';
   end;
 
   if ServiceError <> '' then
@@ -489,9 +600,19 @@ begin
     Log(Msg);
     SuppressibleMsgBox(Msg, mbCriticalError, MB_OK, IDOK);
   end
-  else if not WizardSilent then
-    { Read now, while the progress page shows, rather than after Finish is clicked. }
-    SetupLink('');
+  else
+  begin
+    if PortError <> '' then
+    begin
+      Msg := 'DreamGrid is installed and running, but ' + PortError + '. It still uses port ' +
+        IntToStr(ConfiguredWebPort) + '.';
+      Log(Msg);
+      SuppressibleMsgBox(Msg, mbError, MB_OK, IDOK);
+    end;
+    if not WizardSilent then
+      { Read now, while the progress page shows, rather than after Finish is clicked. }
+      SetupLink('');
+  end;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -504,16 +625,33 @@ procedure CurPageChanged(CurPageID: Integer);
 begin
   if (CurPageID = wpFinished) and (ServiceError <> '') then
     WizardForm.FinishedLabel.Caption := 'DreamGrid is installed, but ' + ServiceError + '.' + #13#10#13#10 +
-      'Restart the computer and run this installer again.';
+      'Restart the computer and run this installer again.'
+  else if (CurPageID = wpFinished) and (PortError <> '') then
+    WizardForm.FinishedLabel.Caption := 'DreamGrid is installed and running, but ' + PortError + '.' + #13#10#13#10 +
+      'It still uses port ' + IntToStr(ConfiguredWebPort) + '.';
 end;
 
-{ A silent install whose service failed must not report success. }
+{ A silent install whose service failed, or whose port was not saved, must not report success. }
 function GetCustomSetupExitCode: Integer;
 begin
-  if ServiceError <> '' then
+  if (ServiceError <> '') or (PortError <> '') then
     Result := ServiceFailedExitCode
   else
     Result := 0;
+end;
+
+{ A failed or cancelled upgrade must not leave the world's website down: the service this setup stopped is started
+  again, as long as the launcher's files are there (sc logs the result). }
+procedure DeinitializeSetup;
+begin
+  if StoppedService and not ReachedServiceStart then
+    if FileExists(LauncherDll) then
+    begin
+      Log('Setup stopped the service and did not finish: starting it again.');
+      Sc('start ' + ServiceName);
+    end
+    else
+      Log('Setup stopped the service and did not finish; the launcher''s files are gone, so it stays stopped.');
 end;
 
 { --- Uninstall ---------------------------------------------------------------------------------------------------- }

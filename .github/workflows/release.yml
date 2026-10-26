@@ -6,8 +6,9 @@ name: release
 # the call from build-and-smoke (when setup/ or Launcher/ changed) build and smoke-test but publish nothing.
 #
 # Each package is built twice, as <version> and <version>-upgradetest, so the smokes can install one and upgrade to
-# the other. Debian 13 also upgrades to a copy of the second tarball whose RUNTIME_VERSION is relabelled, which
-# exercises the "the adopted region keeps its old runtime folder" path without a second runtime download.
+# the other. Debian 13 and Windows also upgrade to a copy of the second package whose RUNTIME_VERSION is relabelled,
+# which exercises the "the adopted region keeps its old runtime folder" path (and, on Windows, renaming a folder in use
+# and pruning firewall rules) without a second runtime download.
 
 on:
   push:
@@ -177,8 +178,15 @@ jobs:
           $artifact = Join-Path $env:RUNNER_TEMP 'artifact'
           ./setup/windows/build.ps1 -Package "$out\v1\dreamgrid" -MariaDbZip $env:MARIADB_ZIP -Version $env:VERSION -Out "$out\setup1"
           ./setup/windows/build.ps1 -Package "$out\v2\dreamgrid" -MariaDbZip $env:MARIADB_ZIP -Version "$env:VERSION-upgradetest" -Out "$out\setup2"
+          # The same v2 build with another RUNTIME_VERSION (same runtime files, in dotnet-<runtime>-upgradetest\).
+          New-Item -ItemType Directory -Force "$out\v2rt" | Out-Null
+          Copy-Item -Recurse "$out\v2\dreamgrid" "$out\v2rt\dreamgrid"
+          $runtime = (Get-Content "$out\v2\dreamgrid\RUNTIME_VERSION" -TotalCount 1).Trim()
+          Set-Content -LiteralPath "$out\v2rt\dreamgrid\RUNTIME_VERSION" -Value "$runtime-upgradetest" -Encoding ascii
+          ./setup/windows/build.ps1 -Package "$out\v2rt\dreamgrid" -MariaDbZip $env:MARIADB_ZIP -Version "$env:VERSION-upgradetest" -Out "$out\setup3"
           New-Item -ItemType Directory -Force $artifact | Out-Null
           Move-Item "$out\setup1\DreamGridSetup-$env:VERSION.exe", "$out\setup2\DreamGridSetup-$env:VERSION-upgradetest.exe" $artifact
+          Move-Item "$out\setup3\DreamGridSetup-$env:VERSION-upgradetest.exe" (Join-Path $artifact "DreamGridSetup-$env:VERSION-upgradetest-rt.exe")
           dotnet publish tests/DreamGrid.InstallSmoke -c Release -o "$artifact\installsmoke"
           if ($LASTEXITCODE -ne 0) { throw "dotnet publish exited $LASTEXITCODE" }
           Get-ChildItem $artifact
@@ -246,6 +254,10 @@ jobs:
     needs: [version, package-windows]
     runs-on: windows-latest
     timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        upgrade: [upgradetest, upgradetest-rt]
     env:
       VERSION: ${{ needs.version.outputs.version }}
     steps:
@@ -258,21 +270,23 @@ jobs:
           name: package-windows
           path: ${{ runner.temp }}\package
 
-      - name: Install smoke (Windows)
+      - name: Install smoke (Windows, ${{ matrix.upgrade }})
         shell: powershell
+        env:
+          UPGRADE: ${{ matrix.upgrade }}
         run: |
           $package = Join-Path $env:RUNNER_TEMP 'package'
           $env:INSTALL_SMOKE_DIR = Join-Path $package 'installsmoke'
           $env:SMOKE_LOGS = Join-Path $env:RUNNER_TEMP 'smoke-logs'
           & ./setup/windows/test/smoke.ps1 -Installer (Join-Path $package "DreamGridSetup-$env:VERSION.exe") `
-            -InstallerV2 (Join-Path $package "DreamGridSetup-$env:VERSION-upgradetest.exe")
+            -InstallerV2 (Join-Path $package "DreamGridSetup-$env:VERSION-$env:UPGRADE.exe")
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Upload smoke logs
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: smoke-logs-windows
+          name: smoke-logs-windows-${{ matrix.upgrade }}
           path: ${{ runner.temp }}/smoke-logs
 
   publish:

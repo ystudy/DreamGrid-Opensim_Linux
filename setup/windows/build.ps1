@@ -34,7 +34,8 @@ foreach ($required in 'VERSION', 'RUNTIME_VERSION', 'dotnet\dotnet.exe', 'launch
 $packageVersion = (Get-Content -LiteralPath (Join-Path $Package 'VERSION') -TotalCount 1).Trim()
 if ($packageVersion -ne $Version) { throw "-Version is $Version but the package is version $packageVersion." }
 $runtimeVersion = (Get-Content -LiteralPath (Join-Path $Package 'RUNTIME_VERSION') -TotalCount 1).Trim()
-if ($runtimeVersion -notmatch '^\d+\.\d+\.\d+$') { throw "The package's RUNTIME_VERSION '$runtimeVersion' is not a version." }
+# A suffix (10.0.n-upgradetest) is allowed: CI relabels a package's runtime to test a runtime change on upgrade.
+if ($runtimeVersion -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$') { throw "The package's RUNTIME_VERSION '$runtimeVersion' is not a version." }
 
 # --- Staging -----------------------------------------------------------------------------------------------------
 if (Test-Path -LiteralPath $staging) { Remove-Item -LiteralPath $staging -Recurse -Force }

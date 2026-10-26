@@ -44,10 +44,10 @@ function Fail([string]$detail) {
 }
 
 # Runs an installer or uninstaller silently and returns its exit code; its log is $work\<Name>.log.
-function Invoke-Setup([string]$Exe, [string]$Name) {
+function Invoke-Setup([string]$Exe, [string]$Name, [string[]]$Extra = @()) {
     $log = Join-Path $work "$Name.log"
     # /NORESTART: a reboot request must show up in the log and fail the stage, never reboot the machine.
-    $arguments = '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=`"$log`""
+    $arguments = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=`"$log`"") + $Extra
     $process = Start-Process -FilePath $Exe -ArgumentList $arguments -Wait -PassThru
     return $process.ExitCode
 }
@@ -75,9 +75,16 @@ function Test-Port([int]$Port) {
     finally { $client.Close() }
 }
 
-function Get-Http([string]$Path) {
-    try { return (Invoke-WebRequest -UseBasicParsing -TimeoutSec 10 "http://127.0.0.1:8001$Path").Content }
+function Get-Http([string]$Path, [int]$Port = 8001) {
+    try { return (Invoke-WebRequest -UseBasicParsing -TimeoutSec 10 "http://127.0.0.1:$Port$Path").Content }
     catch { return $null }
+}
+
+# The admin website's port saved in settings.json.
+function Get-SavedWebPort {
+    $settings = Get-Content -LiteralPath (Join-Path $data 'settings.json') -Raw
+    if ($settings -match '"webPort":\s*(\d+)') { return [int]$Matches[1] }
+    return $null
 }
 
 # The installed service: its command line (dotnet.exe, the launcher, the arguments) and where it lives.
@@ -125,6 +132,15 @@ $sentence = 'Port 8001 is already used by another program.'
 if ((Read-SetupLog 'busy-port').IndexOf($sentence, [StringComparison]::Ordinal) -lt 0) { Fail "the setup log does not say '$sentence'" }
 if (Get-Service DreamGrid -ErrorAction SilentlyContinue) { Fail 'a service was created although the port was taken' }
 Ok "exit $code with the port sentence; no service"
+
+# --- A port the launcher refuses: a plain message, nothing installed -----------------------------------------------
+$script:stage = 'refused-port'
+$code = Invoke-Setup $Installer 'refused-port' @('/WEBPORT=8002')
+if ($code -eq 0) { Fail 'the installer succeeded with /WEBPORT=8002 (the Robust public port)' }
+$sentence = '/WEBPORT needs a port number from 1024 to 65535 that DreamGrid does not use itself'
+if ((Read-SetupLog 'refused-port').IndexOf($sentence, [StringComparison]::Ordinal) -lt 0) { Fail "the setup log does not say '$sentence'" }
+if (Get-Service DreamGrid -ErrorAction SilentlyContinue) { Fail 'a service was created although the port was refused' }
+Ok "exit $code with the port message; no service"
 
 # --- Install -----------------------------------------------------------------------------------------------------
 $script:stage = 'install'
@@ -213,6 +229,22 @@ else {
 $names = @(Get-FirewallRules | ForEach-Object DisplayName | Sort-Object)
 if (($names -join '|') -ne (($wanted | Sort-Object) -join '|')) { Fail "firewall rules are '$($names -join ', ')', expected '$($wanted -join ', ')'" }
 Ok "footer shows $v2; logins enabled; region PID $regionPid unchanged; settings.json byte-identical; no restart; $runtimes"
+
+# --- Another web port through the installer: saved in the settings, never in the service command line --------------
+$script:stage = 'web-port'
+$code = Invoke-Setup $InstallerV2 'web-port' @('/WEBPORT=8101')
+if ($code -ne 0) { Fail "the installer with /WEBPORT=8101 exited $code" }
+$command = Get-ServiceCommand
+if ($command.Image -match '--web-port') { Fail "the service command has --web-port: $($command.Image)" }
+$saved = Get-SavedWebPort
+if ($saved -ne 8101) { Fail "the saved web port is $saved, not 8101" }
+if (-not (Wait-Until 60 { $null -ne (Get-Http '/css/site.css' 8101) })) { Fail 'the website does not answer on port 8101' }
+if ((Get-Content -LiteralPath $shortcut -Raw) -notmatch '(?m)^URL=http://localhost:8101/\s*$') {
+    Fail "the Start menu shortcut does not point at http://localhost:8101/: $(Get-Content -LiteralPath $shortcut -Raw)"
+}
+$pidAfter = [int](Get-Content -LiteralPath $pidFile -TotalCount 1).Trim()
+if ($pidAfter -ne $regionPid) { Fail "the region PID changed from $regionPid to $pidAfter" }
+Ok "settings.json has 8101, no --web-port in the service command, the website and the shortcut use 8101; region PID $regionPid unchanged"
 
 # --- Uninstall ---------------------------------------------------------------------------------------------------
 $script:stage = 'uninstall'
