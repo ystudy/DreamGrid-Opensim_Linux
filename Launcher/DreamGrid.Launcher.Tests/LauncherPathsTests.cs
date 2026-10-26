@@ -54,7 +54,7 @@ public class LauncherPathsTests
     {
         var env = new Dictionary<string, string?> { ["DREAMGRID_OPENSIM"] = "/o" };
         if (programData is not null) env["ProgramData"] = programData;
-        Assert.Equal(@"C:\ProgramData\DreamGrid", LauncherPaths.ResolveData([], env, isWindows: true));
+        Assert.Equal(Path.Combine(@"C:\ProgramData", "DreamGrid"),LauncherPaths.ResolveData([], env, isWindows: true));
     }
 
     [Fact]
