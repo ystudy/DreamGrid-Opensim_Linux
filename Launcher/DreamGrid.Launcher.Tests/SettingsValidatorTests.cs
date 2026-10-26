@@ -74,8 +74,16 @@ public sealed class SettingsValidatorTests
     [InlineData("")]
     [InlineData("   ")]
     [InlineData(null)]
-    public void Grid_name_with_quote_or_newline_is_rejected(string? name) =>
-        Assert.Equal("Use 1 to 64 letters, digits, spaces or punctuation, without quotes.", SettingsValidator.GridNameError(name));
+    [InlineData("Dream; World")]
+    [InlineData("Dream # World")]
+    [InlineData("A ${Const|PublicPort}")]
+    [InlineData("[World]")]
+    [InlineData("a{b}")]
+    [InlineData("a=b")]
+    [InlineData("a\\b")]
+    public void Grid_name_with_quote_newline_or_ini_symbol_is_rejected(string? name) =>
+        Assert.Equal("Use 1 to 64 letters, digits, spaces or punctuation, without quotes or the symbols ; # $ [ ] { } = \\",
+            SettingsValidator.GridNameError(name));
 
     [Fact]
     public void Grid_name_length_is_one_to_sixty_four_after_trimming()

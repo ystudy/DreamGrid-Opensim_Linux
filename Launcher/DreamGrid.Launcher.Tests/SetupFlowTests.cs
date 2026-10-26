@@ -173,7 +173,7 @@ public sealed class SetupFlowTests
         using var resp = await PostFormAsync(client, "/setup/world", new() { ["GridName"] = "My \"World\"" });
 
         var page = new HtmlParser().ParseDocument(await resp.Content.ReadAsStringAsync(Ct));
-        Assert.Equal("Use 1 to 64 letters, digits, spaces or punctuation, without quotes.",
+        Assert.Equal("Use 1 to 64 letters, digits, spaces or punctuation, without quotes or the symbols ; # $ [ ] { } = \\",
             page.QuerySelector("[data-valmsg-for=GridName]")?.TextContent.Trim());
         Assert.False(f.Store.LoadOrCreate().Setup.WorldNamed);
     }

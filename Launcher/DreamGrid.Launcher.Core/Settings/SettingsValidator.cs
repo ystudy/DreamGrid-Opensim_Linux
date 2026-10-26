@@ -57,13 +57,16 @@ public static partial class SettingsValidator
         return hostname.Split('.').All(DnsLabel().IsMatch) ? null : Plain;
     }
 
-    /// <summary>Null when the trimmed name is 1–64 characters with no control characters and no double quote.</summary>
+    // Nini (which OpenSim reads the INIs with) treats ; and # as comments and expands ${Section|Key}.
+    private const string ForbiddenInGridName = "\";#$[]{}=\\";
+
+    /// <summary>Null when the trimmed name is 1–64 characters with no control characters and none of <c>" ; # $ [ ] { } = \</c>.</summary>
     public static string? GridNameError(string? name)
     {
         var trimmed = name?.Trim() ?? "";
-        return trimmed.Length is >= 1 and <= 64 && !trimmed.Any(c => char.IsControl(c) || c == '"')
+        return trimmed.Length is >= 1 and <= 64 && !trimmed.Any(c => char.IsControl(c) || ForbiddenInGridName.Contains(c))
             ? null
-            : "Use 1 to 64 letters, digits, spaces or punctuation, without quotes.";
+            : "Use 1 to 64 letters, digits, spaces or punctuation, without quotes or the symbols ; # $ [ ] { } = \\";
     }
 
     private static bool IsIpv4(string s)
