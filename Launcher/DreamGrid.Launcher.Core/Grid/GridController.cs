@@ -114,8 +114,8 @@ public sealed partial class GridController(
         try
         {
             var s = LoadSettings();
-            var running = _programs.Where(p => p.Value.Process.State == ProcessState.Running).Select(p => p.Key).ToHashSet();
-            var steps = RegionPowerPlan.For(s, _held, running, regionId, action);
+            var running = _programs.Where(p => RegionPowerPlan.IsActive(p.Value.Process.State)).Select(p => p.Key).ToHashSet();
+            var steps = RegionPowerPlan.For(s, _held, running, regionId, action, _loaded);
             if ((steps.Start.Count > 0 || steps.Restart.Count > 0) && _robust!.Process.State != ProcessState.Running)
                 throw new InvalidOperationException("Robust is not running; start it first.");
 

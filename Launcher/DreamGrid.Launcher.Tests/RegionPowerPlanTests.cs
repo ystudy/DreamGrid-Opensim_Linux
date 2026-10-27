@@ -1,4 +1,5 @@
 using DreamGrid.Launcher.Core.Grid;
+using DreamGrid.Launcher.Core.Processes;
 using DreamGrid.Launcher.Core.Settings;
 using Xunit;
 
@@ -91,6 +92,40 @@ public sealed class RegionPowerPlanTests
         Assert.Empty(steps.Restart);
         Assert.Empty(steps.Stop);
         Assert.Empty(steps.Start);
+    }
+
+    [Fact]
+    public void Start_of_a_running_region_does_nothing()
+    {
+        var loaded = new Dictionary<string, IReadOnlyCollection<Guid>?> { ["Home"] = [Home.Uuid, Beach.Uuid] };
+
+        var steps = RegionPowerPlan.For(World(Home, Beach), NoneHeld, AllRunning, Beach.Uuid, RegionPower.Start, loaded);
+
+        Assert.Empty(steps.Restart);
+        Assert.Empty(steps.Start);
+        Assert.Empty(steps.Affected);
+    }
+
+    [Fact]
+    public void Start_of_a_region_its_running_program_does_not_load_restarts_it()
+    {
+        var loaded = new Dictionary<string, IReadOnlyCollection<Guid>?> { ["Home"] = [Home.Uuid] };
+
+        var steps = RegionPowerPlan.For(World(Home, Beach), NoneHeld, AllRunning, Beach.Uuid, RegionPower.Start, loaded);
+
+        Assert.Equal(["Home"], steps.Restart);
+    }
+
+    [Theory]
+    [InlineData(ProcessState.Running, true)]
+    [InlineData(ProcessState.Starting, true)]
+    [InlineData(ProcessState.Crashed, true)]
+    [InlineData(ProcessState.Stopping, true)]
+    [InlineData(ProcessState.Stopped, false)]
+    [InlineData(ProcessState.Failed, false)]
+    public void A_crashed_or_starting_program_counts_as_running(ProcessState state, bool active)
+    {
+        Assert.Equal(active, RegionPowerPlan.IsActive(state));
     }
 
     [Fact]

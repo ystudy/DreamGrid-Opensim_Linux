@@ -1,3 +1,4 @@
+using DreamGrid.Launcher.Core.Processes;
 using DreamGrid.Launcher.Core.Settings;
 
 namespace DreamGrid.Launcher.Core.Grid;
@@ -15,10 +16,25 @@ public sealed record PowerSteps(LauncherSettings Settings, IReadOnlySet<Guid> He
 /// </summary>
 public static class RegionPowerPlan
 {
-    public static PowerSteps For(LauncherSettings s, IReadOnlySet<Guid> held, IReadOnlySet<string> runningPrograms, Guid region, RegionPower action)
+    /// <summary>
+    /// A process state in which a program counts as running for the power rules: up, or on its way up or down (a crashed
+    /// one is being relaunched). Only a stopped or failed program needs starting, and only those can be left alone.
+    /// </summary>
+    public static bool IsActive(ProcessState state) => state is not (ProcessState.Stopped or ProcessState.Failed);
+
+    /// <param name="runningPrograms">Programs that are <see cref="IsActive"/>.</param>
+    /// <param name="loaded">The regions each running program loads (null: unknown); Start on a region already loaded does nothing.</param>
+    public static PowerSteps For(LauncherSettings s, IReadOnlySet<Guid> held, IReadOnlySet<string> runningPrograms, Guid region, RegionPower action,
+        IReadOnlyDictionary<string, IReadOnlyCollection<Guid>?>? loaded = null)
     {
         var r = RegionModel.Find(s, region) ?? throw new InvalidOperationException("There is no such region.");
         if (r.DeletedAt is not null) throw new InvalidOperationException("That region has been deleted.");
+        // Version 1's StartRegion on a running region did nothing; a watchdog script calling it must not restart anyone.
+        if (action == RegionPower.Start && !r.Parked && !held.Contains(region) && runningPrograms.Contains(r.Instance))
+        {
+            var ids = loaded?.GetValueOrDefault(r.Instance);
+            if (ids is null || ids.Contains(region)) return new PowerSteps(s, held, [], [], [], []);
+        }
 
         var nextHeld = new HashSet<Guid>(held);
         var next = s;
