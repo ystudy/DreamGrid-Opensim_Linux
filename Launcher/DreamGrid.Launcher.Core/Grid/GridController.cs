@@ -313,27 +313,15 @@ public sealed partial class GridController(
             progress?.Report(SetupProgress.CreatingRegion);
             var s = LoadSettings();
             // A retry for the same name keeps the region's UUID.
-            var uuid = RegionModel.First(s) is { } old && old.Name == name ? old.Uuid : Guid.NewGuid();
-            var region = new RegionSettings(Instance: SafeFolderName(name), Name: name, Uuid: uuid, Content: content, UdpPort: s.RegionPort);
-            foreach (var other in _programs.Values.Where(c => c.Instance != region.Instance))
-                await StopProgramAsync(other, ct);
-
-            s = UpdateSettings(l => l with
+            var uuid = RegionModel.FindByName(s, name) is { } old && old.Name == name ? old.Uuid : Guid.NewGuid();
+            if (!s.Setup.RegionCreated)
             {
-                Programs = [new ProgramSettings(region.Instance, l.RegionPort, l.RegionConsolePort)],
-                Regions = [region with { UdpPort = l.RegionPort }],
-            });
-            lock (_configGate) new RuntimeStager(paths).WriteLogConfigs([region.Instance], LogLevelModule.LevelFor(s));
-            EnsureComponents(s);
-            var program = _programs[region.Instance];
-
-            await StartProgramAsync(s, program, ct);
-            await WaitForLoginsAsync(program, uuid, ct); // the scene is up and accepts console commands for it
-            progress?.Report(SetupProgress.LoadingContent);
-            await LoadContentAsync(program, region, content, s, ct);
-            progress?.Report(SetupProgress.WaitingForLogins);
-            await WaitForLoginsAsync(program, uuid, ct);
-
+                // What an earlier attempt left goes: its program stops unless the new region takes over its folder.
+                foreach (var other in _programs.Values.Where(c => c.Instance != SafeFolderName(name)))
+                    await StopProgramAsync(other, ct);
+                s = UpdateSettings(l => l with { Programs = [], Regions = [] });
+            }
+            await AddCoreAsync(s, new NewRegion(name, 1000, 1000, 1, content, null), uuid, progress, ct);
             UpdateSettings(l => l with { Setup = l.Setup with { RegionCreated = true } }, writeConfig: false);
         }
         finally { _activity = GridActivity.None; _ops.Release(); }
@@ -341,8 +329,87 @@ public sealed partial class GridController(
 
     public Task StartWorldAsync(bool everything, CancellationToken ct) => throw new NotImplementedException();
 
-    public Task<RegionSettings> AddRegionAsync(NewRegion request, CancellationToken ct, IProgress<string>? progress = null) =>
-        throw new NotImplementedException();
+    public async Task<RegionSettings> AddRegionAsync(NewRegion request, CancellationToken ct, IProgress<string>? progress = null)
+    {
+        if (!IsValidRegionName(request.Name))
+            throw new ArgumentException("A region name is 2-32 letters, digits, spaces, '-', '_' or '\\'' with no leading or trailing space.", nameof(request));
+        if (request.Content is not ("starter" or "island"))
+            throw new ArgumentException("Content must be \"starter\" or \"island\".", nameof(request));
+
+        await _ops.WaitAsync(ct);
+        _activity = GridActivity.Starting;
+        try
+        {
+            LauncherSettings s;
+            lock (_configGate) s = ReloadSettings();
+            if (RegionRequestError(s, request) is { } error) throw new ArgumentException(error, nameof(request));
+            progress?.Report(SetupProgress.CreatingRegion);
+            s = LoadSettings();
+            if (_robust!.Process.State != ProcessState.Running)
+                throw new InvalidOperationException("Robust is not running; start it first.");
+            return await AddCoreAsync(s, request, Guid.NewGuid(), progress, ct);
+        }
+        finally { _activity = GridActivity.None; _ops.Release(); }
+    }
+
+    /// <summary>Why a region can't be added as asked (in words the website shows as they are), or null.</summary>
+    private static string? RegionRequestError(LauncherSettings s, NewRegion r)
+    {
+        if (RegionModel.FindByName(s, r.Name) is not null) return $"There is already a region called {r.Name}.";
+        if (r.Size is < 1 or > RegionPlacement.MaxSize) return "A region is 1 to 16 squares on each side.";
+        if (RegionPlacement.Check(s, r.X, r.Y, r.Size) is { Ok: false } check) return $"That spot overlaps {check.OverlapsWith}.";
+        if (r.ShareWith is { } share && s.Programs.All(p => p.Instance != share)) return $"There is no region group {share}.";
+        return null;
+    }
+
+    /// <summary>
+    /// Under the operation lock: saves the region (and its own program, unless it shares one) with ports from
+    /// <see cref="PortAllocator"/>, starts it (a shared program restarts to load it), loads its content, and waits until
+    /// it accepts logins.
+    /// </summary>
+    private async Task<RegionSettings> AddCoreAsync(LauncherSettings s, NewRegion r, Guid uuid, IProgress<string>? progress, CancellationToken ct)
+    {
+        RegionSettings region = null!;
+        s = UpdateSettings(l =>
+        {
+            if (r.ShareWith is { } share)
+            {
+                region = new RegionSettings(share, r.Name, uuid, r.X, r.Y, r.Content, r.Size, PortAllocator.Next(l, l.RegionPort));
+                return l with { Regions = [.. l.Regions, region] };
+            }
+            var instance = UniqueFolderName(l, SafeFolderName(r.Name));
+            var httpPort = PortAllocator.Next(l, l.RegionPort);
+            var consolePort = PortAllocator.Next(l, l.RegionConsolePort, new HashSet<int> { httpPort });
+            region = new RegionSettings(instance, r.Name, uuid, r.X, r.Y, r.Content, r.Size, httpPort);
+            return l with { Programs = [.. l.Programs, new ProgramSettings(instance, httpPort, consolePort)], Regions = [.. l.Regions, region] };
+        });
+        lock (_configGate) new RuntimeStager(paths).WriteLogConfigs(s.Programs.Select(p => p.Instance), LogLevelModule.LevelFor(s));
+
+        _logins.Clear([uuid]);
+        // A shared program loads the new region file only when it starts. A program of its own is new, or the one an
+        // interrupted setup left running for this very region, which is adopted.
+        if (r.ShareWith is not null && _programs.GetValueOrDefault(region.Instance) is { Process.State: ProcessState.Running } shared)
+            await StopProgramAsync(shared, ct);
+        EnsureComponents(s);
+        var program = _programs[region.Instance];
+
+        await StartProgramAsync(s, program, ct);
+        await WaitForLoginsAsync(program, uuid, ct); // the scene is up and accepts console commands for it
+        progress?.Report(SetupProgress.LoadingContent);
+        await LoadContentAsync(program, region, r.Content, s, ct);
+        progress?.Report(SetupProgress.WaitingForLogins);
+        await WaitForLoginsAsync(program, uuid, ct);
+        return region;
+    }
+
+    /// <summary>A program folder name no other program uses: the safe name, else with "_2", "_3", … added.</summary>
+    private static string UniqueFolderName(LauncherSettings s, string name)
+    {
+        var taken = s.Programs.Select(p => p.Instance).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var candidate = name;
+        for (var n = 2; taken.Contains(candidate); n++) candidate = $"{name}_{n}";
+        return candidate;
+    }
 
     public Task RegionPowerAsync(Guid regionId, RegionPower action, CancellationToken ct) => throw new NotImplementedException();
 

@@ -133,6 +133,41 @@ public sealed class GridBootTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task Second_region_shared_and_third_on_its_own()
+    {
+        var (grid, paths, _, _) = Make();
+        var ct = TestContext.Current.CancellationToken;
+        try
+        {
+            await grid.StartAsync(ct);
+            await grid.CreateOwnerAsync("Test", "Owner", "pass-word1", null, ct);
+            using var alerts = new AlertListener(grid.CurrentSettings().WebPort, grid.OnRegionAlert);
+            await grid.CreateRegionAsync("Welcome", "island", ct);
+
+            var beach = await grid.AddRegionAsync(new NewRegion("Beach", 1001, 1000, 1, "island", "Welcome"), ct);
+            var isle = await grid.AddRegionAsync(new NewRegion("Isle", 1010, 1010, 1, "island", null), ct);
+
+            var status = grid.GetStatus();
+            Assert.Equal(["Welcome", "Beach", "Isle"], status.Regions.Select(r => r.Name));
+            Assert.All(status.Regions, r => Assert.Equal(RegionState.Running, r.State));
+            Assert.Equal(2, status.Programs.Count);
+            Assert.Equal(["Welcome"], status.Regions.Single(r => r.Id == beach.Uuid).RunsWith);
+            Assert.Empty(status.Regions.Single(r => r.Id == isle.Uuid).RunsWith);
+            Assert.True(status.LoginsEnabled);
+
+            await grid.StopAllAsync(ct);
+        }
+        catch (Exception e) when (e is not Xunit.Sdk.XunitException)
+        {
+            throw new Exception(e.Message + Environment.NewLine + LogTail(paths), e);
+        }
+        finally
+        {
+            await grid.DetachAsync();
+        }
+    }
+
     private static async Task WaitUntilAsync(Func<bool> done, TimeSpan timeout, CancellationToken ct)
     {
         var deadline = DateTime.UtcNow + timeout;
