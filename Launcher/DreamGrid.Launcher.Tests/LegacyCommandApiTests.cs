@@ -28,7 +28,7 @@ public sealed class LegacyCommandApiTests
         Db = new DatabaseSecrets("r", "r", "o"),
         Console = new ConsoleSecrets("u", "p"),
         MachineId = MachineId,
-        Region = new RegionSettings("Welcome", "Welcome", RegionUuid),
+        Programs = TestSettings.ProgramFor(new RegionSettings("Welcome", "Welcome", RegionUuid)), Regions = TestSettings.RegionsFor(new RegionSettings("Welcome", "Welcome", RegionUuid)),
     };
 
     private readonly ConcurrentQueue<(LogLevel Level, string Category, string Message)> _logs = new();
@@ -75,7 +75,7 @@ public sealed class LegacyCommandApiTests
     [Fact]
     public async Task RegionStatus_without_a_region_is_NAK()
     {
-        _settings = _settings with { Region = null };
+        _settings = _settings with { Programs = [], Regions = [] };
         _grid.HasRegion = false;
         Assert.StartsWith("NAK", await Api().HandleAsync(Req("RegionStatus"), Ct));
     }
@@ -204,7 +204,7 @@ public sealed class LegacyCommandApiTests
     [Fact]
     public async Task Regionlist_is_empty_before_a_region_exists()
     {
-        _settings = _settings with { Region = null };
+        _settings = _settings with { Programs = [], Regions = [] };
         _grid.HasRegion = false;
 
         using var doc = JsonDocument.Parse(await Api().HandleAsync(Req("regionlist"), Ct));

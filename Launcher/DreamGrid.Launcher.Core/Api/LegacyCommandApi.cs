@@ -123,7 +123,7 @@ public sealed class LegacyCommandApi(
     /// <summary>Null when the request names the grid's region (or no region); otherwise the NAK reply.</summary>
     private static string? TargetRegion(LegacyRequest r, LauncherSettings s)
     {
-        if (s.Region is not { } region) return "NAK No region has been created yet.";
+        if (RegionModel.First(s) is not { } region) return "NAK No region has been created yet.";
         if (!string.IsNullOrEmpty(r.RegionName) && !r.RegionName.Equals(region.Name, StringComparison.OrdinalIgnoreCase))
             return $"NAK Unknown region {r.RegionName}";
         if (r.RegionUuid is { } uuid && uuid != region.Uuid)
@@ -133,7 +133,7 @@ public sealed class LegacyCommandApi(
 
     private static string RegionList(IGridController grid, LauncherSettings s)
     {
-        var regions = s.Region is { } r
+        var regions = RegionModel.First(s) is { } r
             ? new[] { new RegionEntry(r.Name, r.Uuid.ToString(), grid.GetStatus().Region?.State.ToString() ?? "Stopped") }
             : [];
         return JsonSerializer.Serialize(new { regions }, Json);

@@ -44,8 +44,7 @@ public sealed class GridConfigWriter(LauncherPaths paths)
         flotsam.Set("AssetCache", "CacheDirectory", Fwd(paths.AssetCache));
         Finish(flotsam, "region", extra, Path.Combine(rt, "config-include", "FlotsamCache.ini"), applyExtra: false);
 
-        if (s.Region is null) return;
-        var r = s.Region;
+        if (RegionModel.First(s) is not { } r || RegionModel.ProgramOf(s, r) is not { } program) return;
 
         // 4. region OpenSim.ini
         var os = LoadProto(Path.Combine(rt, "config-include", "Proto", "Robust", "OpenSim.ini"));
@@ -54,16 +53,16 @@ public sealed class GridConfigWriter(LauncherPaths paths)
         os.Set("Const", "PublicPort", s.RobustPublicPort.ToString());
         os.Set("Const", "PrivatePort", s.RobustPrivatePort.ToString());
         os.Set("Const", "PrivURL", "http://127.0.0.1");
-        os.Set("Const", "http_listener_port", s.RegionPort.ToString());
+        os.Set("Const", "http_listener_port", program.HttpPort.ToString());
         os.Set("Const", "RegionFolderName", r.Instance);
         os.Set("Const", "DiagnosticsPort", s.WebPort.ToString());
         os.Set("Startup", "regionload_regionsdir", Fwd(paths.RegionDefinitionDir(r.Instance)) + "/");
         os.Set("Startup", "PIDFile", Fwd(Path.Combine(paths.Pids, r.Instance + ".pid")));
         os.Set("Startup", "ConsoleHistoryFile", Fwd(Path.Combine(paths.RegionDir(r.Instance), "ConsoleHistory.txt")));
-        os.Set("Startup", "physics", r.Physics);
-        os.Set("Startup", "meshing", r.Physics == "BulletSim" ? "Meshmerizer" : "ubODEMeshmerizer");
+        os.Set("Startup", "physics", program.Physics);
+        os.Set("Startup", "meshing", program.Physics == "BulletSim" ? "Meshmerizer" : "ubODEMeshmerizer");
         // The region reads [Network] console_port (OpenSim.cs), unlike Robust's ConsolePort.
-        SetNetwork(os, s, "console_port", s.RegionConsolePort);
+        SetNetwork(os, s, "console_port", program.ConsolePort);
         if (s.Setup.OwnerCreated && s.Setup.Owner is { } owner)
         {
             os.Set("Estates", "DefaultEstateName", $"{s.GridName} Estate");
@@ -87,7 +86,7 @@ public sealed class GridConfigWriter(LauncherPaths paths)
         def.Set(r.Name, "RegionUUID", r.Uuid.ToString());
         def.Set(r.Name, "Location", $"{r.X},{r.Y}");
         def.Set(r.Name, "InternalAddress", "0.0.0.0");
-        def.Set(r.Name, "InternalPort", s.RegionPort.ToString());
+        def.Set(r.Name, "InternalPort", r.UdpPort.ToString());
         def.Set(r.Name, "ExternalHostName", host);
         def.Set(r.Name, "SizeX", "256");
         def.Set(r.Name, "SizeY", "256");

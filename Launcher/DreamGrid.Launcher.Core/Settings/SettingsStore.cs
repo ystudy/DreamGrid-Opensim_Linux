@@ -38,13 +38,33 @@ public sealed class SettingsStore(string path)
             using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
             using (var reader = new StreamReader(fs))
                 json = reader.ReadToEnd();
-            var loaded = JsonSerializer.Deserialize<LauncherSettings>(json, Options);
-            return loaded ?? throw new JsonException("settings file contains null");
+            var loaded = JsonSerializer.Deserialize<LauncherSettings>(json, Options)
+                ?? throw new JsonException("settings file contains null");
+            if (loaded.SchemaVersion >= LauncherSettings.CurrentSchema) return loaded;
+            var migrated = Migrate(loaded);
+            Save(migrated);
+            return migrated;
         }
         catch (Exception e) when (e is JsonException or NotSupportedException)
         {
             throw new SettingsCorruptException(path, e);
         }
+    }
+
+    /// <summary>
+    /// Schema 1 to 2: the single region becomes one program and one region with the same folder, ports and UUID, so a
+    /// running region is adopted with no change to its config.
+    /// </summary>
+    private static LauncherSettings Migrate(LauncherSettings s)
+    {
+        var programs = new List<ProgramSettings>();
+        var regions = new List<RegionSettings>();
+        if (s.LegacyRegion is { } r)
+        {
+            programs.Add(new ProgramSettings(r.Instance, s.RegionPort, s.RegionConsolePort, r.Physics));
+            regions.Add(new RegionSettings(r.Instance, r.Name, r.Uuid, r.X, r.Y, r.Content, 1, s.RegionPort));
+        }
+        return s with { SchemaVersion = LauncherSettings.CurrentSchema, Programs = programs, Regions = regions, LegacyRegion = null };
     }
 
     public void Save(LauncherSettings s)

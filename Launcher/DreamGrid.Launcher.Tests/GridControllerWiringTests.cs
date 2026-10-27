@@ -251,7 +251,7 @@ public sealed class GridControllerWiringTests : IDisposable
         var s = _store.LoadOrCreate();
         _store.Save(s with
         {
-            Region = new RegionSettings("Welcome", "Welcome", Guid.NewGuid()),
+            Programs = TestSettings.ProgramFor(new RegionSettings("Welcome", "Welcome", Guid.NewGuid())), Regions = TestSettings.RegionsFor(new RegionSettings("Welcome", "Welcome", Guid.NewGuid())),
             Setup = s.Setup with { RegionCreated = created },
         });
     }
@@ -597,7 +597,7 @@ public sealed class GridControllerWiringTests : IDisposable
             Assert.DoesNotContain(commands, c => c.StartsWith("load oar", StringComparison.Ordinal));
             var saved = _store.LoadOrCreate();
             Assert.True(saved.Setup.RegionCreated);
-            Assert.Equal("island", saved.Region?.Content);
+            Assert.Equal("island", RegionModel.First(saved)?.Content);
         }
         finally { await EndLeftoverRegionAsync(fake); }
     }

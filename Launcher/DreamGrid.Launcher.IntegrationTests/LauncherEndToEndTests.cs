@@ -96,7 +96,7 @@ public sealed partial class LauncherEndToEndTests : IDisposable
 
             s = store.LoadOrCreate();
             Assert.True(s.Setup.RegionCreated);
-            var instance = s.Region!.Instance;
+            var instance = RegionModel.First(s)!.Instance;
 
             // 2. The PIDs the launcher must adopt.
             var expected = (Db: LivePid(paths, "mariadb.pid"), Robust: LivePid(paths, "robust.pid"), Region: LivePid(paths, instance + ".pid"));
@@ -207,7 +207,7 @@ public sealed partial class LauncherEndToEndTests : IDisposable
             var reply = await console.RunAsync("login status", TimeSpan.FromSeconds(2), Ct);
             _lastConsoleReply = string.Join(" | ", reply);
             // AccessModule's exact answer to "login status".
-            return reply.Any(l => l.Trim() == $"Login in {s.Region!.Name} are enabled");
+            return reply.Any(l => l.Trim() == $"Login in {RegionModel.First(s)!.Name} are enabled");
         }
         catch (Exception e) when (!Ct.IsCancellationRequested)
         {

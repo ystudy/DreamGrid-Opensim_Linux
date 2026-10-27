@@ -18,7 +18,7 @@ public sealed class AdvancedSettingsTests : IAsyncLifetime
     {
         SetupToken = null,
         Setup = s.Setup with { OwnerCreated = true, Finished = true },
-        Region = new RegionSettings("Welcome", "Welcome", Guid.NewGuid()),
+        Programs = TestSettings.ProgramFor(new RegionSettings("Welcome", "Welcome", Guid.NewGuid())), Regions = TestSettings.RegionsFor(new RegionSettings("Welcome", "Welcome", Guid.NewGuid())),
         // Nothing listens here, so "Test connection" fails at once.
         MariaDbPort = FreePort,
     })

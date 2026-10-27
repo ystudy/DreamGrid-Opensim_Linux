@@ -302,12 +302,16 @@ public sealed partial class GridController(
             progress?.Report(SetupProgress.CreatingRegion);
             var s = LoadSettings();
             // A retry for the same name keeps the region's UUID.
-            var uuid = s.Region is { } old && old.Name == name ? old.Uuid : Guid.NewGuid();
-            var region = new RegionSettings(Instance: SafeFolderName(name), Name: name, Uuid: uuid, Content: content);
+            var uuid = RegionModel.First(s) is { } old && old.Name == name ? old.Uuid : Guid.NewGuid();
+            var region = new RegionSettings(Instance: SafeFolderName(name), Name: name, Uuid: uuid, Content: content, UdpPort: s.RegionPort);
             if (_region is not null && _region.Instance != region.Instance)
                 await _region.Process.StopAsync(ct);
 
-            s = UpdateSettings(l => l with { Region = region });
+            s = UpdateSettings(l => l with
+            {
+                Programs = [new ProgramSettings(region.Instance, l.RegionPort, l.RegionConsolePort)],
+                Regions = [region with { UdpPort = l.RegionPort }],
+            });
             lock (_configGate) new RuntimeStager(paths).WriteLogConfigs(region.Instance, LogLevelModule.LevelFor(s));
             EnsureComponents(s);
 
@@ -333,7 +337,7 @@ public sealed partial class GridController(
         return new GridStatus(
             Describe("database", _db),
             Describe("robust", _robust),
-            s.Region is null ? null : Describe("region", _region),
+            RegionModel.First(s) is null ? null : Describe("region", _region),
             _loginsEnabled,
             $"http://{_host}:{s.RobustPublicPort}",
             _startFailure,
@@ -450,7 +454,7 @@ public sealed partial class GridController(
         }
         lock (_configGate)
         {
-            stager.WriteLogConfigs(s.Region?.Instance, LogLevelModule.LevelFor(s));
+            stager.WriteLogConfigs(RegionModel.First(s)?.Instance, LogLevelModule.LevelFor(s));
             WriteConfig(s);
         }
     }
@@ -585,7 +589,7 @@ public sealed partial class GridController(
     {
         _db = Refresh(_db, KeyOf(s, "database"), () => MakeDatabase(s));
         _robust = Refresh(_robust, KeyOf(s, "robust"), () => MakeRobust(s));
-        if (s.Region is { } r)
+        if (RegionModel.First(s) is { } r)
             _region = _region?.Instance != r.Instance ? MakeRegion(s, r) : Refresh(_region, KeyOf(s, "region"), () => MakeRegion(s, r));
     }
 
@@ -601,7 +605,7 @@ public sealed partial class GridController(
     {
         "database" => $"{s.MariaDbPort}|{s.Db.RootPassword}",
         "robust" => $"{s.RobustPublicPort}|{s.RobustPrivatePort}|{s.RobustConsolePort}|{s.Console.User}|{s.Console.Password}",
-        _ => $"{s.Region?.Instance}|{s.RegionPort}|{s.RegionConsolePort}|{s.Console.User}|{s.Console.Password}",
+        _ => $"{RegionModel.First(s)?.Instance}|{s.RegionPort}|{s.RegionConsolePort}|{s.Console.User}|{s.Console.Password}",
     };
 
     private Component MakeDatabase(LauncherSettings s)

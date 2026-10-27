@@ -49,7 +49,8 @@ public sealed class GridConfigWriterTests : IDisposable
         Db = new DatabaseSecrets("rootpw", "GENROBUSTPW", "GENOPENSIMPW"),
         Console = new ConsoleSecrets("conuser", "conpass32chars"),
         MachineId = "machine-1",
-        Region = new RegionSettings("Region1", regionName, Guid.Parse("11111111-2222-3333-4444-555555555555"), 1000, 1001, physics),
+        Programs = TestSettings.ProgramFor(new RegionSettings("Region1", regionName, Guid.Empty), physics),
+        Regions = [new RegionSettings("Region1", regionName, Guid.Parse("11111111-2222-3333-4444-555555555555"), 1000, 1001, UdpPort: 8004)],
         Setup = owner
             ? new SetupState(OwnerCreated: true, Owner: new OwnerInfo("Ada", "Lovelace", Guid.Parse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")))
             : new SetupState(),
@@ -212,7 +213,7 @@ public sealed class GridConfigWriterTests : IDisposable
     [Fact]
     public void No_region_means_no_region_files()
     {
-        Write(Make() with { Region = null });
+        Write(Make() with { Programs = [], Regions = [] });
         Assert.True(File.Exists(Path.Combine(_paths.RuntimeOpenSim, "Robust.HG.ini")));
         Assert.False(Directory.Exists(_paths.RegionsRoot));
     }

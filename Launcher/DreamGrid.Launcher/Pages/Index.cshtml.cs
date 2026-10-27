@@ -69,7 +69,7 @@ public sealed class IndexModel(IGridController grid, IOnlineUsers online, GridAc
         {
             "database" => "database",
             "robust" => "robust",
-            _ => settings().Region is { } r ? "region-" + r.Instance : null,
+            _ => RegionModel.First(settings()) is { } r ? "region-" + r.Instance : null,
         };
         if (source is null) return [];
         try

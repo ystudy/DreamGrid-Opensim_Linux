@@ -21,7 +21,7 @@ public sealed partial class DashboardTests : IAsyncLifetime
     {
         SetupToken = null,
         Setup = s.Setup with { OwnerCreated = true, Finished = true },
-        Region = new RegionSettings("Welcome", "Welcome", Guid.NewGuid()),
+        Programs = TestSettings.ProgramFor(new RegionSettings("Welcome", "Welcome", Guid.NewGuid())), Regions = TestSettings.RegionsFor(new RegionSettings("Welcome", "Welcome", Guid.NewGuid())),
     })
     {
         Before = TestAuth.Apply,

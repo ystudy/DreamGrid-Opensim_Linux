@@ -78,7 +78,8 @@ internal sealed class FakeGridController : IGridController
         await OnCreateRegion(progress, ct);
         UpdateSettings(l => l with
         {
-            Region = new RegionSettings(GridController.SafeFolderName(name), name, Guid.NewGuid(), Content: content),
+            Programs = [new ProgramSettings(GridController.SafeFolderName(name), l.RegionPort, l.RegionConsolePort)],
+            Regions = [new RegionSettings(GridController.SafeFolderName(name), name, Guid.NewGuid(), Content: content, UdpPort: l.RegionPort)],
             Setup = l.Setup with { RegionCreated = true },
         });
     }
