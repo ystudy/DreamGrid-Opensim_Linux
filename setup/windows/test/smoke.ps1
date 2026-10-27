@@ -160,6 +160,9 @@ $app = $command.App
 $v1 = (Get-Content -LiteralPath (Join-Path $app 'VERSION') -TotalCount 1).Trim()
 $expectedArgs = "--data `"$data`" --opensim `"$app\bin`" --mariadb-bin `"$app\mariadb-"
 if ($command.Image.IndexOf($expectedArgs, [StringComparison]::OrdinalIgnoreCase) -lt 0) { Fail "the service command lacks '$expectedArgs': $($command.Image)" }
+# ubode.dll (the region's physics) needs the Visual C++ runtime, which a clean Windows does not have; the runner has
+# it in System32, so only the app-local copy shows the installer ships it.
+if (-not (Test-Path -LiteralPath (Join-Path $app 'bin\lib64\vcruntime140.dll'))) { Fail 'there is no bin\lib64\vcruntime140.dll beside ubode.dll' }
 $rules = @(Get-FirewallRules)
 if ($rules.Count -ne 1 -or $rules[0].DisplayName -ne "DreamGrid (dotnet $($command.Runtime))") {
     Fail "expected one firewall rule 'DreamGrid (dotnet $($command.Runtime))', found: $(($rules | ForEach-Object DisplayName) -join ', ')"
