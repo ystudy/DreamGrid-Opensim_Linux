@@ -6,34 +6,34 @@
     var s = Model.Settings;
     string Password(string value) => Model.Revealed ? value : DatabaseModel.Masked;
 }
-<p><a href="/advanced">Advanced Settings</a></p>
+<nav aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="/advanced">Advanced Settings</a></li><li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li></ol></nav>
 <h1>Database</h1>
-<p class="muted">Your world keeps its data in its own MariaDB, which only this computer can reach. Robust uses the robustuser account and your region the opensimuser account.</p>
+<p class="text-body-secondary">Your world keeps its data in its own MariaDB, which only this computer can reach. Robust uses the robustuser account and your region the opensimuser account.</p>
 
-<section class="card">
-    <dl class="facts">
-        <dt>Host</dt>
-        <dd>@DatabaseModel.Host</dd>
-        <dt>Port</dt>
-        <dd>@s.MariaDbPort <span class="hint">Change it under <a href="/advanced/network">Network</a>.</span></dd>
-        <dt>Robust user</dt>
-        <dd><code>robustuser</code></dd>
-        <dt>Robust password</dt>
-        <dd><code>@Password(s.Db.RobustPassword)</code></dd>
-        <dt>Region user</dt>
-        <dd><code>opensimuser</code></dd>
-        <dt>Region password</dt>
-        <dd><code>@Password(s.Db.OpensimPassword)</code></dd>
+<section class="card card-body shadow-sm mb-3">
+    <dl class="facts row mb-3">
+        <dt class="col-sm-4">Host</dt>
+        <dd class="col-sm-8">@DatabaseModel.Host</dd>
+        <dt class="col-sm-4">Port</dt>
+        <dd class="col-sm-8">@s.MariaDbPort <span class="hint form-text">Change it under <a href="/advanced/network">Network</a>.</span></dd>
+        <dt class="col-sm-4">Robust user</dt>
+        <dd class="col-sm-8"><code>robustuser</code></dd>
+        <dt class="col-sm-4">Robust password</dt>
+        <dd class="col-sm-8"><code>@Password(s.Db.RobustPassword)</code></dd>
+        <dt class="col-sm-4">Region user</dt>
+        <dd class="col-sm-8"><code>opensimuser</code></dd>
+        <dt class="col-sm-4">Region password</dt>
+        <dd class="col-sm-8"><code>@Password(s.Db.OpensimPassword)</code></dd>
     </dl>
-    <div class="button-row">
+    <div class="d-flex flex-wrap gap-2">
         @if (!Model.Revealed)
         {
-            <form method="post" asp-page-handler="Show" onsubmit="return confirm('Show the database passwords on this screen?');">
-                <button type="submit" class="secondary">Show passwords</button>
+            <form method="post" asp-page-handler="Show" onsubmit="return confirm('Show the database passwords on this screen?');" class="m-0">
+                <button type="submit" class="btn btn-outline-primary">Show passwords</button>
             </form>
         }
-        <form method="post" asp-page-handler="Test">
-            <button type="submit" class="secondary">Test connection</button>
+        <form method="post" asp-page-handler="Test" class="m-0">
+            <button type="submit" class="btn btn-outline-primary">Test connection</button>
         </form>
     </div>
 </section>
@@ -42,11 +42,11 @@
 {
     if (Model.Test.Error is null)
     {
-        <p id="test-result" class="ok-box" role="status">Connected as robustuser to @DatabaseModel.Host:@s.MariaDbPort.</p>
+        <p id="test-result" class="ok-box alert alert-success" role="status">Connected as robustuser to @DatabaseModel.Host:@s.MariaDbPort.</p>
     }
     else
     {
-        <div id="test-result" class="error-box" role="status">
+        <div id="test-result" class="error-box alert alert-danger" role="status">
             <p>Could not connect as robustuser to @DatabaseModel.Host:@s.MariaDbPort.</p>
             <pre>@Model.Test.Error</pre>
         </div>

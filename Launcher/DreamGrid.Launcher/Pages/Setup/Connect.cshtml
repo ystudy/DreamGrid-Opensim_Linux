@@ -6,18 +6,18 @@
 <partial name="_Checklist" model="4" />
 <h1>Connect with Firestorm</h1>
 <p>Your world's address:</p>
-<div class="copy-row">
-    <code id="login-uri" class="login-uri">@Model.LoginUri</code>
-    <button type="button" id="copy-uri" hidden>Copy</button>
+<div class="input-group copy-row mb-3">
+    <code id="login-uri" class="form-control login-uri">@Model.LoginUri</code>
+    <button type="button" id="copy-uri" class="btn btn-outline-primary" hidden>Copy</button>
 </div>
-<ol class="steps">
-    <li>Install Firestorm from <a href="https://www.firestormviewer.org/" rel="noopener noreferrer" target="_blank">https://www.firestormviewer.org/</a></li>
-    <li>Viewer → Preferences → OpenSim → Grid Manager → paste the address → Apply</li>
-    <li>Pick @Model.GridName on the login screen</li>
-    <li>Log in as @Model.OwnerName</li>
+<ol class="steps list-group list-group-numbered mb-3">
+    <li class="list-group-item">Install Firestorm from <a href="https://www.firestormviewer.org/" rel="noopener noreferrer" target="_blank">https://www.firestormviewer.org/</a></li>
+    <li class="list-group-item">Viewer → Preferences → OpenSim → Grid Manager → paste the address → Apply</li>
+    <li class="list-group-item">Pick @Model.GridName on the login screen</li>
+    <li class="list-group-item">Log in as @Model.OwnerName</li>
 </ol>
 <form method="post">
-    <button type="submit">I'm in!</button>
+    <button type="submit" class="btn btn-primary mt-3">I'm in!</button>
 </form>
 
 @section Scripts {

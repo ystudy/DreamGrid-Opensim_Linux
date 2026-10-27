@@ -9,13 +9,13 @@
 }
 @if (port is { } taken)
 {
-    <div class="error-box">
+    <div class="error-box alert alert-danger">
         <p>@StatusApi.PortInUse(taken) Close that program, or use a different port:</p>
         <form method="post" action="/setup?handler=Port" asp-antiforgery="true">
-            <label for="port-conflict-port">Use port</label>
-            <input id="port-conflict-port" name="Port" type="number" min="1024" max="65535" value="@(ViewData["PortValue"] as string)" required>
-            <span class="field-error">@(ViewData["PortError"] as string)</span>
-            <button type="submit">Use this port and try again</button>
+            <label class="form-label mt-3" for="port-conflict-port">Use port</label>
+            <input class="form-control" id="port-conflict-port" name="Port" type="number" min="1024" max="65535" value="@(ViewData["PortValue"] as string)" required>
+            <span class="field-error text-danger small d-block">@(ViewData["PortError"] as string)</span>
+            <button type="submit" class="btn btn-primary mt-3">Use this port and try again</button>
         </form>
     </div>
 }

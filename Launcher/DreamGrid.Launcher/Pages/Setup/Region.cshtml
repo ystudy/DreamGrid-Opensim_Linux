@@ -16,7 +16,7 @@
 
 @if (p.Running)
 {
-    <div class="progress-box" id="setup-progress">
+    <div class="progress-box alert alert-info" id="setup-progress">
         <p>Setting up your region. This can take a few minutes; you can leave this page open.</p>
         <p class="stage" id="setup-stage">@(p.Stage == "" ? "Getting ready" : p.Stage)…</p>
         <progress id="setup-bar" max="100" value="@p.Percent">@p.Percent %</progress>
@@ -24,14 +24,14 @@
 }
 else if (Model.Ready)
 {
-    <div class="ok-box">
+    <div class="ok-box alert alert-success">
         <p>Your region is ready.</p>
-        <a class="button" href="/setup/connect">Continue</a>
+        <a class="button btn btn-primary" href="/setup/connect">Continue</a>
     </div>
 }
 else if (Model.ShowProgress && p.Error is not null)
 {
-    <div class="error-box">
+    <div class="error-box alert alert-danger">
         <p>@p.Error</p>
         @if (p.LogExcerpt is not null)
         {
@@ -44,20 +44,20 @@ else if (Model.ShowProgress && p.Error is not null)
 @if (Model.ShowForm)
 {
     <form method="post">
-        <label asp-for="RegionName">Region name</label>
-        <input asp-for="RegionName" maxlength="32" autocomplete="off" required>
-        <span asp-validation-for="RegionName" class="field-error"></span>
+        <label class="form-label mt-3" asp-for="RegionName">Region name</label>
+        <input class="form-control" asp-for="RegionName" maxlength="32" autocomplete="off" required>
+        <span asp-validation-for="RegionName" class="field-error text-danger small d-block"></span>
 
-        <fieldset>
-            <legend>What should it look like?</legend>
+        <fieldset class="mt-3">
+            <legend class="fs-6 fw-semibold">What should it look like?</legend>
             @if (Model.StarterAvailable)
             {
-                <label class="choice"><input type="radio" name="Content" value="starter" checked="@(Model.RegionContent == "starter")"> Starter island (trees, greenery and an info kiosk)</label>
+                <div class="form-check"><label class="choice form-check-label"><input class="form-check-input" type="radio" name="Content" value="starter" checked="@(Model.RegionContent == "starter")"> Starter island (trees, greenery and an info kiosk)</label></div>
             }
-            <label class="choice"><input type="radio" name="Content" value="island" checked="@(Model.RegionContent == "island")"> Empty island</label>
-            <span asp-validation-for="RegionContent" class="field-error"></span>
+            <div class="form-check"><label class="choice form-check-label"><input class="form-check-input" type="radio" name="Content" value="island" checked="@(Model.RegionContent == "island")"> Empty island</label></div>
+            <span asp-validation-for="RegionContent" class="field-error text-danger small d-block"></span>
         </fieldset>
-        <button type="submit">Create my region</button>
+        <button type="submit" class="btn btn-primary mt-3">Create my region</button>
     </form>
 }
 
