@@ -3,7 +3,8 @@
 .DESCRIPTION
   Stages <Out>\staging\ from the package folder (setup/package.ps1 -Rid win-x64): launcher\, bin\, content\, VERSION,
   RUNTIME_VERSION, dotnet\ renamed to dotnet-<RUNTIME_VERSION>\, and MariaDB's bin\, lib\ and share\ (no include\, no
-  *.pdb) as mariadb-<version>\. Then compiles DreamGrid.iss with Inno Setup 6 (ISCC.exe) into <Out>.
+  *.pdb) as mariadb-<version>\, plus MariaDB's copies of the Visual C++ runtime DLLs that bin\lib64's natives import.
+  Then compiles DreamGrid.iss with Inno Setup 6 (ISCC.exe) into <Out>.
   -SkipCompile stops after staging (no Inno Setup needed). Runs on Windows PowerShell 5.1 and PowerShell 7.
 .EXAMPLE   powershell -File setup/windows/build.ps1 -Package $env:TEMP\dgpkg\dreamgrid -MariaDbZip mariadb-11.4.9-winx64.zip -Version 0.0.0-dev -Out $env:TEMP\dgsetup
 #>
@@ -66,6 +67,25 @@ try {
 }
 finally { $zip.Dispose() }
 if (-not (Test-Path -LiteralPath (Join-Path $mariaDb 'bin\mariadbd.exe'))) { throw "$MariaDbZip has no bin\mariadbd.exe." }
+
+# Visual C++ runtime: OpenSim's bin\lib64\ubode.dll imports vcruntime140.dll, which a clean Windows does not have
+# (the region then exits with "Unable to load DLL 'ubode'"). Each VC++ 14 runtime DLL a lib64 native imports is copied
+# beside it from MariaDB's bin\, which carries Microsoft's app-local copies; Windows looks in a DLL's own folder for
+# its imports when the DLL is loaded by full path. The import names are read as text from the binary.
+$lib64 = Join-Path $staging 'bin\lib64'
+$vcRuntime = New-Object System.Collections.Generic.SortedSet[string] ([StringComparer]::OrdinalIgnoreCase)
+foreach ($native in Get-ChildItem -LiteralPath $lib64 -Filter '*.dll' -File) {
+    $text = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($native.FullName))
+    foreach ($match in [regex]::Matches($text, '(?i)\b(?:vcruntime140(?:_1)?|msvcp140(?:_\w+)?|vcomp140|concrt140)\.dll')) {
+        if ($match.Value -ine $native.Name) { [void]$vcRuntime.Add($match.Value.ToLowerInvariant()) }
+    }
+}
+foreach ($name in $vcRuntime) {
+    $source = Join-Path $mariaDb "bin\$name"
+    if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "bin\lib64 needs $name, which $MariaDbZip does not carry." }
+    Copy-Item -LiteralPath $source -Destination $lib64
+}
+Write-Host "Visual C++ runtime in bin\lib64: $(if ($vcRuntime.Count) { $vcRuntime -join ', ' } else { 'none needed' })"
 
 $bytes = (Get-ChildItem -LiteralPath $staging -Recurse -Force -File | Measure-Object -Property Length -Sum).Sum
 Write-Host ('Staged {0} (dotnet-{1}, mariadb-{2}): {3:N1} MB' -f $staging, $runtimeVersion, $mariaDbVersion, ($bytes / 1MB))
