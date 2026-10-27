@@ -4,6 +4,8 @@
 @{
     var version = DreamGrid.Launcher.CommandLine.Version();
     var gridName = Settings().GridName;
+    var path = Context.Request.Path.Value ?? "/";
+    string Active(string prefix) => (prefix == "/" ? path == "/" : path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) ? " active" : "";
 }
 <!DOCTYPE html>
 <html lang="en">
@@ -11,26 +13,39 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>@(ViewData["Title"] is string t ? t + " - " : "")@gridName</title>
+    <script>
+    // Bootstrap's dark theme follows the computer's setting; without JavaScript the page stays light.
+    (function () {
+        var dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)");
+        function apply() { document.documentElement.setAttribute("data-bs-theme", dark && dark.matches ? "dark" : "light"); }
+        apply();
+        if (dark && dark.addEventListener) dark.addEventListener("change", apply);
+    })();
+    </script>
+    <link rel="stylesheet" href="/lib/bootstrap/bootstrap.min.css">
     <link rel="stylesheet" href="/css/site.css">
     @await RenderSectionAsync("Head", required: false)
 </head>
 <body>
-<header>
-    <strong class="grid-name">@gridName</strong>
-    @if (User.Identity?.IsAuthenticated == true)
-    {
-        <nav>
-            <a href="/">Home</a>
-            <a href="/advanced">Advanced</a>
-            <a href="/logs">Logs</a>
-            <form method="post" action="/logout" asp-antiforgery="true" class="signout"><button type="submit" class="link-button">Sign out</button></form>
-        </nav>
-    }
+<header class="navbar navbar-expand bg-body border-bottom shadow-sm">
+    <div class="container flex-wrap gap-2">
+        <strong class="navbar-brand grid-name me-auto">@gridName</strong>
+        @if (User.Identity?.IsAuthenticated == true)
+        {
+            <nav class="navbar-nav flex-wrap align-items-center">
+                <a class="nav-link@(Active("/"))" href="/">Home</a>
+                <a class="nav-link@(Active("/advanced"))" href="/advanced">Advanced</a>
+                <a class="nav-link@(Active("/logs"))" href="/logs">Logs</a>
+                <form method="post" action="/logout" asp-antiforgery="true" class="signout"><button type="submit" class="btn btn-link nav-link">Sign out</button></form>
+            </nav>
+        }
+    </div>
 </header>
-<main>
+<main class="container py-4">
     @RenderBody()
 </main>
-<footer>DreamGrid @version</footer>
+<footer class="text-center text-body-secondary small py-3">DreamGrid @version</footer>
+<script src="/lib/bootstrap/bootstrap.bundle.min.js"></script>
 <script src="/js/live.js"></script>
 @await RenderSectionAsync("Scripts", required: false)
 </body>

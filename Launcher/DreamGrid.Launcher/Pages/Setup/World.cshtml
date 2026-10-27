@@ -8,7 +8,7 @@
 <p>This is the name people see when they pick your world in Firestorm. You can use letters, digits, spaces, hyphens and apostrophes.</p>
 @if (Model.Error is not null)
 {
-    <div class="error-box">
+    <div class="error-box alert alert-danger">
         <p>@Model.Error</p>
         @if (Model.Details is not null)
         {
@@ -17,8 +17,8 @@
     </div>
 }
 <form method="post">
-    <label asp-for="GridName">World name</label>
-    <input asp-for="GridName" maxlength="64" autocomplete="off" required>
-    <span asp-validation-for="GridName" class="field-error"></span>
-    <button type="submit">Save and continue</button>
+    <label class="form-label mt-3" asp-for="GridName">World name</label>
+    <input class="form-control" asp-for="GridName" maxlength="64" autocomplete="off" required>
+    <span asp-validation-for="GridName" class="field-error text-danger small d-block"></span>
+    <button type="submit" class="btn btn-primary mt-3">Save and continue</button>
 </form>

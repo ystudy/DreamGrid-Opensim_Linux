@@ -3,7 +3,7 @@
 @{
     ViewData["Title"] = Model.Module.Title;
 }
-<p><a href="/advanced">Advanced Settings</a></p>
+<nav aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="/advanced">Advanced Settings</a></li><li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li></ol></nav>
 <h1>@Model.Module.Title</h1>
 @if (Model.Saved)
 {
@@ -13,11 +13,11 @@
     @foreach (var f in Model.Fields)
     {
         var id = "field-" + f.Key;
-        <label for="@id">@f.Label</label>
+        <label class="form-label mt-3" for="@id">@f.Label</label>
         @switch (f.Kind)
         {
             case "select":
-                <select id="@id" name="@f.Key">
+                <select class="form-select" id="@id" name="@f.Key">
                     @foreach (var option in f.Options ?? [])
                     {
                         <option value="@option" selected="@(option == f.Value)">@option</option>
@@ -26,20 +26,20 @@
                 break;
             case "secret":
                 @* Never echoed: leaving it empty keeps the saved value. *@
-                <input id="@id" name="@f.Key" type="password" value="" placeholder="Unchanged" autocomplete="new-password">
+                <input class="form-control" id="@id" name="@f.Key" type="password" value="" placeholder="Unchanged" autocomplete="new-password">
                 break;
             case "number":
-                <input id="@id" name="@f.Key" value="@f.Value" inputmode="numeric" autocomplete="off">
+                <input class="form-control" id="@id" name="@f.Key" value="@f.Value" inputmode="numeric" autocomplete="off">
                 break;
             default:
-                <input id="@id" name="@f.Key" value="@f.Value" autocomplete="off">
+                <input class="form-control" id="@id" name="@f.Key" value="@f.Value" autocomplete="off">
                 break;
         }
         @if (f.Help is not null)
         {
-            <span class="hint">@f.Help</span>
+            <span class="hint form-text d-block">@f.Help</span>
         }
-        <span class="field-error" data-error-for="@f.Key">@Model.Errors.GetValueOrDefault(f.Key)</span>
+        <span class="field-error text-danger small d-block" data-error-for="@f.Key">@Model.Errors.GetValueOrDefault(f.Key)</span>
     }
-    <button type="submit">Save</button>
+    <button type="submit" class="btn btn-primary mt-3">Save</button>
 </form>

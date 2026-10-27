@@ -7,21 +7,21 @@
 }
 <h1>Your world</h1>
 
-<section class="card">
+<section class="card card-body shadow-sm mb-3">
     <p id="headline" class="headline@(Model.Status.Problem is null ? "" : " problem")">@Model.Status.Headline</p>
-    <ul id="components" class="components">
+    <ul id="components" class="components list-group list-group-flush">
         @foreach (var c in parts)
         {
-            <li>
+            <li class="list-group-item px-0">
                 <span class="component-label">@c.Label</span>
                 <span class="badge state-@c.State.ToLowerInvariant()">@c.StateText</span>
-                <span class="muted">@c.Detail</span>
+                <span class="text-body-secondary">@c.Detail</span>
             </li>
         }
     </ul>
     @if (Model.FailedLogs.Count > 0)
     {
-        <details class="failed-details">
+        <details class="failed-details mt-2">
             <summary>Show details</summary>
             @foreach (var (label, lines) in Model.FailedLogs)
             {
@@ -32,66 +32,71 @@
     }
 </section>
 
-<section class="card">
+<section class="card card-body shadow-sm mb-3">
     <h2>Controls</h2>
     <form id="controls" method="post" action="/dashboard?handler=run" asp-antiforgery="true">
-        <div class="button-row">
-            <button type="submit" name="gridAction" value="start">Start all</button>
-            <button type="submit" name="gridAction" value="stop" class="secondary">Stop all</button>
-            <button type="submit" name="gridAction" value="restart" class="secondary">Restart</button>
+        <div class="d-flex flex-wrap gap-2">
+            <button type="submit" name="gridAction" value="start" class="btn btn-primary">Start all</button>
+            <button type="submit" name="gridAction" value="stop" class="btn btn-outline-primary">Stop all</button>
+            <button type="submit" name="gridAction" value="restart" class="btn btn-outline-primary">Restart</button>
         </div>
-        <details>
+        <details class="mt-3">
             <summary>More</summary>
-            <p class="hint">Restart one part of your world.</p>
-            <div class="button-row">
-                <button type="submit" name="gridAction" value="restart-database" class="secondary">Restart the database</button>
-                <button type="submit" name="gridAction" value="restart-robust" class="secondary">Restart the grid service</button>
+            <p class="form-text">Restart one part of your world.</p>
+            <div class="d-flex flex-wrap gap-2">
+                <button type="submit" name="gridAction" value="restart-database" class="btn btn-sm btn-outline-secondary">Restart the database</button>
+                <button type="submit" name="gridAction" value="restart-robust" class="btn btn-sm btn-outline-secondary">Restart the grid service</button>
                 @if (g.Region is not null)
                 {
-                    <button type="submit" name="gridAction" value="restart-region" class="secondary">Restart your region</button>
+                    <button type="submit" name="gridAction" value="restart-region" class="btn btn-sm btn-outline-secondary">Restart your region</button>
                 }
             </div>
         </details>
     </form>
-    <p id="notice" class="notice" role="status">@Model.Notice</p>
+    <p id="notice" class="notice alert alert-info mt-3 mb-0 py-2" role="status">@Model.Notice</p>
 </section>
 
-<section class="card">
+<div class="row g-3 mb-3">
+<div class="col-md-6">
+<section class="card card-body shadow-sm h-100">
     <h2>Who's online</h2>
-    <ul id="online" class="online" hidden="@(Model.Status.Online.Count == 0)">
+    <ul id="online" class="online list-unstyled mb-0" hidden="@(Model.Status.Online.Count == 0)">
         @foreach (var name in Model.Status.Online)
         {
             <li>@name</li>
         }
     </ul>
-    <p id="online-note" class="muted" hidden="@(Model.Status.Online.Count > 0)">
+    <p id="online-note" class="text-body-secondary mb-0" hidden="@(Model.Status.Online.Count > 0)">
         @(Model.Status.OnlineAvailable ? "Nobody is in-world right now." : "This list shows once the database is running.")
     </p>
 </section>
-
-<section class="card">
+</div>
+<div class="col-md-6">
+<section class="card card-body shadow-sm h-100">
     <h2>Connect</h2>
     <p>Your world's address, for the Grid Manager in Firestorm:</p>
-    <div class="copy-row">
-        <code id="login-uri" class="login-uri">@g.LoginUri</code>
-        <button type="button" id="copy-uri" hidden>Copy</button>
+    <div class="input-group copy-row">
+        <code id="login-uri" class="form-control login-uri">@g.LoginUri</code>
+        <button type="button" id="copy-uri" class="btn btn-outline-primary" hidden>Copy</button>
     </div>
 </section>
+</div>
+</div>
 
 @if (Model.Switches.Count > 0)
 {
-    <section id="features" class="card">
+    <section id="features" class="card card-body shadow-sm mb-3">
         <h2>Features</h2>
-        <ul class="features">
+        <ul class="features list-group list-group-flush">
             @foreach (var (sw, on) in Model.Switches)
             {
-                <li>
+                <li class="list-group-item px-0 d-flex flex-wrap align-items-center gap-2">
                     <span class="component-label">@sw.Label</span>
                     <span class="badge@(on ? " state-running" : "")">@(on ? "On" : "Off")</span>
-                    <span class="hint">@sw.Description</span>
-                    <form method="post" action="/dashboard?handler=switch" asp-antiforgery="true">
+                    <span class="form-text m-0 me-auto">@sw.Description</span>
+                    <form method="post" action="/dashboard?handler=switch" asp-antiforgery="true" class="m-0">
                         <input type="hidden" name="moduleId" value="@sw.ModuleId">
-                        <button type="submit" name="on" value="@(on ? "false" : "true")" class="secondary">@(on ? "Turn off" : "Turn on")</button>
+                        <button type="submit" name="on" value="@(on ? "false" : "true")" class="btn btn-sm btn-outline-primary">@(on ? "Turn off" : "Turn on")</button>
                     </form>
                 </li>
             }
@@ -99,10 +104,10 @@
     </section>
 }
 
-<section class="card">
+<section class="card card-body shadow-sm mb-3">
     <h2>Coming soon</h2>
-    <p class="muted">Your world will grow. These are on the way:</p>
-    <ul class="coming-soon">
+    <p class="text-body-secondary">Your world will grow. These are on the way:</p>
+    <ul class="coming-soon list-unstyled d-flex flex-wrap gap-2 mb-0">
         <li>Backups</li>
         <li>Visitors from the internet</li>
         <li>Hypergrid</li>
@@ -149,7 +154,8 @@
         [s.grid.database, s.grid.robust, s.grid.region].forEach(function (c) {
             if (!c) return;
             var li = document.createElement("li");
-            [["component-label", c.label], ["badge state-" + c.state.toLowerCase(), c.stateText], ["muted", c.detail]].forEach(function (p) {
+            li.className = "list-group-item px-0";
+            [["component-label", c.label], ["badge state-" + c.state.toLowerCase(), c.stateText], ["text-body-secondary", c.detail]].forEach(function (p) {
                 var span = document.createElement("span");
                 span.className = p[0];
                 span.textContent = p[1];

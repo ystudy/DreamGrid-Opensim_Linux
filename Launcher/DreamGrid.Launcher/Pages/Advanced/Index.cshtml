@@ -4,13 +4,13 @@
     ViewData["Title"] = "Advanced Settings";
 }
 <h1>Advanced Settings</h1>
-<p class="muted">Most worlds never need these. A change here applies when your world restarts.</p>
-<ul class="menu">
-    <li><a href="/advanced/network">Network</a><span class="hint">The address people connect to, and the ports.</span></li>
-    <li><a href="/advanced/database">Database</a><span class="hint">The database connection and its passwords.</span></li>
+<p class="text-body-secondary">Most worlds never need these. A change here applies when your world restarts.</p>
+<div class="menu list-group shadow-sm">
+    <div class="list-group-item list-group-item-action"><a class="fw-semibold stretched-link text-decoration-none" href="/advanced/network">Network</a><span class="hint form-text d-block m-0">The address people connect to, and the ports.</span></div>
+    <div class="list-group-item list-group-item-action"><a class="fw-semibold stretched-link text-decoration-none" href="/advanced/database">Database</a><span class="hint form-text d-block m-0">The database connection and its passwords.</span></div>
     @foreach (var module in Model.ModulePages)
     {
-        <li><a href="/advanced/module/@Uri.EscapeDataString(module.ModuleId)">@module.Title</a></li>
+        <div class="list-group-item list-group-item-action"><a class="fw-semibold stretched-link text-decoration-none" href="/advanced/module/@Uri.EscapeDataString(module.ModuleId)">@module.Title</a></div>
     }
-    <li><a href="/logs">Logs</a><span class="hint">What the launcher, Robust and your region wrote.</span></li>
-</ul>
+    <div class="list-group-item list-group-item-action"><a class="fw-semibold stretched-link text-decoration-none" href="/logs">Logs</a><span class="hint form-text d-block m-0">What the launcher, Robust and your region wrote.</span></div>
+</div>
