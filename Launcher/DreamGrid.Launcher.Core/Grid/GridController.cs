@@ -328,6 +328,13 @@ public sealed partial class GridController(
         finally { _activity = GridActivity.None; _ops.Release(); }
     }
 
+    public Task StartWorldAsync(bool everything, CancellationToken ct) => throw new NotImplementedException();
+
+    public Task<RegionSettings> AddRegionAsync(NewRegion request, CancellationToken ct, IProgress<string>? progress = null) =>
+        throw new NotImplementedException();
+
+    public Task RegionPowerAsync(Guid regionId, RegionPower action, CancellationToken ct) => throw new NotImplementedException();
+
     // ---- status and alerts --------------------------------------------------------------------------
 
     /// <summary>Reads only cached state (components are built under the operation lock), so it never waits.</summary>

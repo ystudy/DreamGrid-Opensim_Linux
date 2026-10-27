@@ -132,6 +132,24 @@ internal sealed class FakeGridController : IGridController
 
     public void RegenerateConfig() => Record("RegenerateConfig");
 
+    public Task StartWorldAsync(bool everything, CancellationToken ct)
+    {
+        Record(everything ? "StartWorld everything" : "StartWorld");
+        return Task.CompletedTask;
+    }
+
+    /// <summary>The region <see cref="AddRegionAsync"/> saves; each added region gets a program of its own unless shared.</summary>
+    public Task<RegionSettings> AddRegionAsync(NewRegion request, CancellationToken ct, IProgress<string>? progress = null)
+    {
+        Record($"AddRegion {request.Name}");
+        var region = new RegionSettings(request.ShareWith ?? GridController.SafeFolderName(request.Name), request.Name, Guid.NewGuid(),
+            request.X, request.Y, request.Content, request.Size);
+        UpdateSettings(l => l with { Regions = [.. l.Regions, region] });
+        return Task.FromResult(region);
+    }
+
+    public Task RegionPowerAsync(Guid regionId, RegionPower action, CancellationToken ct) => Component($"RegionPower {action} {regionId}", ct);
+
     public LauncherSettings UpdateSettings(Func<LauncherSettings, LauncherSettings> change, bool writeConfig = true)
     {
         lock (UpdateWriteConfig)

@@ -29,6 +29,18 @@ public interface IGridController
 
     GridStatus GetStatus();
 
+    /// <summary>
+    /// The world's Start (spec §6.8): clears stopped regions; with <paramref name="everything"/> unparks every region; then
+    /// starts what isn't running and restarts each running program that doesn't load all its regions.
+    /// </summary>
+    Task StartWorldAsync(bool everything, CancellationToken ct);
+
+    /// <summary>Validates, saves and starts a new region, loading its content; returns the saved region.</summary>
+    Task<RegionSettings> AddRegionAsync(NewRegion request, CancellationToken ct, IProgress<string>? progress = null);
+
+    /// <summary>A region's power menu action; other regions in its program may restart (they are logged).</summary>
+    Task RegionPowerAsync(Guid regionId, RegionPower action, CancellationToken ct);
+
     /// <summary>The controller's cached settings (what the grid was configured from); the host reads these per request.</summary>
     LauncherSettings CurrentSettings();
 
