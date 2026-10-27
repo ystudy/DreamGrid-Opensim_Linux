@@ -168,6 +168,47 @@ public sealed class GridBootTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task Park_and_unpark_a_shared_region()
+    {
+        var (grid, paths, _, robust) = Make();
+        var ct = TestContext.Current.CancellationToken;
+        GridController? second = null;
+        try
+        {
+            await grid.StartAsync(ct);
+            await grid.CreateOwnerAsync("Test", "Owner", "pass-word1", null, ct);
+            using var alerts = new AlertListener(grid.CurrentSettings().WebPort, a => (second ?? grid).OnRegionAlert(a));
+            await grid.CreateRegionAsync("Welcome", "island", ct);
+            var beach = await grid.AddRegionAsync(new NewRegion("Beach", 1001, 1000, 1, "island", "Welcome"), ct);
+
+            await grid.RegionPowerAsync(beach.Uuid, RegionPower.Park, ct);
+            await WaitUntilAsync(() => grid.GetStatus().Regions.Single(r => r.Name == "Welcome").State == RegionState.Running, TimeSpan.FromMinutes(5), ct);
+            Assert.Equal(RegionState.Parked, grid.GetStatus().Regions.Single(r => r.Id == beach.Uuid).State);
+
+            // A launcher restart: a new controller on the same data directory adopts the running program.
+            await grid.DetachAsync();
+            second = GridTestSupport.NewController(paths, new SettingsStore(paths.SettingsFile), robust);
+            await second.StartAsync(ct);
+            Assert.Equal(RegionState.Parked, second.GetStatus().Regions.Single(r => r.Id == beach.Uuid).State);
+
+            await second.StartWorldAsync(everything: true, ct);
+            await WaitUntilAsync(() => second.GetStatus().Regions.All(r => r.State == RegionState.Running), TimeSpan.FromMinutes(5), ct);
+            Assert.False(RegionModel.Find(second.CurrentSettings(), beach.Uuid)!.Parked);
+
+            await second.StopAllAsync(ct);
+        }
+        catch (Exception e) when (e is not Xunit.Sdk.XunitException)
+        {
+            throw new Exception(e.Message + Environment.NewLine + LogTail(paths), e);
+        }
+        finally
+        {
+            await grid.DetachAsync();
+            if (second is not null) await second.DetachAsync();
+        }
+    }
+
     private static async Task WaitUntilAsync(Func<bool> done, TimeSpan timeout, CancellationToken ct)
     {
         var deadline = DateTime.UtcNow + timeout;

@@ -50,6 +50,7 @@ public sealed partial class GridController(
     // Regions stopped until the next world start: their program runs without them.
     private volatile IReadOnlySet<Guid> _held = new HashSet<Guid>();
     private readonly RegionLogins _logins = new();
+    private readonly ILogger? _log = loggers?.CreateLogger<GridController>();
     private volatile StartFailure? _startFailure;
     private volatile GridActivity _activity;
     private int? _regionAlertPid;
@@ -82,6 +83,71 @@ public sealed partial class GridController(
     {
         await _ops.WaitAsync(ct);
         _activity = GridActivity.Starting;
+        try { await StartCoreAsync(ct); }
+        finally { _activity = GridActivity.None; _ops.Release(); }
+    }
+
+    public async Task StartWorldAsync(bool everything, CancellationToken ct)
+    {
+        await _ops.WaitAsync(ct);
+        _activity = GridActivity.Starting;
+        try
+        {
+            _held = new HashSet<Guid>();
+            if (everything) UpdateSettings(RegionPowerPlan.Unparked, writeConfig: false);
+            await StartCoreAsync(ct);
+
+            // A program adopted (or left running) without some of its regions loads them only when it starts again.
+            var s = CurrentSettings();
+            var running = _programs.Where(p => p.Value.Process.State == ProcessState.Running).Select(p => p.Key).ToHashSet();
+            foreach (var instance in RegionPowerPlan.MissingRegions(s, _held, running, _loaded))
+                await RestartProgramAsync(s, _programs[instance], ct);
+        }
+        finally { _activity = GridActivity.None; _ops.Release(); }
+    }
+
+    public async Task RegionPowerAsync(Guid regionId, RegionPower action, CancellationToken ct)
+    {
+        await _ops.WaitAsync(ct);
+        _activity = action is RegionPower.Stop or RegionPower.Park ? GridActivity.Stopping
+            : action == RegionPower.Restart ? GridActivity.Restarting : GridActivity.Starting;
+        try
+        {
+            var s = LoadSettings();
+            var running = _programs.Where(p => p.Value.Process.State == ProcessState.Running).Select(p => p.Key).ToHashSet();
+            var steps = RegionPowerPlan.For(s, _held, running, regionId, action);
+            if ((steps.Start.Count > 0 || steps.Restart.Count > 0) && _robust!.Process.State != ProcessState.Running)
+                throw new InvalidOperationException("Robust is not running; start it first.");
+
+            var parked = RegionModel.Find(steps.Settings, regionId)!.Parked;
+            _held = steps.Held;
+            s = UpdateSettings(l => l with { Regions = l.Regions.Select(r => r.Uuid == regionId ? r with { Parked = parked } : r).ToList() });
+            var name = RegionModel.Find(s, regionId)!.Name;
+            if (steps.Affected.Count > 0)
+                _log?.LogInformation("{Action} {Region}: also affected {Others}.", action, name, string.Join(", ", steps.Affected));
+
+            foreach (var instance in steps.Stop) await StopProgramAsync(_programs[instance], ct);
+            foreach (var instance in steps.Restart) await RestartProgramAsync(s, _programs[instance], ct);
+            foreach (var instance in steps.Start)
+            {
+                EnsureComponents(s);
+                await StartProgramAsync(s, _programs[instance], ct);
+            }
+        }
+        finally { _activity = GridActivity.None; _ops.Release(); }
+    }
+
+    /// <summary>Stops a program and starts it again with its current region files.</summary>
+    private async Task RestartProgramAsync(LauncherSettings s, Component program, CancellationToken ct)
+    {
+        await StopProgramAsync(program, ct);
+        EnsureComponents(s);
+        await StartProgramAsync(s, _programs[program.Instance!], ct);
+    }
+
+    /// <summary>Under the operation lock: the boot and adoption start (see <see cref="StartAsync"/>).</summary>
+    private async Task StartCoreAsync(CancellationToken ct)
+    {
         try
         {
             var s = LoadSettings();
@@ -112,7 +178,6 @@ public sealed partial class GridController(
             _startFailure = new StartFailure(e.Message, (e as PortConflictException)?.Port);
             throw;
         }
-        finally { _activity = GridActivity.None; _ops.Release(); }
     }
 
     public async Task StopAllAsync(CancellationToken ct)
@@ -327,8 +392,6 @@ public sealed partial class GridController(
         finally { _activity = GridActivity.None; _ops.Release(); }
     }
 
-    public Task StartWorldAsync(bool everything, CancellationToken ct) => throw new NotImplementedException();
-
     public async Task<RegionSettings> AddRegionAsync(NewRegion request, CancellationToken ct, IProgress<string>? progress = null)
     {
         if (!IsValidRegionName(request.Name))
@@ -410,8 +473,6 @@ public sealed partial class GridController(
         for (var n = 2; taken.Contains(candidate); n++) candidate = $"{name}_{n}";
         return candidate;
     }
-
-    public Task RegionPowerAsync(Guid regionId, RegionPower action, CancellationToken ct) => throw new NotImplementedException();
 
     // ---- status and alerts --------------------------------------------------------------------------
 
