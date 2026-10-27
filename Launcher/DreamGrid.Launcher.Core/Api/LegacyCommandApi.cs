@@ -91,22 +91,28 @@ public sealed class LegacyCommandApi(
         Func<LegacyRequest, CancellationToken, Task<string>> Component(Func<IGridController, CancellationToken, Task> op) =>
             async (_, ct) => { await op(grid, ct); return "ACK"; };
 
-        Func<LegacyRequest, CancellationToken, Task<string>> RegionOp(Func<IGridController, CancellationToken, Task> op) =>
+        // The same power menu actions as the website's; StopRegion is a Stop, never a Park (the controller logs which
+        // other regions an action affected, since a script sees no warning).
+        Func<LegacyRequest, CancellationToken, Task<string>> RegionOp(RegionPower action) =>
             async (r, ct) =>
             {
-                if (TargetRegion(r, settings()) is { } nak) return nak;
-                await op(grid, ct);
+                var (region, nak) = TargetRegion(r, settings());
+                if (nak is not null) return nak;
+                await grid.RegionPowerAsync(region!.Uuid, action, ct);
                 return "ACK";
             };
 
         var builtIn = new LegacyCommand[]
         {
-            new("RegionStatus", 0, (r, _) => Task.FromResult(TargetRegion(r, settings())
-                ?? (grid.GetStatus().Regions.FirstOrDefault()?.State.ToString() ?? "Stopped"))),
+            new("RegionStatus", 0, (r, _) =>
+            {
+                var (region, nak) = TargetRegion(r, settings());
+                return Task.FromResult(nak ?? StateOf(grid, region!));
+            }),
             new("regionlist", 0, (_, _) => Task.FromResult(RegionList(grid, settings()))),
-            new("StartRegion", AdminLevel, RegionOp((g, ct) => g.StartComponentAsync("region", ct))),
-            new("StopRegion", AdminLevel, RegionOp((g, ct) => g.StopComponentAsync("region", ct))),
-            new("RestartRegion", AdminLevel, RegionOp((g, ct) => g.RestartComponentAsync("region", ct))),
+            new("StartRegion", AdminLevel, RegionOp(RegionPower.Start)),
+            new("StopRegion", AdminLevel, RegionOp(RegionPower.Stop)),
+            new("RestartRegion", AdminLevel, RegionOp(RegionPower.Restart)),
             new("StartRobust", AdminLevel, Component((g, ct) => g.StartComponentAsync("robust", ct))),
             new("StopRobust", AdminLevel, Component((g, ct) => g.StopComponentAsync("robust", ct))),
             // A pending upgrade has already stopped any leftover Robust and region before the database is started.
@@ -120,22 +126,28 @@ public sealed class LegacyCommandApi(
         return commands;
     }
 
-    /// <summary>Null when the request names the grid's region (or no region); otherwise the NAK reply.</summary>
-    private static string? TargetRegion(LegacyRequest r, LauncherSettings s)
+    /// <summary>
+    /// The live region the request names (by name ignoring case, or by UUID); with neither, the only region. Otherwise
+    /// the NAK reply.
+    /// </summary>
+    private static (RegionSettings? Region, string? Nak) TargetRegion(LegacyRequest r, LauncherSettings s)
     {
-        if (RegionModel.First(s) is not { } region) return "NAK No region has been created yet.";
-        if (!string.IsNullOrEmpty(r.RegionName) && !r.RegionName.Equals(region.Name, StringComparison.OrdinalIgnoreCase))
-            return $"NAK Unknown region {r.RegionName}";
-        if (r.RegionUuid is { } uuid && uuid != region.Uuid)
-            return $"NAK Unknown region {uuid}";
-        return null;
+        var live = RegionModel.Live(s).ToList();
+        if (live.Count == 0) return (null, "NAK No region has been created yet.");
+        if (!string.IsNullOrEmpty(r.RegionName))
+            return live.FirstOrDefault(x => x.Name.Equals(r.RegionName, StringComparison.OrdinalIgnoreCase)) is { } named
+                ? (named, null) : (null, $"NAK Unknown region {r.RegionName}");
+        if (r.RegionUuid is { } uuid)
+            return live.FirstOrDefault(x => x.Uuid == uuid) is { } byId ? (byId, null) : (null, $"NAK Unknown region {uuid}");
+        return live.Count == 1 ? (live[0], null) : (null, "NAK Name the region.");
     }
+
+    private static string StateOf(IGridController grid, RegionSettings region) =>
+        grid.GetStatus().Regions.FirstOrDefault(x => x.Id == region.Uuid)?.State.ToString() ?? "Stopped";
 
     private static string RegionList(IGridController grid, LauncherSettings s)
     {
-        var regions = RegionModel.First(s) is { } r
-            ? new[] { new RegionEntry(r.Name, r.Uuid.ToString(), grid.GetStatus().Regions.FirstOrDefault()?.State.ToString() ?? "Stopped") }
-            : [];
+        var regions = RegionModel.Live(s).Select(r => new RegionEntry(r.Name, r.Uuid.ToString(), StateOf(grid, r))).ToList();
         return JsonSerializer.Serialize(new { regions }, Json);
     }
 

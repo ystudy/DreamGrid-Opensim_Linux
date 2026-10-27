@@ -22,6 +22,20 @@ public static class PortAllocator
         return taken;
     }
 
+    /// <summary>Every program and region port, with the region it belongs to (a program's ports: its first region).</summary>
+    public static IReadOnlyDictionary<int, string> Assigned(LauncherSettings s)
+    {
+        var assigned = new Dictionary<int, string>();
+        foreach (var r in s.Regions.Where(r => r.UdpPort != 0)) assigned.TryAdd(r.UdpPort, r.Name);
+        foreach (var p in s.Programs)
+        {
+            var name = RegionModel.In(s, p.Instance).FirstOrDefault()?.Name ?? p.Instance;
+            assigned.TryAdd(p.HttpPort, name);
+            assigned.TryAdd(p.ConsolePort, name);
+        }
+        return assigned;
+    }
+
     public static int Next(LauncherSettings s, int from, IReadOnlySet<int>? alsoTaken = null)
     {
         var taken = Taken(s);

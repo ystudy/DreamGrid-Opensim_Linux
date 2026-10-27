@@ -94,17 +94,16 @@ internal sealed class FakeGridController : IGridController
     {
         if (Status is { } fixedStatus) return fixedStatus;
         var running = new ComponentStatus("x", ProcessState.Running, null, null, null, null);
-        // Without a region in its settings (or settings at all) the fake has one of its own, Welcome, as version 1's did.
-        var region = !HasRegion ? null
-            : (SettingsSource is null ? null : RegionModel.First(CurrentSettings())) ?? new RegionSettings("Welcome", "Welcome", Guid.Empty);
-        if (region is null)
-            return new GridStatus(running with { Name = "database" }, running with { Name = "robust" }, [], [], _loginsEnabled,
-                "http://127.0.0.1:8002", StartFailure);
+        // Every live region in its settings, each in the state RegionState gives its program; without any (or without
+        // settings) the fake has one of its own, Welcome, as version 1's did.
+        List<RegionSettings> regions = !HasRegion ? []
+            : SettingsSource is not null && RegionModel.Live(CurrentSettings()).ToList() is { Count: > 0 } live ? live
+            : [new RegionSettings("Welcome", "Welcome", Guid.Empty)];
         var program = new ComponentStatus("region", RegionState, null, null, null, null);
         return new GridStatus(running with { Name = "database" }, running with { Name = "robust" },
-            [new ProgramStatus(region.Instance, program, [region.Uuid])],
-            [new RegionStatus(region.Uuid, region.Name, region.Instance, RegionStates.Derive(region, program, false, null, true), _loginsEnabled,
-                region.X, region.Y, region.Size, [])],
+            regions.GroupBy(r => r.Instance).Select(g => new ProgramStatus(g.Key, program, g.Select(r => r.Uuid).ToList())).ToList(),
+            regions.Select(r => new RegionStatus(r.Uuid, r.Name, r.Instance, RegionStates.Derive(r, program, false, null, true), _loginsEnabled,
+                r.X, r.Y, r.Size, regions.Where(o => o.Instance == r.Instance && o.Uuid != r.Uuid).Select(o => o.Name).ToList())).ToList(),
             _loginsEnabled, "http://127.0.0.1:8002", StartFailure);
     }
 

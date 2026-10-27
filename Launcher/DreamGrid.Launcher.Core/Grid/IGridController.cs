@@ -44,16 +44,16 @@ public interface IGridController
     /// <summary>The controller's cached settings (what the grid was configured from); the host reads these per request.</summary>
     LauncherSettings CurrentSettings();
 
-    /// <summary><paramref name="name"/> is "database", "robust" or "region".</summary>
+    /// <summary><paramref name="name"/> is "database" or "robust"; regions use <see cref="RegionPowerAsync"/>.</summary>
     Task RestartComponentAsync(string name, CancellationToken ct);
 
     /// <summary>
-    /// Starts (or adopts) one component: "database", "robust" or "region". Robust needs the database running and
-    /// the region needs Robust running; otherwise it throws <see cref="InvalidOperationException"/>.
+    /// Starts (or adopts) one component: "database" or "robust". Robust needs the database running; otherwise it
+    /// throws <see cref="InvalidOperationException"/>.
     /// </summary>
     Task StartComponentAsync(string name, CancellationToken ct);
 
-    /// <summary>Stops one component; stopping the database stops the region and Robust first.</summary>
+    /// <summary>Stops one component; stopping the database stops the regions and Robust first.</summary>
     Task StopComponentAsync(string name, CancellationToken ct);
 
     /// <summary>

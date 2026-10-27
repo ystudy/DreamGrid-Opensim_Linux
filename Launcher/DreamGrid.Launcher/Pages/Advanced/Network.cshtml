@@ -22,6 +22,23 @@
         <input class="form-control" id="@key" name="@key" value="@Model.Ports.GetValueOrDefault(key)" inputmode="numeric" autocomplete="off" required>
         <span class="field-error text-danger small d-block" data-error-for="@key">@Model.Errors.GetValueOrDefault(key)</span>
     }
-    <p class="hint form-text">Each port is a number from @SettingsValidator.MinPort to @SettingsValidator.MaxPort, and no two can be the same.</p>
+    <p class="hint form-text">Each port is a number from @SettingsValidator.MinPort to @SettingsValidator.MaxPort, and no two can be the same.
+        New regions take the next free ports from the two "first region" ports. Regions you already have keep theirs.</p>
     <button type="submit" class="btn btn-primary mt-3">Save</button>
 </form>
+
+@if (Model.RegionPorts.Count > 0)
+{
+    <h2 class="mt-4">Ports your regions use</h2>
+    <div class="table-responsive">
+        <table id="region-ports" class="table table-sm">
+            <thead><tr><th>Region</th><th>Runs with</th><th>UDP port</th><th>Web port</th><th>Console port</th></tr></thead>
+            <tbody>
+                @foreach (var r in Model.RegionPorts)
+                {
+                    <tr><td>@r.Region</td><td>@r.RunsWith</td><td>@r.Udp</td><td>@r.Web</td><td>@r.Console</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}

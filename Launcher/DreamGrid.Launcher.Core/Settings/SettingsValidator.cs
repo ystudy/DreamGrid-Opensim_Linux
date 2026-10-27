@@ -15,15 +15,18 @@ public static partial class SettingsValidator
         ("WebPort", "Web port (this website)"),
         ("RobustPublicPort", "Robust public port"),
         ("RobustPrivatePort", "Robust private port"),
-        ("RegionPort", "Region port"),
+        ("RegionPort", "First region port"),
         ("MariaDbPort", "MariaDB port"),
         ("RobustConsolePort", "Robust console port"),
-        ("RegionConsolePort", "Region console port"),
+        ("RegionConsolePort", "First region console port"),
     ];
 
-    /// <summary>Every port 1024–65535 and all distinct; the hostname empty (automatic), a DNS name or an IPv4 address.</summary>
+    /// <summary>
+    /// Every port 1024–65535 and all distinct; the hostname empty (automatic), a DNS name or an IPv4 address. No port
+    /// but the two "first region" ones may be one a region already holds (<paramref name="assigned"/>: port to region).
+    /// </summary>
     public static ValidationResult Network(string? hostname, int web, int robustPublic, int robustPrivate, int region,
-        int mariaDb, int robustConsole, int regionConsole)
+        int mariaDb, int robustConsole, int regionConsole, IReadOnlyDictionary<int, string>? assigned = null)
     {
         var errors = new Dictionary<string, string>();
         if (HostnameError(hostname) is { } hostError) errors["Hostname"] = hostError;
@@ -40,6 +43,8 @@ public static partial class SettingsValidator
             var others = Enumerable.Range(0, ports.Length).Where(j => j != i && ports[j] == ports[i]).Select(j => PortFields[j].Label).ToList();
             if (others.Count > 0)
                 errors[key] = $"Port {ports[i]} is also used for: {string.Join(", ", others)}. Each port must be different.";
+            else if (key is not ("RegionPort" or "RegionConsolePort") && assigned?.TryGetValue(ports[i], out var owner) == true)
+                errors[key] = $"Port {ports[i]} is used by region {owner}.";
         }
         return new ValidationResult(errors);
     }

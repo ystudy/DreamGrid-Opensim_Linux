@@ -229,10 +229,11 @@ public sealed class LegacyEndpointsTests : IAsyncLifetime
     public async Task Settings_come_from_the_grid_controller_not_the_file()
     {
         var file = _factory.Store.LoadOrCreate();
+        var cached = new RegionSettings("Cached", "Cached", Guid.NewGuid());
         _factory.Grid.SettingsSource = () => file with
         {
             GridName = "Cached Name",
-            Programs = TestSettings.ProgramFor(new RegionSettings("Cached", "Cached", Guid.NewGuid())), Regions = TestSettings.RegionsFor(new RegionSettings("Cached", "Cached", Guid.NewGuid())),
+            Programs = TestSettings.ProgramFor(cached), Regions = TestSettings.RegionsFor(cached),
         };
 
         Assert.Equal("Running", await GetAsync("/?command=RegionStatus&RegionName=Cached"));

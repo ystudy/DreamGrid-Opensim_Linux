@@ -258,17 +258,6 @@ public sealed class GridControllerWiringTests : IDisposable
     }
 
     [Fact]
-    public async Task StartComponent_region_needs_a_finished_region()
-    {
-        AddRegion(created: false);
-
-        var e = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            _grid.StartComponentAsync("region", TestContext.Current.CancellationToken));
-
-        Assert.Contains("No region has been created yet", e.Message);
-    }
-
-    [Fact]
     public async Task StartComponent_on_an_idle_grid_stages_and_writes_the_config_first()
     {
         var ini = Path.Combine(_paths.RuntimeOpenSim, "Robust.HG.ini");
@@ -318,20 +307,21 @@ public sealed class GridControllerWiringTests : IDisposable
     }
 
     [Fact]
-    public async Task StartComponent_region_without_a_region_throws()
+    public async Task Starting_an_unknown_region_throws()
     {
         var e = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            _grid.StartComponentAsync("region", TestContext.Current.CancellationToken));
+            _grid.RegionPowerAsync(Guid.NewGuid(), RegionPower.Start, TestContext.Current.CancellationToken));
         Assert.Contains("region", e.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public async Task StartComponent_region_needs_Robust_running()
+    public async Task Starting_a_region_needs_Robust_running()
     {
         AddRegion();
+        var id = RegionModel.First(_store.LoadOrCreate())!.Uuid;
 
         var e = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            _grid.StartComponentAsync("region", TestContext.Current.CancellationToken));
+            _grid.RegionPowerAsync(id, RegionPower.Start, TestContext.Current.CancellationToken));
 
         Assert.Contains("Robust is not running", e.Message);
         Assert.Empty(_http.CommandPorts);
@@ -354,6 +344,10 @@ public sealed class GridControllerWiringTests : IDisposable
         var ct = TestContext.Current.CancellationToken;
         await Assert.ThrowsAsync<ArgumentException>(() => _grid.StartComponentAsync("apache", ct));
         await Assert.ThrowsAsync<ArgumentException>(() => _grid.StopComponentAsync("apache", ct));
+        // Regions go through RegionPowerAsync (plan 4a).
+        await Assert.ThrowsAsync<ArgumentException>(() => _grid.StartComponentAsync("region", ct));
+        await Assert.ThrowsAsync<ArgumentException>(() => _grid.StopComponentAsync("region", ct));
+        await Assert.ThrowsAsync<ArgumentException>(() => _grid.RestartComponentAsync("region", ct));
     }
 
     [Fact]
@@ -380,15 +374,18 @@ public sealed class GridControllerWiringTests : IDisposable
     }
 
     [Fact]
-    public async Task StopComponent_region_stops_only_the_region()
+    public async Task Stopping_a_region_holds_it_until_the_world_starts()
     {
         AddRegion();
-        var s = _store.LoadOrCreate();
+        var id = RegionModel.First(_store.LoadOrCreate())!.Uuid;
 
-        await _grid.StopComponentAsync("region", TestContext.Current.CancellationToken);
+        await _grid.RegionPowerAsync(id, RegionPower.Stop, TestContext.Current.CancellationToken);
 
-        Assert.Equal(new[] { s.RegionConsolePort }, _http.CommandPorts);
+        Assert.Empty(_http.CommandPorts); // its program wasn't running: nothing to stop
+        Assert.Equal(RegionState.Stopped, _grid.GetStatus().Regions.Single().State);
         Assert.False(_grid.LoginsEnabled);
+        Assert.True(File.Exists(Path.Combine(_paths.RegionDefinitionDir("Welcome"), "Welcome.ini.off")) ||
+                    !File.Exists(Path.Combine(_paths.RegionDefinitionDir("Welcome"), "Welcome.ini")));
     }
 
     private static string FakeChildExe()

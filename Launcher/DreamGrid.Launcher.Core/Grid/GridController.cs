@@ -226,12 +226,6 @@ public sealed partial class GridController(
                     EnsureComponents(s);
                     await StartComponentAsync(_robust!, ct);
                     break;
-                case "region":
-                    if (_programs.Count == 0) throw new InvalidOperationException("No region has been created yet.");
-                    await StopProgramsAsync(ct);
-                    EnsureComponents(s);
-                    await StartProgramsAsync(s, ct);
-                    break;
                 default:
                     throw UnknownComponent(name);
             }
@@ -242,7 +236,7 @@ public sealed partial class GridController(
     public async Task StartComponentAsync(string name, CancellationToken ct)
     {
         var component = name.ToLowerInvariant();
-        if (component is not ("database" or "robust" or "region")) throw UnknownComponent(name);
+        if (component is not ("database" or "robust")) throw UnknownComponent(name);
 
         await _ops.WaitAsync(ct);
         _activity = GridActivity.Starting;
@@ -253,10 +247,6 @@ public sealed partial class GridController(
             {
                 case "robust" when _db!.Process.State != ProcessState.Running:
                     throw new InvalidOperationException("The database is not running; start it first.");
-                case "region" when !s.Setup.RegionCreated || _programs.Count == 0:
-                    throw new InvalidOperationException("No region has been created yet.");
-                case "region" when _robust!.Process.State != ProcessState.Running:
-                    throw new InvalidOperationException("Robust is not running; start it first.");
             }
 
             // On an idle grid this is the first start since the launcher came up: same preparation as StartAsync.
@@ -273,8 +263,7 @@ public sealed partial class GridController(
             switch (component)
             {
                 case "database": await StartDatabaseAsync(s, ct); break;
-                case "robust": await StartComponentAsync(_robust!, ct); break;
-                default: await StartProgramsAsync(s, ct); break;
+                default: await StartComponentAsync(_robust!, ct); break;
             }
         }
         finally { _activity = GridActivity.None; _ops.Release(); }
@@ -296,9 +285,6 @@ public sealed partial class GridController(
                 case "robust":
                     await _robust!.Process.StopAsync(ct);
                     break;
-                case "region":
-                    await StopProgramsAsync(ct);
-                    break;
                 default:
                     throw UnknownComponent(name);
             }
@@ -307,7 +293,7 @@ public sealed partial class GridController(
     }
 
     private static ArgumentException UnknownComponent(string name) =>
-        new($"Unknown component '{name}'; expected database, robust or region.", nameof(name));
+        new($"Unknown component '{name}'; expected database or robust (regions use RegionPowerAsync).", nameof(name));
 
     /// <summary>Takes only the short config lock, never waiting behind a start, stop or provisioning.</summary>
     public void RegenerateConfig()

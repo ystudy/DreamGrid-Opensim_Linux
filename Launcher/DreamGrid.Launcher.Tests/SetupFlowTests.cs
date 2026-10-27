@@ -773,4 +773,26 @@ public sealed class SetupFlowTests
         Assert.Contains("Port 8002 is already in use by another program", page.Body!.TextContent);
         Assert.NotNull(page.QuerySelector("form[action='/setup?handler=Port'] input[name=Port]"));
     }
+
+    [Fact]
+    public async Task Setup_port_fix_moves_a_region_port()
+    {
+        await using var f = Fresh(s => s with { WorldNamed = true });
+        f.Store.Save(f.Store.LoadOrCreate() with
+        {
+            Programs = [new ProgramSettings("Welcome", 8004, 8011)],
+            Regions = [new RegionSettings("Welcome", "Welcome", Guid.NewGuid(), UdpPort: 8005)],
+        });
+        Fail(f, new StartFailure("Port 8005 (Region Welcome UDP) is already in use by another program.", 8005));
+        using var client = await SetupClientAsync(f);
+        await f.Grid.Started.Task.WaitAsync(TimeSpan.FromSeconds(5), Ct);
+
+        using var resp = await PostFormAsync(client, "/setup?handler=Port", new() { ["Port"] = "8105" }, tokenFrom: "/setup/avatar");
+
+        Assert.Equal(HttpStatusCode.Redirect, resp.StatusCode);
+        var saved = f.Store.LoadOrCreate();
+        Assert.Equal(8105, saved.Regions.Single().UdpPort);
+        Assert.Equal(8004, saved.Programs.Single().HttpPort);
+        Assert.Equal(8004, saved.RegionPort);
+    }
 }

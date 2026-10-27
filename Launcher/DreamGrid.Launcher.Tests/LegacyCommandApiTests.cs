@@ -35,7 +35,11 @@ public sealed class LegacyCommandApiTests
     private readonly FakeTimeProvider _time = new();
     private readonly LoginThrottle _throttle;
 
-    public LegacyCommandApiTests() => _throttle = new LoginThrottle(_time);
+    public LegacyCommandApiTests()
+    {
+        _throttle = new LoginThrottle(_time);
+        _grid.SettingsSource = () => _settings;
+    }
 
     private LegacyCommandApi Api(params IFeatureModule[] modules) => Api(_robust, modules);
 
@@ -134,9 +138,18 @@ public sealed class LegacyCommandApiTests
     }
 
     [Theory]
-    [InlineData("StartRegion", "Start region")]
-    [InlineData("StopRegion", "Stop region")]
-    [InlineData("RestartRegion", "Restart region")]
+    [InlineData("StartRegion", "Start")]
+    [InlineData("StopRegion", "Stop")]
+    [InlineData("RestartRegion", "Restart")]
+    public async Task Region_commands_use_the_region_power_menu(string command, string action)
+    {
+        var reply = await Api().HandleAsync(Req(command, password: MachineId, regionName: "Welcome"), Ct);
+
+        Assert.Equal("ACK", reply);
+        Assert.Equal([$"RegionPower {action} {RegionUuid}"], _grid.Snapshot());
+    }
+
+    [Theory]
     [InlineData("StartRobust", "Start robust")]
     [InlineData("StopRobust", "Stop robust")]
     [InlineData("StartMysql", "Start database")]
@@ -343,5 +356,44 @@ public sealed class LegacyCommandApiTests
             new("Ping", 0, (_, _) => Task.FromResult("pong")),
             new("Secret", 200, (_, _) => Task.FromResult("ok")),
         ];
+    }
+
+    // ---- many regions (plan 4a) ----
+
+    private static readonly Guid BeachUuid = Guid.Parse("6f1f0000-0000-0000-0000-00000000bbbb");
+
+    private void AddBeach() => _settings = _settings with
+    {
+        Regions = [.. _settings.Regions, new RegionSettings("Welcome", "Beach", BeachUuid, 1001, 1000, UdpPort: 8005)],
+    };
+
+    [Fact]
+    public async Task Regionlist_lists_all_regions()
+    {
+        AddBeach();
+
+        var reply = await Api().HandleAsync(Req("regionlist"), Ct);
+
+        Assert.Contains("\"Welcome\"", reply);
+        Assert.Contains("\"Beach\"", reply);
+        Assert.Contains(BeachUuid.ToString(), reply);
+    }
+
+    [Fact]
+    public async Task Region_status_needs_a_name_when_there_are_several()
+    {
+        AddBeach();
+
+        Assert.Equal("NAK Name the region.", await Api().HandleAsync(Req("RegionStatus"), Ct));
+        Assert.Equal("Running", await Api().HandleAsync(Req("RegionStatus", regionName: "beach"), Ct));
+    }
+
+    [Fact]
+    public async Task Stop_region_is_a_stop_not_a_park()
+    {
+        AddBeach();
+
+        Assert.Equal("ACK", await Api().HandleAsync(Req("StopRegion", password: MachineId, regionName: "Beach"), Ct));
+        Assert.Equal([$"RegionPower Stop {BeachUuid}"], _grid.Snapshot());
     }
 }
