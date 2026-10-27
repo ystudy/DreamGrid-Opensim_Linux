@@ -84,6 +84,65 @@ public sealed class GridBootTests : IDisposable
         }
     }
 
+    /// <summary>Adds a program with one region of its own, on ports from the allocator (plan 4a's rules).</summary>
+    private static LauncherSettings WithOwnProgram(LauncherSettings l, string name, int x, int y)
+    {
+        var http = PortAllocator.Next(l, l.RegionPort);
+        var console = PortAllocator.Next(l, l.RegionConsolePort, new HashSet<int> { http });
+        return l with
+        {
+            Programs = [.. l.Programs, new ProgramSettings(name, http, console)],
+            Regions = [.. l.Regions, new RegionSettings(name, name, Guid.NewGuid(), x, y, "island", 1, http)],
+        };
+    }
+
+    [Fact]
+    public async Task Two_programs_boot_and_stop()
+    {
+        var (grid, paths, _, _) = Make();
+        var ct = TestContext.Current.CancellationToken;
+        try
+        {
+            await grid.StartAsync(ct);
+            await grid.CreateOwnerAsync("Test", "Owner", "pass-word1", null, ct);
+            using var alerts = new AlertListener(grid.CurrentSettings().WebPort, grid.OnRegionAlert);
+            grid.UpdateSettings(l => WithOwnProgram(WithOwnProgram(l, "Home", 1000, 1000), "Isle", 1010, 1010) with
+            {
+                Setup = l.Setup with { RegionCreated = true },
+            });
+
+            await grid.StartAsync(ct);
+            await WaitUntilAsync(() => grid.GetStatus().Regions.All(r => r.State == RegionState.Running), TimeSpan.FromMinutes(5), ct);
+
+            var status = grid.GetStatus();
+            Assert.Equal(2, status.Programs.Count);
+            Assert.All(status.Programs, p => Assert.Equal(ProcessState.Running, p.Process.State));
+            Assert.Equal(["Home", "Isle"], status.Regions.Select(r => r.Name));
+            Assert.True(status.LoginsEnabled);
+
+            await grid.StopAllAsync(ct);
+            Assert.False(AnyProcessMatches(Path.Combine(paths.RuntimeOpenSim, "OpenSim.dll")), "an OpenSim.dll process remains");
+        }
+        catch (Exception e) when (e is not Xunit.Sdk.XunitException)
+        {
+            throw new Exception(e.Message + Environment.NewLine + LogTail(paths), e);
+        }
+        finally
+        {
+            await grid.DetachAsync();
+        }
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> done, TimeSpan timeout, CancellationToken ct)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (!done())
+        {
+            if (DateTime.UtcNow > deadline) throw new TimeoutException("The condition did not hold within " + timeout);
+            await Task.Delay(500, ct);
+        }
+    }
+
     [Fact]
     public async Task Port_conflict_on_Robust_public_port_is_reported_before_anything_starts()
     {

@@ -251,7 +251,8 @@ public sealed class GridControllerWiringTests : IDisposable
         var s = _store.LoadOrCreate();
         _store.Save(s with
         {
-            Programs = TestSettings.ProgramFor(new RegionSettings("Welcome", "Welcome", Guid.NewGuid())), Regions = TestSettings.RegionsFor(new RegionSettings("Welcome", "Welcome", Guid.NewGuid())),
+            Programs = [new ProgramSettings("Welcome", s.RegionPort, s.RegionConsolePort)],
+            Regions = [new RegionSettings("Welcome", "Welcome", Guid.NewGuid(), UdpPort: s.RegionPort)],
             Setup = s.Setup with { RegionCreated = created },
         });
     }

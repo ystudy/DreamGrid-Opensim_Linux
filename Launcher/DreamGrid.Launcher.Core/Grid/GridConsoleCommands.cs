@@ -55,9 +55,13 @@ public static partial class GridConsoleCommands
     /// AccessModule answers "status" with "Login in NAME are enabled|disabled"; the "Logins are ... for region"
     /// wording is its reply to enable/disable and is accepted too.
     /// </summary>
-    public static async Task<bool?> LoginsEnabledAsync(RestConsoleClient console, TimeSpan settle, CancellationToken ct)
+    public static async Task<bool?> LoginsEnabledAsync(RestConsoleClient console, TimeSpan settle, CancellationToken ct) =>
+        ParseLoginsEnabled(await console.RunAsync("login status", settle, ct));
+
+    /// <summary>The first enabled/disabled answer in <c>login status</c> output (either wording), or null when none.</summary>
+    public static bool? ParseLoginsEnabled(IEnumerable<string> lines)
     {
-        foreach (var raw in await console.RunAsync("login status", settle, ct))
+        foreach (var raw in lines)
         {
             var line = raw.TrimEnd();
             if (line.Contains("Logins are enabled for region", StringComparison.Ordinal)) return true;
@@ -70,6 +74,43 @@ public static partial class GridConsoleCommands
         }
         return null;
     }
+
+    /// <summary>
+    /// Every "Login in NAME are enabled|disabled" line of <c>login status</c> (RegionReadyModule prints one per region), by
+    /// region name.
+    /// </summary>
+    public static IReadOnlyDictionary<string, bool> ParseLoginStatus(IEnumerable<string> lines)
+    {
+        var status = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        foreach (var raw in lines)
+        {
+            var line = raw.TrimEnd();
+            if (!line.StartsWith("Login in ", StringComparison.Ordinal)) continue;
+            foreach (var (suffix, enabled) in new[] { (" are enabled", true), (" are disabled", false) })
+                if (line.EndsWith(suffix, StringComparison.Ordinal))
+                    status[line["Login in ".Length..^suffix.Length]] = enabled;
+        }
+        return status;
+    }
+
+    public static async Task<IReadOnlyDictionary<string, bool>> LoginStatusAsync(RestConsoleClient console, TimeSpan settle, CancellationToken ct) =>
+        ParseLoginStatus(await console.RunAsync("login status", settle, ct));
+
+    /// <summary>
+    /// The region IDs in <c>show regions</c>' table, or null when the output holds none (no table: the answer is
+    /// unknown). IDs, not names: the name column pads to 20 characters and names may hold spaces.
+    /// </summary>
+    public static IReadOnlyList<Guid>? ParseShowRegions(IEnumerable<string> lines)
+    {
+        var ids = lines.SelectMany(l => RegionIdPattern().Matches(l)).Select(m => Guid.Parse(m.Value)).ToList();
+        return ids.Count == 0 ? null : ids;
+    }
+
+    public static async Task<IReadOnlyList<Guid>?> LoadedRegionsAsync(RestConsoleClient console, TimeSpan settle, CancellationToken ct) =>
+        ParseShowRegions(await console.RunAsync("show regions", settle, ct));
+
+    [GeneratedRegex(@"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b")]
+    private static partial Regex RegionIdPattern();
 
     /// <summary>
     /// True when <c>terrain stats</c> (TerrainModule, which logs load results only to its log file) shows island

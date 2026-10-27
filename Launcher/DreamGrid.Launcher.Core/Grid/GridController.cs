@@ -13,8 +13,8 @@ using Microsoft.Extensions.Logging;
 namespace DreamGrid.Launcher.Core.Grid;
 
 /// <summary>
-/// Owns the grid: stages the runtime, writes the INIs, and starts (or adopts) MariaDB, Robust and the region in
-/// that order, each one healthy before the next. Children outlive the launcher (spec 4.12): only
+/// Owns the grid: stages the runtime, writes the INIs, and starts (or adopts) MariaDB, Robust and the region programs
+/// in that order, each one healthy before the next. A program is one OpenSim process hosting one or more regions. Children outlive the launcher (spec 4.12): only
 /// <see cref="StopAllAsync"/>, <see cref="StopComponentAsync"/> and <see cref="RestartComponentAsync"/> stop them.
 /// </summary>
 public sealed partial class GridController(
@@ -43,12 +43,16 @@ public sealed partial class GridController(
 
     private volatile LauncherSettings? _settings;
     private volatile string _host = "127.0.0.1";
-    private volatile Component? _db, _robust, _region;
-    private volatile bool _loginsEnabled;
+    private volatile Component? _db, _robust;
+    // Replaced whole, never changed in place, so GetStatus reads them without a lock.
+    private volatile IReadOnlyDictionary<string, Component> _programs = new Dictionary<string, Component>();
+    private volatile IReadOnlyDictionary<string, IReadOnlyCollection<Guid>?> _loaded = new Dictionary<string, IReadOnlyCollection<Guid>?>();
+    // Regions stopped until the next world start: their program runs without them.
+    private volatile IReadOnlySet<Guid> _held = new HashSet<Guid>();
+    private readonly RegionLogins _logins = new();
     private volatile StartFailure? _startFailure;
     private volatile GridActivity _activity;
     private int? _regionAlertPid;
-    private long _loginAlerts; // "logins enabled|disabled" alerts received; under _alertGate
     private TaskCompletionSource<string>? _oarLoaded;
 
 
@@ -58,7 +62,16 @@ public sealed partial class GridController(
         public string Key { get; init; } = "";
     }
 
-    public bool LoginsEnabled => _loginsEnabled;
+    /// <summary>True when there is a loadable region and every one has said (alert or console) that it accepts logins.</summary>
+    public bool LoginsEnabled
+    {
+        get
+        {
+            var s = CurrentSettings();
+            var loadable = s.Programs.SelectMany(p => RegionModel.Loadable(s, p.Instance, _held)).ToList();
+            return loadable.Count > 0 && loadable.All(r => _logins.Enabled(r.Uuid));
+        }
+    }
 
     /// <summary>The PID the region last reported through its "regionpid" alert.</summary>
     public int? RegionAlertPid { get { lock (_alertGate) return _regionAlertPid; } }
@@ -79,18 +92,18 @@ public sealed partial class GridController(
             // wrong with it (a console that refuses the login or times out, too) must not keep the database and Robust
             // down: it is kept as this start's failure instead, unless a later step fails too.
             StartFailure? adoptFailure = null;
-            if (!s.Setup.RegionCreated && _region is not null && WillAdopt(_region))
-            {
-                try { await StartRegionAsync(ct); }
-                catch (Exception e) when (!ct.IsCancellationRequested)
+            if (!s.Setup.RegionCreated)
+                foreach (var program in _programs.Values.Where(WillAdopt))
                 {
-                    adoptFailure = new StartFailure($"The region left running by an interrupted setup could not be adopted: {e.Message}", null);
+                    try { await StartProgramAsync(s, program, ct); }
+                    catch (Exception e) when (!ct.IsCancellationRequested)
+                    {
+                        adoptFailure ??= new StartFailure($"The region left running by an interrupted setup could not be adopted: {e.Message}", null);
+                    }
                 }
-            }
             await StartDatabaseAsync(s, ct);
             await StartComponentAsync(_robust!, ct);
-            if (s.Setup.RegionCreated && _region is not null)
-                await StartRegionAsync(ct);
+            if (s.Setup.RegionCreated) await StartProgramsAsync(s, ct);
             _startFailure = adoptFailure;
         }
         catch (Exception e) when (e is not OperationCanceledException)
@@ -122,7 +135,7 @@ public sealed partial class GridController(
         Task[] monitors;
         lock (_monitors) monitors = _monitors.Values.ToArray();
         await Task.WhenAll(monitors);
-        foreach (var c in new[] { _region, _robust })
+        foreach (var c in _programs.Values.Append(_robust))
             if (c?.Console is { } console) await console.CloseAsync();
     }
 
@@ -141,7 +154,7 @@ public sealed partial class GridController(
                     EnsureComponents(s); // stopped components pick up changed ports
                     await StartDatabaseAsync(s, ct);
                     await StartComponentAsync(_robust!, ct);
-                    if (s.Setup.RegionCreated && _region is not null) await StartRegionAsync(ct);
+                    if (s.Setup.RegionCreated) await StartProgramsAsync(s, ct);
                     break;
                 case "robust":
                     await _robust!.Process.StopAsync(ct);
@@ -149,11 +162,10 @@ public sealed partial class GridController(
                     await StartComponentAsync(_robust!, ct);
                     break;
                 case "region":
-                    if (_region is null) throw new InvalidOperationException("No region has been created yet.");
-                    await _region.Process.StopAsync(ct);
-                    _loginsEnabled = false;
+                    if (_programs.Count == 0) throw new InvalidOperationException("No region has been created yet.");
+                    await StopProgramsAsync(ct);
                     EnsureComponents(s);
-                    await StartRegionAsync(ct);
+                    await StartProgramsAsync(s, ct);
                     break;
                 default:
                     throw UnknownComponent(name);
@@ -176,14 +188,14 @@ public sealed partial class GridController(
             {
                 case "robust" when _db!.Process.State != ProcessState.Running:
                     throw new InvalidOperationException("The database is not running; start it first.");
-                case "region" when !s.Setup.RegionCreated || _region is null:
+                case "region" when !s.Setup.RegionCreated || _programs.Count == 0:
                     throw new InvalidOperationException("No region has been created yet.");
                 case "region" when _robust!.Process.State != ProcessState.Running:
                     throw new InvalidOperationException("Robust is not running; start it first.");
             }
 
             // On an idle grid this is the first start since the launcher came up: same preparation as StartAsync.
-            if (new[] { _db, _robust, _region }.All(c => c is null || c.Process.State != ProcessState.Running))
+            if (_programs.Values.Append(_db).Append(_robust).All(c => c is null || c.Process.State != ProcessState.Running))
             {
                 try { await PrepareAsync(s, ct); }
                 catch (PortConflictException e)
@@ -197,7 +209,7 @@ public sealed partial class GridController(
             {
                 case "database": await StartDatabaseAsync(s, ct); break;
                 case "robust": await StartComponentAsync(_robust!, ct); break;
-                default: await StartRegionAsync(ct); break;
+                default: await StartProgramsAsync(s, ct); break;
             }
         }
         finally { _activity = GridActivity.None; _ops.Release(); }
@@ -220,8 +232,7 @@ public sealed partial class GridController(
                     await _robust!.Process.StopAsync(ct);
                     break;
                 case "region":
-                    if (_region is not null) await _region.Process.StopAsync(ct);
-                    _loginsEnabled = false;
+                    await StopProgramsAsync(ct);
                     break;
                 default:
                     throw UnknownComponent(name);
@@ -304,8 +315,8 @@ public sealed partial class GridController(
             // A retry for the same name keeps the region's UUID.
             var uuid = RegionModel.First(s) is { } old && old.Name == name ? old.Uuid : Guid.NewGuid();
             var region = new RegionSettings(Instance: SafeFolderName(name), Name: name, Uuid: uuid, Content: content, UdpPort: s.RegionPort);
-            if (_region is not null && _region.Instance != region.Instance)
-                await _region.Process.StopAsync(ct);
+            foreach (var other in _programs.Values.Where(c => c.Instance != region.Instance))
+                await StopProgramAsync(other, ct);
 
             s = UpdateSettings(l => l with
             {
@@ -314,14 +325,14 @@ public sealed partial class GridController(
             });
             lock (_configGate) new RuntimeStager(paths).WriteLogConfigs([region.Instance], LogLevelModule.LevelFor(s));
             EnsureComponents(s);
+            var program = _programs[region.Instance];
 
-            _loginsEnabled = false;
-            await StartRegionAsync(ct);
-            await WaitForLoginsAsync(ct); // the scene is up and accepts console commands for it
+            await StartProgramAsync(s, program, ct);
+            await WaitForLoginsAsync(program, uuid, ct); // the scene is up and accepts console commands for it
             progress?.Report(SetupProgress.LoadingContent);
-            await LoadContentAsync(region, content, ct);
+            await LoadContentAsync(program, region, content, s, ct);
             progress?.Report(SetupProgress.WaitingForLogins);
-            await WaitForLoginsAsync(ct);
+            await WaitForLoginsAsync(program, uuid, ct);
 
             UpdateSettings(l => l with { Setup = l.Setup with { RegionCreated = true } }, writeConfig: false);
         }
@@ -341,11 +352,24 @@ public sealed partial class GridController(
     public GridStatus GetStatus()
     {
         var s = CurrentSettings();
+        var held = _held;
+        var programs = _programs;
+        var loaded = _loaded;
+        var processes = s.Programs.ToDictionary(p => p.Instance, p => Describe("region", programs.GetValueOrDefault(p.Instance)));
+        var live = RegionModel.Live(s).ToList();
+        var regions = live.Select(r => new RegionStatus(r.Uuid, r.Name, r.Instance,
+                RegionStates.Derive(r, processes.GetValueOrDefault(r.Instance), held.Contains(r.Uuid), loaded.GetValueOrDefault(r.Instance),
+                    _logins.Enabled(r.Uuid)),
+                _logins.Enabled(r.Uuid), r.X, r.Y, r.Size,
+                live.Where(o => o.Instance == r.Instance && o.Uuid != r.Uuid).Select(o => o.Name).ToList()))
+            .ToList();
         return new GridStatus(
             Describe("database", _db),
             Describe("robust", _robust),
-            RegionModel.First(s) is null ? null : Describe("region", _region),
-            _loginsEnabled,
+            s.Programs.Select(p => new ProgramStatus(p.Instance, processes[p.Instance],
+                live.Where(r => r.Instance == p.Instance).Select(r => r.Uuid).ToList())).ToList(),
+            regions,
+            GridStatus.ComputeLoginsEnabled(regions, held),
             $"http://{_host}:{s.RobustPublicPort}",
             _startFailure,
             _activity);
@@ -369,11 +393,8 @@ public sealed partial class GridController(
         switch (alert.Login.ToLowerInvariant())
         {
             case "enabled" or "disabled":
-                lock (_alertGate)
-                {
-                    _loginAlerts++;
-                    _loginsEnabled = alert.Login.Equals("enabled", StringComparison.OrdinalIgnoreCase);
-                }
+                // An alert for a region the launcher doesn't know (a hand-made region file) changes nothing.
+                _logins.Apply(alert, CurrentSettings().Regions);
                 break;
             case "oarloaded" or "oarnotloaded": _oarLoaded?.TrySetResult(alert.Login.ToLowerInvariant()); break;
         }
@@ -413,7 +434,7 @@ public sealed partial class GridController(
     }
 
     private void WriteConfig(LauncherSettings s) =>
-        new GridConfigWriter(paths).Write(s, _modules.Cast<IIniContributor>().ToList());
+        new GridConfigWriter(paths).Write(s, _modules.Cast<IIniContributor>().ToList(), _held);
 
     /// <summary>Stages the runtime, writes the configs and checks the ports (the web port is the host's; adoptable children keep theirs).</summary>
     private async Task PrepareAsync(LauncherSettings s, CancellationToken ct)
@@ -422,9 +443,10 @@ public sealed partial class GridController(
 
         // The host owns and binds the web port before StartAsync (RegionReady posts its alerts there).
         var skip = new HashSet<int> { s.WebPort };
-        foreach (var c in new[] { _db, _robust, _region })
+        foreach (var c in _programs.Values.Append(_db).Append(_robust))
             if (c is not null && WillAdopt(c)) skip.UnionWith(c.Ports);
-        if (PortCheck.FindConflictPort(s, skip) is { } conflict)
+        var toStart = s.Programs.Where(p => RegionModel.Loadable(s, p.Instance, _held).Any()).Select(p => p.Instance).ToHashSet();
+        if (PortCheck.FindConflictPort(s, skip, toStart) is { } conflict)
             throw new PortConflictException(conflict.Message, conflict.Port);
     }
 
@@ -442,11 +464,8 @@ public sealed partial class GridController(
         lock (_configGate) upgrade = stager.NeedsStaging();
         if (upgrade)
         {
-            if (_region is not null && WillAdopt(_region))
-            {
-                await _region.Process.StopAsync(ct);
-                _loginsEnabled = false;
-            }
+            foreach (var program in _programs.Values.Where(WillAdopt))
+                await StopProgramAsync(program, ct);
             if (WillAdopt(_robust!)) await _robust!.Process.StopAsync(ct);
         }
         try
@@ -455,7 +474,7 @@ public sealed partial class GridController(
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            if (_region is not null) await _region.Process.StopAsync(ct);
+            await StopProgramsAsync(ct);
             await _robust!.Process.StopAsync(ct);
             lock (_configGate) stager.StageIfNeeded();
         }
@@ -475,27 +494,72 @@ public sealed partial class GridController(
         await new DatabaseProvisioner(s).EnsureAsync(ct);
     }
 
-    private async Task StartRegionAsync(CancellationToken ct)
+    /// <summary>
+    /// Starts every program that has a loadable region, one after another. One that fails doesn't keep the others
+    /// down; the first failure is thrown once all have been tried.
+    /// </summary>
+    private async Task StartProgramsAsync(LauncherSettings s, CancellationToken ct)
     {
-        var running = _region!.Process.State == ProcessState.Running;
-        var adopted = running || WillAdopt(_region!);
-        if (!running) await StartComponentAsync(_region!, ct);
-        // An adopted region announced its logins before this launcher was listening, so ask it. One still booting
-        // answers "disabled" and may send its alert while that answer is on its way: the alert is newer and wins.
-        if (adopted)
+        Exception? first = null;
+        foreach (var p in s.Programs.Where(p => RegionModel.Loadable(s, p.Instance, _held).Any()))
         {
-            long seen;
-            lock (_alertGate) seen = _loginAlerts;
-            var enabled = await GridConsoleCommands.LoginsEnabledAsync(_region!.Console!, ConsoleSettle, ct) ?? false;
-            lock (_alertGate)
-                if (_loginAlerts == seen) _loginsEnabled = enabled;
+            try { await StartProgramAsync(s, _programs[p.Instance], ct); }
+            catch (Exception e) when (e is not OperationCanceledException) { first ??= e; }
         }
+        if (first is not null) throw first;
+    }
+
+    /// <summary>
+    /// Starts or adopts one program. A started program loads its loadable regions. An adopted one announced its regions'
+    /// logins before this launcher was listening, so it is asked which regions it loads and whether they accept logins.
+    /// One still booting answers "disabled" and may send its alert while that answer is on its way: the alert is newer
+    /// and wins.
+    /// </summary>
+    private async Task StartProgramAsync(LauncherSettings s, Component program, CancellationToken ct)
+    {
+        var instance = program.Instance!;
+        var running = program.Process.State == ProcessState.Running;
+        var adopted = running || WillAdopt(program);
+        var regions = RegionModel.In(s, instance).ToList();
+        if (!running)
+        {
+            if (!adopted) _logins.Clear(regions.Select(r => r.Uuid));
+            await StartComponentAsync(program, ct);
+        }
+        if (!adopted)
+        {
+            SetLoaded(instance, RegionModel.Loadable(s, instance, _held).Select(r => r.Uuid).ToList());
+            return;
+        }
+
+        var seen = regions.ToDictionary(r => r.Uuid, r => _logins.Version(r.Uuid));
+        SetLoaded(instance, await GridConsoleCommands.LoadedRegionsAsync(program.Console!, ConsoleSettle, ct));
+        var lines = await program.Console!.RunAsync("login status", ConsoleSettle, ct);
+        var byName = GridConsoleCommands.ParseLoginStatus(lines);
+        var any = GridConsoleCommands.ParseLoginsEnabled(lines) ?? false;
+        foreach (var r in regions)
+            _logins.SetIfUnchanged(r.Uuid, seen[r.Uuid], byName.TryGetValue(r.Name, out var enabled) ? enabled : any && regions.Count == 1);
+    }
+
+    private void SetLoaded(string instance, IReadOnlyCollection<Guid>? ids) =>
+        _loaded = new Dictionary<string, IReadOnlyCollection<Guid>?>(_loaded) { [instance] = ids };
+
+    private async Task StopProgramAsync(Component program, CancellationToken ct)
+    {
+        await program.Process.StopAsync(ct);
+        _logins.Clear(RegionModel.In(CurrentSettings(), program.Instance!).Select(r => r.Uuid));
+    }
+
+    /// <summary>Stops every program, the last started first.</summary>
+    private async Task StopProgramsAsync(CancellationToken ct)
+    {
+        foreach (var program in _programs.Values.Reverse())
+            await StopProgramAsync(program, ct);
     }
 
     private async Task StopAllCoreAsync(CancellationToken ct)
     {
-        if (_region is not null) await _region.Process.StopAsync(ct);
-        _loginsEnabled = false;
+        await StopProgramsAsync(ct);
         await _robust!.Process.StopAsync(ct);
         await _db!.Process.StopAsync(ct); // graceful stop = MariaDB SHUTDOWN
     }
@@ -548,22 +612,34 @@ public sealed partial class GridController(
         }
     }
 
-    private async Task WaitForLoginsAsync(CancellationToken ct)
+    private async Task WaitForLoginsAsync(Component program, Guid region, CancellationToken ct)
     {
         var deadline = time.GetUtcNow() + LoginWait;
-        while (!_loginsEnabled)
+        while (!_logins.Enabled(region))
         {
-            if (_region!.Process.State == ProcessState.Failed)
-                throw new InvalidOperationException($"The region failed: {_region.Process.LastError}");
+            if (program.Process.State == ProcessState.Failed)
+                throw new InvalidOperationException($"The region failed: {program.Process.LastError}");
             if (time.GetUtcNow() >= deadline)
                 throw new TimeoutException($"The region did not enable logins within {LoginWait.TotalSeconds:0} s.");
             await Task.Delay(LoginPoll, time, ct);
         }
     }
 
-    private async Task LoadContentAsync(RegionSettings region, string content, CancellationToken ct)
+    /// <summary>Loads a region's content through its program's console; in a shared program the console switches to it first.</summary>
+    private async Task LoadContentAsync(Component program, RegionSettings region, string content, LauncherSettings s, CancellationToken ct)
     {
-        var console = _region!.Console!;
+        var console = program.Console!;
+        var shared = RegionModel.Loadable(s, region.Instance, _held).Count() > 1;
+        if (shared) await console.RunAsync($"change region {region.Name}", ConsoleSettle, ct);
+        try { await LoadContentCoreAsync(console, region, content, ct); }
+        finally
+        {
+            if (shared) await console.RunAsync("change region root", ConsoleSettle, CancellationToken.None);
+        }
+    }
+
+    private async Task LoadContentCoreAsync(RestConsoleClient console, RegionSettings region, string content, CancellationToken ct)
+    {
         var oar = content == "starter" ? StarterContent.StarterOar(paths) : null;
         if (oar is not null)
         {
@@ -596,8 +672,14 @@ public sealed partial class GridController(
     {
         _db = Refresh(_db, KeyOf(s, "database"), () => MakeDatabase(s));
         _robust = Refresh(_robust, KeyOf(s, "robust"), () => MakeRobust(s));
-        if (RegionModel.First(s) is { } r)
-            _region = _region?.Instance != r.Instance ? MakeRegion(s, r) : Refresh(_region, KeyOf(s, "region"), () => MakeRegion(s, r));
+        var current = _programs;
+        var next = new Dictionary<string, Component>();
+        foreach (var p in s.Programs)
+            next[p.Instance] = Refresh(current.GetValueOrDefault(p.Instance), ProgramKey(s, p), () => MakeProgram(s, p));
+        // A program dropped from the settings is kept while it still runs, so it can be stopped.
+        foreach (var (instance, c) in current)
+            if (!next.ContainsKey(instance) && c.Process.State != ProcessState.Stopped) next[instance] = c;
+        _programs = next;
     }
 
     private static Component Refresh(Component? current, string key, Func<Component> make)
@@ -612,8 +694,13 @@ public sealed partial class GridController(
     {
         "database" => $"{s.MariaDbPort}|{s.Db.RootPassword}",
         "robust" => $"{s.RobustPublicPort}|{s.RobustPrivatePort}|{s.RobustConsolePort}|{s.Console.User}|{s.Console.Password}",
-        _ => $"{RegionModel.First(s)?.Instance}|{s.RegionPort}|{s.RegionConsolePort}|{s.Console.User}|{s.Console.Password}",
+        _ => throw UnknownComponent(component),
     };
+
+    /// <summary>A program's spec depends on its ports, the console credentials and the regions it loads (their UDP ports).</summary>
+    private string ProgramKey(LauncherSettings s, ProgramSettings p) =>
+        $"{p.Instance}|{p.HttpPort}|{p.ConsolePort}|{s.Console.User}|{s.Console.Password}|" +
+        string.Join(',', RegionModel.Loadable(s, p.Instance, _held).Select(r => $"{r.Uuid}:{r.UdpPort}"));
 
     private Component MakeDatabase(LauncherSettings s)
     {
@@ -637,18 +724,19 @@ public sealed partial class GridController(
             [s.RobustPublicPort, s.RobustPrivatePort, s.RobustConsolePort], console) { Key = KeyOf(s, "robust") };
     }
 
-    private Component MakeRegion(LauncherSettings s, RegionSettings r)
+    private Component MakeProgram(LauncherSettings s, ProgramSettings p)
     {
-        var console = MakeConsole(s, s.RegionConsolePort);
+        var console = MakeConsole(s, p.ConsolePort);
         var dll = Path.Combine(paths.RuntimeOpenSim, "OpenSim.dll");
-        // Same PID file the region writes itself ([Startup] PIDFile).
-        var spec = new ProcessSpec("Region " + r.Name,
-            () => Dotnet(dll, "-inidirectory=" + paths.RegionDir(r.Instance), "-console=rest",
-                $"-logconfig=dreamgrid-region-{r.Instance}.log4net.xml"),
-            Path.Combine(paths.Pids, r.Instance + ".pid"), console.IsUpAsync, ct => console.SendAsync("quit", ct),
+        var loadable = RegionModel.Loadable(s, p.Instance, _held).ToList();
+        // Same PID file the program writes itself ([Startup] PIDFile).
+        var spec = new ProcessSpec("Region " + (loadable.FirstOrDefault()?.Name ?? p.Instance),
+            () => Dotnet(dll, "-inidirectory=" + paths.RegionDir(p.Instance), "-console=rest",
+                $"-logconfig=dreamgrid-region-{p.Instance}.log4net.xml"),
+            Path.Combine(paths.Pids, p.Instance + ".pid"), console.IsUpAsync, ct => console.SendAsync("quit", ct),
             TimeSpan.FromSeconds(300), TimeSpan.FromSeconds(60), dll);
-        return new Component("region", new ManagedProcess(spec, new RestartPolicy(), time), spec,
-            [s.RegionPort, s.RegionConsolePort], console, r.Instance) { Key = KeyOf(s, "region") };
+        return new Component("program-" + p.Instance, new ManagedProcess(spec, new RestartPolicy(), time), spec,
+            [p.HttpPort, p.ConsolePort, .. loadable.Select(r => r.UdpPort)], console, p.Instance) { Key = ProgramKey(s, p) };
     }
 
     private RestConsoleClient MakeConsole(LauncherSettings s, int port) =>
