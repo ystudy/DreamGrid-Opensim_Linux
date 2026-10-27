@@ -44,7 +44,8 @@
 <main class="container py-4">
     @RenderBody()
 </main>
-<footer class="text-center text-body-secondary small py-3">DreamGrid @version</footer>
+@* The install smokes read the version from a bare <footer> tag, so it is styled in site.css. *@
+<footer>DreamGrid @version</footer>
 <script src="/lib/bootstrap/bootstrap.bundle.min.js"></script>
 <script src="/js/live.js"></script>
 @await RenderSectionAsync("Scripts", required: false)
