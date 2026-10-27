@@ -102,7 +102,7 @@ public sealed class LegacyCommandApi(
         var builtIn = new LegacyCommand[]
         {
             new("RegionStatus", 0, (r, _) => Task.FromResult(TargetRegion(r, settings())
-                ?? (grid.GetStatus().Region?.State.ToString() ?? "Stopped"))),
+                ?? (grid.GetStatus().Regions.FirstOrDefault()?.State.ToString() ?? "Stopped"))),
             new("regionlist", 0, (_, _) => Task.FromResult(RegionList(grid, settings()))),
             new("StartRegion", AdminLevel, RegionOp((g, ct) => g.StartComponentAsync("region", ct))),
             new("StopRegion", AdminLevel, RegionOp((g, ct) => g.StopComponentAsync("region", ct))),
@@ -134,7 +134,7 @@ public sealed class LegacyCommandApi(
     private static string RegionList(IGridController grid, LauncherSettings s)
     {
         var regions = RegionModel.First(s) is { } r
-            ? new[] { new RegionEntry(r.Name, r.Uuid.ToString(), grid.GetStatus().Region?.State.ToString() ?? "Stopped") }
+            ? new[] { new RegionEntry(r.Name, r.Uuid.ToString(), grid.GetStatus().Regions.FirstOrDefault()?.State.ToString() ?? "Stopped") }
             : [];
         return JsonSerializer.Serialize(new { regions }, Json);
     }

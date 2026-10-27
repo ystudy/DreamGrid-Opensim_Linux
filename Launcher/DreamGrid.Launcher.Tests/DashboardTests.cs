@@ -43,10 +43,21 @@ public sealed partial class DashboardTests : IAsyncLifetime
     private static ComponentStatus Component(string name, ProcessState state, string? lastError = null) =>
         new(name, state, null, null, null, lastError);
 
+    private static readonly Guid WelcomeId = Guid.Parse("20000000-0000-0000-0000-000000000001");
+
+    /// <summary>The database, Robust and (when <paramref name="region"/> is set) one region, Welcome, in a program of its own.</summary>
     private static GridStatus Status(ProcessState db, ProcessState robust, ProcessState? region,
-        StartFailure? startFailure = null, GridActivity activity = GridActivity.None) =>
-        new(Component("database", db), Component("robust", robust), region is { } r ? Component("region", r) : null,
+        StartFailure? startFailure = null, GridActivity activity = GridActivity.None)
+    {
+        var program = region is { } p ? Component("region", p) : null;
+        var welcome = new RegionSettings("Welcome", "Welcome", WelcomeId);
+        IReadOnlyList<RegionStatus> regions = program is null
+            ? []
+            : [new RegionStatus(WelcomeId, "Welcome", "Welcome", RegionStates.Derive(welcome, program, false, null, true), true, 1000, 1000, 1, [])];
+        return new(Component("database", db), Component("robust", robust),
+            program is null ? [] : [new ProgramStatus("Welcome", program, [WelcomeId])], regions,
             false, "http://127.0.0.1:8002", startFailure, activity);
+    }
 
     private static string Token(string html) =>
         WebUtility.HtmlDecode(TokenPattern().Match(html).Groups[1].Value);
@@ -71,7 +82,7 @@ public sealed partial class DashboardTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
         Assert.Contains("Your world is running", html);
         Assert.Contains("http://127.0.0.1:8002", html);
-        foreach (var name in new[] { "Database", "Grid service", "Your region", "Running" })
+        foreach (var name in new[] { "Database", "Grid service", "Welcome", "Running" })
             Assert.Contains(name, html);
     }
 
@@ -91,7 +102,7 @@ public sealed partial class DashboardTests : IAsyncLifetime
 
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
         Assert.Contains("The database isn't running.", VisibleText(html));
-        Assert.Matches("<button[^>]*value=\"start\"[^>]*>Start all</button>", html);
+        Assert.Matches("<button[^>]*value=\"start\"[^>]*>Start</button>", html);
         // The failed component's last log lines, folded away.
         Assert.Contains("Show details", html);
         Assert.Contains("Can't open the mysql.plugin table", VisibleText(html));
@@ -157,12 +168,13 @@ public sealed partial class DashboardTests : IAsyncLifetime
     [InlineData(ProcessState.Running, ProcessState.Running, ProcessState.Running, GridActivity.None, null)]
     [InlineData(ProcessState.Stopped, ProcessState.Stopped, ProcessState.Stopped, GridActivity.None, null)]
     [InlineData(ProcessState.Running, ProcessState.Stopped, ProcessState.Stopped, GridActivity.None, "The grid service isn't running.")]
-    [InlineData(ProcessState.Running, ProcessState.Running, ProcessState.Stopped, GridActivity.None, "Your region isn't running.")]
+    // A region stopped on purpose is not a problem (spec 6.8); a failed one is, by name.
+    [InlineData(ProcessState.Running, ProcessState.Running, ProcessState.Stopped, GridActivity.None, null)]
     // Failed and Crashed are problems at any time.
     [InlineData(ProcessState.Failed, ProcessState.Stopped, ProcessState.Stopped, GridActivity.None, "The database isn't running.")]
     [InlineData(ProcessState.Running, ProcessState.Failed, ProcessState.Stopped, GridActivity.None, "The grid service isn't running.")]
-    [InlineData(ProcessState.Running, ProcessState.Running, ProcessState.Failed, GridActivity.None, "Your region isn't running.")]
-    [InlineData(ProcessState.Running, ProcessState.Running, ProcessState.Crashed, GridActivity.Starting, "Your region isn't running.")]
+    [InlineData(ProcessState.Running, ProcessState.Running, ProcessState.Failed, GridActivity.None, "Welcome isn't running.")]
+    [InlineData(ProcessState.Running, ProcessState.Running, ProcessState.Crashed, GridActivity.Starting, "Welcome isn't running.")]
     [InlineData(ProcessState.Running, ProcessState.Failed, ProcessState.Stopped, GridActivity.Starting, "The grid service isn't running.")]
     // A component in transition: no partial-stop problem.
     [InlineData(ProcessState.Running, ProcessState.Starting, ProcessState.Stopped, GridActivity.None, null)]
@@ -248,20 +260,20 @@ public sealed partial class DashboardTests : IAsyncLifetime
     [Fact]
     public async Task Grid_actions_require_admin_and_antiforgery()
     {
-        using var anonymous = await _f.CreateClient(new() { AllowAutoRedirect = false }).PostAsync("/api/grid/restart-region", null, Ct);
+        using var anonymous = await _f.CreateClient(new() { AllowAutoRedirect = false }).PostAsync("/api/grid/restart-robust", null, Ct);
         Assert.Contains(anonymous.StatusCode, new[] { HttpStatusCode.Unauthorized, HttpStatusCode.Redirect });
 
         using var client = await SignedInAsync();
-        using var noHeader = await client.PostAsync("/api/grid/restart-region", null, Ct);
+        using var noHeader = await client.PostAsync("/api/grid/restart-robust", null, Ct);
         Assert.Equal(HttpStatusCode.BadRequest, noHeader.StatusCode);
-        Assert.DoesNotContain("Restart region", _f.Grid.Snapshot());
+        Assert.DoesNotContain("Restart robust", _f.Grid.Snapshot());
 
         var token = Token(await client.GetStringAsync("/", Ct));
-        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/grid/restart-region");
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/grid/restart-robust");
         request.Headers.Add("RequestVerificationToken", token);
         using var ok = await client.SendAsync(request, Ct);
         Assert.Equal(HttpStatusCode.Accepted, ok.StatusCode);
-        await WaitForCallAsync("Restart region");
+        await WaitForCallAsync("Restart robust");
 
         using var unknown = new HttpRequestMessage(HttpMethod.Post, "/api/grid/explode");
         unknown.Headers.Add("RequestVerificationToken", token);
@@ -390,5 +402,101 @@ public sealed partial class DashboardTests : IAsyncLifetime
 
         Assert.False(anonymous.RootElement.GetProperty("admin").GetBoolean());
         Assert.True(signedIn.RootElement.GetProperty("admin").GetBoolean());
+    }
+
+    // ---- many regions (plan 4a) ----
+
+    private static GridStatus TwoRegions()
+    {
+        var running = Component("x", ProcessState.Running);
+        var beach = Guid.NewGuid();
+        return new GridStatus(running with { Name = "database" }, running with { Name = "robust" },
+            [new ProgramStatus("Welcome", running with { Name = "region" }, [WelcomeId, beach])],
+            [
+                new RegionStatus(WelcomeId, "Welcome", "Welcome", RegionState.Running, true, 1000, 1000, 1, ["Sunset Beach"]),
+                new RegionStatus(beach, "Sunset Beach", "Welcome", RegionState.Parked, false, 1001, 1000, 1, ["Welcome"]),
+            ],
+            true, "http://127.0.0.1:8002");
+    }
+
+    [Fact]
+    public async Task Dashboard_lists_each_region_with_its_state()
+    {
+        _f.Grid.Status = TwoRegions();
+        using var client = await SignedInAsync();
+        var text = VisibleText(await client.GetStringAsync("/", Ct));
+
+        Assert.Contains("Sunset Beach", text);
+        Assert.Contains("Parked", text);
+        Assert.Contains("runs with Welcome", text);
+        Assert.Contains("Your world is running.", text);
+    }
+
+    [Fact]
+    public async Task Power_menu_offers_start_everything()
+    {
+        using var client = await SignedInAsync();
+        var html = await client.GetStringAsync("/", Ct);
+
+        foreach (var (value, label) in new[] { ("start", "Start"), ("start-everything", "Start everything"), ("restart", "Restart"), ("stop", "Stop all") })
+            Assert.Matches($"<button[^>]*value=\"{value}\"[^>]*>{label}</button>", html);
+        Assert.Contains("<details", html);
+    }
+
+    [Theory]
+    [InlineData("start", "StartWorld")]
+    [InlineData("start-everything", "StartWorld everything")]
+    public async Task Start_actions_call_StartWorldAsync(string action, string call)
+    {
+        using var client = await SignedInAsync();
+        var token = Token(await client.GetStringAsync("/", Ct));
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/grid/" + action);
+        request.Headers.Add("RequestVerificationToken", token);
+
+        using var ok = await client.SendAsync(request, Ct);
+
+        Assert.Equal(HttpStatusCode.Accepted, ok.StatusCode);
+        await WaitForCallAsync(call);
+    }
+
+    [Fact]
+    public async Task Status_api_lists_regions_without_details_for_anonymous()
+    {
+        _f.Grid.Status = TwoRegions();
+        using var anonymous = _f.CreateClient();
+        using var json = JsonDocument.Parse(await anonymous.GetStringAsync("/api/status", Ct));
+
+        var regions = json.RootElement.GetProperty("grid").GetProperty("regions").EnumerateArray().ToList();
+        Assert.Equal(["Welcome", "Sunset Beach"], regions.Select(r => r.GetProperty("name").GetString()));
+        Assert.Equal("Parked", regions[1].GetProperty("state").GetString());
+        Assert.Equal(JsonValueKind.Null, regions[0].GetProperty("runsWith").ValueKind);
+        Assert.True(json.RootElement.GetProperty("grid").GetProperty("loginsEnabled").GetBoolean());
+
+        using var admin = await SignedInAsync();
+        using var full = JsonDocument.Parse(await admin.GetStringAsync("/api/status", Ct));
+        var first = full.RootElement.GetProperty("grid").GetProperty("regions")[0];
+        Assert.Equal(["Sunset Beach"], first.GetProperty("runsWith").EnumerateArray().Select(e => e.GetString()));
+    }
+
+    [Fact]
+    public void Failed_region_problem_names_it()
+    {
+        var status = TwoRegions() with
+        {
+            Regions = [new RegionStatus(WelcomeId, "Welcome", "Welcome", RegionState.Failed, false, 1000, 1000, 1, [])],
+        };
+
+        Assert.Equal("Welcome isn't running.", StatusApi.Problem(status));
+    }
+
+    [Fact]
+    public async Task Online_list_names_each_persons_region()
+    {
+        var welcome = RegionModel.First(_f.Grid.CurrentSettings())!;
+        _f.OnlineUsers.Result = new OnlineList([new OnlineAvatar("Test Owner", welcome.Uuid), new OnlineAvatar("Ada Guest", Guid.NewGuid())], true);
+        using var client = await SignedInAsync();
+        using var json = JsonDocument.Parse(await client.GetStringAsync("/api/status", Ct));
+
+        Assert.Equal(["Test Owner in Welcome", "Ada Guest"], json.RootElement.GetProperty("online").EnumerateArray().Select(e => e.GetString()));
     }
 }

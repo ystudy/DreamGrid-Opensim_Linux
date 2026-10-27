@@ -37,15 +37,6 @@ public sealed record GridStatus(ComponentStatus Database, ComponentStatus Robust
     IReadOnlyList<RegionStatus> Regions, bool LoginsEnabled, string LoginUri, StartFailure? StartFailure = null,
     GridActivity Activity = GridActivity.None)
 {
-    /// <summary>Single-region shape, until the status consumers move to <see cref="Regions"/> (plan 4a tasks 8 and 9).</summary>
-    public GridStatus(ComponentStatus database, ComponentStatus robust, ComponentStatus? region, bool loginsEnabled, string loginUri,
-        StartFailure? startFailure = null, GridActivity activity = GridActivity.None)
-        : this(database, robust, region is null ? [] : [new ProgramStatus("region", region, [])], [], loginsEnabled, loginUri,
-            startFailure, activity) { }
-
-    /// <summary>The first program's process, until the status consumers move to <see cref="Regions"/>.</summary>
-    public ComponentStatus? Region => Programs.FirstOrDefault()?.Process;
-
     /// <summary>
     /// True when at least one region counts and every counted region runs with logins enabled; parked regions and
     /// <paramref name="held"/> ones (stopped until the next world start) don't count.

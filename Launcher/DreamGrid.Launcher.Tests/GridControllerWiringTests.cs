@@ -475,7 +475,7 @@ public sealed class GridControllerWiringTests : IDisposable
             var e = await Record.ExceptionAsync(() => _grid.StartAsync(TestContext.Current.CancellationToken));
 
             Assert.NotNull(e); // MariaDB cannot start in this rig
-            var region = _grid.GetStatus().Region;
+            var region = _grid.GetStatus().Programs.SingleOrDefault()?.Process;
             Assert.NotNull(region);
             Assert.Equal(ProcessState.Running, region.State);
             Assert.Equal(fake.Id, region.Pid);
@@ -514,7 +514,7 @@ public sealed class GridControllerWiringTests : IDisposable
             Assert.IsNotType<ConsoleAuthException>(e);
             Assert.IsNotAssignableFrom<OperationCanceledException>(e);
             Assert.Contains(MissingMariaDb, e.Message);
-            Assert.Equal(ProcessState.Running, _grid.GetStatus().Region?.State); // adopted all the same
+            Assert.Equal(ProcessState.Running, _grid.GetStatus().Programs.SingleOrDefault()?.Process.State); // adopted all the same
         }
         finally { await EndLeftoverRegionAsync(fake); }
     }

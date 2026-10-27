@@ -37,9 +37,14 @@ public sealed class IndexModel(IGridController grid, IOnlineUsers online, GridAc
         // plain text already says everything (its raw message uses internal port names).
         if (StatusApi.ShowsStartFailure(raw) && raw.StartFailure!.ConflictPort is null)
             details.Add(("Why the last start failed", [raw.StartFailure!.Message]));
-        details.AddRange(new[] { g.Database, g.Robust, g.Region }
-            .Where(c => c?.State == nameof(Core.Processes.ProcessState.Failed))
-            .Select(c => (c!.Label + ": the last lines it wrote", LastLines(c.Name)))
+        details.AddRange(new[] { g.Database, g.Robust }
+            .Where(c => c.State == nameof(Core.Processes.ProcessState.Failed))
+            .Select(c => (c.Label + ": the last lines it wrote", LastLines(c.Name)))
+            .Where(f => f.Item2.Count > 0));
+        // A failed region: its program's log (regions sharing a program share it).
+        details.AddRange(raw.Regions.Where(r => r.State == RegionState.Failed)
+            .DistinctBy(r => r.Instance)
+            .Select(r => (r.Name + ": the last lines it wrote", LastLines("region-" + r.Instance)))
             .Where(f => f.Item2.Count > 0));
         FailedLogs = details;
         var s = settings();
@@ -65,13 +70,7 @@ public sealed class IndexModel(IGridController grid, IOnlineUsers online, GridAc
 
     private IReadOnlyList<string> LastLines(string component)
     {
-        var source = component switch
-        {
-            "database" => "database",
-            "robust" => "robust",
-            _ => RegionModel.First(settings()) is { } r ? "region-" + r.Instance : null,
-        };
-        if (source is null) return [];
+        var source = component;
         try
         {
             return logs.Tail(source, DetailLines).Lines;

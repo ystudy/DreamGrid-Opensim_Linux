@@ -193,7 +193,7 @@ public sealed class SetupFlowTests
         Assert.Equal(before, Starts());
 
         var stopped = new ComponentStatus("database", ProcessState.Stopped, null, null, null, null);
-        f.Grid.Status = new GridStatus(stopped, stopped with { Name = "robust" }, null, false, "http://127.0.0.1:8002");
+        f.Grid.Status = new GridStatus(stopped, stopped with { Name = "robust" }, [], [], false, "http://127.0.0.1:8002");
         (await PostFormAsync(client, "/setup/world", new() { ["GridName"] = "Avalon" })).Dispose();
         for (var i = 0; i < 100 && Starts() == before; i++) await Task.Delay(50, Ct);
         Assert.Equal(before + 1, Starts());
@@ -487,7 +487,7 @@ public sealed class SetupFlowTests
     {
         await using var f = AfterOwner();
         var stopped = new ComponentStatus("database", ProcessState.Stopped, null, null, null, null);
-        f.Grid.Status = new GridStatus(stopped, stopped with { Name = "robust" }, null, false, "http://127.0.0.1:8002");
+        f.Grid.Status = new GridStatus(stopped, stopped with { Name = "robust" }, [], [], false, "http://127.0.0.1:8002");
         using var client = await SignedInClientAsync(f);
 
         (await PostFormAsync(client, "/setup/region", new() { ["RegionName"] = "Welcome", ["Content"] = "island" })).Dispose();
@@ -560,7 +560,7 @@ public sealed class SetupFlowTests
     public async Task Avatar_step_names_the_taken_port_when_the_grid_cannot_start()
     {
         await using var f = Fresh(s => s with { WorldNamed = true });
-        f.Grid.Status = new GridStatus(StoppedDb, StoppedDb with { Name = "robust" }, null, false, "http://127.0.0.1:8002");
+        f.Grid.Status = new GridStatus(StoppedDb, StoppedDb with { Name = "robust" }, [], [], false, "http://127.0.0.1:8002");
         f.Grid.ComponentError = new PortConflictException("Port 8002 (Robust public) is already in use by another program.", 8002);
         using var client = await SetupClientAsync(f);
 
@@ -576,7 +576,7 @@ public sealed class SetupFlowTests
     public async Task Avatar_step_names_the_taken_port_from_the_last_failed_start()
     {
         await using var f = Fresh(s => s with { WorldNamed = true });
-        f.Grid.Status = new GridStatus(StoppedDb, StoppedDb with { Name = "robust" }, null, false, "http://127.0.0.1:8002",
+        f.Grid.Status = new GridStatus(StoppedDb, StoppedDb with { Name = "robust" }, [], [], false, "http://127.0.0.1:8002",
             new StartFailure("Port 8004 (Robust private) is already in use by another program.", 8004));
         f.Grid.OwnerError = new InvalidOperationException("Robust is not running.");
         using var client = await SetupClientAsync(f);

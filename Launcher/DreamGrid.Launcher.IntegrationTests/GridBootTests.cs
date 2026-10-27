@@ -46,7 +46,7 @@ public sealed class GridBootTests : IDisposable
             var status = grid.GetStatus();
             Assert.Equal(ProcessState.Running, status.Database.State);
             Assert.Equal(ProcessState.Running, status.Robust.State);
-            Assert.Null(status.Region);
+            Assert.Empty(status.Regions);
             Assert.Equal($"http://127.0.0.1:{s.RobustPublicPort}", status.LoginUri);
 
             var account = await grid.CreateOwnerAsync("Test", "Owner", "pass-word1", null, ct);
@@ -62,7 +62,7 @@ public sealed class GridBootTests : IDisposable
             Assert.Equal(["Creating your region", "Loading the region content", "Waiting for the region to accept logins"], stages.Stages);
 
             status = grid.GetStatus();
-            Assert.Equal(ProcessState.Running, status.Region!.State);
+            Assert.Equal(RegionState.Running, status.Regions.Single().State);
             Assert.Equal($"http://127.0.0.1:{s.RobustPublicPort}", status.LoginUri);
             Assert.True(new SettingsStore(paths.SettingsFile).LoadOrCreate().Setup.RegionCreated);
 

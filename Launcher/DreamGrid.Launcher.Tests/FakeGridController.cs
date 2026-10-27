@@ -94,8 +94,17 @@ internal sealed class FakeGridController : IGridController
     {
         if (Status is { } fixedStatus) return fixedStatus;
         var running = new ComponentStatus("x", ProcessState.Running, null, null, null, null);
+        // Without a region in its settings (or settings at all) the fake has one of its own, Welcome, as version 1's did.
+        var region = !HasRegion ? null
+            : (SettingsSource is null ? null : RegionModel.First(CurrentSettings())) ?? new RegionSettings("Welcome", "Welcome", Guid.Empty);
+        if (region is null)
+            return new GridStatus(running with { Name = "database" }, running with { Name = "robust" }, [], [], _loginsEnabled,
+                "http://127.0.0.1:8002", StartFailure);
+        var program = new ComponentStatus("region", RegionState, null, null, null, null);
         return new GridStatus(running with { Name = "database" }, running with { Name = "robust" },
-            HasRegion ? new ComponentStatus("region", RegionState, null, null, null, null) : null,
+            [new ProgramStatus(region.Instance, program, [region.Uuid])],
+            [new RegionStatus(region.Uuid, region.Name, region.Instance, RegionStates.Derive(region, program, false, null, true), _loginsEnabled,
+                region.X, region.Y, region.Size, [])],
             _loginsEnabled, "http://127.0.0.1:8002", StartFailure);
     }
 
