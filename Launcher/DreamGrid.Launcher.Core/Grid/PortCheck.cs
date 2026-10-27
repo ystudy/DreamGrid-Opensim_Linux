@@ -21,20 +21,32 @@ public static class PortCheck
     /// <summary>As <see cref="FindConflict(LauncherSettings)"/>, ignoring <paramref name="skip"/> (ports of children about to be adopted).</summary>
     public static string? FindConflict(LauncherSettings s, IReadOnlySet<int> skip) => FindConflictPort(s, skip)?.Message;
 
-    /// <summary>As <see cref="FindConflict(LauncherSettings, IReadOnlySet{int})"/>, with the port that is taken.</summary>
-    public static (int Port, string Message)? FindConflictPort(LauncherSettings s, IReadOnlySet<int> skip)
+    /// <summary>As <see cref="FindConflict(LauncherSettings, IReadOnlySet{int})"/>, with the port that is taken; checks every program.</summary>
+    public static (int Port, string Message)? FindConflictPort(LauncherSettings s, IReadOnlySet<int> skip) =>
+        FindConflictPort(s, skip, s.Programs.Select(p => p.Instance).ToHashSet());
+
+    /// <summary>
+    /// The fixed ports, then for each program in <paramref name="programs"/> its HTTP and console ports and its loadable
+    /// regions' UDP ports. A program's ports are named after its first region.
+    /// </summary>
+    public static (int Port, string Message)? FindConflictPort(LauncherSettings s, IReadOnlySet<int> skip, IReadOnlySet<string> programs)
     {
-        var checks = new (int Port, string Name, IPAddress Address, bool Udp)[]
+        var checks = new List<(int Port, string Name, IPAddress Address, bool Udp)>
         {
             (s.MariaDbPort, "MariaDB", IPAddress.Loopback, false),
             (s.RobustPublicPort, "Robust public", IPAddress.Any, false),
             (s.RobustPrivatePort, "Robust private", IPAddress.Any, false),
-            (s.RegionPort, "Region", IPAddress.Any, false),
-            (s.RegionPort, "Region UDP", IPAddress.Any, true),
             (s.RobustConsolePort, "Robust console", IPAddress.Any, false),
-            (s.RegionConsolePort, "Region console", IPAddress.Any, false),
             (s.WebPort, "Web", IPAddress.Any, false),
         };
+        foreach (var program in s.Programs.Where(p => programs.Contains(p.Instance)))
+        {
+            var regions = RegionModel.Loadable(s, program.Instance, NoRegions).ToList();
+            var first = regions.FirstOrDefault()?.Name ?? program.Instance;
+            checks.Add((program.HttpPort, $"Region {first}", IPAddress.Any, false));
+            foreach (var r in regions) checks.Add((r.UdpPort, $"Region {r.Name} UDP", IPAddress.Any, true));
+            checks.Add((program.ConsolePort, $"Region console for {first}", IPAddress.Any, false));
+        }
         foreach (var (port, name, address, udp) in checks)
         {
             if (skip.Contains(port)) continue;
@@ -45,6 +57,8 @@ public static class PortCheck
         }
         return null;
     }
+
+    private static readonly IReadOnlySet<Guid> NoRegions = new HashSet<Guid>();
 
     private static bool CanBind(IPAddress address, int port, bool udp)
     {

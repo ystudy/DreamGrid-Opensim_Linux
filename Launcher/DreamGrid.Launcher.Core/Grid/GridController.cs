@@ -312,7 +312,7 @@ public sealed partial class GridController(
                 Programs = [new ProgramSettings(region.Instance, l.RegionPort, l.RegionConsolePort)],
                 Regions = [region with { UdpPort = l.RegionPort }],
             });
-            lock (_configGate) new RuntimeStager(paths).WriteLogConfigs(region.Instance, LogLevelModule.LevelFor(s));
+            lock (_configGate) new RuntimeStager(paths).WriteLogConfigs([region.Instance], LogLevelModule.LevelFor(s));
             EnsureComponents(s);
 
             _loginsEnabled = false;
@@ -454,7 +454,7 @@ public sealed partial class GridController(
         }
         lock (_configGate)
         {
-            stager.WriteLogConfigs(RegionModel.First(s)?.Instance, LogLevelModule.LevelFor(s));
+            stager.WriteLogConfigs(s.Programs.Select(p => p.Instance), LogLevelModule.LevelFor(s));
             WriteConfig(s);
         }
     }

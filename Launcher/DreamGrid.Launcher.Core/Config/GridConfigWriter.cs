@@ -8,7 +8,11 @@ public sealed class GridConfigWriter(LauncherPaths paths)
 {
     private static readonly string[] ThirdParties = ["outworldz.com", "hyperica.com", "gloebit.com"];
 
-    public void Write(LauncherSettings s, IReadOnlyList<IIniContributor> contributors)
+    /// <summary>
+    /// Writes Robust's INIs and every program's. <paramref name="held"/> are regions stopped for now: their program
+    /// runs without them until a world start.
+    /// </summary>
+    public void Write(LauncherSettings s, IReadOnlyList<IIniContributor> contributors, IReadOnlySet<Guid>? held = null)
     {
         var host = HostAddress.Effective(s.Hostname);
         var rt = paths.RuntimeOpenSim;
@@ -44,7 +48,20 @@ public sealed class GridConfigWriter(LauncherPaths paths)
         flotsam.Set("AssetCache", "CacheDirectory", Fwd(paths.AssetCache));
         Finish(flotsam, "region", extra, Path.Combine(rt, "config-include", "FlotsamCache.ini"), applyExtra: false);
 
-        if (RegionModel.First(s) is not { } r || RegionModel.ProgramOf(s, r) is not { } program) return;
+        foreach (var program in s.Programs)
+            WriteProgram(s, program, RegionModel.Loadable(s, program.Instance, held ?? NoRegions).ToList(), host, extra);
+    }
+
+    private static readonly IReadOnlySet<Guid> NoRegions = new HashSet<Guid>();
+
+    /// <summary>
+    /// The program's OpenSim.ini and one region file per loadable region. Any other region file in its Region folder
+    /// becomes <c>.off</c>, so OpenSim never loads a region the launcher holds back (parked, stopped or deleted).
+    /// </summary>
+    private void WriteProgram(LauncherSettings s, ProgramSettings program, List<RegionSettings> regions, string host, List<IniOverride> extra)
+    {
+        var rt = paths.RuntimeOpenSim;
+        var instance = program.Instance;
 
         // 4. region OpenSim.ini
         var os = LoadProto(Path.Combine(rt, "config-include", "Proto", "Robust", "OpenSim.ini"));
@@ -54,11 +71,11 @@ public sealed class GridConfigWriter(LauncherPaths paths)
         os.Set("Const", "PrivatePort", s.RobustPrivatePort.ToString());
         os.Set("Const", "PrivURL", "http://127.0.0.1");
         os.Set("Const", "http_listener_port", program.HttpPort.ToString());
-        os.Set("Const", "RegionFolderName", r.Instance);
+        os.Set("Const", "RegionFolderName", instance);
         os.Set("Const", "DiagnosticsPort", s.WebPort.ToString());
-        os.Set("Startup", "regionload_regionsdir", Fwd(paths.RegionDefinitionDir(r.Instance)) + "/");
-        os.Set("Startup", "PIDFile", Fwd(Path.Combine(paths.Pids, r.Instance + ".pid")));
-        os.Set("Startup", "ConsoleHistoryFile", Fwd(Path.Combine(paths.RegionDir(r.Instance), "ConsoleHistory.txt")));
+        os.Set("Startup", "regionload_regionsdir", Fwd(paths.RegionDefinitionDir(instance)) + "/");
+        os.Set("Startup", "PIDFile", Fwd(Path.Combine(paths.Pids, instance + ".pid")));
+        os.Set("Startup", "ConsoleHistoryFile", Fwd(Path.Combine(paths.RegionDir(instance), "ConsoleHistory.txt")));
         os.Set("Startup", "physics", program.Physics);
         os.Set("Startup", "meshing", program.Physics == "BulletSim" ? "Meshmerizer" : "ubODEMeshmerizer");
         // The region reads [Network] console_port (OpenSim.cs), unlike Robust's ConsolePort.
@@ -79,18 +96,27 @@ public sealed class GridConfigWriter(LauncherPaths paths)
         os.Set("RegionReady", "alert_uri", $"http://127.0.0.1:{s.WebPort}/dreamgrid/regionready");
         SetSmartStartAndWifi(os, s);
         os.Set("YEngine", "ScriptEnginesPath", Fwd(paths.ScriptEngines));
-        Finish(os, "region", extra, Path.Combine(paths.RegionDir(r.Instance), "OpenSim.ini"));
+        Finish(os, "region", extra, Path.Combine(paths.RegionDir(instance), "OpenSim.ini"));
 
-        // 5. region definition file
-        var def = IniDocument.Parse("");
-        def.Set(r.Name, "RegionUUID", r.Uuid.ToString());
-        def.Set(r.Name, "Location", $"{r.X},{r.Y}");
-        def.Set(r.Name, "InternalAddress", "0.0.0.0");
-        def.Set(r.Name, "InternalPort", r.UdpPort.ToString());
-        def.Set(r.Name, "ExternalHostName", host);
-        def.Set(r.Name, "SizeX", "256");
-        def.Set(r.Name, "SizeY", "256");
-        Finish(def, "region", extra, Path.Combine(paths.RegionDefinitionDir(r.Instance), r.Name + ".ini"), applyExtra: false);
+        // 5. region definition files
+        var dir = paths.RegionDefinitionDir(instance);
+        foreach (var r in regions)
+        {
+            var def = IniDocument.Parse("");
+            def.Set(r.Name, "RegionUUID", r.Uuid.ToString());
+            def.Set(r.Name, "Location", $"{r.X},{r.Y}");
+            def.Set(r.Name, "InternalAddress", "0.0.0.0");
+            def.Set(r.Name, "InternalPort", r.UdpPort.ToString());
+            def.Set(r.Name, "ExternalHostName", host);
+            def.Set(r.Name, "SizeX", (256 * r.Size).ToString());
+            def.Set(r.Name, "SizeY", (256 * r.Size).ToString());
+            Finish(def, "region", extra, Path.Combine(dir, r.Name + ".ini"), applyExtra: false);
+        }
+        Directory.CreateDirectory(dir);
+        var keep = regions.Select(r => r.Name + ".ini").ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var file in Directory.EnumerateFiles(dir, "*.ini"))
+            if (!keep.Contains(Path.GetFileName(file)))
+                File.Move(file, file + ".off", overwrite: true);
     }
 
     /// <summary>

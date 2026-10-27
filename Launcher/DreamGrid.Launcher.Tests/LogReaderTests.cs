@@ -170,6 +170,14 @@ public sealed class LogReaderTests : IDisposable
     }
 
     [Fact]
+    public void Log_sources_list_every_program()
+    {
+        _settings = _settings with { Programs = [new ProgramSettings("Home", 8004, 8011), new ProgramSettings("Isle", 8006, 8012)] };
+
+        Assert.Equal(["launcher", "robust", "region-Home", "region-Isle", "database"], Reader().Sources());
+    }
+
+    [Fact]
     public void Tail_of_an_unknown_source_throws()
     {
         Assert.Throws<ArgumentException>(() => Reader().Tail("../settings"));

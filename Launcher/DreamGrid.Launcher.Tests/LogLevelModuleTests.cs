@@ -33,7 +33,7 @@ public sealed class LogLevelModuleTests : IDisposable
         var s = Settings(new() { ["loglevel"] = new() { ["level"] = "DEBUG" } });
         var paths = new LauncherPaths(_root, Path.Combine(_root, "program"), null);
 
-        new RuntimeStager(paths).WriteLogConfigs("Welcome", LogLevelModule.LevelFor(s));
+        new RuntimeStager(paths).WriteLogConfigs(["Welcome"], LogLevelModule.LevelFor(s));
 
         Assert.Equal("DEBUG", RootLevel(Path.Combine(paths.RuntimeOpenSim, "dreamgrid-robust.log4net.xml")));
         Assert.Equal("DEBUG", RootLevel(Path.Combine(paths.RuntimeOpenSim, "dreamgrid-region-Welcome.log4net.xml")));

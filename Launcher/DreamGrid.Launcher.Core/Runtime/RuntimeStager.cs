@@ -37,14 +37,15 @@ public sealed class RuntimeStager(LauncherPaths paths)
     public bool NeedsStaging() => !(File.Exists(StampFile) && File.ReadAllText(StampFile) == ComputeStamp());
 
     /// <summary>Writes the log4net configs for Robust and (optionally) one region instance.</summary>
-    public void WriteLogConfigs(string? regionInstance, string level = "INFO")
+    /// <summary>Robust's log config and one per program (<paramref name="instances"/>), each logging to <c>region-&lt;instance&gt;.log</c>.</summary>
+    public void WriteLogConfigs(IEnumerable<string> instances, string level = "INFO")
     {
         Directory.CreateDirectory(paths.RuntimeOpenSim);
         WriteLogConfig(Path.Combine(paths.RuntimeOpenSim, "dreamgrid-robust.log4net.xml"),
             Path.Combine(paths.Logs, "robust.log"), level);
-        if (!string.IsNullOrEmpty(regionInstance))
-            WriteLogConfig(Path.Combine(paths.RuntimeOpenSim, $"dreamgrid-region-{regionInstance}.log4net.xml"),
-                Path.Combine(paths.Logs, $"region-{regionInstance}.log"), level);
+        foreach (var instance in instances)
+            WriteLogConfig(Path.Combine(paths.RuntimeOpenSim, $"dreamgrid-region-{instance}.log4net.xml"),
+                Path.Combine(paths.Logs, $"region-{instance}.log"), level);
     }
 
     private string ComputeStamp()

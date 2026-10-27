@@ -56,9 +56,14 @@ public class PortCheckTests
     [Fact]
     public void PortCheck_reports_busy_udp_region_port()
     {
-        var s = FreeSettings();
+        var free = FreeSettings();
+        var s = free with
+        {
+            Programs = [new ProgramSettings("Welcome", free.RegionPort, free.RegionConsolePort)],
+            Regions = [new RegionSettings("Welcome", "Welcome", Guid.NewGuid(), UdpPort: free.RegionPort)],
+        };
         using var holder = new UdpClient(new IPEndPoint(IPAddress.Any, s.RegionPort));
-        Assert.Equal($"Port {s.RegionPort} (Region UDP) is already in use by another program.", PortCheck.FindConflict(s));
+        Assert.Equal($"Port {s.RegionPort} (Region Welcome UDP) is already in use by another program.", PortCheck.FindConflict(s));
     }
 
     [Fact]
@@ -101,6 +106,29 @@ public class PortCheckTests
         try
         {
             Assert.Equal($"Port {port} ({name}) is already in use by another program.", PortCheck.FindConflict(s));
+        }
+        finally { holder.Stop(); }
+    }
+
+    [Fact]
+    public void Port_check_names_the_region_of_a_taken_program_port()
+    {
+        var free = FreeSettings();
+        var http = FreePort();
+        var s = free with
+        {
+            Programs = [new ProgramSettings("Home", http, FreePort())],
+            Regions = [new RegionSettings("Home", "Beach", Guid.NewGuid(), UdpPort: http)],
+        };
+        var holder = new TcpListener(IPAddress.Any, http);
+        holder.Start();
+        try
+        {
+            var conflict = PortCheck.FindConflictPort(s, new HashSet<int>(), new HashSet<string> { "Home" });
+
+            Assert.Equal(http, conflict?.Port);
+            Assert.Contains("(Region Beach)", conflict?.Message);
+            Assert.Null(PortCheck.FindConflictPort(s, new HashSet<int>(), new HashSet<string>()));
         }
         finally { holder.Stop(); }
     }

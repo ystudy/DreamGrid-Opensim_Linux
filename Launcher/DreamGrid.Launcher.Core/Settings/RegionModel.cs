@@ -10,6 +10,10 @@ public static class RegionModel
     public static IEnumerable<RegionSettings> In(LauncherSettings s, string instance) =>
         Live(s).Where(r => r.Instance.Equals(instance, StringComparison.Ordinal));
 
+    /// <summary>The regions a program loads: live, not parked and not held (stopped until the next world start).</summary>
+    public static IEnumerable<RegionSettings> Loadable(LauncherSettings s, string instance, IReadOnlySet<Guid> held) =>
+        In(s, instance).Where(r => !r.Parked && !held.Contains(r.Uuid));
+
     public static ProgramSettings? ProgramOf(LauncherSettings s, RegionSettings r) =>
         s.Programs.FirstOrDefault(p => p.Instance.Equals(r.Instance, StringComparison.Ordinal));
 
