@@ -1,3 +1,4 @@
+using DreamGrid.Launcher.Core.Grid;
 using System.Diagnostics;
 using System.Text.Json;
 using DreamGrid.Launcher.Core;
@@ -131,6 +132,120 @@ public sealed partial class LauncherEndToEndTests : IDisposable
                 Assert.True(ProcessImage.IsAlive(expected.Robust), $"run {run}: Robust died with the launcher");
                 Assert.True(ProcessImage.IsAlive(expected.Region), $"run {run}: the region died with the launcher");
             }
+        });
+    }
+
+    // ---- many regions (plan 4a) ----------------------------------------------------------------------
+
+    [Fact]
+    public async Task Login_to_second_region_returns_its_port()
+    {
+        var paths = RequirePaths(_root);
+        var store = new SettingsStore(paths.SettingsFile);
+        var s = SeedSettings(store);
+
+        await RunWithCleanupAsync(paths, store, async () =>
+        {
+            var grid = NewController(paths, store, NewRobustClient(_http, s));
+            try
+            {
+                await grid.StartAsync(Ct);
+                await grid.CreateOwnerAsync("Test", "Owner", Password, null, Ct);
+                RegionSettings beach;
+                using (new AlertListener(s.WebPort, grid.OnRegionAlert))
+                {
+                    await grid.CreateRegionAsync("Welcome", "island", Ct);
+                    beach = await grid.AddRegionAsync(new NewRegion("Beach", 1001, 1000, 1, "island", "Welcome"), Ct);
+                }
+
+                var login = await XmlRpcLogin.LoginAsync(_http, grid.GetStatus().LoginUri, "Test", "Owner", Password, "uri:Beach&128&128&25", Ct);
+
+                Assert.True(login.Ok, "login refused: " + login.Message);
+                Assert.Equal(beach.UdpPort, login.SimPort);
+                await grid.StopAllAsync(Ct);
+            }
+            finally { await grid.DetachAsync(); }
+        });
+    }
+
+    [Fact]
+    public async Task Upgraded_v1_grid_is_adopted_unchanged()
+    {
+        var paths = RequirePaths(_root);
+        var store = new SettingsStore(paths.SettingsFile);
+        var s = SeedSettings(store);
+
+        await RunWithCleanupAsync(paths, store, async () =>
+        {
+            var grid = NewController(paths, store, NewRobustClient(_http, s));
+            try
+            {
+                await grid.StartAsync(Ct);
+                await grid.CreateOwnerAsync("Test", "Owner", Password, null, Ct);
+                using (new AlertListener(s.WebPort, grid.OnRegionAlert))
+                    await grid.CreateRegionAsync("Welcome", "island", Ct);
+            }
+            finally { await grid.DetachAsync(); }
+
+            // What a version 1 launcher left: the same folder, ports and INIs, but settings in schema 1.
+            var region = RegionModel.First(store.LoadOrCreate())!;
+            var regionPid = LivePid(paths, region.Instance + ".pid");
+            var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(paths.SettingsFile))!.AsObject();
+            node["schemaVersion"] = 1;
+            node.Remove("programs");
+            node.Remove("regions");
+            node["region"] = System.Text.Json.Nodes.JsonNode.Parse(JsonSerializer.Serialize(new
+            {
+                instance = region.Instance, name = region.Name, uuid = region.Uuid, x = region.X, y = region.Y, physics = "ubODE", content = region.Content,
+            }));
+            File.WriteAllText(paths.SettingsFile, node.ToJsonString());
+
+            var launcher = StartLauncher(paths);
+            await WaitForLogAsync(launcher, GridRunning);
+            await WaitForAsync(launcher, async () => await GetAsync(s, "?command=RegionStatus") == "Running", "RegionStatus == Running");
+
+            Assert.Equal(regionPid, LivePid(paths, region.Instance + ".pid"));
+            var migrated = new SettingsStore(paths.SettingsFile).LoadOrCreate();
+            Assert.Equal(LauncherSettings.CurrentSchema, migrated.SchemaVersion);
+            Assert.Equal([new ProgramSettings(region.Instance, s.RegionPort, s.RegionConsolePort)], migrated.Programs);
+            Assert.Equal(s.RegionPort, migrated.Regions.Single().UdpPort);
+            Assert.Equal(region.Uuid, migrated.Regions.Single().Uuid);
+        });
+    }
+
+    [Fact]
+    public async Task Adopts_two_programs_after_launcher_restart()
+    {
+        var paths = RequirePaths(_root);
+        var store = new SettingsStore(paths.SettingsFile);
+        var s = SeedSettings(store);
+
+        await RunWithCleanupAsync(paths, store, async () =>
+        {
+            var grid = NewController(paths, store, NewRobustClient(_http, s));
+            try
+            {
+                await grid.StartAsync(Ct);
+                await grid.CreateOwnerAsync("Test", "Owner", Password, null, Ct);
+                using (new AlertListener(s.WebPort, grid.OnRegionAlert))
+                {
+                    await grid.CreateRegionAsync("Welcome", "island", Ct);
+                    await grid.AddRegionAsync(new NewRegion("Isle", 1010, 1010, 1, "island", null), Ct);
+                }
+            }
+            finally { await grid.DetachAsync(); }
+
+            var instances = store.LoadOrCreate().Programs.Select(p => p.Instance).ToList();
+            Assert.Equal(2, instances.Count);
+            var pids = instances.Select(i => LivePid(paths, i + ".pid")).ToList();
+
+            var launcher = StartLauncher(paths);
+            await WaitForLogAsync(launcher, GridRunning);
+            foreach (var name in new[] { "Welcome", "Isle" })
+                await WaitForAsync(launcher, async () => await GetAsync(s, "?command=RegionStatus&RegionName=" + name) == "Running", name + " == Running");
+
+            Assert.Equal(pids, instances.Select(i => LivePid(paths, i + ".pid")).ToList());
+            Assert.Equal(2, CountProcessesMatching(Path.Combine(paths.RuntimeOpenSim, "OpenSim.dll")));
         });
     }
 
