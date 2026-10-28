@@ -9,15 +9,6 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace DreamGrid.Launcher.Pages.Regions;
 
-/// <summary>One "runs with" choice: the regions that already run together. <see cref="Value"/> is the first region's id (never a folder name).</summary>
-public sealed record GroupChoice(string Value, string Instance, IReadOnlyList<string> Names, bool Running)
-{
-    public string Label => "Runs with " + RegionAdvice.GroupLabel(Names);
-
-    /// <summary>"Home", "Home and Beach", "Home, Beach and Forest".</summary>
-    public string NamesText => Names.Count <= 1 ? string.Concat(Names) : $"{string.Join(", ", Names.Take(Names.Count - 1))} and {Names[^1]}";
-}
-
 /// <summary>
 /// Add a region (spec 5.3): its name, type, map position, size and how it runs. A valid post starts <see cref="RegionJob"/>
 /// (one add at a time) and shows its progress at /regions/add?working=1; the map opens this page with a type and position.
@@ -25,7 +16,7 @@ public sealed record GroupChoice(string Value, string Instance, IReadOnlyList<st
 public sealed class AddModel(IGridController grid, RegionJob job, Func<long?> freeMemory) : PageModel
 {
     private const string WorkingUrl = "/regions/add?working=1";
-    private const string OwnValue = "own";
+    private const string OwnValue = RunsChoices.OwnValue;
 
     [BindProperty] public string? Name { get; set; }
     [BindProperty] public string? Type { get; set; }
@@ -120,14 +111,7 @@ public sealed class AddModel(IGridController grid, RegionJob job, Func<long?> fr
         SavedId = job.RegionId;
         ShowResult = showResult;
 
-        var s = grid.CurrentSettings();
-        var programs = grid.GetStatus().Programs.ToDictionary(p => p.Instance, p => p.Process.State);
-        Groups = s.Programs
-            .Select(p => (Program: p, Regions: RegionModel.In(s, p.Instance).ToList()))
-            .Where(g => g.Regions.Count > 0)
-            .Select(g => new GroupChoice(g.Regions[0].Uuid.ToString(), g.Program.Instance, g.Regions.Select(r => r.Name).ToList(),
-                programs.TryGetValue(g.Program.Instance, out var state) && RegionPowerPlan.IsActive(state)))
-            .ToList();
+        Groups = GroupChoice.All(grid.CurrentSettings(), grid.GetStatus());
     }
 
     /// <summary>The advice that depends on the choices made so far (computed here, so it also updates on submit).</summary>
@@ -147,4 +131,8 @@ public sealed class AddModel(IGridController grid, RegionJob job, Func<long?> fr
     /// <summary>The sharing sentence for <paramref name="group"/>, naming the region being added.</summary>
     public string ShareText(GroupChoice group) =>
         RegionAdvice.Share(group.Names, string.IsNullOrWhiteSpace(Name) ? "this region" : Name.Trim());
+
+    /// <summary>The "How it runs" choices: adding to a running group restarts the whole group.</summary>
+    public RunsChoices Choices => new(ChosenGroup, Own, Groups, ShareText,
+        value => Groups.FirstOrDefault(g => g.Value == value) is { Running: true } g ? g.Names : [], Confirm);
 }

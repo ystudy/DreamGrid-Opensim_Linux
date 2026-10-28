@@ -182,6 +182,15 @@ internal sealed class FakeGridController : IGridController
         UpdateSettings(l => l with { Regions = l.Regions.Select(r => r.Uuid == regionId ? r with { X = x, Y = y } : r).ToList() });
     }
 
+    /// <summary>Records "ChangeRunsWith &lt;id&gt; &lt;group or own&gt;"; <see cref="OnChangeRunsWith"/> may throw instead.</summary>
+    public Func<Guid, string?, CancellationToken, Task> OnChangeRunsWith { get; set; } = (_, _, _) => Task.CompletedTask;
+
+    public async Task ChangeRunsWithAsync(Guid regionId, string? shareWith, CancellationToken ct)
+    {
+        Record($"ChangeRunsWith {regionId} {shareWith ?? "own"}");
+        await OnChangeRunsWith(regionId, shareWith, ct);
+    }
+
     public LauncherSettings UpdateSettings(Func<LauncherSettings, LauncherSettings> change, bool writeConfig = true)
     {
         lock (UpdateWriteConfig)

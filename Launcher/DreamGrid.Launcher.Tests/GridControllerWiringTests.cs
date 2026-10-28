@@ -436,10 +436,10 @@ public sealed class GridControllerWiringTests : IDisposable
     }
 
     /// <summary>
-    /// A stand-in for the region "Welcome" an earlier launcher run left behind: its command line names the staged
+    /// A stand-in for the region program (default "Welcome") an earlier launcher run left behind: its command line names the staged
     /// OpenSim.dll and its PID file is written after it started, so the controller would adopt it.
     /// </summary>
-    private Process StartLeftoverRegion()
+    private Process StartLeftoverRegion(string instance = "Welcome")
     {
         var psi = new ProcessStartInfo(FakeChildExe()) { UseShellExecute = false };
         psi.ArgumentList.Add("--serve");
@@ -447,7 +447,7 @@ public sealed class GridControllerWiringTests : IDisposable
         psi.ArgumentList.Add(Path.Combine(_paths.RuntimeOpenSim, "OpenSim.dll"));
         var fake = Process.Start(psi)!;
         _paths.EnsureCreated();
-        PidFile.Write(Path.Combine(_paths.Pids, "Welcome.pid"), fake.Id);
+        PidFile.Write(Path.Combine(_paths.Pids, instance + ".pid"), fake.Id);
         return fake;
     }
 
@@ -550,6 +550,143 @@ public sealed class GridControllerWiringTests : IDisposable
         _grid.UpdateSettings(s => s with { Regions = s.Regions.Select(r => r.Uuid == id ? r with { DeletedAt = DateTimeOffset.UtcNow } : r).ToList() });
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => _grid.MoveRegionAsync(id, 2000, 2000, TestContext.Current.CancellationToken));
+    }
+
+    private static readonly Guid Isle = Guid.Parse("50000000-0000-0000-0000-000000000003");
+
+    /// <summary>
+    /// Welcome (at 1000, 1000) and Isle (at 1010, 1000): in a program each, or both in Welcome's when
+    /// <paramref name="shared"/>. Isle's UDP port is the region port + 100 either way.
+    /// </summary>
+    private void WelcomeAndIsle(bool shared, bool isleParked = false, string physics = "ubODE")
+    {
+        var s = _store.LoadOrCreate();
+        var welcome = new ProgramSettings("Welcome", s.RegionPort, s.RegionConsolePort, physics);
+        _store.Save(s with
+        {
+            Programs = shared ? [welcome] : [welcome, new ProgramSettings("Isle", s.RegionPort + 100, s.RegionConsolePort + 100)],
+            Regions =
+            [
+                new RegionSettings("Welcome", "Welcome", Guid.NewGuid(), UdpPort: s.RegionPort),
+                new RegionSettings(shared ? "Welcome" : "Isle", "Isle", Isle, X: 1010, UdpPort: s.RegionPort + 100, Parked: isleParked),
+            ],
+            Setup = s.Setup with { RegionCreated = false }, // the leftover stand-ins are adopted
+        });
+    }
+
+    [Fact]
+    public async Task Share_moves_region_and_stops_emptied_program()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        WelcomeAndIsle(shared: false);
+        var s = _store.LoadOrCreate();
+        var (welcomeConsole, isleConsole) = (s.RegionConsolePort, s.RegionConsolePort + 100);
+        var welcome = StartLeftoverRegion("Welcome");
+        var isle = StartLeftoverRegion("Isle");
+        try
+        {
+            await Record.ExceptionAsync(() => _grid.StartAsync(ct)); // MariaDB cannot start; both programs are adopted
+            Assert.All(_grid.GetStatus().Programs, p => Assert.Equal(ProcessState.Running, p.Process.State));
+            _http.OnCommand = port =>
+            {
+                // What a region program does on "quit".
+                if (port == welcomeConsole && _http.Commands(port).Contains("quit") && !welcome.HasExited) welcome.Kill();
+                if (port == isleConsole && _http.Commands(port).Contains("quit") && !isle.HasExited) isle.Kill();
+            };
+
+            // Welcome's restart can't finish here (the stand-in OpenSim is one byte).
+            await Record.ExceptionAsync(() => _grid.ChangeRunsWithAsync(Isle, "Welcome", ct));
+
+            var saved = _store.LoadOrCreate();
+            Assert.Equal("Welcome", RegionModel.Find(saved, Isle)!.Instance);
+            Assert.Equal(s.RegionPort + 100, RegionModel.Find(saved, Isle)!.UdpPort);
+            Assert.DoesNotContain(saved.Programs, p => p.Instance == "Isle");
+            Assert.Contains("quit", _http.Commands(isleConsole)); // Isle's emptied program stopped
+            Assert.Contains("quit", _http.Commands(welcomeConsole)); // Welcome's restarted to load Isle
+            Assert.DoesNotContain(_grid.GetStatus().Programs, p => p.Instance == "Isle");
+        }
+        finally
+        {
+            await EndLeftoverRegionAsync(welcome);
+            if (!isle.HasExited) isle.Kill();
+            isle.Dispose();
+        }
+    }
+
+    [Fact]
+    public async Task Own_makes_a_new_program_keeping_udp_port()
+    {
+        WelcomeAndIsle(shared: true, physics: "BulletSim");
+        var before = _store.LoadOrCreate();
+
+        await _grid.ChangeRunsWithAsync(Isle, null, TestContext.Current.CancellationToken);
+
+        var saved = _store.LoadOrCreate();
+        var region = RegionModel.Find(saved, Isle)!;
+        Assert.Equal("Isle", region.Instance);
+        Assert.Equal(before.RegionPort + 100, region.UdpPort);
+        var program = Assert.Single(saved.Programs, p => p.Instance == "Isle");
+        Assert.Equal("BulletSim", program.Physics); // the old group's, so nothing about the region changes
+        var taken = PortAllocator.Taken(before);
+        Assert.DoesNotContain(program.HttpPort, taken);
+        Assert.DoesNotContain(program.ConsolePort, taken);
+        Assert.NotEqual(program.HttpPort, program.ConsolePort);
+        Assert.Contains(saved.Programs, p => p.Instance == "Welcome");
+        Assert.True(File.Exists(Path.Combine(_paths.RegionDefinitionDir("Isle"), "Isle.ini")));
+        Assert.True(File.Exists(Path.Combine(_paths.RuntimeOpenSim, "dreamgrid-region-Isle.log4net.xml")));
+        Assert.Empty(_http.CommandPorts); // nothing was running: nothing restarts or starts
+        Assert.Contains(_grid.GetStatus().Programs, p => p.Instance == "Isle");
+    }
+
+    [Fact]
+    public async Task Own_of_parked_region_starts_nothing()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        WelcomeAndIsle(shared: true, isleParked: true);
+        var welcomeConsole = _store.LoadOrCreate().RegionConsolePort;
+        var welcome = StartLeftoverRegion("Welcome");
+        try
+        {
+            await Record.ExceptionAsync(() => _grid.StartAsync(ct)); // MariaDB cannot start; Welcome is adopted
+            Assert.Equal(ProcessState.Running, _grid.GetStatus().Programs.Single().Process.State);
+
+            await _grid.ChangeRunsWithAsync(Isle, null, ct);
+
+            Assert.Equal("Isle", RegionModel.Find(_store.LoadOrCreate(), Isle)!.Instance);
+            Assert.DoesNotContain("quit", _http.Commands(welcomeConsole)); // Welcome didn't load Isle: it keeps running
+            var programs = _grid.GetStatus().Programs;
+            Assert.Equal(ProcessState.Running, programs.Single(p => p.Instance == "Welcome").Process.State);
+            Assert.Equal(ProcessState.Stopped, programs.Single(p => p.Instance == "Isle").Process.State);
+        }
+        finally { await EndLeftoverRegionAsync(welcome); }
+    }
+
+    [Fact]
+    public async Task Share_with_own_group_is_refused()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        WelcomeAndIsle(shared: false);
+        var before = _store.LoadOrCreate();
+
+        var own = await Assert.ThrowsAsync<ArgumentException>(() => _grid.ChangeRunsWithAsync(Isle, "Isle", ct));
+        var unknown = await Assert.ThrowsAsync<ArgumentException>(() => _grid.ChangeRunsWithAsync(Isle, "Nowhere", ct));
+        var alone = await Assert.ThrowsAsync<ArgumentException>(() => _grid.ChangeRunsWithAsync(Isle, null, ct));
+
+        Assert.Contains("It already runs with them.", own.Message);
+        Assert.Contains("There is no such group of regions.", unknown.Message);
+        Assert.Contains("It already runs on its own.", alone.Message);
+        Assert.Equal(before.Programs, _store.LoadOrCreate().Programs);
+        Assert.Equal(before.Regions, _store.LoadOrCreate().Regions);
+        Assert.Empty(_http.CommandPorts);
+    }
+
+    [Fact]
+    public async Task Change_of_a_deleted_region_throws()
+    {
+        WelcomeAndIsle(shared: true);
+        _grid.UpdateSettings(s => s with { Regions = s.Regions.Select(r => r.Uuid == Isle ? r with { DeletedAt = DateTimeOffset.UtcNow } : r).ToList() });
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _grid.ChangeRunsWithAsync(Isle, null, TestContext.Current.CancellationToken));
     }
 
     private const string IslandStats = "max/min/avg/sum: 26.3/4.8/12.5/819200";

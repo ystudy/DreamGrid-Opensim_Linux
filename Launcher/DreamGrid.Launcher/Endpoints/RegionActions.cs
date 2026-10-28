@@ -60,6 +60,34 @@ public sealed class RegionActions(IGridController grid, BackgroundWork backgroun
         return true;
     }
 
+    /// <summary>
+    /// Changes how the region runs in the background (with the program <paramref name="shareWith"/>, or on its own when
+    /// null); false when there is no such (live) region. Failures are logged.
+    /// </summary>
+    public bool TryChangeRunsWith(Guid id, string? shareWith)
+    {
+        if (RegionModel.Find(grid.CurrentSettings(), id) is not { DeletedAt: null } region) return false;
+
+        log.LogInformation("Regions: change of how {Region} runs requested ({With}).", region.Name, shareWith ?? "on its own");
+        background.Run($"region runs-with {region.Name}", async stopping =>
+        {
+            try
+            {
+                await grid.ChangeRunsWithAsync(id, shareWith, stopping);
+                log.LogInformation("Regions: {Region} now runs {With}.", region.Name, shareWith is null ? "on its own" : "with " + shareWith);
+            }
+            catch (OperationCanceledException) when (stopping.IsCancellationRequested)
+            {
+                log.LogInformation("Regions: the launcher stopped while changing how {Region} runs.", region.Name);
+            }
+            catch (Exception e)
+            {
+                log.LogError(e, "Regions: changing how {Region} runs failed: {Message}", region.Name, e.Message);
+            }
+        });
+        return true;
+    }
+
     /// <summary>Starts <paramref name="action"/> in the background; false when there is no such (live) region.</summary>
     public bool TryRun(Guid id, RegionPower action)
     {

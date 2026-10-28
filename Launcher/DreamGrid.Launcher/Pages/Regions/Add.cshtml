@@ -114,35 +114,7 @@ else if (Model.Failed)
             <span class="field-error text-danger small d-block">@Error("Size")</span>
         </div>
 
-        <fieldset class="mt-3">
-            <legend class="fs-6 fw-semibold">How it runs</legend>
-            <div class="form-check mb-2">
-                <label class="choice form-check-label">
-                    <input class="form-check-input" type="radio" name="Group" value="own" checked="@(Model.ChosenGroup == "own")">
-                    <span class="group-label">Runs on its own</span>
-                </label>
-                <span class="form-text d-block m-0">@Model.Own.Text</span>
-            </div>
-            @foreach (var g in Model.Groups)
-            {
-                <div class="form-check mb-2" data-group="@g.Value">
-                    <label class="choice form-check-label">
-                        <input class="form-check-input" type="radio" name="Group" value="@g.Value" checked="@(Model.ChosenGroup == g.Value)">
-                        <span class="group-label">@g.Label</span>
-                    </label>
-                    <span class="form-text d-block m-0">@Model.ShareText(g)</span>
-                    @if (g.Running)
-                    {
-                        <label class="confirm form-check-label d-block mt-1">
-                            <input class="form-check-input" type="checkbox" name="Confirm" value="@g.Value" checked="@Model.Confirm.Contains(g.Value)">
-                            I understand @g.NamesText will restart
-                        </label>
-                    }
-                </div>
-            }
-            <span class="field-error text-danger small d-block">@Error("Group")</span>
-            <span class="field-error text-danger small d-block">@Error("Confirm")</span>
-        </fieldset>
+        <partial name="_RunsChoices" model="Model.Choices" />
 
         <button type="submit" class="btn btn-primary mt-3">Add region</button>
     </form>
@@ -192,17 +164,6 @@ else if (Model.ShowForm)
             }, 250);
         }
         [x, y, size].forEach(function (el) { el.addEventListener("change", refresh); el.addEventListener("input", refresh); });
-
-        // Only the chosen group's "will restart" box matters.
-        function boxes() {
-            var chosen = form.querySelector("input[name=Group]:checked");
-            form.querySelectorAll("[data-group]").forEach(function (g) {
-                var box = g.querySelector(".confirm");
-                if (box) box.hidden = !chosen || g.getAttribute("data-group") !== chosen.value;
-            });
-        }
-        form.querySelectorAll("input[name=Group]").forEach(function (r) { r.addEventListener("change", boxes); });
-        boxes();
     })();
     </script>
 }

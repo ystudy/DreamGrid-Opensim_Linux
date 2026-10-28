@@ -167,6 +167,94 @@ public sealed partial class GridController(
         finally { _activity = GridActivity.None; _ops.Release(); }
     }
 
+    public async Task ChangeRunsWithAsync(Guid regionId, string? shareWith, CancellationToken ct)
+    {
+        await _ops.WaitAsync(ct);
+        try
+        {
+            var s = LoadSettings();
+            var region = RegionModel.Find(s, regionId) ?? throw new InvalidOperationException("There is no such region.");
+            if (region.DeletedAt is not null) throw new InvalidOperationException("That region has been deleted.");
+            var from = region.Instance;
+            if (shareWith == from) throw new ArgumentException("It already runs with them.");
+            if (shareWith is not null && s.Programs.All(p => p.Instance != shareWith))
+                throw new ArgumentException("There is no such group of regions.");
+            if (shareWith is null && RegionModel.In(s, from).All(r => r.Uuid == regionId))
+                throw new ArgumentException("It already runs on its own.");
+
+            // Whether the region ran before the change: its program is up and loaded it.
+            var oldProgram = _programs.GetValueOrDefault(from);
+            var oldActive = oldProgram is not null && RegionPowerPlan.IsActive(oldProgram.Process.State);
+            var ran = oldActive
+                && RegionModel.Loadable(s, from, _held).Any(r => r.Uuid == regionId)
+                && (_loaded.GetValueOrDefault(from) is not { } ids || ids.Contains(regionId));
+
+            var to = shareWith!;
+            s = UpdateSettings(l =>
+            {
+                var programs = l.Programs.ToList();
+                if (shareWith is null)
+                {
+                    // A program of its own with the old one's physics, so nothing about the region itself changes.
+                    to = UniqueFolderName(l, SafeFolderName(region.Name));
+                    var httpPort = PortAllocator.Next(l, l.RegionPort);
+                    var consolePort = PortAllocator.Next(l, l.RegionConsolePort, new HashSet<int> { httpPort });
+                    var program = new ProgramSettings(to, httpPort, consolePort);
+                    programs.Add(RegionModel.ProgramOf(l, region) is { } old ? program with { Physics = old.Physics } : program);
+                }
+                var regions = l.Regions.Select(r => r.Uuid == regionId ? r with { Instance = to } : r).ToList();
+                // A program left with no regions goes; one with only parked regions stays for them.
+                if (!regions.Any(r => r.DeletedAt is null && r.Instance == from)) programs.RemoveAll(p => p.Instance == from);
+                return l with { Programs = programs, Regions = regions };
+            });
+            if (shareWith is null)
+                lock (_configGate) new RuntimeStager(paths).WriteLogConfigs(s.Programs.Select(p => p.Instance), LogLevelModule.LevelFor(s));
+
+            var affected = new List<string>();
+            var steps = new List<Func<Task>>();
+            // The old program, when up: stopped once nothing loadable is left in it, else restarted without the region.
+            var left = RegionModel.Loadable(s, from, _held).Select(r => r.Name).ToList();
+            if (oldActive && left.Count == 0)
+                steps.Add(() => StopProgramAsync(oldProgram!, ct));
+            else if (ran)
+            {
+                affected.AddRange(left);
+                steps.Add(() => RestartProgramAsync(s, oldProgram!, ct));
+            }
+            // The new program loads the region if it can: restarted when up, else started when the region was running.
+            if (RegionModel.Loadable(s, to, _held).Any(r => r.Uuid == regionId))
+            {
+                EnsureComponents(s);
+                var newProgram = _programs[to];
+                if (RegionPowerPlan.IsActive(newProgram.Process.State))
+                {
+                    affected.AddRange(RegionModel.Loadable(s, to, _held).Where(r => r.Uuid != regionId).Select(r => r.Name));
+                    steps.Add(() => RestartProgramAsync(s, newProgram, ct));
+                }
+                else if (ran)
+                    steps.Add(async () => { EnsureComponents(s); await StartProgramAsync(s, _programs[to], ct); });
+            }
+
+            if (affected.Count > 0)
+                _log?.LogInformation("Change how {Region} runs: also affected {Others}.", region.Name, string.Join(", ", affected));
+            _activity = GridActivity.Restarting;
+            // One program that fails to come back doesn't keep the other down; the first failure is thrown afterwards.
+            Exception? first = null;
+            foreach (var step in steps)
+            {
+                try { await step(); }
+                catch (Exception e) when (e is not OperationCanceledException) { first ??= e; }
+            }
+            if (!s.Programs.Any(p => p.Instance == from))
+            {
+                EnsureComponents(s); // the removed program, now stopped, leaves the status
+                _loaded = _loaded.Where(kv => kv.Key != from).ToDictionary(kv => kv.Key, kv => kv.Value);
+            }
+            if (first is not null) throw first;
+        }
+        finally { _activity = GridActivity.None; _ops.Release(); }
+    }
+
     /// <summary>Stops a program and starts it again with its current region files.</summary>
     private async Task RestartProgramAsync(LauncherSettings s, Component program, CancellationToken ct)
     {

@@ -49,6 +49,15 @@ public interface IGridController
     /// </summary>
     Task MoveRegionAsync(Guid regionId, int x, int y, CancellationToken ct);
 
+    /// <summary>
+    /// Changes how a region runs, at once: with the program named <paramref name="shareWith"/>, or in a new program of its
+    /// own when it is null (with the old program's physics). Throws <see cref="ArgumentException"/> for an unknown group,
+    /// its own group, or "on its own" when it already is; <see cref="InvalidOperationException"/> for a missing or deleted
+    /// region. The old program then stops when no loadable region is left in it (and is removed once it has no regions),
+    /// or restarts without the region; the new one starts, or restarts, to load it. The region keeps its UDP port.
+    /// </summary>
+    Task ChangeRunsWithAsync(Guid regionId, string? shareWith, CancellationToken ct);
+
     /// <summary>The controller's cached settings (what the grid was configured from); the host reads these per request.</summary>
     LauncherSettings CurrentSettings();
 
