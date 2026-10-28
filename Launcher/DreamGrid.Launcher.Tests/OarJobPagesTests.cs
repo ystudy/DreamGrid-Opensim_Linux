@@ -308,29 +308,45 @@ public sealed class OarJobPagesTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Then_runs_after_a_successful_job_only()
+    public async Task Follow_up_runs_after_success_and_not_after_failure()
     {
         var jobs = _f.Services.GetRequiredService<OarJobs>();
         var ran = 0;
+        Task Follow(CancellationToken _) { Interlocked.Increment(ref ran); return Task.CompletedTask; }
         _f.Grid.OarJobResult = "x.oar";
-        Assert.True(jobs.TryStart(new OarJobRequest(SunsetId, OarJobKind.Save), "Saving"));
-        jobs.Then(SunsetId, _ => { Interlocked.Increment(ref ran); return Task.CompletedTask; });
+        Assert.True(jobs.TryStart(new OarJobRequest(SunsetId, OarJobKind.Save), "Saving", Follow));
         await WaitUntilAsync(() => jobs.For(SunsetId) is { Running: false });
         Assert.Equal(1, ran);
 
         _f.Grid.OnOarJob = (_, _, _) => throw new InvalidOperationException("nope");
-        Assert.True(jobs.TryStart(new OarJobRequest(SunsetId, OarJobKind.Save), "Saving"));
-        jobs.Then(SunsetId, _ => { Interlocked.Increment(ref ran); return Task.CompletedTask; });
+        Assert.True(jobs.TryStart(new OarJobRequest(SunsetId, OarJobKind.Save), "Saving", Follow));
         await WaitUntilAsync(() => jobs.For(SunsetId) is { Running: false, Error: not null });
         Assert.Equal(1, ran);
     }
 
     [Fact]
-    public async Task A_failing_then_is_shown_as_the_error()
+    public async Task Follow_up_of_a_refused_start_never_runs()
     {
         var jobs = _f.Services.GetRequiredService<OarJobs>();
-        Assert.True(jobs.TryStart(new OarJobRequest(SunsetId, OarJobKind.Save), "Saving"));
-        jobs.Then(SunsetId, _ => throw new InvalidOperationException("The file could not be deleted."));
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _f.Grid.OnOarJob = (_, _, _) => release.Task;
+        var ran = 0;
+        Assert.True(jobs.TryStart(new OarJobRequest(HomeId, OarJobKind.Save), "Saving"));
+
+        var refused = jobs.TryStart(new OarJobRequest(BeachId, OarJobKind.Save), "Saving", _ => { Interlocked.Increment(ref ran); return Task.CompletedTask; });
+        release.SetResult();
+        await WaitUntilAsync(() => jobs.For(HomeId) is { Running: false });
+
+        Assert.False(refused);
+        Assert.Equal(0, ran);
+    }
+
+    [Fact]
+    public async Task A_failing_follow_up_is_shown_as_the_error()
+    {
+        var jobs = _f.Services.GetRequiredService<OarJobs>();
+        Assert.True(jobs.TryStart(new OarJobRequest(SunsetId, OarJobKind.Save), "Saving",
+            _ => throw new InvalidOperationException("The file could not be deleted.")));
 
         await WaitUntilAsync(() => jobs.For(SunsetId) is { Running: false });
 

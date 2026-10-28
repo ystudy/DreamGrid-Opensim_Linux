@@ -46,15 +46,20 @@ public sealed class OarJobs(IGridController grid, BackgroundWork background, Tim
         _ => $"Making the land of {regionName} again",
     };
 
-    /// <summary>Starts <paramref name="request"/> in the background; false (nothing changes) while a job runs in that region's program.</summary>
-    public bool TryStart(OarJobRequest request, string text)
+    /// <summary>
+    /// Starts <paramref name="request"/> in the background; false (nothing changes, <paramref name="after"/> never runs)
+    /// while a job runs in that region's program. <paramref name="after"/> belongs to this job only: it runs once the job
+    /// has succeeded, with the launcher-lifetime token, and never after a failure. If it throws, that is logged and
+    /// becomes the job's error.
+    /// </summary>
+    public bool TryStart(OarJobRequest request, string text, Func<CancellationToken, Task>? after = null)
     {
         var key = KeyFor(request.RegionId);
         Job job;
         lock (_gate)
         {
             if (_jobs.TryGetValue(key, out var current) && current.Running) return false;
-            job = new Job(request, text, time.GetTimestamp());
+            job = new Job(request, text, time.GetTimestamp(), after);
             _jobs[key] = job;
         }
         background.Run("OAR job", ct => RunAsync(job, ct));
@@ -71,31 +76,6 @@ public sealed class OarJobs(IGridController grid, BackgroundWork background, Tim
             return new OarJobSnapshot(job.Request.RegionId, job.Text, job.Stage, job.Bytes, time.GetElapsedTime(job.Started, end),
                 job.Running, job.Error, job.SavedAs);
         }
-    }
-
-    /// <summary>
-    /// Runs <paramref name="after"/> once the region's program's job has succeeded, with the launcher-lifetime token; it
-    /// never runs after a failure. Meant to be called right after <see cref="TryStart"/>: when that job has already
-    /// succeeded, <paramref name="after"/> runs at once. If it throws, that is logged and becomes the job's error.
-    /// </summary>
-    public void Then(Guid regionId, Func<CancellationToken, Task> after)
-    {
-        Job job;
-        lock (_gate)
-        {
-            if (!_jobs.TryGetValue(KeyFor(regionId), out job!)) return;
-            if (job.Running)
-            {
-                job.After.Add(after);
-                return;
-            }
-            if (job.Error is not null) return;
-            // The job has just ended; its error slot is free for a follow-up that fails.
-            job.Running = true;
-            job.Ended = null;
-            job.After.Add(after);
-        }
-        background.Run("OAR follow-up", ct => FinishAsync(job, ct));
     }
 
     private async Task RunAsync(Job job, CancellationToken ct)
@@ -118,30 +98,14 @@ public sealed class OarJobs(IGridController grid, BackgroundWork background, Tim
         await FinishAsync(job, ct);
     }
 
-    /// <summary>Runs the follow-ups of a job that succeeded, then marks the job ended.</summary>
+    /// <summary>Runs the job's follow-up when it succeeded, then marks the job ended.</summary>
     private async Task FinishAsync(Job job, CancellationToken ct)
     {
-        while (true)
+        if (job.Error is null && job.After is { } after)
         {
-            Func<CancellationToken, Task>? next = null;
-            lock (_gate)
-            {
-                if (job.Error is null && job.After.Count > 0)
-                {
-                    next = job.After[0];
-                    job.After.RemoveAt(0);
-                }
-                else
-                {
-                    job.After.Clear();
-                    job.Running = false;
-                    job.Ended = time.GetTimestamp();
-                    return;
-                }
-            }
             try
             {
-                await next(ct);
+                await after(ct);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -152,6 +116,11 @@ public sealed class OarJobs(IGridController grid, BackgroundWork background, Tim
                 log.LogError(e, "The step after the OAR job \"{Text}\" failed: {Message}", job.Text, e.Message);
                 lock (_gate) job.Error = Words(e);
             }
+        }
+        lock (_gate)
+        {
+            job.Running = false;
+            job.Ended = time.GetTimestamp();
         }
     }
 
@@ -174,7 +143,7 @@ public sealed class OarJobs(IGridController grid, BackgroundWork background, Tim
     private string KeyFor(Guid regionId) =>
         RegionModel.Find(grid.CurrentSettings(), regionId)?.Instance ?? regionId.ToString();
 
-    private sealed class Job(OarJobRequest request, string text, long started)
+    private sealed class Job(OarJobRequest request, string text, long started, Func<CancellationToken, Task>? after)
     {
         public OarJobRequest Request { get; } = request;
         public string Text { get; } = text;
@@ -185,7 +154,7 @@ public sealed class OarJobs(IGridController grid, BackgroundWork background, Tim
         public bool Running { get; set; } = true;
         public string? Error { get; set; }
         public string? SavedAs { get; set; }
-        public List<Func<CancellationToken, Task>> After { get; } = [];
+        public Func<CancellationToken, Task>? After { get; } = after;
     }
 
     private sealed class Reporter(OarJobs owner, Job job) : IProgress<OarJobProgress>
