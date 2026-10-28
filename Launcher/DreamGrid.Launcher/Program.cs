@@ -147,6 +147,8 @@ builder.Services.AddSingleton<OarLibrary>();
 builder.Services.AddSingleton<UploadPartFiles>();
 // The add-region form's memory advice; tests swap it.
 builder.Services.AddSingleton<Func<long?>>(_ => SystemMemory.AvailableBytes);
+// The reason a CPU priority can't be chosen on this computer; tests swap it.
+builder.Services.AddSingleton<Func<CpuPriority, string?>>(_ => RegionSettingsRules.PriorityUnavailable);
 builder.Services.AddHostedService<GridHostedService>();
 // Registered after GridHostedService, so it stops first: running work is awaited before the controller detaches.
 builder.Services.AddSingleton<BackgroundWork>();

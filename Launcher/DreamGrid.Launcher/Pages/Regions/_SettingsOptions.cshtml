@@ -1,0 +1,23 @@
+@model DreamGrid.Launcher.Pages.Regions.SettingsModel
+@{
+    void Number(string name, string label, string? value, string placeholder)
+    {
+        <label class="form-label mt-3" for="@name">@label</label>
+        <input class="form-control" id="@name" name="@name" value="@value" placeholder="@placeholder" inputmode="numeric" autocomplete="off">
+        <span class="field-error text-danger small d-block" data-error-for="@name">@Model.Error(name)</span>
+    }
+}
+<form method="post" action="/regions/region/@Model.Id/settings/options?handler=options" asp-antiforgery="true">
+    <span class="field-error text-danger small d-block">@Model.Error("")</span>
+    @{ Number("MaxAgents", "Most visitors at once", Model.MaxAgents, "100"); }
+    @{ Number("MaxPrims", "Most objects (prims)", Model.MaxPrims, ""); }
+    @{ Number("MaxNonPhysicalSize", "Biggest object size, in metres", Model.MaxNonPhysicalSize, "1024"); }
+    @{ Number("MaxPhysicalSize", "Biggest physical object size, in metres", Model.MaxPhysicalSize, "128"); }
+    <div class="form-check mt-3">
+        <input class="form-check-input" type="checkbox" id="ClampSize" name="ClampSize" value="true" checked="@Model.ClampSize">
+        <label class="form-check-label" for="ClampSize">Make objects bigger than these sizes smaller, instead of refusing them</label>
+    </div>
+    <p class="form-text">Leave a box empty to use OpenSim's own default.</p>
+    <button type="submit" class="btn btn-primary mt-3">Save</button>
+    <a class="btn btn-outline-secondary mt-3" href="/regions/region/@Model.Id">Cancel</a>
+</form>

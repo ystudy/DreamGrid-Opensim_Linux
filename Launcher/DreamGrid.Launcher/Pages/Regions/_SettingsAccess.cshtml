@@ -1,0 +1,15 @@
+@model DreamGrid.Launcher.Pages.Regions.SettingsModel
+<form method="post" action="/regions/region/@Model.Id/settings/access?handler=access" asp-antiforgery="true">
+    <span class="field-error text-danger small d-block">@Model.Error("")</span>
+    <div class="form-check mt-3">
+        <input class="form-check-input" type="checkbox" id="KeepResidentsOut" name="KeepResidentsOut" value="true" checked="@Model.KeepResidentsOut">
+        <label class="form-check-label" for="KeepResidentsOut">Keep residents out</label>
+        <span class="form-text d-block">Only you and the estate managers can enter.</span>
+    </div>
+    <div class="form-check mt-3">
+        <input class="form-check-input" type="checkbox" id="AnnounceVisitors" name="AnnounceVisitors" value="true" checked="@Model.AnnounceVisitors">
+        <label class="form-check-label" for="AnnounceVisitors">Announce visitors in chat</label>
+    </div>
+    <button type="submit" class="btn btn-primary mt-3">Save</button>
+    <a class="btn btn-outline-secondary mt-3" href="/regions/region/@Model.Id">Cancel</a>
+</form>
