@@ -34,9 +34,11 @@ public sealed class IndexModel(IGridController grid, Func<LauncherSettings> sett
         var key = taken is { } t
             ? SettingsValidator.PortFields.Select(f => f.Key).FirstOrDefault(k => k != "WebPort" && PortOf(current, k) == t)
             : null;
-        if (key is null) return Redirect(next); // nothing to change any more
+        // A region's own port (plan 4a) may be the taken one, alone or together with a "first region" setting.
+        var assigned = taken is { } a && PortAllocator.Assigned(current).ContainsKey(a);
+        if (key is null && !assigned) return Redirect(next); // nothing to change any more
 
-        if (Validate(current, key) is { } error)
+        if ((key is null ? ValidateAssigned(current, taken!.Value) : Validate(current, key)) is { } error)
         {
             ViewData["PortError"] = error;
             ViewData["PortValue"] = Port;
@@ -45,7 +47,11 @@ public sealed class IndexModel(IGridController grid, Func<LauncherSettings> sett
         }
 
         var port = int.Parse(Port!, NumberStyles.None, CultureInfo.InvariantCulture);
-        grid.UpdateSettings(s => WithPort(s, key, port), writeConfig: true);
+        grid.UpdateSettings(s =>
+        {
+            var moved = PortAllocator.Replace(s, taken!.Value, port) ?? s;
+            return key is null ? moved : WithPort(moved, key, port);
+        }, writeConfig: true);
         log.LogInformation("Setup: {Key} changed from {Old} to {New}; starting the grid again.", key, taken, port);
         background.Run("setup start after port change", async ct =>
         {
@@ -75,6 +81,17 @@ public sealed class IndexModel(IGridController grid, Func<LauncherSettings> sett
         return port is < SettingsValidator.MinPort or > SettingsValidator.MaxPort
             ? message
             : $"Port {port} is already used by another part of DreamGrid. Pick a different number.";
+    }
+
+    /// <summary>As <see cref="Validate"/>, for a port only a region holds: any free number that DreamGrid doesn't use.</summary>
+    private string? ValidateAssigned(LauncherSettings current, int taken)
+    {
+        if (!int.TryParse(Port?.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out var port)
+            || port is < SettingsValidator.MinPort or > SettingsValidator.MaxPort)
+            return "Enter a whole number from 1024 to 65535.";
+        Port = Port!.Trim();
+        var used = PortAllocator.Taken(current).Append(current.RegionPort).Append(current.RegionConsolePort);
+        return port != taken && used.Contains(port) ? $"Port {port} is already used by another part of DreamGrid. Pick a different number." : null;
     }
 
     private static int PortOf(LauncherSettings s, string key) => key switch

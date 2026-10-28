@@ -33,7 +33,7 @@ public sealed class RegionModel(Func<LauncherSettings> settings, LauncherPaths p
         if (Closed() is { } closed) return closed;
         Load();
         ShowProgress = working is not null || Progress.Running;
-        RegionName = settings().Region?.Name ?? "Welcome";
+        RegionName = Core.Settings.RegionModel.First(settings())?.Name ?? "Welcome";
         RegionContent = StarterAvailable ? "starter" : "island";
         return Page();
     }

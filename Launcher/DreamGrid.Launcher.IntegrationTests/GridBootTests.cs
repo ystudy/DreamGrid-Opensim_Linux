@@ -46,7 +46,7 @@ public sealed class GridBootTests : IDisposable
             var status = grid.GetStatus();
             Assert.Equal(ProcessState.Running, status.Database.State);
             Assert.Equal(ProcessState.Running, status.Robust.State);
-            Assert.Null(status.Region);
+            Assert.Empty(status.Regions);
             Assert.Equal($"http://127.0.0.1:{s.RobustPublicPort}", status.LoginUri);
 
             var account = await grid.CreateOwnerAsync("Test", "Owner", "pass-word1", null, ct);
@@ -62,7 +62,7 @@ public sealed class GridBootTests : IDisposable
             Assert.Equal(["Creating your region", "Loading the region content", "Waiting for the region to accept logins"], stages.Stages);
 
             status = grid.GetStatus();
-            Assert.Equal(ProcessState.Running, status.Region!.State);
+            Assert.Equal(RegionState.Running, status.Regions.Single().State);
             Assert.Equal($"http://127.0.0.1:{s.RobustPublicPort}", status.LoginUri);
             Assert.True(new SettingsStore(paths.SettingsFile).LoadOrCreate().Setup.RegionCreated);
 
@@ -81,6 +81,141 @@ public sealed class GridBootTests : IDisposable
         finally
         {
             await grid.DetachAsync();
+        }
+    }
+
+    /// <summary>Adds a program with one region of its own, on ports from the allocator (plan 4a's rules).</summary>
+    private static LauncherSettings WithOwnProgram(LauncherSettings l, string name, int x, int y)
+    {
+        var http = PortAllocator.Next(l, l.RegionPort);
+        var console = PortAllocator.Next(l, l.RegionConsolePort, new HashSet<int> { http });
+        return l with
+        {
+            Programs = [.. l.Programs, new ProgramSettings(name, http, console)],
+            Regions = [.. l.Regions, new RegionSettings(name, name, Guid.NewGuid(), x, y, "island", 1, http)],
+        };
+    }
+
+    [Fact]
+    public async Task Two_programs_boot_and_stop()
+    {
+        var (grid, paths, _, _) = Make();
+        var ct = TestContext.Current.CancellationToken;
+        try
+        {
+            await grid.StartAsync(ct);
+            await grid.CreateOwnerAsync("Test", "Owner", "pass-word1", null, ct);
+            using var alerts = new AlertListener(grid.CurrentSettings().WebPort, grid.OnRegionAlert);
+            grid.UpdateSettings(l => WithOwnProgram(WithOwnProgram(l, "Home", 1000, 1000), "Isle", 1010, 1010) with
+            {
+                Setup = l.Setup with { RegionCreated = true },
+            });
+
+            await grid.StartAsync(ct);
+            await WaitUntilAsync(() => grid.GetStatus().Regions.All(r => r.State == RegionState.Running), TimeSpan.FromMinutes(5), ct);
+
+            var status = grid.GetStatus();
+            Assert.Equal(2, status.Programs.Count);
+            Assert.All(status.Programs, p => Assert.Equal(ProcessState.Running, p.Process.State));
+            Assert.Equal(["Home", "Isle"], status.Regions.Select(r => r.Name));
+            Assert.True(status.LoginsEnabled);
+
+            await grid.StopAllAsync(ct);
+            Assert.False(AnyProcessMatches(Path.Combine(paths.RuntimeOpenSim, "OpenSim.dll")), "an OpenSim.dll process remains");
+        }
+        catch (Exception e) when (e is not Xunit.Sdk.XunitException)
+        {
+            throw new Exception(e.Message + Environment.NewLine + LogTail(paths), e);
+        }
+        finally
+        {
+            await grid.DetachAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Second_region_shared_and_third_on_its_own()
+    {
+        var (grid, paths, _, _) = Make();
+        var ct = TestContext.Current.CancellationToken;
+        try
+        {
+            await grid.StartAsync(ct);
+            await grid.CreateOwnerAsync("Test", "Owner", "pass-word1", null, ct);
+            using var alerts = new AlertListener(grid.CurrentSettings().WebPort, grid.OnRegionAlert);
+            await grid.CreateRegionAsync("Welcome", "island", ct);
+
+            var beach = await grid.AddRegionAsync(new NewRegion("Beach", 1001, 1000, 1, "island", "Welcome"), ct);
+            var isle = await grid.AddRegionAsync(new NewRegion("Isle", 1010, 1010, 1, "island", null), ct);
+
+            var status = grid.GetStatus();
+            Assert.Equal(["Welcome", "Beach", "Isle"], status.Regions.Select(r => r.Name));
+            Assert.All(status.Regions, r => Assert.Equal(RegionState.Running, r.State));
+            Assert.Equal(2, status.Programs.Count);
+            Assert.Equal(["Welcome"], status.Regions.Single(r => r.Id == beach.Uuid).RunsWith);
+            Assert.Empty(status.Regions.Single(r => r.Id == isle.Uuid).RunsWith);
+            Assert.True(status.LoginsEnabled);
+
+            await grid.StopAllAsync(ct);
+        }
+        catch (Exception e) when (e is not Xunit.Sdk.XunitException)
+        {
+            throw new Exception(e.Message + Environment.NewLine + LogTail(paths), e);
+        }
+        finally
+        {
+            await grid.DetachAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Park_and_unpark_a_shared_region()
+    {
+        var (grid, paths, _, robust) = Make();
+        var ct = TestContext.Current.CancellationToken;
+        GridController? second = null;
+        try
+        {
+            await grid.StartAsync(ct);
+            await grid.CreateOwnerAsync("Test", "Owner", "pass-word1", null, ct);
+            using var alerts = new AlertListener(grid.CurrentSettings().WebPort, a => (second ?? grid).OnRegionAlert(a));
+            await grid.CreateRegionAsync("Welcome", "island", ct);
+            var beach = await grid.AddRegionAsync(new NewRegion("Beach", 1001, 1000, 1, "island", "Welcome"), ct);
+
+            await grid.RegionPowerAsync(beach.Uuid, RegionPower.Park, ct);
+            await WaitUntilAsync(() => grid.GetStatus().Regions.Single(r => r.Name == "Welcome").State == RegionState.Running, TimeSpan.FromMinutes(5), ct);
+            Assert.Equal(RegionState.Parked, grid.GetStatus().Regions.Single(r => r.Id == beach.Uuid).State);
+
+            // A launcher restart: a new controller on the same data directory adopts the running program.
+            await grid.DetachAsync();
+            second = GridTestSupport.NewController(paths, new SettingsStore(paths.SettingsFile), robust);
+            await second.StartAsync(ct);
+            Assert.Equal(RegionState.Parked, second.GetStatus().Regions.Single(r => r.Id == beach.Uuid).State);
+
+            await second.StartWorldAsync(everything: true, ct);
+            await WaitUntilAsync(() => second.GetStatus().Regions.All(r => r.State == RegionState.Running), TimeSpan.FromMinutes(5), ct);
+            Assert.False(RegionModel.Find(second.CurrentSettings(), beach.Uuid)!.Parked);
+
+            await second.StopAllAsync(ct);
+        }
+        catch (Exception e) when (e is not Xunit.Sdk.XunitException)
+        {
+            throw new Exception(e.Message + Environment.NewLine + LogTail(paths), e);
+        }
+        finally
+        {
+            await grid.DetachAsync();
+            if (second is not null) await second.DetachAsync();
+        }
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> done, TimeSpan timeout, CancellationToken ct)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (!done())
+        {
+            if (DateTime.UtcNow > deadline) throw new TimeoutException("The condition did not hold within " + timeout);
+            await Task.Delay(500, ct);
         }
     }
 

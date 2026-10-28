@@ -78,7 +78,8 @@ internal sealed class FakeGridController : IGridController
         await OnCreateRegion(progress, ct);
         UpdateSettings(l => l with
         {
-            Region = new RegionSettings(GridController.SafeFolderName(name), name, Guid.NewGuid(), Content: content),
+            Programs = [new ProgramSettings(GridController.SafeFolderName(name), l.RegionPort, l.RegionConsolePort)],
+            Regions = [new RegionSettings(GridController.SafeFolderName(name), name, Guid.NewGuid(), Content: content, UdpPort: l.RegionPort)],
             Setup = l.Setup with { RegionCreated = true },
         });
     }
@@ -93,8 +94,16 @@ internal sealed class FakeGridController : IGridController
     {
         if (Status is { } fixedStatus) return fixedStatus;
         var running = new ComponentStatus("x", ProcessState.Running, null, null, null, null);
+        // Every live region in its settings, each in the state RegionState gives its program; without any (or without
+        // settings) the fake has one of its own, Welcome, as version 1's did.
+        List<RegionSettings> regions = !HasRegion ? []
+            : SettingsSource is not null && RegionModel.Live(CurrentSettings()).ToList() is { Count: > 0 } live ? live
+            : [new RegionSettings("Welcome", "Welcome", Guid.Empty)];
+        var program = new ComponentStatus("region", RegionState, null, null, null, null);
         return new GridStatus(running with { Name = "database" }, running with { Name = "robust" },
-            HasRegion ? new ComponentStatus("region", RegionState, null, null, null, null) : null,
+            regions.GroupBy(r => r.Instance).Select(g => new ProgramStatus(g.Key, program, g.Select(r => r.Uuid).ToList())).ToList(),
+            regions.Select(r => new RegionStatus(r.Uuid, r.Name, r.Instance, RegionStates.Derive(r, program, false, null, true), _loginsEnabled,
+                r.X, r.Y, r.Size, regions.Where(o => o.Instance == r.Instance && o.Uuid != r.Uuid).Select(o => o.Name).ToList())).ToList(),
             _loginsEnabled, "http://127.0.0.1:8002", StartFailure);
     }
 
@@ -130,6 +139,24 @@ internal sealed class FakeGridController : IGridController
     }
 
     public void RegenerateConfig() => Record("RegenerateConfig");
+
+    public Task StartWorldAsync(bool everything, CancellationToken ct)
+    {
+        Record(everything ? "StartWorld everything" : "StartWorld");
+        return Task.CompletedTask;
+    }
+
+    /// <summary>The region <see cref="AddRegionAsync"/> saves; each added region gets a program of its own unless shared.</summary>
+    public Task<RegionSettings> AddRegionAsync(NewRegion request, CancellationToken ct, IProgress<string>? progress = null)
+    {
+        Record($"AddRegion {request.Name}");
+        var region = new RegionSettings(request.ShareWith ?? GridController.SafeFolderName(request.Name), request.Name, Guid.NewGuid(),
+            request.X, request.Y, request.Content, request.Size);
+        UpdateSettings(l => l with { Regions = [.. l.Regions, region] });
+        return Task.FromResult(region);
+    }
+
+    public Task RegionPowerAsync(Guid regionId, RegionPower action, CancellationToken ct) => Component($"RegionPower {action} {regionId}", ct);
 
     public LauncherSettings UpdateSettings(Func<LauncherSettings, LauncherSettings> change, bool writeConfig = true)
     {

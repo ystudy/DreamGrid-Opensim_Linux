@@ -17,7 +17,7 @@ public sealed class LegacyEndpointsTests : IAsyncLifetime
     private readonly LauncherFactory _factory = new(s => s with
     {
         GridName = "Avalon <Isle>",
-        Region = new RegionSettings("Welcome", "Welcome", Guid.Parse(Rid)),
+        Programs = TestSettings.ProgramFor(new RegionSettings("Welcome", "Welcome", Guid.Parse(Rid))), Regions = TestSettings.RegionsFor(new RegionSettings("Welcome", "Welcome", Guid.Parse(Rid))),
     });
 
     public ValueTask InitializeAsync() => ValueTask.CompletedTask;
@@ -82,7 +82,7 @@ public sealed class LegacyEndpointsTests : IAsyncLifetime
         await using var f = new LauncherFactory(s => s with
         {
             Setup = s.Setup with { OwnerCreated = true, Finished = true },
-            Region = new RegionSettings("Welcome", "Welcome", Guid.Parse(Rid)),
+            Programs = TestSettings.ProgramFor(new RegionSettings("Welcome", "Welcome", Guid.Parse(Rid))), Regions = TestSettings.RegionsFor(new RegionSettings("Welcome", "Welcome", Guid.Parse(Rid))),
         })
         {
             Before = TestAuth.Apply,
@@ -229,10 +229,11 @@ public sealed class LegacyEndpointsTests : IAsyncLifetime
     public async Task Settings_come_from_the_grid_controller_not_the_file()
     {
         var file = _factory.Store.LoadOrCreate();
+        var cached = new RegionSettings("Cached", "Cached", Guid.NewGuid());
         _factory.Grid.SettingsSource = () => file with
         {
             GridName = "Cached Name",
-            Region = new RegionSettings("Cached", "Cached", Guid.NewGuid()),
+            Programs = TestSettings.ProgramFor(cached), Regions = TestSettings.RegionsFor(cached),
         };
 
         Assert.Equal("Running", await GetAsync("/?command=RegionStatus&RegionName=Cached"));

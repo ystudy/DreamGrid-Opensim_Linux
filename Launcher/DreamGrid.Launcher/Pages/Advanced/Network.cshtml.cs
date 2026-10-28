@@ -43,7 +43,8 @@ public sealed class NetworkModel(IGridController grid, Func<LauncherSettings> se
         if (errors.Count == 0)
         {
             var result = SettingsValidator.Network(host, parsed["WebPort"], parsed["RobustPublicPort"], parsed["RobustPrivatePort"],
-                parsed["RegionPort"], parsed["MariaDbPort"], parsed["RobustConsolePort"], parsed["RegionConsolePort"]);
+                parsed["RegionPort"], parsed["MariaDbPort"], parsed["RobustConsolePort"], parsed["RegionConsolePort"],
+                PortAllocator.Assigned(settings()));
             foreach (var (k, v) in result.Errors) errors[k] = v;
         }
         else if (SettingsValidator.HostnameError(host) is { } hostError)
@@ -73,8 +74,18 @@ public sealed class NetworkModel(IGridController grid, Func<LauncherSettings> se
         return Page();
     }
 
+    /// <summary>The ports each region holds, for the table below the form.</summary>
+    public IReadOnlyList<(string Region, string RunsWith, int Udp, int Web, int Console)> RegionPorts { get; private set; } = [];
+
     private void Fill(LauncherSettings s)
     {
+        var live = RegionModel.Live(s).ToList();
+        RegionPorts = live
+            .Select(r => (r, p: RegionModel.ProgramOf(s, r)))
+            .Where(x => x.p is not null)
+            .Select(x => (x.r.Name, string.Join(", ", live.Where(o => o.Instance == x.r.Instance && o.Uuid != x.r.Uuid).Select(o => o.Name)),
+                x.r.UdpPort, x.p!.HttpPort, x.p.ConsolePort))
+            .ToList();
         Hostname = s.Hostname;
         Ports = new Dictionary<string, string?>
         {

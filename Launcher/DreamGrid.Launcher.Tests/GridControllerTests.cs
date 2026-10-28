@@ -86,6 +86,11 @@ public sealed class GridControllerTests : IDisposable
     public void Region_alert_sets_and_clears_logins_enabled()
     {
         var id = Guid.NewGuid();
+        _store.Save(_store.LoadOrCreate() with
+        {
+            Programs = [new ProgramSettings("Welcome", 8004, 8011)],
+            Regions = [new RegionSettings("Welcome", "Welcome", id, UdpPort: 8004)],
+        });
         _grid.OnRegionAlert(new RegionAlert("region_ready", "enabled", "Welcome", id, null));
         Assert.True(_grid.LoginsEnabled);
         _grid.OnRegionAlert(new RegionAlert("regionpid", "regionpid", "Welcome", id, 4242));

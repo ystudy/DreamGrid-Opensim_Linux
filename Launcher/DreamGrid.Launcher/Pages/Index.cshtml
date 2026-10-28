@@ -3,7 +3,7 @@
 @{
     ViewData["Title"] = "Your world";
     var g = Model.Status.Grid;
-    var parts = new[] { g.Database, g.Robust, g.Region }.Where(c => c is not null).Select(c => c!);
+    var parts = new[] { g.Database, g.Robust };
 }
 <h1>Your world</h1>
 
@@ -16,6 +16,17 @@
                 <span class="component-label">@c.Label</span>
                 <span class="badge state-@c.State.ToLowerInvariant()">@c.StateText</span>
                 <span class="text-body-secondary">@c.Detail</span>
+            </li>
+        }
+        @foreach (var r in g.Regions)
+        {
+            <li class="list-group-item px-0">
+                <span class="component-label">@r.Name</span>
+                <span class="badge state-@r.State.ToLowerInvariant()">@r.StateText</span>
+                @if (r.RunsWith is { Count: > 0 } others)
+                {
+                    <span class="text-body-secondary">runs with @string.Join(", ", others)</span>
+                }
             </li>
         }
     </ul>
@@ -35,21 +46,34 @@
 <section class="card card-body shadow-sm mb-3">
     <h2>Controls</h2>
     <form id="controls" method="post" action="/dashboard?handler=run" asp-antiforgery="true">
-        <div class="d-flex flex-wrap gap-2">
-            <button type="submit" name="gridAction" value="start" class="btn btn-primary">Start all</button>
-            <button type="submit" name="gridAction" value="stop" class="btn btn-outline-primary">Stop all</button>
-            <button type="submit" name="gridAction" value="restart" class="btn btn-outline-primary">Restart</button>
-        </div>
+        @* The world's power menu (spec 6.8): a <details> element, so it opens without JavaScript. *@
+        <details class="power-menu">
+            <summary class="btn btn-primary">&#x23FB; Power</summary>
+            <div class="power-items list-group shadow">
+                <div class="list-group-item">
+                    <button type="submit" name="gridAction" value="start" class="btn btn-link p-0 fw-semibold">Start</button>
+                    <span class="form-text d-block m-0">Every region except parked ones.</span>
+                </div>
+                <div class="list-group-item">
+                    <button type="submit" name="gridAction" value="start-everything" class="btn btn-link p-0 fw-semibold">Start everything</button>
+                    <span class="form-text d-block m-0">Parked regions too; they stop being parked.</span>
+                </div>
+                <div class="list-group-item">
+                    <button type="submit" name="gridAction" value="restart" class="btn btn-link p-0 fw-semibold">Restart</button>
+                    <span class="form-text d-block m-0">Every running region, the grid service and the database.</span>
+                </div>
+                <div class="list-group-item">
+                    <button type="submit" name="gridAction" value="stop" class="btn btn-link p-0 fw-semibold">Stop all</button>
+                    <span class="form-text d-block m-0">Everything goes offline. Parked regions stay parked.</span>
+                </div>
+            </div>
+        </details>
         <details class="mt-3">
             <summary>More</summary>
             <p class="form-text">Restart one part of your world.</p>
             <div class="d-flex flex-wrap gap-2">
                 <button type="submit" name="gridAction" value="restart-database" class="btn btn-sm btn-outline-secondary">Restart the database</button>
                 <button type="submit" name="gridAction" value="restart-robust" class="btn btn-sm btn-outline-secondary">Restart the grid service</button>
-                @if (g.Region is not null)
-                {
-                    <button type="submit" name="gridAction" value="restart-region" class="btn btn-sm btn-outline-secondary">Restart your region</button>
-                }
             </div>
         </details>
     </form>
@@ -151,11 +175,11 @@
 
         var list = document.getElementById("components");
         list.textContent = "";
-        [s.grid.database, s.grid.robust, s.grid.region].forEach(function (c) {
-            if (!c) return;
+        function row(spans) {
             var li = document.createElement("li");
             li.className = "list-group-item px-0";
-            [["component-label", c.label], ["badge state-" + c.state.toLowerCase(), c.stateText], ["text-body-secondary", c.detail]].forEach(function (p) {
+            spans.forEach(function (p) {
+                if (!p[1]) return;
                 var span = document.createElement("span");
                 span.className = p[0];
                 span.textContent = p[1];
@@ -163,6 +187,13 @@
                 li.appendChild(document.createTextNode(" "));
             });
             list.appendChild(li);
+        }
+        [s.grid.database, s.grid.robust].forEach(function (c) {
+            row([["component-label", c.label], ["badge state-" + c.state.toLowerCase(), c.stateText], ["text-body-secondary", c.detail]]);
+        });
+        s.grid.regions.forEach(function (r) {
+            var others = r.runsWith && r.runsWith.length ? "runs with " + r.runsWith.join(", ") : "";
+            row([["component-label", r.name], ["badge state-" + r.state.toLowerCase(), r.stateText], ["text-body-secondary", others]]);
         });
 
         var online = document.getElementById("online");

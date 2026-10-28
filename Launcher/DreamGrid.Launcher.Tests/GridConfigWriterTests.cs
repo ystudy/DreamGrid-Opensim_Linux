@@ -49,7 +49,8 @@ public sealed class GridConfigWriterTests : IDisposable
         Db = new DatabaseSecrets("rootpw", "GENROBUSTPW", "GENOPENSIMPW"),
         Console = new ConsoleSecrets("conuser", "conpass32chars"),
         MachineId = "machine-1",
-        Region = new RegionSettings("Region1", regionName, Guid.Parse("11111111-2222-3333-4444-555555555555"), 1000, 1001, physics),
+        Programs = TestSettings.ProgramFor(new RegionSettings("Region1", regionName, Guid.Empty), physics),
+        Regions = [new RegionSettings("Region1", regionName, Guid.Parse("11111111-2222-3333-4444-555555555555"), 1000, 1001, UdpPort: 8004)],
         Setup = owner
             ? new SetupState(OwnerCreated: true, Owner: new OwnerInfo("Ada", "Lovelace", Guid.Parse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")))
             : new SetupState(),
@@ -212,7 +213,7 @@ public sealed class GridConfigWriterTests : IDisposable
     [Fact]
     public void No_region_means_no_region_files()
     {
-        Write(Make() with { Region = null });
+        Write(Make() with { Programs = [], Regions = [] });
         Assert.True(File.Exists(Path.Combine(_paths.RuntimeOpenSim, "Robust.HG.ini")));
         Assert.False(Directory.Exists(_paths.RegionsRoot));
     }
@@ -298,4 +299,81 @@ public sealed class GridConfigWriterTests : IDisposable
     [InlineData("not a host")]
     public void Effective_falls_back_to_detected_for_missing_or_invalid(string? configured) =>
         Assert.Equal(HostAddress.Detect(), HostAddress.Effective(configured));
+
+    // ---- programs and regions (plan 4a) ----
+
+    private static readonly Guid HomeId = Guid.Parse("10000000-0000-0000-0000-000000000001");
+    private static readonly Guid BeachId = Guid.Parse("10000000-0000-0000-0000-000000000002");
+
+    /// <summary>Home and Beach sharing program "Home" (8004/8011), Isle on its own (8006/8012).</summary>
+    private static LauncherSettings TwoPrograms(bool beachParked = false, bool beachDeleted = false) => Make() with
+    {
+        Programs = [new ProgramSettings("Home", 8004, 8011), new ProgramSettings("Isle", 8006, 8012, "BulletSim")],
+        Regions =
+        [
+            new RegionSettings("Home", "Home", HomeId, 1000, 1000, UdpPort: 8004),
+            new RegionSettings("Home", "Beach", BeachId, 1001, 1000, UdpPort: 8005, Parked: beachParked,
+                DeletedAt: beachDeleted ? DateTimeOffset.UnixEpoch : null),
+            new RegionSettings("Isle", "Isle", Guid.NewGuid(), 1010, 1010, Size: 4, UdpPort: 8006),
+        ],
+    };
+
+    private IniDocument ProgramIni(string instance) => IniDocument.Load(Path.Combine(_paths.RegionDir(instance), "OpenSim.ini"));
+
+    private string RegionFile(string instance, string name) => Path.Combine(_paths.RegionDefinitionDir(instance), name + ".ini");
+
+    [Fact]
+    public void Writes_one_opensim_ini_per_program_with_its_ports()
+    {
+        Write(TwoPrograms());
+
+        Assert.Equal("8004", ProgramIni("Home").Get("Const", "http_listener_port"));
+        Assert.Equal("8011", ProgramIni("Home").Get("Network", "console_port"));
+        Assert.Equal("8006", ProgramIni("Isle").Get("Const", "http_listener_port"));
+        Assert.Equal("8012", ProgramIni("Isle").Get("Network", "console_port"));
+        Assert.Equal("BulletSim", ProgramIni("Isle").Get("Startup", "physics"));
+        Assert.EndsWith("/Isle.pid", ProgramIni("Isle").Get("Startup", "PIDFile"));
+    }
+
+    [Fact]
+    public void Shared_program_gets_one_region_file_per_region()
+    {
+        Write(TwoPrograms());
+
+        Assert.Equal("8004", IniDocument.Load(RegionFile("Home", "Home")).Get("Home", "InternalPort"));
+        Assert.Equal("8005", IniDocument.Load(RegionFile("Home", "Beach")).Get("Beach", "InternalPort"));
+        Assert.Equal("1001,1000", IniDocument.Load(RegionFile("Home", "Beach")).Get("Beach", "Location"));
+    }
+
+    [Fact]
+    public void Region_size_sets_SizeX_and_SizeY()
+    {
+        Write(TwoPrograms());
+
+        var isle = IniDocument.Load(RegionFile("Isle", "Isle"));
+        Assert.Equal("1024", isle.Get("Isle", "SizeX"));
+        Assert.Equal("1024", isle.Get("Isle", "SizeY"));
+    }
+
+    [Fact]
+    public void Parked_held_and_deleted_regions_are_set_aside()
+    {
+        Write(TwoPrograms());
+        Assert.True(File.Exists(RegionFile("Home", "Beach")));
+
+        foreach (var (settings, held) in new[]
+                 {
+                     (TwoPrograms(beachParked: true), (IReadOnlySet<Guid>?)null),
+                     (TwoPrograms(), new HashSet<Guid> { BeachId }),
+                     (TwoPrograms(beachDeleted: true), null),
+                 })
+        {
+            Write(TwoPrograms());
+            new GridConfigWriter(_paths).Write(settings, [], held);
+
+            Assert.False(File.Exists(RegionFile("Home", "Beach")));
+            Assert.True(File.Exists(RegionFile("Home", "Beach") + ".off"));
+            Assert.True(File.Exists(RegionFile("Home", "Home")));
+        }
+    }
 }

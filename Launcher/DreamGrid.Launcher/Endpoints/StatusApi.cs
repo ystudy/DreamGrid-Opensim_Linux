@@ -5,12 +5,16 @@ using Microsoft.AspNetCore.Antiforgery;
 
 namespace DreamGrid.Launcher.Endpoints;
 
-/// <param name="Name">"database", "robust" or "region".</param>
-/// <param name="Label">What the dashboard calls it: "Database", "Grid service", "Your region".</param>
+/// <param name="Name">"database" or "robust".</param>
+/// <param name="Label">What the dashboard calls it: "Database", "Grid service".</param>
 /// <param name="Detail">Uptime and memory in words, or "".</param>
 public sealed record ComponentView(string Name, string Label, string State, string StateText, string Detail);
 
-public sealed record GridView(ComponentView Database, ComponentView Robust, ComponentView? Region, bool LoginsEnabled, string LoginUri);
+/// <param name="RunsWith">The other regions in its program; null for anonymous callers, who get names and states only.</param>
+/// <param name="LoginsEnabled">Null for anonymous callers.</param>
+public sealed record RegionView(string Name, string State, string StateText, IReadOnlyList<string>? RunsWith, bool? LoginsEnabled);
+
+public sealed record GridView(ComponentView Database, ComponentView Robust, IReadOnlyList<RegionView> Regions, bool LoginsEnabled, string LoginUri);
 
 /// <param name="Admin">True when the caller is signed in as an admin; the dashboard reloads to sign in when it turns false.</param>
 /// <summary>What the dashboard shows and <c>GET /api/status</c> returns: names and states only, no paths or secrets.</summary>
@@ -43,10 +47,14 @@ public static class StatusApi
         var s = grid.GetStatus();
         var people = withOnline && s.Database.State == ProcessState.Running ? await online.ListAsync(ct) : OnlineList.Unavailable;
         var problem = Problem(s);
+        var regionNames = s.Regions.ToDictionary(r => r.Id, r => r.Name);
         return new StatusView(
             new GridView(View(s.Database, "Database"), View(s.Robust, "Grid service"),
-                s.Region is { } r ? View(r, "Your region") : null, s.LoginsEnabled, s.LoginUri),
-            people.Avatars.Select(a => a.Name).ToList(), people.Available, problem, problem ?? Headline(s), withOnline);
+                s.Regions.Select(r => new RegionView(r.Name, r.State.ToString(), r.State.ToString(),
+                    withOnline ? r.RunsWith : null, withOnline ? r.LoginsEnabled : null)).ToList(),
+                s.LoginsEnabled, s.LoginUri),
+            people.Avatars.Select(a => regionNames.TryGetValue(a.RegionId, out var region) ? $"{a.Name} in {region}" : a.Name).ToList(),
+            people.Available, problem, problem ?? Headline(s), withOnline);
     }
 
     public const string CouldNotStart = "Your world could not start.";
@@ -54,7 +62,8 @@ public static class StatusApi
     /// <summary>
     /// In plain words: the last failed start (unless everything runs again), else the first component (in start
     /// order) that failed or crashed, else (with nothing under way) one that is stopped while another runs; null when
-    /// the world is running, starting, stopping, restarting or wholly stopped.
+    /// the world is running, starting, stopping, restarting or wholly stopped. A region stopped or parked on purpose
+    /// is not a problem (spec 6.8); a failed one is, by name.
     /// </summary>
     public static string? Problem(GridStatus s)
     {
@@ -92,29 +101,46 @@ public static class StatusApi
     public static int? ConflictPort(Exception e, GridStatus s) =>
         (e as PortConflictException)?.Port ?? (ShowsStartFailure(s) ? s.StartFailure!.ConflictPort : null);
 
-    private static bool AllRunning(GridStatus s) => Parts(s).All(p => p.C.State == ProcessState.Running);
+    /// <summary>Everything is up: the parts, and every region that isn't parked (a stopped one too: a start that left it stopped failed).</summary>
+    private static bool AllRunning(GridStatus s) =>
+        Parts(s).All(p => p.C.State == ProcessState.Running) && s.Regions.All(r => r.State is RegionState.Running or RegionState.Parked);
 
     private static bool InTransition(GridStatus s) =>
         s.Activity != GridActivity.None || Parts(s).Any(p => p.C.State is ProcessState.Starting or ProcessState.Stopping);
 
+    /// <summary>
+    /// The database, Robust, and every region that should be up (not stopped or parked on purpose), each with its state
+    /// as a process state and the sentence for when it is down.
+    /// </summary>
     private static IEnumerable<(ComponentStatus C, string Message)> Parts(GridStatus s)
     {
         yield return (s.Database, "The database isn't running.");
         yield return (s.Robust, "The grid service isn't running.");
-        if (s.Region is { } r) yield return (r, "Your region isn't running.");
+        foreach (var r in s.Regions.Where(r => r.State is not (RegionState.Stopped or RegionState.Parked)))
+            yield return (new ComponentStatus(r.Name, AsProcessState(r.State), null, null, null, null), $"{r.Name} isn't running.");
     }
+
+    private static ProcessState AsProcessState(RegionState state) => state switch
+    {
+        RegionState.Running => ProcessState.Running,
+        RegionState.Starting => ProcessState.Starting,
+        RegionState.Stopping => ProcessState.Stopping,
+        RegionState.Failed => ProcessState.Failed,
+        _ => ProcessState.Stopped,
+    };
 
     /// <summary>The line shown when there is no problem.</summary>
     public static string Headline(GridStatus s)
     {
-        var states = Parts(s).Select(p => p.C.State).ToList();
-        if (states.All(x => x == ProcessState.Running)) return "Your world is running.";
+        // What is under way comes first: with many regions, everything else can be running meanwhile.
         switch (s.Activity)
         {
             case GridActivity.Starting: return "Your world is starting.";
             case GridActivity.Stopping: return "Your world is stopping.";
             case GridActivity.Restarting: return "Your world is restarting.";
         }
+        var states = Parts(s).Select(p => p.C.State).ToList();
+        if (states.All(x => x == ProcessState.Running)) return "Your world is running.";
         if (states.Any(x => x == ProcessState.Starting)) return "Your world is starting.";
         if (states.Any(x => x == ProcessState.Stopping)) return "Your world is stopping.";
         return "Your world is stopped.";

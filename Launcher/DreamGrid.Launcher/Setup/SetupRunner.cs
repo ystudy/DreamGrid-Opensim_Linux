@@ -142,7 +142,7 @@ public sealed class SetupRunner(
         try
         {
             var sources = new List<string>();
-            if (settings().Region is { } region) sources.Add("region-" + region.Instance);
+            sources.AddRange(settings().Programs.Select(p => "region-" + p.Instance));
             sources.Add("robust");
             sources.Add("launcher");
             foreach (var source in sources)

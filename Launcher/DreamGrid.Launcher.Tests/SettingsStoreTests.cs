@@ -166,4 +166,81 @@ public class SettingsStoreTests : IDisposable
 
         Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute, File.GetUnixFileMode(dir));
     }
+
+    /// <summary>A version 1 settings file: a fresh file rewritten with schemaVersion 1 and the given region object.</summary>
+    private string WriteV1(string? regionJson)
+    {
+        var path = Path.Combine(NewDir(), "settings.json");
+        new SettingsStore(path).LoadOrCreate();
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+        node["schemaVersion"] = 1;
+        node.Remove("programs");
+        node.Remove("regions");
+        node["regionPort"] = 8004;
+        node["regionConsolePort"] = 8011;
+        node["region"] = regionJson is null ? null : System.Text.Json.Nodes.JsonNode.Parse(regionJson);
+        File.WriteAllText(path, node.ToJsonString());
+        return path;
+    }
+
+    private static readonly Guid V1Uuid = Guid.Parse("6f1c1b8e-2f1a-4c55-9d3e-0a7b2c4d5e6f");
+
+    private const string V1Region =
+        "{\"instance\":\"Welcome\",\"name\":\"Welcome\",\"uuid\":\"6f1c1b8e-2f1a-4c55-9d3e-0a7b2c4d5e6f\",\"x\":1000,\"y\":1000,\"physics\":\"BulletSim\",\"content\":\"island\"}";
+
+    [Fact]
+    public void Migrates_v1_single_region()
+    {
+        var s = new SettingsStore(WriteV1(V1Region)).LoadOrCreate();
+
+        Assert.Equal(2, s.SchemaVersion);
+        Assert.Equal([new ProgramSettings("Welcome", 8004, 8011, "BulletSim")], s.Programs);
+        Assert.Equal([new RegionSettings("Welcome", "Welcome", V1Uuid, 1000, 1000, "island", 1, 8004)], s.Regions);
+        Assert.Null(s.LegacyRegion);
+    }
+
+    [Fact]
+    public void Migration_is_saved_once()
+    {
+        var path = WriteV1(V1Region);
+        new SettingsStore(path).LoadOrCreate();
+
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+        Assert.Equal(2, (int)node["schemaVersion"]!);
+        Assert.True(node.ContainsKey("programs"));
+        Assert.False(node.ContainsKey("region"));
+    }
+
+    [Fact]
+    public void V1_without_region_migrates_to_empty_lists()
+    {
+        var s = new SettingsStore(WriteV1(null)).LoadOrCreate();
+
+        Assert.Equal(2, s.SchemaVersion);
+        Assert.Empty(s.Programs);
+        Assert.Empty(s.Regions);
+    }
+
+    [Fact]
+    public void Schema_2_round_trips()
+    {
+        var path = Path.Combine(NewDir(), "settings.json");
+        var store = new SettingsStore(path);
+        var deleted = new DateTimeOffset(2026, 10, 27, 12, 0, 0, TimeSpan.Zero);
+        var s = store.LoadOrCreate() with
+        {
+            Programs = [new ProgramSettings("Home", 8004, 8011), new ProgramSettings("Isle", 8006, 8012, "BulletSim")],
+            Regions =
+            [
+                new RegionSettings("Home", "Home", Guid.NewGuid(), UdpPort: 8004),
+                new RegionSettings("Home", "Beach", Guid.NewGuid(), 1001, 1000, "island", 2, 8005, Parked: true),
+                new RegionSettings("Isle", "Isle", Guid.NewGuid(), 1010, 1010, UdpPort: 8006, DeletedAt: deleted),
+            ],
+        };
+        store.Save(s);
+
+        var loaded = new SettingsStore(path).LoadOrCreate();
+        Assert.Equal(s.Programs, loaded.Programs);
+        Assert.Equal(s.Regions, loaded.Regions);
+    }
 }

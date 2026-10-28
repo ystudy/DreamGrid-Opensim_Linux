@@ -330,6 +330,14 @@ Secrets are stored with file permissions limited to the service account. Encrypt
 - Region `login status` answers "Login in NAME are enabled|disabled"; enable/disable answer "Logins are enabled|disabled for region NAME".
 - Every settings change goes through `IGridController.UpdateSettings`, except the installers' `set-web-port` and the `--web-port` host option at startup (§6.1 above).
 
+#### Recorded during plan 4a (many regions; design: `2026-10-27-regions-design.md`)
+- **Settings schema 2:** `Programs` (instance folder, HTTP port, REST console port, physics) and `Regions` (program, name, UUID, map spot, size, content, UDP port, `Parked`, `DeletedAt`) replace the single `Region`. A schema 1 file is migrated on load and saved once: its region becomes one program and one region with the same folder, UUID and ports (`RegionPort` for HTTP and UDP, `RegionConsolePort`), so a running region is adopted with no config change.
+- **Ports:** `RegionPort` and `RegionConsolePort` are now the first ports tried for new programs and regions. A new program gets the next free HTTP port from `RegionPort` and console port from `RegionConsolePort`; its first region shares the HTTP port's number for UDP, and a region joining a program gets the next free port from `RegionPort`. Ports held by deleted regions stay reserved. The Windows firewall rule allows the runtime's `dotnet.exe`, so new ports need no installer change.
+- **Programs:** one supervised OpenSim process per program (`<pids>/<Instance>.pid`, `region-<Instance>.log`), started in order after Robust; one that fails doesn't keep the others down. Each program's `Region/` folder holds exactly its loadable regions' files: a parked, stopped or deleted region's file is renamed `<Name>.ini.off`.
+- **Region states:** Stopped, Starting, Running, Stopping, Failed, Parked. An adopted program is asked `show regions` (IDs, since names pad to 20 characters) and `login status`. A RegionReady alert for a region the launcher doesn't know is ignored.
+- **Power:** Stop holds a region until the next world start (in memory); Park is saved. "Start everything" unparks. The dashboard's power menu has Start, Start everything, Restart and Stop all. A region alone stops, starts or restarts only through `RegionPowerAsync`; the component operations accept "database" and "robust" only.
+- **Port-8001 API:** `regionlist` lists every live region; `RegionStatus`, `StartRegion`, `StopRegion` and `RestartRegion` need `RegionName` or `RegionUuid` when there is more than one region (`NAK Name the region.`). `StopRegion` is a Stop, never a Park.
+
 ### 6.9 Module (feature) extension model
 **My call; the exact API is left to the builder.** A feature module is a C# component the launcher discovers at startup. It can contribute:
 - settings (with defaults) to the settings store,

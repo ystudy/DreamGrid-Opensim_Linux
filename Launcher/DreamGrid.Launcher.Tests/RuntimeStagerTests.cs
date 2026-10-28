@@ -89,7 +89,7 @@ public sealed class RuntimeStagerTests : IDisposable
     [Fact]
     public void Log_lines_carry_their_level_for_the_log_viewer()
     {
-        new RuntimeStager(_paths).WriteLogConfigs("Region1", "INFO");
+        new RuntimeStager(_paths).WriteLogConfigs(["Region1"], "INFO");
 
         foreach (var name in new[] { "dreamgrid-robust.log4net.xml", "dreamgrid-region-Region1.log4net.xml" })
             Assert.Equal("%date{HH:mm:ss} - [%level] %message%newline",
@@ -99,7 +99,7 @@ public sealed class RuntimeStagerTests : IDisposable
     [Fact]
     public void Log_configs_use_absolute_forward_slash_paths_under_Logs()
     {
-        new RuntimeStager(_paths).WriteLogConfigs("Region1", "DEBUG");
+        new RuntimeStager(_paths).WriteLogConfigs(["Region1"], "DEBUG");
 
         var robust = XDocument.Load(Path.Combine(_paths.RuntimeOpenSim, "dreamgrid-robust.log4net.xml"));
         Assert.Equal(Path.Combine(_paths.Logs, "robust.log").Replace('\\', '/'),
@@ -160,7 +160,7 @@ public sealed class RuntimeStagerTests : IDisposable
         var data = Path.Combine(_root, "my 'grid' data\\logs");
         var paths = new LauncherPaths(data, Path.Combine(_root, "program"), null);
 
-        new RuntimeStager(paths).WriteLogConfigs("Region1");
+        new RuntimeStager(paths).WriteLogConfigs(["Region1"]);
 
         var robust = XDocument.Load(Path.Combine(paths.RuntimeOpenSim, "dreamgrid-robust.log4net.xml"));
         var file = robust.Descendants("file").Single().Attribute("value")!.Value;

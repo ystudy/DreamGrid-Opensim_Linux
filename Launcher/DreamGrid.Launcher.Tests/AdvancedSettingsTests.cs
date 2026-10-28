@@ -18,7 +18,7 @@ public sealed class AdvancedSettingsTests : IAsyncLifetime
     {
         SetupToken = null,
         Setup = s.Setup with { OwnerCreated = true, Finished = true },
-        Region = new RegionSettings("Welcome", "Welcome", Guid.NewGuid()),
+        Programs = TestSettings.ProgramFor(new RegionSettings("Welcome", "Welcome", Guid.NewGuid())), Regions = TestSettings.RegionsFor(new RegionSettings("Welcome", "Welcome", Guid.NewGuid())),
         // Nothing listens here, so "Test connection" fails at once.
         MariaDbPort = FreePort,
     })
@@ -370,5 +370,41 @@ public sealed class AdvancedSettingsTests : IAsyncLifetime
         {
             Modules = new(s.Modules) { [ModuleId] = new() { ["on"] = on ? "true" : "false" } },
         };
+    }
+
+    // ---- region ports (plan 4a) ----
+
+    private void AddIsle() => _f.Store.Save(_f.Store.LoadOrCreate() is var s ? s with
+    {
+        Programs = [.. s.Programs, new ProgramSettings("Isle", 8006, 8012)],
+        Regions = [.. s.Regions, new RegionSettings("Isle", "Isle", Guid.NewGuid(), 1010, 1010, UdpPort: 8006)],
+    } : null!);
+
+    [Fact]
+    public async Task Network_refuses_a_port_a_region_uses()
+    {
+        AddIsle();
+        using var client = await SignedInAsync(_f);
+        var before = SettingsBytes();
+
+        using var resp = await PostNetworkAsync(client, new() { ["RobustPublicPort"] = "8006" });
+        var error = Parse(await resp.Content.ReadAsStringAsync(Ct)).QuerySelector("[data-error-for=RobustPublicPort]");
+
+        Assert.Contains("used by region Isle", error?.TextContent);
+        Assert.Equal(before, SettingsBytes());
+    }
+
+    [Fact]
+    public async Task Network_page_lists_region_ports()
+    {
+        AddIsle();
+        using var client = await SignedInAsync(_f);
+        var doc = Parse(await client.GetStringAsync("/advanced/network", Ct));
+
+        var rows = doc.QuerySelectorAll("#region-ports tbody tr").Select(r => r.TextContent).ToList();
+        Assert.Equal(2, rows.Count);
+        Assert.Contains("8006", rows[1]);
+        Assert.Contains("8012", rows[1]);
+        Assert.Contains("First region port", doc.QuerySelector("main")!.TextContent);
     }
 }

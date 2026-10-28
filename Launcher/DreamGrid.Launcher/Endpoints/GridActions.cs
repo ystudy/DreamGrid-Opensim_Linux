@@ -12,11 +12,11 @@ public sealed class GridActions(IGridController grid, BackgroundWork background,
     public static readonly IReadOnlyDictionary<string, string> Notices = new Dictionary<string, string>
     {
         ["start"] = "Starting your world. This can take a few minutes.",
+        ["start-everything"] = "Starting everything, parked regions too. This can take a few minutes.",
         ["stop"] = "Stopping your world.",
         ["restart"] = "Restarting your world. This can take a few minutes.",
-        ["restart-database"] = "Restarting the database. The grid service and your region restart with it.",
+        ["restart-database"] = "Restarting the database. The grid service and your regions restart with it.",
         ["restart-robust"] = "Restarting the grid service.",
-        ["restart-region"] = "Restarting your region. This can take a few minutes.",
     };
 
     /// <summary>Starts <paramref name="action"/> in the background; false for an unknown action.</summary>
@@ -24,7 +24,8 @@ public sealed class GridActions(IGridController grid, BackgroundWork background,
     {
         Func<CancellationToken, Task>? run = action switch
         {
-            "start" => grid.StartAsync,
+            "start" => ct => grid.StartWorldAsync(false, ct),
+            "start-everything" => ct => grid.StartWorldAsync(true, ct),
             "stop" => grid.StopAllAsync,
             "restart" => async ct =>
             {
@@ -33,7 +34,6 @@ public sealed class GridActions(IGridController grid, BackgroundWork background,
             },
             "restart-database" => ct => grid.RestartComponentAsync("database", ct),
             "restart-robust" => ct => grid.RestartComponentAsync("robust", ct),
-            "restart-region" => ct => grid.RestartComponentAsync("region", ct),
             _ => null,
         };
         if (run is null) return false;

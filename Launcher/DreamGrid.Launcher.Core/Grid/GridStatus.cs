@@ -10,9 +10,40 @@ public sealed record StartFailure(string Message, int? ConflictPort);
 /// <summary>The grid operation under way, if any (between components every state can look settled).</summary>
 public enum GridActivity { None, Starting, Stopping, Restarting }
 
+/// <summary>What a region is doing. A region whose program runs but doesn't load it (held or not loaded yet) is <see cref="Stopped"/>.</summary>
+public enum RegionState { Stopped, Starting, Running, Stopping, Failed, Parked }
+
+/// <summary>One region; <see cref="RunsWith"/> names the other live regions in its program.</summary>
+public sealed record RegionStatus(Guid Id, string Name, string Instance, RegionState State, bool LoginsEnabled, int X, int Y, int Size,
+    IReadOnlyList<string> RunsWith);
+
+/// <summary>One OpenSim program and the regions it hosts.</summary>
+public sealed record ProgramStatus(string Instance, ComponentStatus Process, IReadOnlyList<Guid> Regions);
+
+/// <summary>A region's power menu (spec §6.8).</summary>
+public enum RegionPower { Start, Stop, Restart, Park, Unpark, UnparkAndStart }
+
 /// <summary>
-/// <see cref="LoginUri"/> is <c>http://{host}:{RobustPublicPort}</c>; <see cref="Region"/> is null until a region exists.
-/// <see cref="StartFailure"/> is the last failed start, cleared by a successful one.
+/// A region to add. <see cref="Content"/> is "starter" or "island"; <see cref="ShareWith"/> is a program's instance, or
+/// null for a program of its own.
 /// </summary>
-public sealed record GridStatus(ComponentStatus Database, ComponentStatus Robust, ComponentStatus? Region, bool LoginsEnabled, string LoginUri,
-    StartFailure? StartFailure = null, GridActivity Activity = GridActivity.None);
+public sealed record NewRegion(string Name, int X, int Y, int Size, string Content, string? ShareWith);
+
+/// <summary>
+/// <see cref="LoginUri"/> is <c>http://{host}:{RobustPublicPort}</c>. <see cref="LoginsEnabled"/>: see
+/// <see cref="ComputeLoginsEnabled"/>. <see cref="StartFailure"/> is the last failed start, cleared by a successful one.
+/// </summary>
+public sealed record GridStatus(ComponentStatus Database, ComponentStatus Robust, IReadOnlyList<ProgramStatus> Programs,
+    IReadOnlyList<RegionStatus> Regions, bool LoginsEnabled, string LoginUri, StartFailure? StartFailure = null,
+    GridActivity Activity = GridActivity.None)
+{
+    /// <summary>
+    /// True when at least one region counts and every counted region runs with logins enabled; parked regions and
+    /// <paramref name="held"/> ones (stopped until the next world start) don't count.
+    /// </summary>
+    public static bool ComputeLoginsEnabled(IReadOnlyList<RegionStatus> regions, IReadOnlySet<Guid> held)
+    {
+        var counted = regions.Where(r => r.State != RegionState.Parked && !held.Contains(r.Id)).ToList();
+        return counted.Count > 0 && counted.All(r => r.State == RegionState.Running && r.LoginsEnabled);
+    }
+}

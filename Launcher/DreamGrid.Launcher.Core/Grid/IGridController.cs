@@ -29,19 +29,31 @@ public interface IGridController
 
     GridStatus GetStatus();
 
+    /// <summary>
+    /// The world's Start (spec §6.8): clears stopped regions; with <paramref name="everything"/> unparks every region; then
+    /// starts what isn't running and restarts each running program that doesn't load all its regions.
+    /// </summary>
+    Task StartWorldAsync(bool everything, CancellationToken ct);
+
+    /// <summary>Validates, saves and starts a new region, loading its content; returns the saved region.</summary>
+    Task<RegionSettings> AddRegionAsync(NewRegion request, CancellationToken ct, IProgress<string>? progress = null);
+
+    /// <summary>A region's power menu action; other regions in its program may restart (they are logged).</summary>
+    Task RegionPowerAsync(Guid regionId, RegionPower action, CancellationToken ct);
+
     /// <summary>The controller's cached settings (what the grid was configured from); the host reads these per request.</summary>
     LauncherSettings CurrentSettings();
 
-    /// <summary><paramref name="name"/> is "database", "robust" or "region".</summary>
+    /// <summary><paramref name="name"/> is "database" or "robust"; regions use <see cref="RegionPowerAsync"/>.</summary>
     Task RestartComponentAsync(string name, CancellationToken ct);
 
     /// <summary>
-    /// Starts (or adopts) one component: "database", "robust" or "region". Robust needs the database running and
-    /// the region needs Robust running; otherwise it throws <see cref="InvalidOperationException"/>.
+    /// Starts (or adopts) one component: "database" or "robust". Robust needs the database running; otherwise it
+    /// throws <see cref="InvalidOperationException"/>.
     /// </summary>
     Task StartComponentAsync(string name, CancellationToken ct);
 
-    /// <summary>Stops one component; stopping the database stops the region and Robust first.</summary>
+    /// <summary>Stops one component; stopping the database stops the regions and Robust first.</summary>
     Task StopComponentAsync(string name, CancellationToken ct);
 
     /// <summary>

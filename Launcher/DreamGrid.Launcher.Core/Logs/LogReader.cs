@@ -21,7 +21,7 @@ public sealed partial class LogReader(LauncherPaths paths, Func<LauncherSettings
     public IReadOnlyList<string> Sources()
     {
         var list = new List<string> { "launcher", "robust" };
-        if (settings().Region is { } region) list.Add("region-" + region.Instance);
+        list.AddRange(settings().Programs.Select(p => "region-" + p.Instance));
         list.Add("database");
         return list;
     }

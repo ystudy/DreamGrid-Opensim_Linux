@@ -164,9 +164,17 @@ public sealed class LogReaderTests : IDisposable
     {
         Assert.Equal(["launcher", "robust", "database"], Reader().Sources());
 
-        _settings = _settings with { Region = new RegionSettings("r1", "Home", Guid.NewGuid()) };
+        _settings = _settings with { Programs = TestSettings.ProgramFor(new RegionSettings("r1", "Home", Guid.Empty)), Regions = [new RegionSettings("r1", "Home", Guid.NewGuid())] };
 
         Assert.Equal(["launcher", "robust", "region-r1", "database"], Reader().Sources());
+    }
+
+    [Fact]
+    public void Log_sources_list_every_program()
+    {
+        _settings = _settings with { Programs = [new ProgramSettings("Home", 8004, 8011), new ProgramSettings("Isle", 8006, 8012)] };
+
+        Assert.Equal(["launcher", "robust", "region-Home", "region-Isle", "database"], Reader().Sources());
     }
 
     [Fact]
