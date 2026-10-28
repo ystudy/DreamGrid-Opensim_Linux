@@ -26,7 +26,8 @@
             </ul>
         </section>
     </div>
-    <div class="col-lg-7">
+    @* The map takes the panel's room until map.js opens a region's panel. *@
+    <div id="map-column" class="col-lg-10">
         <section class="card card-body shadow-sm h-100">
             <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                 <button type="button" id="back-to-mine" class="btn btn-sm btn-outline-secondary" hidden>Back to my regions</button>
@@ -42,14 +43,19 @@
             <p id="placement-text" class="form-text mb-0" role="status"></p>
         </section>
     </div>
-    <div class="col-lg-3">
+    <div id="panel-column" class="col-lg-3" hidden>
         @* On phones the panel opens as an offcanvas over the map; from lg up it is a column. *@
-        <div id="region-panel" class="offcanvas-lg offcanvas-bottom region-panel" tabindex="-1" aria-label="Region" hidden>
+        <div id="region-panel" class="offcanvas-lg offcanvas-bottom region-panel" tabindex="-1" aria-label="Region">
             <div class="offcanvas-header d-lg-none">
                 <h2 class="offcanvas-title">Region</h2>
                 <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#region-panel" aria-label="Close"></button>
             </div>
-            <div class="offcanvas-body card card-body shadow-sm region-panel-body"></div>
+            <div class="offcanvas-body">
+                <section class="card card-body shadow-sm w-100 position-relative">
+                    <button type="button" id="close-panel" class="btn-close d-none d-lg-block position-absolute top-0 end-0 m-2" aria-label="Close"></button>
+                    <div class="region-panel-body"></div>
+                </section>
+            </div>
         </div>
     </div>
 </div>

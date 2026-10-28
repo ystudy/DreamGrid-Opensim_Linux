@@ -70,6 +70,18 @@ public sealed class LayoutTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Map_script_loads_nothing_external()
+    {
+        using var resp = await _factory.CreateClient().GetAsync("/js/map.js", Ct);
+        var script = await resp.Content.ReadAsStringAsync(Ct);
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        Assert.Contains("function startMap(", script);
+        Assert.DoesNotContain("http://", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("https://", script, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Launcher_log_file_is_written()
     {
         using var client = _factory.CreateClient();
