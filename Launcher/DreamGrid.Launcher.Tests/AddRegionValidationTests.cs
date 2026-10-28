@@ -66,7 +66,7 @@ public sealed class AddRegionValidationTests : IDisposable
 
     [Fact]
     public Task Unknown_content_is_refused() =>
-        Refused(new NewRegion("Beach", 1005, 1005, 1, "lava", null), "Content must be one of: starter, island, beach, forest, meadow.");
+        Refused(new NewRegion("Beach", 1005, 1005, 1, "lava", null), "Content must be starter, a built-in type (island, beach, forest, meadow) or one of your region types.");
 
     [Fact]
     public async Task Add_accepts_built_in_type_content()

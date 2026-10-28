@@ -484,13 +484,19 @@ public sealed partial class GridController(
     }
 
     private static readonly string ContentError =
-        $"Content must be one of: starter, {string.Join(", ", RegionTypes.BuiltIn.Select(t => t.Id))}.";
+        $"Content must be starter, a built-in type ({string.Join(", ", RegionTypes.BuiltIn.Select(t => t.Id))}) or one of your region types.";
+
+    /// <summary>True for starter, a built-in type and one of the settings' custom types.</summary>
+    private bool IsContent(string content)
+    {
+        lock (_configGate) return RegionTypes.IsContent(ReloadSettings(), content);
+    }
 
     public async Task CreateRegionAsync(string name, string content, CancellationToken ct, IProgress<string>? progress = null)
     {
         if (!IsValidRegionName(name))
             throw new ArgumentException("A region name is 2-32 letters, digits, spaces, '-', '_' or '\\'' with no leading or trailing space.", nameof(name));
-        if (!RegionTypes.IsContent(content))
+        if (!IsContent(content))
             throw new ArgumentException(ContentError, nameof(content));
 
         await _ops.WaitAsync(ct);
@@ -518,7 +524,7 @@ public sealed partial class GridController(
     {
         if (!IsValidRegionName(request.Name))
             throw new ArgumentException("A region name is 2-32 letters, digits, spaces, '-', '_' or '\\'' with no leading or trailing space.", nameof(request));
-        if (!RegionTypes.IsContent(request.Content))
+        if (!IsContent(request.Content))
             throw new ArgumentException(ContentError, nameof(request));
 
         await _ops.WaitAsync(ct);
@@ -559,13 +565,13 @@ public sealed partial class GridController(
         {
             if (r.ShareWith is { } share)
             {
-                region = new RegionSettings(share, r.Name, uuid, r.X, r.Y, r.Content, r.Size, PortAllocator.Next(l, l.RegionPort));
+                region = new RegionSettings(share, r.Name, uuid, r.X, r.Y, r.Content, r.Size, PortAllocator.Next(l, l.RegionPort), NeedsContent: true);
                 return l with { Regions = [.. l.Regions, region] };
             }
             var instance = UniqueFolderName(l, SafeFolderName(r.Name));
             var httpPort = PortAllocator.Next(l, l.RegionPort);
             var consolePort = PortAllocator.Next(l, l.RegionConsolePort, new HashSet<int> { httpPort });
-            region = new RegionSettings(instance, r.Name, uuid, r.X, r.Y, r.Content, r.Size, httpPort);
+            region = new RegionSettings(instance, r.Name, uuid, r.X, r.Y, r.Content, r.Size, httpPort, NeedsContent: true);
             return l with { Programs = [.. l.Programs, new ProgramSettings(instance, httpPort, consolePort)], Regions = [.. l.Regions, region] };
         });
         lock (_configGate) new RuntimeStager(paths).WriteLogConfigs(s.Programs.Select(p => p.Instance), LogLevelModule.LevelFor(s));
@@ -582,6 +588,7 @@ public sealed partial class GridController(
         await WaitForLoginsAsync(program, uuid, ct); // the scene is up and accepts console commands for it
         progress?.Report(SetupProgress.LoadingContent);
         await LoadContentAsync(program, region, r.Content, s, ct);
+        UpdateSettings(l => l with { Regions = [.. l.Regions.Select(x => x.Uuid == uuid ? x with { NeedsContent = false } : x)] }, writeConfig: false);
         progress?.Report(SetupProgress.WaitingForLogins);
         await WaitForLoginsAsync(program, uuid, ct);
         return region;
@@ -890,24 +897,25 @@ public sealed partial class GridController(
         var console = program.Console!;
         var shared = RegionModel.Loadable(s, region.Instance, _held).Count() > 1;
         if (shared) await console.RunAsync($"change region {region.Name}", ConsoleSettle, ct);
-        try { await LoadContentCoreAsync(console, region, content, ct); }
+        try { await LoadContentCoreAsync(console, region, content, s, ct); }
         finally
         {
             if (shared) await console.RunAsync("change region root", ConsoleSettle, CancellationToken.None);
         }
     }
 
-    private async Task LoadContentCoreAsync(RestConsoleClient console, RegionSettings region, string content, CancellationToken ct)
+    private async Task LoadContentCoreAsync(RestConsoleClient console, RegionSettings region, string content, LauncherSettings s, CancellationToken ct)
     {
-        var oar = content == "starter" ? StarterContent.StarterOar(paths) : RegionTypes.Oar(paths, content);
+        var oar = content == "starter" ? StarterContent.StarterOar(paths) : RegionTypes.Oar(paths, s, content);
         if (oar is not null)
         {
             // RegionReady reports the archiver's result as an "oarloaded" or "oarnotloaded" alert.
             var loaded = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
             _oarLoaded = loaded;
             // A 256 m OAR goes in the middle of a larger region; the squares around it keep the flat land OpenSim makes.
+            // A custom type, like an import, loads at the OAR's own size and place: it may be a larger region's OAR.
             var middle = 128 * (region.Size - 1);
-            var displacement = region.Size > 1 ? $" --displacement <{middle},{middle},0>" : "";
+            var displacement = region.Size > 1 && !RegionTypes.IsCustom(content) ? $" --displacement <{middle},{middle},0>" : "";
             await console.RunAsync($"load oar --force-terrain --force-parcels{displacement} \"{Fwd(oar)}\"", ConsoleSettle, ct);
             if (await loaded.Task.WaitAsync(LoginWait, time, ct) != "oarloaded")
                 throw new InvalidOperationException($"The region could not load {oar}; see the region log.");

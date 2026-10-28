@@ -12,7 +12,7 @@ public sealed record RegionRow(Guid Id, string Name, string StateText, string Ru
 /// <summary>The Regions page (spec 5.2): region types, the map (drawn by map.js) and a plain list of the regions.</summary>
 public sealed class IndexModel(IGridController grid) : PageModel
 {
-    public IReadOnlyList<RegionType> Types { get; } = RegionTypes.BuiltIn;
+    public IReadOnlyList<RegionType> Types { get; private set; } = [];
 
     public IReadOnlyList<RegionRow> Rows { get; private set; } = [];
 
@@ -28,6 +28,7 @@ public sealed class IndexModel(IGridController grid) : PageModel
 
     public void OnGet()
     {
+        Types = RegionTypes.All(grid.CurrentSettings());
         Moving = Move is { } id && RegionModel.Find(grid.CurrentSettings(), id) is { DeletedAt: null } r ? r : null;
         var live = grid.GetStatus().Regions.ToDictionary(r => r.Id);
         Rows = grid.CurrentSettings().Regions.Where(r => r.DeletedAt is null).Select(r =>

@@ -110,6 +110,42 @@ public sealed class AddRegionPageTests : IAsyncLifetime
         Assert.Contains("This will be a separate island", Text(doc));
     }
 
+    private void SeedCastle(bool fileThere)
+    {
+        _f.Store.Save(_f.Store.LoadOrCreate() with { CustomTypes = [new CustomRegionType("c-0000abcd", "My Castle", "castle.oar")] });
+        if (!fileThere) return;
+        Directory.CreateDirectory(_f.Paths.Oars);
+        File.WriteAllBytes(Path.Combine(_f.Paths.Oars, "castle.oar"), [1]);
+    }
+
+    [Fact]
+    public async Task Add_form_accepts_a_custom_type()
+    {
+        SeedCastle(fileThere: true);
+        using var client = await SignedInAsync();
+
+        var doc = await PageAsync(client, "/regions/add?type=c-0000abcd&x=1020&y=1000");
+        Assert.Equal("c-0000abcd", doc.QuerySelector("input[name=Type]:checked")!.GetAttribute("value"));
+        Assert.Contains("My Castle", doc.QuerySelector("input[name=Type]:checked")!.ParentElement!.TextContent);
+        Assert.DoesNotContain("no longer in the library", Text(doc));
+
+        using var response = await PostAsync(client, Form(type: "c-0000abcd"));
+        Assert.Equal("/regions/add?working=1", response.Headers.Location!.OriginalString);
+        await WaitForProgressAsync(client, p => !p.GetProperty("running").GetBoolean());
+        Assert.Equal("c-0000abcd", Assert.Single(_f.Grid.AddedRegions).Content);
+    }
+
+    [Fact]
+    public async Task Add_form_warns_when_custom_file_is_gone()
+    {
+        SeedCastle(fileThere: false);
+        using var client = await SignedInAsync();
+
+        var doc = await PageAsync(client, "/regions/add?type=c-0000abcd");
+
+        Assert.Contains("The file castle.oar is no longer in the library; this region will start as plain island land.", Text(doc));
+    }
+
     [Fact]
     public async Task Get_says_which_regions_a_spot_would_join()
     {

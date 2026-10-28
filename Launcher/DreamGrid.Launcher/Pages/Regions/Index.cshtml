@@ -21,7 +21,7 @@
                 @foreach (var t in Model.Types)
                 {
                     <li data-type="@t.Id" class="region-type">
-                        <span class="type-swatch type-@t.Id"><img src="/regions/types/@(t.Id).png" alt="" onerror="this.remove()"></span>
+                        <span class="type-swatch type-@t.Id">@if (t.Custom) { <img src="/img/custom-type.svg" alt=""> } else { <img src="/regions/types/@(t.Id).png" alt="" onerror="this.remove()"> }</span>
                         <span class="type-name fw-semibold">@t.Name</span>
                         <span class="type-description form-text d-block m-0">@t.Description</span>
                     </li>

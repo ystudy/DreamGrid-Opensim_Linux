@@ -901,7 +901,7 @@ public sealed class GridControllerWiringTests : IDisposable
         var client = new RestConsoleClient(_http.CreateClient("console"), new Uri($"http://127.0.0.1:{s.RegionConsolePort}/"), "u", "p");
         var region = new RegionSettings("Welcome", "Welcome", Guid.NewGuid(), Size: size, UdpPort: s.RegionPort);
         var method = typeof(GridController).GetMethod("LoadContentCoreAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return (Task)method.Invoke(_grid, [client, region, content, TestContext.Current.CancellationToken])!;
+        return (Task)method.Invoke(_grid, [client, region, content, s, TestContext.Current.CancellationToken])!;
     }
 
     /// <summary>Puts a stand-in OAR in the region-types folder and answers the load with the archiver's "oarloaded" alert.</summary>
@@ -959,6 +959,77 @@ public sealed class GridControllerWiringTests : IDisposable
         await LoadContent("beach", 1);
 
         Assert.Contains($"load oar --force-terrain --force-parcels \"{oar}\"", _http.Commands(regionPort));
+    }
+
+    [Fact]
+    public async Task Custom_type_loads_its_file_without_displacement()
+    {
+        var regionPort = _store.LoadOrCreate().RegionConsolePort;
+        Directory.CreateDirectory(_paths.Oars);
+        var file = Path.Combine(_paths.Oars, "castle.oar");
+        File.WriteAllBytes(file, [1]);
+        _store.Save(_store.LoadOrCreate() with { CustomTypes = [new CustomRegionType("c-0000abcd", "My Castle", "castle.oar")] });
+        _http.OnCommand = port =>
+        {
+            if (_http.Commands(port).Any(c => c.StartsWith("load oar", StringComparison.Ordinal)))
+                _grid.OnRegionAlert(new RegionAlert("region_ready", "oarloaded", "Welcome", Guid.NewGuid(), null));
+        };
+
+        var expected = Path.GetFullPath(file).Replace("\\", "/");
+
+        await LoadContent("c-0000abcd", 2);
+
+        Assert.Contains($"load oar --force-terrain --force-parcels \"{expected}\"", _http.Commands(regionPort));
+    }
+
+    [Fact]
+    public async Task Custom_type_whose_file_is_gone_makes_island_land()
+    {
+        var regionPort = _store.LoadOrCreate().RegionConsolePort;
+        _store.Save(_store.LoadOrCreate() with { CustomTypes = [new CustomRegionType("c-0000abcd", "My Castle", "castle.oar")] });
+        var terrain = "max/min/avg/sum: 0/0/0/0";
+        Directory.CreateDirectory(_paths.RegionDir("Welcome"));
+        _http.Reply = (_, command) =>
+        {
+            if (command == "terrain stats") return [terrain];
+            if (command.StartsWith("terrain load ", StringComparison.Ordinal)) terrain = IslandStats;
+            return [];
+        };
+
+        await LoadContent("c-0000abcd", 1);
+
+        Assert.Contains(_http.Commands(regionPort), c => c.StartsWith("terrain load ", StringComparison.Ordinal));
+        Assert.DoesNotContain(_http.Commands(regionPort), c => c.StartsWith("load oar", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Added_region_needs_content_until_it_loads()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        AddRegion(created: false);
+        var regionPort = _store.LoadOrCreate().RegionConsolePort;
+        var fake = StartLeftoverRegion();
+        var terrain = "max/min/avg/sum: 48.0/2.0/22.1/1441792";
+        var loadWorks = false;
+        _http.Reply = (port, command) =>
+        {
+            if (port != regionPort) return [];
+            if (command == "login status") return ["Login in Welcome are enabled"];
+            if (command == "terrain stats") return [terrain];
+            if (command.StartsWith("terrain fill ", StringComparison.Ordinal)) terrain = "max/min/avg/sum: 0/0/0/0";
+            if (command.StartsWith("terrain load ", StringComparison.Ordinal) && loadWorks) terrain = IslandStats;
+            return [];
+        };
+        try
+        {
+            await Assert.ThrowsAsync<InvalidOperationException>(() => _grid.CreateRegionAsync("Welcome", "island", ct).WaitAsync(TimeSpan.FromSeconds(60), ct));
+            Assert.True(_store.LoadOrCreate().Regions.Single().NeedsContent);
+
+            loadWorks = true;
+            await _grid.CreateRegionAsync("Welcome", "island", ct).WaitAsync(TimeSpan.FromSeconds(60), ct);
+            Assert.False(_store.LoadOrCreate().Regions.Single().NeedsContent);
+        }
+        finally { await EndLeftoverRegionAsync(fake); }
     }
 
     [Fact]

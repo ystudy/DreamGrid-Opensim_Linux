@@ -13,7 +13,7 @@ namespace DreamGrid.Launcher.Pages.Regions;
 /// Add a region (spec 5.3): its name, type, map position, size and how it runs. A valid post starts <see cref="RegionJob"/>
 /// (one add at a time) and shows its progress at /regions/add?working=1; the map opens this page with a type and position.
 /// </summary>
-public sealed class AddModel(IGridController grid, RegionJob job, Func<long?> freeMemory) : PageModel
+public sealed class AddModel(IGridController grid, RegionJob job, Func<long?> freeMemory, OarLibrary library) : PageModel
 {
     private const string WorkingUrl = "/regions/add?working=1";
     private const string OwnValue = RunsChoices.OwnValue;
@@ -27,7 +27,9 @@ public sealed class AddModel(IGridController grid, RegionJob job, Func<long?> fr
     /// <summary>The groups whose "will restart" box was ticked.</summary>
     [BindProperty] public List<string> Confirm { get; set; } = [];
 
-    public IReadOnlyList<RegionType> Types { get; } = RegionTypes.BuiltIn;
+    public IReadOnlyList<RegionType> Types { get; private set; } = [];
+    /// <summary>Set when the chosen custom type's library file has gone: the region will start as plain island land.</summary>
+    public string? MissingFileText { get; private set; }
     public IReadOnlyList<GroupChoice> Groups { get; private set; } = [];
     public OwnAdvice Own { get; private set; } = null!;
     public string? PlacementText { get; private set; }
@@ -54,7 +56,7 @@ public sealed class AddModel(IGridController grid, RegionJob job, Func<long?> fr
     public IActionResult OnGet(string? type, int? x, int? y, int? size, string? working)
     {
         Load(working is not null);
-        Type = type is not null && RegionTypes.Find(type) is not null ? type : RegionTypes.BuiltIn[0].Id;
+        Type = type is not null && RegionTypes.Find(grid.CurrentSettings(), type) is not null ? type : RegionTypes.BuiltIn[0].Id;
         (X, Y) = (x?.ToString(CultureInfo.InvariantCulture), y?.ToString(CultureInfo.InvariantCulture));
         Size = size is >= 1 and <= RegionPlacement.MaxSize ? size.Value.ToString(CultureInfo.InvariantCulture) : "1";
         Prepare();
@@ -81,7 +83,7 @@ public sealed class AddModel(IGridController grid, RegionJob job, Func<long?> fr
                 "Use 2 to 32 letters, digits, spaces, hyphens (-), underscores (_) or apostrophes ('), with no space at the start or end.");
         else if (RegionModel.FindByName(s, name) is not null)
             ModelState.AddModelError(nameof(Name), $"There is already a region called {name}.");
-        else if (Type is null || RegionTypes.Find(Type) is null)
+        else if (Type is null || RegionTypes.Find(s, Type) is null)
             ModelState.AddModelError(nameof(Type), "Pick what your region should look like.");
         else if (!TryParse(Size, out size) || size is < 1 or > RegionPlacement.MaxSize)
             ModelState.AddModelError(nameof(Size), "A region is 1 to 16 squares on each side.");
@@ -115,6 +117,7 @@ public sealed class AddModel(IGridController grid, RegionJob job, Func<long?> fr
         ShowResult = showResult;
 
         Groups = GroupChoice.All(grid.CurrentSettings(), grid.GetStatus());
+        Types = RegionTypes.All(grid.CurrentSettings());
     }
 
     /// <summary>The advice that depends on the choices made so far (computed here, so it also updates on submit).</summary>
@@ -123,6 +126,10 @@ public sealed class AddModel(IGridController grid, RegionJob job, Func<long?> fr
         var size = TryParse(Size, out var n) && n is >= 1 and <= RegionPlacement.MaxSize ? n : 1;
         Own = RegionAdvice.OnItsOwn(grid.GetStatus(), freeMemory(), size);
         SizeRisk = RegionAdvice.SizeRisk(size);
+        var settings = grid.CurrentSettings();
+        if (Type is not null && settings.CustomTypes.FirstOrDefault(c => c.Id == Type) is { } custom
+            && library.Resolve(custom.File) is null)
+            MissingFileText = $"The file {custom.File} is no longer in the library; this region will start as plain island land.";
         if (TryParse(X, out var x) && TryParse(Y, out var y))
         {
             PlacementText = !RegionPlacement.OnMap(x, y, size)
