@@ -142,6 +142,10 @@ Do this only after Phase 2 has shipped the features people use, and after 2.2's 
 - [ ] Remove the projects from `DreamGrid.sln` and delete the folders: `addon-modules/21Wifi`, `20WifiScriptEngine`, `ProcessorTest`, `00DivaInterfaces`, `01DivaUtils`, `02AddinExample`, `00Data` (`Diva.Data`, `.MySQL`, `.SQLite`).
   - [ ] Also delete `1DivaOpenSimServices`, once the launcher's group actions (2.8) work.
   - [ ] Before deleting, prove nothing else references them.
+- [ ] Remove jOpenSim too. It is end of life: the last release was 0.3.2.0 for Joomla 3, October 2020, and no public source repository could be found.
+  - [ ] Remove `jOpenSimSearch` from `DreamGrid.sln`, and delete `addon-modules/jOpenSimSearch` and `addon-modules/jOpenSimProfile` (the profile module isn't in the solution).
+  - [ ] Delete `jOpensimURL` from `bin/config-include/Proto/*/OpenSim.ini` and from `Robust.HG.ini.proto` (with its "Apache Port for Jopensim" comments). Also delete the commented `data_services=…/JOpensim/…registersearch.php` line, which has a hard-coded LAN address.
+  - [ ] Profiles keep working through OpenSim's built-in profiles service, already set up in the templates (`[UserProfilesService]` in Robust, `[UserProfiles] ProfileServiceURL` for regions). Check that the generated INIs have it switched on and that a profile edit is saved, on Windows and on Debian.
 - [ ] Delete from `bin/`: `Wifi.ini`, `config-addon-opensim/Wifi.*`, `config-addon-robust/Wifi.ini`, `WifiPages-*`, `Diva.*.dll/.pdb`, `Diva.Wifi.pot`, `Diva.Wifi.ProcessorTest.*`.
 - [ ] Remove the Wifi lines from `.gitignore`, from `bin/config-include/Proto/*/OpenSim.ini`, and from `bin/OpenSim.ConsoleClient.ini`.
 - [ ] `Robust.HG.ini.proto`: the `register=` and `password=` lines point to the new pages (2.1, 2.3).
@@ -207,3 +211,7 @@ Decided: build **all three**, each with its own switch. A (honeypot and rate lim
 ## Later (not in this work)
 
 - Mass email to residents (to everyone or to one group), queued and throttled, with an unsubscribe link. Add it only if it's asked for.
+- In-viewer search (places, people, classifieds, events). Keep the `OpenSimSearch` region module (upstream: `kcozens/OpenSimSearch`); it needs a search web service at `SearchURL`. Two ways to provide one:
+  - point it at [magicoli/opensim-helpers](https://github.com/magicoli/opensim-helpers), the maintained PHP helpers that work with OpenSimSearch (needs PHP on the host), or
+  - have the v7 website provide the search service itself (no PHP; same on Windows and Debian). Recommendation, if search is wanted.
+  - Either way: the search service reads only public data, is rate limited, and the region's `data_services` registration accepts only known simulators.
