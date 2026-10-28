@@ -99,7 +99,7 @@ public class LauncherPathsTests
             string[] dirs =
             [
                 p.Data, p.MariaDbData, p.MariaDbTmp, p.RuntimeOpenSim, p.RegionsRoot, p.AssetCache, p.FsAssetsData,
-                p.FsAssetsSpool, p.ScriptEngines, p.Logs, p.Pids,
+                p.FsAssetsSpool, p.ScriptEngines, p.Logs, p.Pids, p.Oars, p.OarsIncoming, p.OarsSaving,
             ];
             foreach (var d in dirs)
                 Assert.True(Directory.Exists(d), d);

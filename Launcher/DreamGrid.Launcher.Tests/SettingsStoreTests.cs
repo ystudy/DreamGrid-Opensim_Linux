@@ -243,4 +243,45 @@ public class SettingsStoreTests : IDisposable
         Assert.Equal(s.Programs, loaded.Programs);
         Assert.Equal(s.Regions, loaded.Regions);
     }
+
+    [Fact]
+    public void Settings_without_custom_types_or_needs_content_load()
+    {
+        var path = Path.Combine(NewDir(), "settings.json");
+        var store = new SettingsStore(path);
+        store.Save(store.LoadOrCreate() with
+        {
+            Programs = [new ProgramSettings("Home", 8004, 8011)],
+            Regions = [new RegionSettings("Home", "Home", Guid.NewGuid(), UdpPort: 8004)],
+        });
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+        node.Remove("customTypes");
+        foreach (var region in node["regions"]!.AsArray())
+            region!.AsObject().Remove("needsContent");
+        File.WriteAllText(path, node.ToJsonString());
+
+        var loaded = new SettingsStore(path).LoadOrCreate();
+
+        Assert.Equal(2, loaded.SchemaVersion);
+        Assert.Empty(loaded.CustomTypes);
+        Assert.False(loaded.Regions[0].NeedsContent);
+    }
+
+    [Fact]
+    public void Custom_types_and_needs_content_round_trip()
+    {
+        var path = Path.Combine(NewDir(), "settings.json");
+        var store = new SettingsStore(path);
+        var s = store.LoadOrCreate() with
+        {
+            CustomTypes = [new("c-0a1b2c3d", "My Castle", "castle.oar")],
+            Programs = [new ProgramSettings("Home", 8004, 8011)],
+            Regions = [new RegionSettings("Home", "Home", Guid.NewGuid(), UdpPort: 8004, NeedsContent: true)],
+        };
+        store.Save(s);
+
+        var loaded = new SettingsStore(path).LoadOrCreate();
+        Assert.Equal(s.CustomTypes, loaded.CustomTypes);
+        Assert.True(loaded.Regions[0].NeedsContent);
+    }
 }

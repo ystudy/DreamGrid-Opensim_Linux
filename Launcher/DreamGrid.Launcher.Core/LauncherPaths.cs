@@ -17,6 +17,12 @@ public sealed record LauncherPaths(string Data, string OpenSimProgram, string? M
     public string Pids => Path.Combine(Data, "state", "pids");
     /// <summary>The website's ASP.NET Core data-protection keys (they sign the sign-in and antiforgery cookies).</summary>
     public string DataProtectionKeys => Path.Combine(Data, "keys");
+    /// <summary>The OAR library: the <c>*.oar</c> files directly in it are the library; its subfolders are staging.</summary>
+    public string Oars => Path.Combine(Data, "oars");
+    /// <summary>Where an upload is written before it is checked and moved into <see cref="Oars"/>.</summary>
+    public string OarsIncoming => Path.Combine(Oars, ".incoming");
+    /// <summary>Where a region's saved OAR is written before it is moved into <see cref="Oars"/>.</summary>
+    public string OarsSaving => Path.Combine(Oars, ".saving");
 
     public string RegionDir(string instance) => Path.Combine(RegionsRoot, instance);
     public string RegionDefinitionDir(string instance) => Path.Combine(RegionDir(instance), "Region");
@@ -75,7 +81,7 @@ public sealed record LauncherPaths(string Data, string OpenSimProgram, string? M
         foreach (var dir in new[]
         {
             Data, MariaDbData, MariaDbTmp, RuntimeOpenSim, RegionsRoot, AssetCache, FsAssetsData, FsAssetsSpool,
-            ScriptEngines, Logs, Pids, DataProtectionKeys,
+            ScriptEngines, Logs, Pids, DataProtectionKeys, Oars, OarsIncoming, OarsSaving,
         })
             Directory.CreateDirectory(dir);
     }

@@ -26,6 +26,7 @@ public sealed record ProgramSettings(string Instance, int HttpPort, int ConsoleP
 /// One region. <see cref="Instance"/> names its program; <see cref="Size"/> is squares per side (256 m each);
 /// <see cref="X"/> and <see cref="Y"/> are its south-west square on the map. A parked region stays off until unparked;
 /// a deleted one (<see cref="DeletedAt"/> set) keeps its database rows and its map spot until erased.
+/// <see cref="NeedsContent"/> marks a region whose <see cref="Content"/> has not been loaded yet.
 /// </summary>
 public sealed record RegionSettings(
     string Instance,
@@ -37,7 +38,11 @@ public sealed record RegionSettings(
     int Size = 1,
     int UdpPort = 0,
     bool Parked = false,
-    DateTimeOffset? DeletedAt = null);
+    DateTimeOffset? DeletedAt = null,
+    bool NeedsContent = false);
+
+/// <summary>A region type made from a file in the OAR library; <see cref="Id"/> is "c-" and 8 lowercase hex characters.</summary>
+public sealed record CustomRegionType(string Id, string Name, string File);
 
 /// <summary>Version 1's single region, read only to migrate a schema 1 file.</summary>
 public sealed record LegacyRegionV1(string Instance, string Name, Guid Uuid, int X = 1000, int Y = 1000, string Physics = "ubODE",
@@ -73,6 +78,8 @@ public sealed record LauncherSettings
     public SetupState Setup { get; init; } = new();
     public List<ProgramSettings> Programs { get; init; } = new();
     public List<RegionSettings> Regions { get; init; } = new();
+    /// <summary>Region types made from library files, in the order they were added; a missing list reads as empty.</summary>
+    public List<CustomRegionType> CustomTypes { get; init; } = new();
 
     /// <summary>Schema 1's "region"; <see cref="SettingsStore"/> migrates it and it is never written again.</summary>
     [JsonPropertyName("region")]
