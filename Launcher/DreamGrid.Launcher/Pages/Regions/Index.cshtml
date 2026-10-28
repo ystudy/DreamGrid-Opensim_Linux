@@ -13,7 +13,10 @@
 <div class="row g-3 mb-3">
     <div class="col-lg-2">
         <section class="card card-body shadow-sm h-100">
-            <h2>Region types</h2>
+            <div class="d-flex flex-wrap align-items-baseline gap-2">
+                <h2>Region types</h2>
+                <a class="small" href="/regions/library">OAR library</a>
+            </div>
             <ul id="region-types" class="region-types list-unstyled mb-0">
                 @foreach (var t in Model.Types)
                 {

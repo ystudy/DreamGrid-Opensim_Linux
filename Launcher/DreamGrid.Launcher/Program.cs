@@ -143,6 +143,7 @@ builder.Services.AddSingleton<RegionActions>();
 builder.Services.AddSingleton<SetupProgress>();
 builder.Services.AddSingleton<SetupRunner>();
 builder.Services.AddSingleton<RegionJob>();
+builder.Services.AddSingleton<OarLibrary>();
 // The add-region form's memory advice; tests swap it.
 builder.Services.AddSingleton<Func<long?>>(_ => SystemMemory.AvailableBytes);
 builder.Services.AddHostedService<GridHostedService>();
@@ -158,6 +159,7 @@ app.UseAuthorization();
 LegacyEndpoints.Map(app);
 LogsApi.Map(app);
 RegionsApi.Map(app);
+LibraryApi.Map(app);
 StatusApi.Map(app);
 SetupApi.Map(app);
 app.MapRazorPages();
@@ -170,6 +172,9 @@ app.Lifetime.ApplicationStarted.Register(() =>
         app.Logger.LogInformation("Setup link: http://{Host}:{Port}/setup?token={Token}",
             HostAddress.Effective(s.Hostname), s.WebPort, token);
 });
+
+// Uploads and saves cut off by the last stop leave parts behind; nothing is using them yet.
+app.Services.GetRequiredService<OarLibrary>().ClearStaging();
 
 try
 {
@@ -189,7 +194,7 @@ return 0;
 
 static Task ApiOr(RedirectContext<CookieAuthenticationOptions> c, int apiStatus)
 {
-    if (c.Request.Path.StartsWithSegments("/api"))
+    if (ApiEndpoint.Is(c.HttpContext))
         c.Response.StatusCode = apiStatus;
     else
         c.Response.Redirect(c.RedirectUri);
