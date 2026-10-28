@@ -3,6 +3,7 @@ using AngleSharp.Html.Dom;
 using AngleSharp.Html.Parser;
 using DreamGrid.Launcher.Core.Processes;
 using DreamGrid.Launcher.Core.Settings;
+using Microsoft.Extensions.Logging;
 using Xunit;
 
 namespace DreamGrid.Launcher.Tests;
@@ -137,6 +138,23 @@ public sealed class DeletePageTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Job_page_of_a_region_deleted_after_its_save_links_to_recently_deleted()
+    {
+        using var client = await SignedInAsync();
+        using var response = await PostDeleteAsync(client, SunsetId, ("confirmed", "true"), ("saveFirst", "true"));
+        Assert.True(await WaitForCallAsync($"DeleteRegion {SunsetId}"));
+
+        IHtmlDocument doc;
+        var guard = DateTime.UtcNow.AddSeconds(10);
+        do doc = await GetAsync(client, $"/regions/region/{SunsetId}/job");
+        while (doc.QuerySelector("#job-done") is null && DateTime.UtcNow < guard);
+
+        var back = doc.QuerySelectorAll("a").Single(a => a.TextContent.StartsWith("Back to", StringComparison.Ordinal));
+        Assert.Equal("/regions/deleted", back.GetAttribute("href"));
+        Assert.Equal("Back to Recently deleted", back.TextContent.Trim());
+    }
+
+    [Fact]
     public async Task Save_first_box_disabled_when_not_running()
     {
         using var client = await SignedInAsync();
@@ -199,6 +217,27 @@ public sealed class DeletePageTests : IAsyncLifetime
         var doc = await GetAsync(client, "/regions/deleted");
 
         Assert.Contains("Unknown while the database is stopped", doc.QuerySelector($"tr[data-region='{OldId}']")!.TextContent);
+    }
+
+    /// <summary>What MySqlConnector's MySqlException derives from; its own constructors aren't public.</summary>
+    private sealed class FailedQuery() : System.Data.Common.DbException("Table 'opensim.prims' doesn't exist");
+
+    [Fact]
+    public async Task Deleted_page_shows_unknown_space_when_the_query_fails()
+    {
+        _f.Grid.DeletedSpaceFailure = new FailedQuery();
+        using var client = await SignedInAsync();
+
+        using var response = await client.GetAsync("/regions/deleted", Ct);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var doc = await DocAsync(response);
+        Assert.Equal("Unknown", doc.QuerySelector($"tr[data-region='{OldId}'] td:nth-child(4)")!.TextContent.Trim());
+        Assert.Contains(_f.Logs, l => l.Level == LogLevel.Warning && l.Message.Contains("doesn't exist", StringComparison.Ordinal));
+
+        using var restore = await PostAsync(client, "/regions/deleted", "/regions/deleted?handler=restore", ("id", OldId.ToString()));
+        Assert.Equal(HttpStatusCode.Redirect, restore.StatusCode);
+        Assert.True(await WaitForCallAsync($"RestoreRegion {OldId}"));
     }
 
     [Fact]

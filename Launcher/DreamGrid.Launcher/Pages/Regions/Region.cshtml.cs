@@ -75,12 +75,17 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
 
     /// <summary>
     /// A power post. When the action also restarts other regions and the admin hasn't said yes, the confirmation shows
-    /// instead; otherwise it runs and the page comes back with the notice.
+    /// instead; otherwise it runs and the page comes back with the notice. A program that runs a job refuses.
     /// </summary>
     public async Task<IActionResult> OnPostPowerAsync(Guid id, string? action, bool confirmed)
     {
         if (!Enum.TryParse<RegionPower>(action, ignoreCase: true, out var power) || !Enum.IsDefined(power)) return BadRequest();
         if (!await LoadAsync(id)) return NotFound();
+        if (BusyText is not null)
+        {
+            Notice = $"{BusyText} is still running. Try again when it finishes.";
+            return Redirect("/regions/region/" + id);
+        }
 
         var affected = Affected(id, power);
         if (affected.Count > 0 && !confirmed)

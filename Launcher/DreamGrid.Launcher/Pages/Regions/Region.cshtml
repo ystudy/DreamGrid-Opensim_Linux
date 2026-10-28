@@ -152,12 +152,12 @@
         </details>
     </form>
 
-    <p class="d-flex flex-wrap gap-3">
+    <div class="d-flex flex-wrap gap-3 mb-3">
         <a href="/regions/region/@Model.Id/move">Move…</a>
         <a href="/regions/region/@Model.Id/runs">How it runs…</a>
         <form method="post" action="/regions/region/@Model.Id?handler=delete" asp-antiforgery="true" class="d-inline">
             <button type="submit" class="btn btn-link p-0 text-danger">Delete…</button>
         </form>
-    </p>
+    </div>
     <p class="form-text mb-0">Region settings are coming next.</p>
 </div>

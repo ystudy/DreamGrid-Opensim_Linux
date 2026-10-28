@@ -292,6 +292,38 @@ public sealed class RegionPanelTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Power_is_refused_while_a_job_runs_in_its_program()
+    {
+        _f.Grid.Busy["Home"] = "Saving Home as an OAR";
+        using var client = await SignedInAsync();
+
+        using var response = await PostPowerAsync(client, BeachId, "Stop", confirmed: true);
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal($"/regions/region/{BeachId}", response.Headers.Location!.OriginalString);
+        var panel = new HtmlParser().ParseDocument(await client.GetStringAsync($"/regions/region/{BeachId}", Ct));
+        Assert.Equal("Saving Home as an OAR is still running. Try again when it finishes.", panel.QuerySelector(".notice")!.TextContent.Trim());
+        await Task.Delay(200, Ct);
+        Assert.DoesNotContain(_f.Grid.Snapshot(), c => c.StartsWith("RegionPower", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Move_runs_and_delete_share_one_row()
+    {
+        var doc = await PageAsync(SunsetId);
+
+        var move = doc.QuerySelector($"a[href='/regions/region/{SunsetId}/move']")!;
+        var runs = doc.QuerySelector($"a[href='/regions/region/{SunsetId}/runs']")!;
+        var delete = doc.QuerySelector($"form[action='/regions/region/{SunsetId}?handler=delete']")!;
+        var row = move.ParentElement!;
+        Assert.Equal("DIV", row.TagName);
+        Assert.Contains("d-flex", row.ClassList);
+        Assert.Same(row, runs.ParentElement);
+        Assert.Same(row, delete.ParentElement);
+        Assert.DoesNotContain(doc.QuerySelectorAll("p"), p => p.ChildElementCount == 0 && p.TextContent.Trim().Length == 0);
+    }
+
+    [Fact]
     public async Task Power_confirmed_runs()
     {
         using var client = await SignedInAsync();

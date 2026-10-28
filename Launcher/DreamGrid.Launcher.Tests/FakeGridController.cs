@@ -198,13 +198,13 @@ internal sealed class FakeGridController : IGridController
     /// <summary>Runs inside the delete, restore and erase calls (blocking probes, thrown exceptions).</summary>
     public Func<string, Guid, CancellationToken, Task> OnDeleted { get; set; } = (_, _, _) => Task.CompletedTask;
 
-    /// <summary>Records "DeleteRegion &lt;id&gt;"; like the controller, saves DeletedAt (Parked off) when a settings source is set.</summary>
+    /// <summary>Records "DeleteRegion &lt;id&gt;"; like the controller, saves DeletedAt (Parked kept) when a settings source is set.</summary>
     public async Task DeleteRegionAsync(Guid regionId, CancellationToken ct)
     {
         Record($"DeleteRegion {regionId}");
         await OnDeleted("Delete", regionId, ct);
         if (SettingsSource is not null)
-            UpdateSettings(l => l with { Regions = l.Regions.Select(r => r.Uuid == regionId ? r with { DeletedAt = DateTimeOffset.UtcNow, Parked = false } : r).ToList() });
+            UpdateSettings(l => l with { Regions = l.Regions.Select(r => r.Uuid == regionId ? r with { DeletedAt = DateTimeOffset.UtcNow } : r).ToList() });
     }
 
     /// <summary>Records "RestoreRegion &lt;id&gt;"; like the controller, clears DeletedAt when a settings source is set.</summary>
@@ -228,7 +228,11 @@ internal sealed class FakeGridController : IGridController
     /// <summary>What <see cref="DeletedSpaceAsync"/> returns; null stands for a database that isn't running.</summary>
     public IReadOnlyDictionary<Guid, long>? DeletedSpace { get; set; } = new Dictionary<Guid, long>();
 
-    public Task<IReadOnlyDictionary<Guid, long>?> DeletedSpaceAsync(CancellationToken ct) => Task.FromResult(DeletedSpace);
+    /// <summary>When set, <see cref="DeletedSpaceAsync"/> throws it (a query that fails while the database runs).</summary>
+    public Exception? DeletedSpaceFailure { get; set; }
+
+    public Task<IReadOnlyDictionary<Guid, long>?> DeletedSpaceAsync(CancellationToken ct) =>
+        DeletedSpaceFailure is { } e ? Task.FromException<IReadOnlyDictionary<Guid, long>?>(e) : Task.FromResult(DeletedSpace);
 
     /// <summary>Every request <see cref="RunOarJobAsync"/> got, in order.</summary>
     public List<OarJobRequest> OarJobs { get; } = new();

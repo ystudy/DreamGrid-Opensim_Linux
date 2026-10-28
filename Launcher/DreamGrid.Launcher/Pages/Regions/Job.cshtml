@@ -40,7 +40,14 @@
         <p><strong>Elapsed:</strong> @Model.Job.ElapsedText</p>
     }
 </div>
-<p><a href="/regions/region/@Model.Id">Back to @Model.Name</a></p>
+@if (Model.Deleted)
+{
+    <p><a href="/regions/deleted">Back to Recently deleted</a></p>
+}
+else
+{
+    <p><a href="/regions/region/@Model.Id">Back to @Model.Name</a></p>
+}
 
 @section Scripts {
 @if (Model.Job.Running)

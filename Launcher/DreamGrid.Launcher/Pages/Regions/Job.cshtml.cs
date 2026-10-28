@@ -15,13 +15,16 @@ public sealed class JobModel(IGridController grid, OarJobs jobs) : PageModel
     public string Name { get; private set; } = "";
     public OarJobSnapshot Job { get; private set; } = null!;
 
+    /// <summary>True when the region has been deleted (a save with Delete as its follow-up): the back link goes to Recently deleted.</summary>
+    public bool Deleted { get; private set; }
+
     [TempData] public string? Notice { get; set; }
 
     public IActionResult OnGet(Guid id)
     {
         if (RegionModel.Find(grid.CurrentSettings(), id) is not { } r) return NotFound();
         if (jobs.For(id) is not { } job) return NotFound();
-        (Id, Name, Job) = (id, r.Name, job);
+        (Id, Name, Job, Deleted) = (id, r.Name, job, r.DeletedAt is not null);
         return Page();
     }
 }

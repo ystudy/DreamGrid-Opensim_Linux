@@ -48,6 +48,12 @@ public sealed class RunsModel(IGridController grid, RegionActions actions, Func<
 
         var group = Choices.Groups.FirstOrDefault(g => g.Value == Group);
         var own = Choices.Own is not null && Group == RunsChoices.OwnValue;
+        // A job in the group it leaves or the one it joins refuses the change; the panel says why.
+        if ((grid.BusyWith(_instance) ?? (group is null ? null : grid.BusyWith(group.Instance))) is { } busy)
+        {
+            Notice = $"{busy} is still running. Try again when it finishes.";
+            return Redirect("/regions/region/" + id);
+        }
         if (!own && group is null)
             ModelState.AddModelError(nameof(Group), "Pick how the region should run.");
         else if (Choices.Restarts(Group!) is { Count: > 0 } restarts && !Confirm.Contains(Group!))
