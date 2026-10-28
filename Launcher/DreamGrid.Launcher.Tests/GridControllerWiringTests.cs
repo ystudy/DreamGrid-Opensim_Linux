@@ -1105,16 +1105,24 @@ public sealed class GridControllerWiringTests : IDisposable
 
     /// <summary>
     /// <see cref="HomeAndBeach"/> with every program running: a leftover stand-in that <paramref name="grid"/> adopts, which
-    /// says it loaded its regions and that they accept logins.
+    /// says it loaded its regions and that they accept logins. Like OpenSim, a console switched with <c>change region</c>
+    /// answers <c>show regions</c> and <c>login status</c> for that region only.
     /// </summary>
     private async Task<Process[]> RunningHomeAndBeach(GridController grid, bool shared)
     {
         HomeAndBeach(shared);
         var homeConsole = _store.LoadOrCreate().RegionConsolePort;
+        var scenes = new System.Collections.Concurrent.ConcurrentDictionary<int, string>();
         _http.Reply = (port, command) =>
         {
+            if (command.StartsWith("change region ", StringComparison.Ordinal))
+            {
+                var scene = command["change region ".Length..];
+                if (scene == "root") scenes.TryRemove(port, out _); else scenes[port] = scene;
+            }
             (string Name, Guid Id)[] regions = port == homeConsole ? (shared ? [("Home", Home), ("Beach", Beach)] : [("Home", Home)])
                 : port == _secondConsole ? [("Beach", Beach)] : [];
+            if (scenes.TryGetValue(port, out var current)) regions = regions.Where(r => r.Name == current).ToArray();
             if (command == "show regions") return regions.Select(r => $"{r.Name}  {r.Id}  1000,1000").ToArray();
             if (command == "login status") return regions.Select(r => $"Login in {r.Name} are enabled").ToArray();
             return _console?.Invoke(port, command) ?? [];
@@ -1340,6 +1348,103 @@ public sealed class GridControllerWiringTests : IDisposable
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => save.WaitAsync(TimeSpan.FromSeconds(30), ct));
         }
         finally { await EndAllAsync(_grid, fakes); }
+    }
+
+    /// <summary>Kills the stand-in behind a console port when that port is told to "quit", as a region program does.</summary>
+    private void QuitKills(Process[] fakes, bool shared)
+    {
+        var homeConsole = _store.LoadOrCreate().RegionConsolePort;
+        _http.OnCommand = port =>
+        {
+            var fake = port == homeConsole ? fakes[0] : !shared && port == _secondConsole ? fakes[1] : null;
+            if (fake is not null && _http.Commands(port).Contains("quit") && !fake.HasExited) fake.Kill();
+        };
+    }
+
+    [Fact]
+    public async Task Make_land_again_fails_when_world_stops()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        LibraryOar();
+        var fakes = await RunningHomeAndBeach(_grid, shared: false);
+        var port = _store.LoadOrCreate().RegionConsolePort;
+        _grid.UpdateSettings(l => l with
+        {
+            CustomTypes = [new CustomRegionType("c-0000abcd", "My Castle", "castle.oar")],
+            Regions = l.Regions.Select(r => r.Uuid == Home ? r with { Content = "c-0000abcd" } : r).ToList(),
+        });
+        try
+        {
+            var job = _grid.RunOarJobAsync(new OarJobRequest(Home, OarJobKind.MakeLand), ct); // its alert never comes
+            await Until(() => _http.Commands(port).Any(c => c.StartsWith("load oar", StringComparison.Ordinal)), "the load was never sent");
+            QuitKills(fakes, shared: false);
+
+            await _grid.StopAllAsync(ct);
+
+            var e = await Assert.ThrowsAsync<InvalidOperationException>(() => job.WaitAsync(TimeSpan.FromSeconds(15), ct));
+            Assert.Equal("The region stopped before the land loaded.", e.Message);
+            Assert.Null(_grid.BusyWith("Home"));
+        }
+        finally { await EndAllAsync(_grid, fakes); }
+    }
+
+    [Fact]
+    public async Task World_start_during_shared_job_keeps_other_regions_logins()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var fakes = await RunningHomeAndBeach(_grid, shared: true);
+        var port = _store.LoadOrCreate().RegionConsolePort;
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        try
+        {
+            var save = _grid.RunOarJobAsync(new OarJobRequest(Home, OarJobKind.Save), stop.Token); // the console is on Home
+            await Until(() => _http.Commands(port).Any(c => c.StartsWith("save oar", StringComparison.Ordinal)), "the save was never sent");
+            var queries = _http.Commands(port).Count(c => c is "show regions" or "login status");
+
+            // The world's start is not refused; MariaDB cannot start in this rig, after the programs are adopted.
+            Assert.NotNull(await Record.ExceptionAsync(() => _grid.StartWorldAsync(false, ct)));
+
+            Assert.Equal(queries, _http.Commands(port).Count(c => c is "show regions" or "login status"));
+            Assert.All(_grid.GetStatus().Regions, r =>
+            {
+                Assert.True(r.LoginsEnabled, r.Name + " lost its logins");
+                Assert.Equal(RegionState.Running, r.State);
+            });
+            Assert.False(save.IsCompleted);
+            stop.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => save.WaitAsync(TimeSpan.FromSeconds(30), ct));
+        }
+        finally { await EndAllAsync(_grid, fakes); }
+    }
+
+    [Fact]
+    public async Task Save_keeps_a_finished_oar_whose_name_is_taken_at_the_move()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var grid = NewGrid(new DatedClock(new DateOnly(2026, 10, 28)));
+        var fakes = await RunningHomeAndBeach(grid, shared: false);
+        // Something the library's free-name check doesn't see as a file holds the name, so every move fails.
+        Directory.CreateDirectory(Path.Combine(_paths.Oars, "Home-2026-10-28.oar"));
+        _console = (_, command) =>
+        {
+            if (SavePath(command) is { } path)
+            {
+                WriteOar(path);
+                AppendLog("Home", "[ARCHIVER]: Finished writing out OAR for Home");
+            }
+            return [];
+        };
+        try
+        {
+            var e = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                grid.RunOarJobAsync(new OarJobRequest(Home, OarJobKind.Save), ct).WaitAsync(TimeSpan.FromSeconds(60), ct));
+
+            var kept = Assert.Single(Directory.GetFiles(_paths.OarsSaving));
+            Assert.True(OarFile.LooksLikeOar(kept));
+            Assert.Equal($"The OAR was saved but could not be moved into the library. It is at {kept} until the launcher restarts; see the launcher log.", e.Message);
+            Assert.Null(grid.BusyWith("Home"));
+        }
+        finally { await EndAllAsync(grid, fakes); }
     }
 
     [Fact]

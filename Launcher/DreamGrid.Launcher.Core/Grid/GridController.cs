@@ -619,6 +619,7 @@ public sealed partial class GridController(
     // ---- OAR jobs -----------------------------------------------------------------------------------
 
     private const string SaveFailed = "The save did not finish; see the region log.";
+    private const int MoveAttempts = 3;
 
     public async Task<string?> RunOarJobAsync(OarJobRequest request, CancellationToken ct, IProgress<OarJobProgress>? progress = null)
     {
@@ -641,11 +642,7 @@ public sealed partial class GridController(
                 case OarJobKind.Save:
                     return await SaveOarAsync(s, region, program, progress, ct);
                 default:
-                    progress?.Report(new OarJobProgress(SetupProgress.LoadingContent, null));
-                    await LoadContentAsync(program, region, region.Content, s, ct);
-                    ClearNeedsContent(region.Uuid);
-                    progress?.Report(new OarJobProgress(SetupProgress.WaitingForLogins, null));
-                    await WaitForLoginsAsync(program, region.Uuid, ct);
+                    await MakeLandAsync(s, region, program, progress, ct);
                     return null;
             }
         }
@@ -692,31 +689,63 @@ public sealed partial class GridController(
                 throw new InvalidOperationException($"{job} is still running. Try again when it finishes.");
     }
 
+    /// <summary>
+    /// Loads the region's own type again, then waits until it accepts logins. A program that stops meanwhile ends the job at
+    /// once with "The region stopped before the land loaded.".
+    /// </summary>
+    private async Task MakeLandAsync(LauncherSettings s, RegionSettings region, Component program,
+        IProgress<OarJobProgress>? progress, CancellationToken ct)
+    {
+        const string stopped = "The region stopped before the land loaded.";
+        progress?.Report(new OarJobProgress(SetupProgress.LoadingContent, null));
+        try
+        {
+            await OnRegionConsoleAsync(program, region, s,
+                console => LoadRegionContentAsync(console, region, region.Content, s, (program, stopped), ct), ct);
+        }
+        // A console that stops answering (the program went away) fails with its own error: the stop is the reason.
+        catch (Exception e) when (e is not OperationCanceledException && program.Process.State != ProcessState.Running)
+        {
+            throw new InvalidOperationException(stopped, e);
+        }
+        ClearNeedsContent(region.Uuid);
+        progress?.Report(new OarJobProgress(SetupProgress.WaitingForLogins, null));
+        await WaitForLoginsAsync(program, region.Uuid, ct, stopped);
+    }
+
+    /// <summary>
+    /// Waits for the archiver's alert for an OAR load and returns it. Fails with <paramref name="stopped"/> as soon as the
+    /// program leaves Running, and with <paramref name="timedOut"/> after <see cref="OarJobWait"/>.
+    /// </summary>
+    private async Task<string> WaitForOarAlertAsync(OarAlertWait loaded, Component program, string stopped, string timedOut, CancellationToken ct)
+    {
+        var deadline = time.GetUtcNow() + OarJobWait;
+        while (!loaded.Result.IsCompleted)
+        {
+            if (program.Process.State != ProcessState.Running) throw new InvalidOperationException(stopped);
+            if (time.GetUtcNow() >= deadline) throw new InvalidOperationException(timedOut);
+            await Task.WhenAny(loaded.Result, Task.Delay(LoginPoll, time, ct));
+            ct.ThrowIfCancellationRequested();
+        }
+        return await loaded.Result;
+    }
+
     /// <summary>Loads a library OAR into the region at the OAR's own size and place, then waits until it accepts logins.</summary>
     private async Task ImportOarAsync(LauncherSettings s, RegionSettings region, Component program, string file, string oar,
         IProgress<OarJobProgress>? progress, CancellationToken ct)
     {
+        const string stopped = "The region stopped before the OAR loaded.";
         progress?.Report(new OarJobProgress("Loading the OAR", null));
         await OnRegionConsoleAsync(program, region, s, async console =>
         {
             using var loaded = ExpectOarAlert(region.Uuid);
             await console.RunAsync($"load oar --force-terrain --force-parcels \"{Fwd(oar)}\"", ConsoleSettle, ct);
-            var deadline = time.GetUtcNow() + OarJobWait;
-            while (!loaded.Result.IsCompleted)
-            {
-                if (program.Process.State != ProcessState.Running)
-                    throw new InvalidOperationException("The region stopped before the OAR loaded.");
-                if (time.GetUtcNow() >= deadline)
-                    throw new InvalidOperationException($"The region did not load {file}; see the region log.");
-                await Task.WhenAny(loaded.Result, Task.Delay(LoginPoll, time, ct));
-                ct.ThrowIfCancellationRequested();
-            }
-            if (await loaded.Result != "oarloaded")
+            if (await WaitForOarAlertAsync(loaded, program, stopped, $"The region did not load {file}; see the region log.", ct) != "oarloaded")
                 throw new InvalidOperationException($"The region could not load {file}; see the region log.");
         }, ct);
         ClearNeedsContent(region.Uuid);
         progress?.Report(new OarJobProgress(SetupProgress.WaitingForLogins, null));
-        await WaitForLoginsAsync(program, region.Uuid, ct);
+        await WaitForLoginsAsync(program, region.Uuid, ct, stopped);
     }
 
     /// <summary>
@@ -733,6 +762,8 @@ public sealed partial class GridController(
         var log = new LogFollower(Path.Combine(paths.Logs, $"region-{region.Instance}.log"));
         var finished = $"[ARCHIVER]: Finished writing out OAR for {region.Name}";
         var moved = false;
+        // Once the save is whole, the file is kept even when the move fails.
+        var whole = false;
         try
         {
             await OnRegionConsoleAsync(program, region, s, async console =>
@@ -747,6 +778,7 @@ public sealed partial class GridController(
                         if (line.Contains("[ARCHIVER]: Error", StringComparison.Ordinal)) throw new InvalidOperationException(SaveFailed);
                         if (!line.TrimEnd().EndsWith(finished, StringComparison.Ordinal)) continue;
                         if (!OarFile.LooksLikeOar(staging)) throw new InvalidOperationException(SaveFailed);
+                        whole = true;
                         return;
                     }
                     if (program.Process.State != ProcessState.Running)
@@ -756,15 +788,30 @@ public sealed partial class GridController(
                 }
             }, ct);
 
+            // The free name can be taken before the move (an upload of the same name): a few tries, each with a fresh name.
             var library = new OarLibrary(paths);
-            var name = library.FreeName($"{region.Name}-{time.GetLocalNow().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}.oar");
-            File.Move(staging, Path.Combine(paths.Oars, name));
-            moved = true;
-            return name;
+            var wanted = $"{region.Name}-{time.GetLocalNow().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}.oar";
+            for (var attempt = 1; ; attempt++)
+            {
+                var name = library.FreeName(wanted);
+                try
+                {
+                    File.Move(staging, Path.Combine(paths.Oars, name));
+                    moved = true;
+                    return name;
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                {
+                    if (attempt < MoveAttempts) continue;
+                    _log?.LogError(e, "The saved OAR of {Region} could not be moved into the library as {Name}; it is at {Path}.", region.Name, name, staging);
+                    throw new InvalidOperationException(
+                        $"The OAR was saved but could not be moved into the library. It is at {staging} until the launcher restarts; see the launcher log.", e);
+                }
+            }
         }
         finally
         {
-            if (!moved && !ct.IsCancellationRequested)
+            if (!moved && !whole && !ct.IsCancellationRequested)
             {
                 try { File.Delete(staging); }
                 catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
@@ -954,6 +1001,9 @@ public sealed partial class GridController(
     {
         var instance = program.Instance!;
         var running = program.Process.State == ProcessState.Running;
+        // An OAR job may have switched this program's console to one region, and then "show regions" and "login status"
+        // answer for that region only: what is known about the running program stays as it is.
+        if (running && _jobs.ContainsKey(instance)) return;
         var adopted = running || WillAdopt(program);
         var regions = RegionModel.In(s, instance).ToList();
         if (!running)
@@ -1049,11 +1099,14 @@ public sealed partial class GridController(
         }
     }
 
-    private async Task WaitForLoginsAsync(Component program, Guid region, CancellationToken ct)
+    /// <summary>Waits until the region accepts logins; with <paramref name="stopped"/>, a program that leaves Running fails at once with it.</summary>
+    private async Task WaitForLoginsAsync(Component program, Guid region, CancellationToken ct, string? stopped = null)
     {
         var deadline = time.GetUtcNow() + LoginWait;
         while (!_logins.Enabled(region))
         {
+            if (stopped is not null && program.Process.State != ProcessState.Running)
+                throw new InvalidOperationException(stopped);
             if (program.Process.State == ProcessState.Failed)
                 throw new InvalidOperationException($"The region failed: {program.Process.LastError}");
             if (time.GetUtcNow() >= deadline)
@@ -1100,7 +1153,15 @@ public sealed partial class GridController(
     private void ClearNeedsContent(Guid region) =>
         UpdateSettings(l => l with { Regions = [.. l.Regions.Select(x => x.Uuid == region ? x with { NeedsContent = false } : x)] }, writeConfig: false);
 
-    private async Task LoadContentCoreAsync(RestConsoleClient console, RegionSettings region, string content, LauncherSettings s, CancellationToken ct)
+    private Task LoadContentCoreAsync(RestConsoleClient console, RegionSettings region, string content, LauncherSettings s, CancellationToken ct) =>
+        LoadRegionContentAsync(console, region, content, s, null, ct);
+
+    /// <summary>
+    /// <see cref="LoadContentCoreAsync"/>; with <paramref name="watch"/>, the OAR alert wait ends as soon as that program leaves
+    /// Running, failing with its text.
+    /// </summary>
+    private async Task LoadRegionContentAsync(RestConsoleClient console, RegionSettings region, string content, LauncherSettings s,
+        (Component Program, string Stopped)? watch, CancellationToken ct)
     {
         var oar = content == "starter" ? StarterContent.StarterOar(paths) : RegionTypes.Oar(paths, s, content);
         if (oar is not null)
@@ -1112,8 +1173,11 @@ public sealed partial class GridController(
             var middle = 128 * (region.Size - 1);
             var displacement = region.Size > 1 && !RegionTypes.IsCustom(content) ? $" --displacement <{middle},{middle},0>" : "";
             await console.RunAsync($"load oar --force-terrain --force-parcels{displacement} \"{Fwd(oar)}\"", ConsoleSettle, ct);
-            if (await loaded.Result.WaitAsync(LoginWait, time, ct) != "oarloaded")
-                throw new InvalidOperationException($"The region could not load {oar}; see the region log.");
+            var failed = $"The region could not load {oar}; see the region log.";
+            var result = watch is { } w
+                ? await WaitForOarAlertAsync(loaded, w.Program, w.Stopped, failed, ct)
+                : await loaded.Result.WaitAsync(LoginWait, time, ct);
+            if (result != "oarloaded") throw new InvalidOperationException(failed);
             return;
         }
 
