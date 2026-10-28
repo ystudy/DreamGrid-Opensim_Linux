@@ -614,6 +614,29 @@ public sealed class GridControllerWiringTests : IDisposable
     }
 
     [Fact]
+    public async Task Share_of_stopped_region_restarts_nothing()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        WelcomeAndIsle(shared: false);
+        var welcomeConsole = _store.LoadOrCreate().RegionConsolePort;
+        var welcome = StartLeftoverRegion("Welcome"); // Welcome runs; Isle's program does not
+        try
+        {
+            await Record.ExceptionAsync(() => _grid.StartAsync(ct)); // MariaDB cannot start; Welcome is adopted
+            Assert.Equal(ProcessState.Running, _grid.GetStatus().Programs.Single(p => p.Instance == "Welcome").Process.State);
+
+            await _grid.ChangeRunsWithAsync(Isle, "Welcome", ct);
+
+            var saved = _store.LoadOrCreate();
+            Assert.Equal("Welcome", RegionModel.Find(saved, Isle)!.Instance);
+            Assert.DoesNotContain(saved.Programs, p => p.Instance == "Isle");
+            Assert.DoesNotContain("quit", _http.Commands(welcomeConsole)); // Isle loads at Welcome's next start
+            Assert.Equal(ProcessState.Running, _grid.GetStatus().Programs.Single(p => p.Instance == "Welcome").Process.State);
+        }
+        finally { await EndLeftoverRegionAsync(welcome); }
+    }
+
+    [Fact]
     public async Task Own_makes_a_new_program_keeping_udp_port()
     {
         WelcomeAndIsle(shared: true, physics: "BulletSim");

@@ -29,7 +29,8 @@ public sealed class RunsModel(IGridController grid, RegionActions actions, Func<
 
     private string _instance = "";
     private string _physics = "";
-    private bool _loads;
+    private bool _ran;
+    private GridStatus _status = null!;
     private IReadOnlyList<string> _leaving = [];
     private LauncherSettings _settings = null!;
 
@@ -60,13 +61,16 @@ public sealed class RunsModel(IGridController grid, RegionActions actions, Func<
     {
         var s = _settings = grid.CurrentSettings();
         if (RegionModel.Find(s, id) is not { DeletedAt: null } region) return false;
-        var status = grid.GetStatus();
+        var status = _status = grid.GetStatus();
         (Id, Name, _instance) = (id, region.Name, region.Instance);
         _physics = RegionModel.ProgramOf(s, region)?.Physics ?? "";
         Others = RegionModel.In(s, region.Instance).Where(r => r.Uuid != id).Select(r => r.Name).ToList();
-        // A region that is running (or would be) is loaded by the group it joins, which restarts when it is up.
-        _loads = status.Regions.FirstOrDefault(r => r.Id == id)?.State is not (null or RegionState.Parked or RegionState.Stopped);
-        _leaving = RegionActions.SharingProgram(status, id);
+        // The controller's rule: only a region an active program loads moves at once, restarting both groups. Otherwise
+        // only the settings change and nothing restarts.
+        _ran = status.Programs.FirstOrDefault(p => p.Instance == region.Instance) is { } program
+            && RegionPowerPlan.IsActive(program.Process.State)
+            && status.Regions.FirstOrDefault(r => r.Id == id)?.State is not (null or RegionState.Parked or RegionState.Stopped);
+        _leaving = _ran ? RegionActions.SharingProgram(status, id) : [];
 
         var groups = GroupChoice.All(s, status).Where(g => g.Instance != region.Instance).ToList();
         // On its own is offered unless it already is.
@@ -75,12 +79,19 @@ public sealed class RunsModel(IGridController grid, RegionActions actions, Func<
         return true;
     }
 
-    /// <summary>The regions a choice restarts: the others it leaves, then those of a running group it joins.</summary>
+    /// <summary>
+    /// The regions a choice restarts when the region runs: those running in a group it joins, then the others running in
+    /// the group it leaves. Nothing when it doesn't run.
+    /// </summary>
     private IReadOnlyList<string> Restarts(string value)
     {
+        if (!_ran) return [];
         if (value == RunsChoices.OwnValue) return _leaving;
         if (Choices.Groups.FirstOrDefault(g => g.Value == value) is not { } g) return [];
-        return g.Running && _loads ? [.. g.Names, .. _leaving] : _leaving;
+        var joined = g.Running
+            ? _status.Regions.Where(r => r.Instance == g.Instance && r.State is RegionState.Running or RegionState.Starting).Select(r => r.Name)
+            : [];
+        return [.. joined, .. _leaving];
     }
 
     /// <summary>The group's settings win; physics is named when it differs.</summary>

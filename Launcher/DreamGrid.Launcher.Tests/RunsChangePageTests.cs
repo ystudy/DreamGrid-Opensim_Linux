@@ -100,6 +100,36 @@ public sealed class RunsChangePageTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Runs_change_of_running_region_names_both_groups()
+    {
+        using var client = await SignedInAsync();
+
+        var page = await GetAsync(client, SeaId);
+        Assert.Contains("I understand Home, Beach and Isle will restart", page.QuerySelector($"[data-group='{HomeId}'] label.confirm")!.TextContent);
+
+        _f.Grid.ProgramStates["Home"] = Core.Processes.ProcessState.Stopped; // a stopped group doesn't restart; Isle still does
+        page = await GetAsync(client, SeaId);
+        Assert.Contains("I understand Isle will restart", page.QuerySelector($"[data-group='{HomeId}'] label.confirm")!.TextContent);
+        Assert.DoesNotContain("Home", page.QuerySelector($"[data-group='{HomeId}'] label.confirm")!.TextContent);
+    }
+
+    [Fact]
+    public async Task Runs_change_of_stopped_region_asks_nothing()
+    {
+        using var client = await SignedInAsync();
+        _f.Grid.ProgramStates["Sunset"] = Core.Processes.ProcessState.Stopped;
+        _f.Grid.ProgramStates["Sea"] = Core.Processes.ProcessState.Failed; // its regions show as failed, not running
+
+        // Sharing with running Home: the region stays down and loads at Home's next start, so nothing restarts.
+        Assert.Null((await GetAsync(client, SunsetId)).QuerySelector("input[name=Confirm]"));
+        Assert.Null((await GetAsync(client, SeaId)).QuerySelector("input[name=Confirm]"));
+
+        using var response = await PostAsync(client, SunsetId, ("Group", HomeId.ToString()));
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.True(await WaitForCallAsync($"ChangeRunsWith {SunsetId} Home"));
+    }
+
+    [Fact]
     public async Task Runs_change_names_physics_difference()
     {
         using var client = await SignedInAsync();

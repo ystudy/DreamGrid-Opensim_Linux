@@ -210,19 +210,24 @@ public sealed partial class GridController(
             if (shareWith is null)
                 lock (_configGate) new RuntimeStager(paths).WriteLogConfigs(s.Programs.Select(p => p.Instance), LogLevelModule.LevelFor(s));
 
+            // Only a running region moves at once (the page asks first, naming the same regions). Otherwise only the
+            // settings change: the region loads at its new program's next start, and a stopped world stays stopped.
+            var removed = !s.Programs.Any(p => p.Instance == from);
             var affected = new List<string>();
             var steps = new List<Func<Task>>();
-            // The old program, when up: stopped once nothing loadable is left in it, else restarted without the region.
             var left = RegionModel.Loadable(s, from, _held).Select(r => r.Name).ToList();
-            if (oldActive && left.Count == 0)
-                steps.Add(() => StopProgramAsync(oldProgram!, ct));
+            if (oldActive && (removed || left.Count == 0))
+            {
+                // Nothing left to load. A removed program is stopped whole even at shutdown: nothing would adopt it later.
+                var stop = removed ? CancellationToken.None : ct;
+                steps.Add(() => StopProgramAsync(oldProgram!, stop));
+            }
             else if (ran)
             {
                 affected.AddRange(left);
                 steps.Add(() => RestartProgramAsync(s, oldProgram!, ct));
             }
-            // The new program loads the region if it can: restarted when up, else started when the region was running.
-            if (RegionModel.Loadable(s, to, _held).Any(r => r.Uuid == regionId))
+            if (ran)
             {
                 EnsureComponents(s);
                 var newProgram = _programs[to];
@@ -231,26 +236,33 @@ public sealed partial class GridController(
                     affected.AddRange(RegionModel.Loadable(s, to, _held).Where(r => r.Uuid != regionId).Select(r => r.Name));
                     steps.Add(() => RestartProgramAsync(s, newProgram, ct));
                 }
-                else if (ran)
+                else
                     steps.Add(async () => { EnsureComponents(s); await StartProgramAsync(s, _programs[to], ct); });
             }
 
             if (affected.Count > 0)
                 _log?.LogInformation("Change how {Region} runs: also affected {Others}.", region.Name, string.Join(", ", affected));
             _activity = GridActivity.Restarting;
-            // One program that fails to come back doesn't keep the other down; the first failure is thrown afterwards.
-            Exception? first = null;
-            foreach (var step in steps)
+            try
             {
-                try { await step(); }
-                catch (Exception e) when (e is not OperationCanceledException) { first ??= e; }
+                // One program that fails to come back doesn't keep the other down; the first failure is thrown afterwards.
+                Exception? first = null;
+                foreach (var step in steps)
+                {
+                    try { await step(); }
+                    catch (Exception e) when (e is not OperationCanceledException) { first ??= e; }
+                }
+                if (first is not null) throw first;
             }
-            if (!s.Programs.Any(p => p.Instance == from))
+            finally
             {
-                EnsureComponents(s); // the removed program, now stopped, leaves the status
-                _loaded = _loaded.Where(kv => kv.Key != from).ToDictionary(kv => kv.Key, kv => kv.Value);
+                // Also on cancellation: the removed program, now stopped, leaves the status.
+                if (removed)
+                {
+                    EnsureComponents(s);
+                    _loaded = _loaded.Where(kv => kv.Key != from).ToDictionary(kv => kv.Key, kv => kv.Value);
+                }
             }
-            if (first is not null) throw first;
         }
         finally { _activity = GridActivity.None; _ops.Release(); }
     }
