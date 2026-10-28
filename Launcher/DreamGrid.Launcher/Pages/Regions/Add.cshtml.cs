@@ -26,7 +26,6 @@ public sealed class AddModel(IGridController grid, RegionJob job, Func<long?> fr
 {
     private const string WorkingUrl = "/regions/add?working=1";
     private const string OwnValue = "own";
-    private const int MaxCoordinate = 65535;
 
     [BindProperty] public string? Name { get; set; }
     [BindProperty] public string? Type { get; set; }
@@ -93,7 +92,7 @@ public sealed class AddModel(IGridController grid, RegionJob job, Func<long?> fr
             ModelState.AddModelError(nameof(Type), "Pick what your region should look like.");
         else if (!TryParse(Size, out size) || size is < 1 or > RegionPlacement.MaxSize)
             ModelState.AddModelError(nameof(Size), "A region is 1 to 16 squares on each side.");
-        else if (!TryParse(X, out x) || !TryParse(Y, out y) || x < 0 || y < 0 || x > MaxCoordinate - size || y > MaxCoordinate - size)
+        else if (!TryParse(X, out x) || !TryParse(Y, out y) || !RegionPlacement.OnMap(x, y, size))
             ModelState.AddModelError(nameof(X), "That spot is off the map.");
         else if (RegionPlacement.Check(s, x, y, size) is { Ok: false } taken)
             ModelState.AddModelError(nameof(X), RegionAdvice.Placement(taken));
@@ -139,7 +138,7 @@ public sealed class AddModel(IGridController grid, RegionJob job, Func<long?> fr
         SizeRisk = RegionAdvice.SizeRisk(size);
         if (TryParse(X, out var x) && TryParse(Y, out var y))
         {
-            PlacementText = x < 0 || y < 0 || x > MaxCoordinate - size || y > MaxCoordinate - size
+            PlacementText = !RegionPlacement.OnMap(x, y, size)
                 ? "That spot is off the map."
                 : RegionAdvice.Placement(RegionPlacement.Check(grid.CurrentSettings(), x, y, size));
         }

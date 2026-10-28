@@ -126,14 +126,7 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
     private IReadOnlyList<string> Affected(Guid id, RegionPower action)
     {
         if (action == RegionPower.Unpark) return [];
-        var status = grid.GetStatus();
-        var self = status.Regions.FirstOrDefault(x => x.Id == id);
-        if (self is null) return [];
-        var program = status.Programs.FirstOrDefault(p => p.Instance == self.Instance);
-        if (program is null || !RegionPowerPlan.IsActive(program.Process.State)) return [];
-        return status.Regions
-            .Where(x => x.Id != id && x.Instance == self.Instance && x.State is RegionState.Running or RegionState.Starting)
-            .Select(x => x.Name).ToList();
+        return RegionActions.SharingProgram(grid.GetStatus(), id);
     }
 
     private IReadOnlyList<string> FailedLog(string instance)

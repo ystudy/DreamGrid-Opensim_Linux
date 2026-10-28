@@ -17,14 +17,12 @@ public static class RegionsApi
     /// <summary>The named HTTP client for Robust's map tiles.</summary>
     public const string RobustMapClient = "robust-map";
 
-    private const int MaxCoordinate = 65535;
-
     public static void Map(WebApplication app)
     {
         app.MapGet("/api/map/tile/{z:int}/{x:int}/{y:int}", async (int z, int x, int y, IGridController grid, IHttpClientFactory http, HttpContext ctx) =>
         {
             // A zoom z tile spans 2^(z-1) squares, so its corner is a multiple of that. Only validated integers reach the URL.
-            if (z is < 1 or > 8 || x is < 0 or > MaxCoordinate || y is < 0 or > MaxCoordinate)
+            if (z is < 1 or > 8 || x is < 0 or > RegionPlacement.MaxCoordinate || y is < 0 or > RegionPlacement.MaxCoordinate)
                 return Results.BadRequest();
             var span = 1 << (z - 1);
             if (x % span != 0 || y % span != 0)
@@ -76,7 +74,7 @@ public static class RegionsApi
 
         app.MapGet("/api/regions/placement", (int x, int y, int size, Guid? ignore, IGridController grid) =>
         {
-            if (size is < 1 or > RegionPlacement.MaxSize || x < 0 || y < 0 || x > MaxCoordinate - size || y > MaxCoordinate - size)
+            if (size is < 1 or > RegionPlacement.MaxSize || !RegionPlacement.OnMap(x, y, size))
                 return Results.Json(new { ok = false, text = "That spot is off the map." }, statusCode: StatusCodes.Status400BadRequest);
             var check = RegionPlacement.Check(grid.CurrentSettings(), x, y, size, ignore);
             return Results.Json(new { ok = check.Ok, text = RegionAdvice.Placement(check) });

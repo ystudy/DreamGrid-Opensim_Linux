@@ -20,6 +20,46 @@ public sealed class RegionActions(IGridController grid, BackgroundWork backgroun
         _ => throw new ArgumentOutOfRangeException(nameof(action)),
     };
 
+    /// <summary>
+    /// The other regions a restart of this region's program drops: those sharing it that are running or starting, while
+    /// that program is up.
+    /// </summary>
+    public static IReadOnlyList<string> SharingProgram(GridStatus status, Guid id)
+    {
+        var self = status.Regions.FirstOrDefault(x => x.Id == id);
+        if (self is null) return [];
+        var program = status.Programs.FirstOrDefault(p => p.Instance == self.Instance);
+        if (program is null || !RegionPowerPlan.IsActive(program.Process.State)) return [];
+        return status.Regions
+            .Where(x => x.Id != id && x.Instance == self.Instance && x.State is RegionState.Running or RegionState.Starting)
+            .Select(x => x.Name).ToList();
+    }
+
+    /// <summary>Moves the region in the background; false when there is no such (live) region. Failures are logged.</summary>
+    public bool TryMove(Guid id, int x, int y)
+    {
+        if (RegionModel.Find(grid.CurrentSettings(), id) is not { DeletedAt: null } region) return false;
+
+        log.LogInformation("Regions: move requested for {Region} to {X}, {Y}.", region.Name, x, y);
+        background.Run($"region move {region.Name}", async stopping =>
+        {
+            try
+            {
+                await grid.MoveRegionAsync(id, x, y, stopping);
+                log.LogInformation("Regions: move finished for {Region}.", region.Name);
+            }
+            catch (OperationCanceledException) when (stopping.IsCancellationRequested)
+            {
+                log.LogInformation("Regions: the launcher stopped during the move of {Region}.", region.Name);
+            }
+            catch (Exception e)
+            {
+                log.LogError(e, "Regions: the move of {Region} failed: {Message}", region.Name, e.Message);
+            }
+        });
+        return true;
+    }
+
     /// <summary>Starts <paramref name="action"/> in the background; false when there is no such (live) region.</summary>
     public bool TryRun(Guid id, RegionPower action)
     {

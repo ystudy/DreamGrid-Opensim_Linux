@@ -172,6 +172,16 @@ internal sealed class FakeGridController : IGridController
 
     public Task RegionPowerAsync(Guid regionId, RegionPower action, CancellationToken ct) => Component($"RegionPower {action} {regionId}", ct);
 
+    /// <summary>Records the move and, like the controller, saves the new spot; <see cref="OnMoveRegion"/> may throw instead.</summary>
+    public Func<Guid, int, int, CancellationToken, Task> OnMoveRegion { get; set; } = (_, _, _, _) => Task.CompletedTask;
+
+    public async Task MoveRegionAsync(Guid regionId, int x, int y, CancellationToken ct)
+    {
+        Record($"MoveRegion {regionId} {x} {y}");
+        await OnMoveRegion(regionId, x, y, ct);
+        UpdateSettings(l => l with { Regions = l.Regions.Select(r => r.Uuid == regionId ? r with { X = x, Y = y } : r).ToList() });
+    }
+
     public LauncherSettings UpdateSettings(Func<LauncherSettings, LauncherSettings> change, bool writeConfig = true)
     {
         lock (UpdateWriteConfig)

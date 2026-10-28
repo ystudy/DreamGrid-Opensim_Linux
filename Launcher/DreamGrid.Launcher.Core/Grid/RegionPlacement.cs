@@ -15,6 +15,13 @@ public static class RegionPlacement
 {
     public const int MaxSize = 16;
 
+    /// <summary>The largest map coordinate (the map is 65536 squares on each side).</summary>
+    public const int MaxCoordinate = 65535;
+
+    /// <summary>True when a region of <paramref name="size"/> at (x, y) lies wholly on the map: positions run 0 to 65535 minus size.</summary>
+    public static bool OnMap(int x, int y, int size) =>
+        x >= 0 && y >= 0 && x <= MaxCoordinate - size && y <= MaxCoordinate - size;
+
     public static PlacementCheck Check(LauncherSettings s, int x, int y, int size, Guid? ignore = null)
     {
         var neighbours = new List<Neighbour>();

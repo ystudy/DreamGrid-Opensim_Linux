@@ -137,6 +137,36 @@ public sealed partial class GridController(
         finally { _activity = GridActivity.None; _ops.Release(); }
     }
 
+    public async Task MoveRegionAsync(Guid regionId, int x, int y, CancellationToken ct)
+    {
+        await _ops.WaitAsync(ct);
+        try
+        {
+            var s = LoadSettings();
+            var region = RegionModel.Find(s, regionId) ?? throw new InvalidOperationException("There is no such region.");
+            if (region.DeletedAt is not null) throw new InvalidOperationException("That region has been deleted.");
+            if (!RegionPlacement.OnMap(x, y, region.Size)) throw new ArgumentException("That spot is off the map.");
+            // The region's own square doesn't count: it may move to an overlapping spot.
+            if (RegionPlacement.Check(s, x, y, region.Size, ignore: regionId) is { Ok: false } taken)
+                throw new ArgumentException(RegionAdvice.Placement(taken));
+
+            s = UpdateSettings(l => l with { Regions = l.Regions.Select(r => r.Uuid == regionId ? r with { X = x, Y = y } : r).ToList() });
+
+            // The program reads its region files when it starts: a running one that loads this region restarts to apply the move.
+            if (_programs.GetValueOrDefault(region.Instance) is not { } program || !RegionPowerPlan.IsActive(program.Process.State)) return;
+            var loadable = RegionModel.Loadable(s, region.Instance, _held).ToList();
+            if (loadable.All(r => r.Uuid != regionId)) return;
+            if (_loaded.GetValueOrDefault(region.Instance) is { } ids && !ids.Contains(regionId)) return;
+
+            var others = loadable.Where(r => r.Uuid != regionId).Select(r => r.Name).ToList();
+            if (others.Count > 0)
+                _log?.LogInformation("Move {Region}: also affected {Others}.", region.Name, string.Join(", ", others));
+            _activity = GridActivity.Restarting;
+            await RestartProgramAsync(s, program, ct);
+        }
+        finally { _activity = GridActivity.None; _ops.Release(); }
+    }
+
     /// <summary>Stops a program and starts it again with its current region files.</summary>
     private async Task RestartProgramAsync(LauncherSettings s, Component program, CancellationToken ct)
     {

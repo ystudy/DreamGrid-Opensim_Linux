@@ -459,6 +459,99 @@ public sealed class GridControllerWiringTests : IDisposable
         fake.Dispose();
     }
 
+    private static readonly Guid Beach = Guid.Parse("50000000-0000-0000-0000-000000000002");
+
+    /// <summary>Welcome (2x2 at 1000, 1000) and Beach (1x1 at 1010, 1000), each in a program of its own.</summary>
+    private Guid TwoRegions(bool created = true)
+    {
+        var s = _store.LoadOrCreate();
+        var welcome = RegionModel.First(s)?.Uuid ?? Guid.NewGuid();
+        _store.Save(s with
+        {
+            Programs = [new ProgramSettings("Welcome", s.RegionPort, s.RegionConsolePort), new ProgramSettings("Beach", s.RegionPort + 100, s.RegionConsolePort + 100)],
+            Regions =
+            [
+                new RegionSettings("Welcome", "Welcome", welcome, Size: 2, UdpPort: s.RegionPort),
+                new RegionSettings("Beach", "Beach", Beach, X: 1010, UdpPort: s.RegionPort + 100),
+            ],
+            Setup = s.Setup with { RegionCreated = created },
+        });
+        return welcome;
+    }
+
+    [Fact]
+    public async Task Move_saves_spot_and_restarts_running_program()
+    {
+        var id = TwoRegions(created: false);
+        var regionPort = _store.LoadOrCreate().RegionConsolePort;
+        var fake = StartLeftoverRegion();
+        try
+        {
+            await Record.ExceptionAsync(() => _grid.StartAsync(TestContext.Current.CancellationToken)); // MariaDB cannot start; the region is adopted
+            Assert.Equal(ProcessState.Running, _grid.GetStatus().Programs.Single(p => p.Instance == "Welcome").Process.State);
+            _http.OnCommand = port =>
+            {
+                if (port == regionPort && _http.Commands(port).Contains("quit")) fake.Kill(); // what the region does on "quit"
+            };
+
+            // Overlapping its own old square is fine. The restart itself can't finish here (the stand-in OpenSim is one byte).
+            await Record.ExceptionAsync(() => _grid.MoveRegionAsync(id, 1001, 1000, TestContext.Current.CancellationToken));
+
+            var saved = RegionModel.Find(_store.LoadOrCreate(), id)!;
+            Assert.Equal((1001, 1000), (saved.X, saved.Y));
+            Assert.Contains("quit", _http.Commands(regionPort)); // the running program was stopped to start again
+        }
+        finally { await EndLeftoverRegionAsync(fake); }
+    }
+
+    [Fact]
+    public async Task Move_of_stopped_region_restarts_nothing()
+    {
+        var id = TwoRegions();
+
+        await _grid.MoveRegionAsync(id, 2000, 3000, TestContext.Current.CancellationToken);
+
+        var saved = RegionModel.Find(_store.LoadOrCreate(), id)!;
+        Assert.Equal((2000, 3000), (saved.X, saved.Y));
+        Assert.Equal((2000, 3000), (RegionModel.Find(_grid.CurrentSettings(), id)!.X, RegionModel.Find(_grid.CurrentSettings(), id)!.Y));
+        Assert.Empty(_http.CommandPorts);
+        Assert.All(_grid.GetStatus().Programs, p => Assert.Equal(ProcessState.Stopped, p.Process.State));
+    }
+
+    [Fact]
+    public async Task Move_onto_another_region_is_refused()
+    {
+        var id = TwoRegions();
+
+        var taken = await Assert.ThrowsAsync<ArgumentException>(() => _grid.MoveRegionAsync(id, 1009, 1000, TestContext.Current.CancellationToken));
+        var off = await Assert.ThrowsAsync<ArgumentException>(() => _grid.MoveRegionAsync(id, 65535, 0, TestContext.Current.CancellationToken));
+
+        Assert.Contains("That spot is taken by Beach.", taken.Message);
+        Assert.Contains("That spot is off the map.", off.Message);
+        var saved = RegionModel.Find(_store.LoadOrCreate(), id)!;
+        Assert.Equal((1000, 1000), (saved.X, saved.Y));
+    }
+
+    [Fact]
+    public async Task Move_next_to_itself_is_allowed()
+    {
+        var id = TwoRegions();
+
+        await _grid.MoveRegionAsync(id, 1001, 1001, TestContext.Current.CancellationToken); // overlaps its own old square
+
+        var saved = RegionModel.Find(_store.LoadOrCreate(), id)!;
+        Assert.Equal((1001, 1001), (saved.X, saved.Y));
+    }
+
+    [Fact]
+    public async Task Move_of_a_deleted_region_throws()
+    {
+        var id = TwoRegions();
+        _grid.UpdateSettings(s => s with { Regions = s.Regions.Select(r => r.Uuid == id ? r with { DeletedAt = DateTimeOffset.UtcNow } : r).ToList() });
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _grid.MoveRegionAsync(id, 2000, 2000, TestContext.Current.CancellationToken));
+    }
+
     private const string IslandStats = "max/min/avg/sum: 26.3/4.8/12.5/819200";
 
     [Fact]

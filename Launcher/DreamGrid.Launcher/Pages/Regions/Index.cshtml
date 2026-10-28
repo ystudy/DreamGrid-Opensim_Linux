@@ -39,7 +39,8 @@
             <div id="map" class="region-map"
                  data-tiles="/api/map/tile" data-regions="/api/regions" data-placement="/api/regions/placement"
                  data-add="/regions/add" data-panel="/regions/region/"
-                 data-selected="@Model.Selected"></div>
+                 data-selected="@Model.Selected"
+                 data-move="@Model.Moving?.Uuid" data-move-name="@Model.Moving?.Name" data-move-size="@Model.Moving?.Size"></div>
             <p id="placement-text" class="form-text mb-0" role="status"></p>
         </section>
     </div>

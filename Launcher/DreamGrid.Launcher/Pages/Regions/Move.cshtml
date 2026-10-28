@@ -1,0 +1,40 @@
+@page "/regions/region/{id:guid}/move"
+@model DreamGrid.Launcher.Pages.Regions.MoveModel
+@using DreamGrid.Launcher.Core.Grid
+@{
+    ViewData["Title"] = "Move " + Model.Name;
+    string Error(string key) => ModelState.TryGetValue(key, out var e) && e.Errors.Count > 0 ? e.Errors[0].ErrorMessage : "";
+    var them = Model.Affected.Count == 1 ? "it" : "them";
+}
+<h1>Move @Model.Name</h1>
+
+<form method="post">
+    <div class="row g-3">
+        <div class="col-auto">
+            <label class="form-label" for="X">X</label>
+            <input class="form-control" id="X" name="X" type="number" min="0" max="65535" value="@Model.X" required>
+        </div>
+        <div class="col-auto">
+            <label class="form-label" for="Y">Y</label>
+            <input class="form-control" id="Y" name="Y" type="number" min="0" max="65535" value="@Model.Y" required>
+        </div>
+    </div>
+    <p class="form-text mb-0" id="placement-text" role="status">@Model.PlacementText</p>
+    <span class="field-error text-danger small d-block">@Error("X")</span>
+    <p class="mt-2"><a class="choose-on-map" href="/regions?move=@Model.Id">Choose on the map</a></p>
+
+    @if (Model.Affected.Count > 0)
+    {
+        <div class="alert alert-warning">
+            <p>@Model.Name runs with @RegionAdvice.Join(Model.Affected). Moving it restarts @them too, and drops everyone in @them.</p>
+            <label class="confirm form-check-label d-block">
+                <input class="form-check-input" type="checkbox" name="Confirm" value="true" checked="@Model.Confirm">
+                I understand @RegionAdvice.Join(Model.Affected) will restart
+            </label>
+            <span class="field-error text-danger small d-block">@Error("Confirm")</span>
+        </div>
+    }
+
+    <button type="submit" class="btn btn-primary">Move @Model.Name</button>
+    <a class="btn btn-outline-secondary" href="/regions/region/@Model.Id">Cancel</a>
+</form>

@@ -40,6 +40,10 @@ function startMap(map) {
     var placementUrl = map.getAttribute("data-placement");
     var addUrl = map.getAttribute("data-add");
     var panelUrl = map.getAttribute("data-panel");
+    // Moving a region (?move=<id>): its spot is chosen on the map and sent to its move page.
+    var moveId = map.getAttribute("data-move");
+    var moveName = map.getAttribute("data-move-name");
+    var moveSize = parseInt(map.getAttribute("data-move-size"), 10) || 1;
 
     var placementText = document.getElementById("placement-text");
     var backButton = document.getElementById("back-to-mine");
@@ -121,7 +125,7 @@ function startMap(map) {
             var r = regions[i];
             if (markers[r.id]) place(markers[r.id], r.x, r.y, r.size);
         }
-        if (ghostSquare) place(ghost, ghostSquare.x, ghostSquare.y, 1);
+        if (ghostSquare) place(ghost, ghostSquare.x, ghostSquare.y, ghostSize());
         update();
     }
 
@@ -368,8 +372,9 @@ function startMap(map) {
         update();
     }
 
-    // Placing a new region. Reusable for picking a spot to move a region to (?move=<id>, a later task).
+    // Placing a new region.
     function selectType(id) {
+        if (moveId) return; // the spot is for the region being moved
         placingType = id;
         typeItems.forEach(function (li) {
             var on = li.getAttribute("data-type") === id;
@@ -392,6 +397,9 @@ function startMap(map) {
         ghost.classList.toggle("bad", !ok);
     }
 
+    // The squares along the ghost's side: the moving region's size, else a single square.
+    function ghostSize() { return moveId ? moveSize : 1; }
+
     function hideGhost() { ghost.hidden = true; ghostSquare = null; }
 
     function squareAt(p) {
@@ -407,7 +415,9 @@ function startMap(map) {
             var wait = Math.max(0, lastAsk + ASK_GAP_MS - Date.now());
             lastAsk = Date.now() + wait;
             answers[key] = new Promise(function (resolve) { setTimeout(resolve, wait); }).then(function () {
-                return getJson(placementUrl + "?x=" + sq.x + "&y=" + sq.y + "&size=1");
+                // A moving region may overlap its own old square.
+                var query = "?x=" + sq.x + "&y=" + sq.y + "&size=" + ghostSize() + (moveId ? "&ignore=" + encodeURIComponent(moveId) : "");
+                return getJson(placementUrl + query);
             }).then(function (json) {
                 return { ok: json.ok === true, text: json.text };
             }, function (e) {
@@ -440,7 +450,7 @@ function startMap(map) {
         ghost.hidden = false;
         if (sameSquare(sq, ghostSquare)) return;
         ghostSquare = sq;
-        place(ghost, sq.x, sq.y, 1);
+        place(ghost, sq.x, sq.y, ghostSize());
         if (answers[sq.x + "," + sq.y]) ask(sq).then(function (a) { showAnswer(sq, a); }, function () { });
         else askSoon();
     }
@@ -457,6 +467,10 @@ function startMap(map) {
 
     // Where an ok spot leads.
     function spotChosen(x, y) {
+        if (moveId) {
+            window.location.href = panelUrl + encodeURIComponent(moveId) + "/move?x=" + x + "&y=" + y;
+            return;
+        }
         window.location.href = addUrl + "?type=" + encodeURIComponent(placingType) + "&x=" + x + "&y=" + y;
     }
 
@@ -555,7 +569,7 @@ function startMap(map) {
     // Escape unselects the type, then closes the panel.
     document.addEventListener("keydown", function (e) {
         if (e.key !== "Escape") return;
-        if (placingType) selectType(null);
+        if (placingType && !moveId) selectType(null);
         else closePanel();
     });
     document.getElementById("close-panel").addEventListener("click", closePanel);
@@ -564,6 +578,14 @@ function startMap(map) {
 
     if (window.ResizeObserver) new ResizeObserver(resized).observe(map);
     else window.addEventListener("resize", resized);
+
+    if (moveId) {
+        // Only the spot is asked for: the region types step aside and the map is ready to click.
+        typeItems.forEach(function (li) { li.closest(".col-lg-2").hidden = true; });
+        placingType = moveId;
+        map.classList.add("placing");
+        showPlacement("Choose a new spot for " + moveName + ".", true);
+    }
 
     relayout();
     if (selectedId) openPanel(selectedId);

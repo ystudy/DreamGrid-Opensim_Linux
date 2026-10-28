@@ -1,4 +1,5 @@
 using DreamGrid.Launcher.Core.Grid;
+using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Endpoints;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -19,8 +20,15 @@ public sealed class IndexModel(IGridController grid) : PageModel
     [BindProperty(SupportsGet = true, Name = "region")]
     public Guid? Selected { get; set; }
 
+    /// <summary>The region being moved (<c>?move=&lt;id&gt;</c>): the map then asks for its new spot instead of a new region's.</summary>
+    [BindProperty(SupportsGet = true, Name = "move")]
+    public Guid? Move { get; set; }
+
+    public RegionSettings? Moving { get; private set; }
+
     public void OnGet()
     {
+        Moving = Move is { } id && RegionModel.Find(grid.CurrentSettings(), id) is { DeletedAt: null } r ? r : null;
         var live = grid.GetStatus().Regions.ToDictionary(r => r.Id);
         Rows = grid.CurrentSettings().Regions.Where(r => r.DeletedAt is null).Select(r =>
         {
