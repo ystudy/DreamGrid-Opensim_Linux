@@ -150,6 +150,7 @@ builder.Services.AddHostedService<GridHostedService>();
 // Registered after GridHostedService, so it stops first: running work is awaited before the controller detaches.
 builder.Services.AddSingleton<BackgroundWork>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<BackgroundWork>());
+builder.Services.AddSingleton<OarJobs>();
 
 var app = builder.Build();
 app.UseStaticFiles();

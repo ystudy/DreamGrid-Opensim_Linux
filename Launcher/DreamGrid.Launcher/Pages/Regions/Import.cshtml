@@ -1,0 +1,48 @@
+@page "/regions/region/{id:guid}/import"
+@model DreamGrid.Launcher.Pages.Regions.ImportModel
+@{
+    ViewData["Title"] = "Import an OAR into " + Model.Name;
+}
+<h1>Import an OAR into @Model.Name</h1>
+
+@if (!Model.Running)
+{
+    <p class="alert alert-warning">Start @Model.Name first; an OAR needs it running.</p>
+    <a class="btn btn-outline-secondary" href="/regions/region/@Model.Id">Back</a>
+}
+else if (Model.Asking)
+{
+    <form method="post" asp-antiforgery="true" class="alert alert-warning">
+        <p>Import @Model.Chosen into @Model.Name? Its land and objects are replaced by the OAR's. This can't be undone; Save as OAR first if you may want them back.</p>
+        <input type="hidden" name="file" value="@Model.Chosen">
+        <input type="hidden" name="confirmed" value="true">
+        <button type="submit" class="btn btn-warning btn-sm">Yes, import</button>
+        <button type="submit" class="btn btn-outline-primary btn-sm" formaction="/regions/region/@Model.Id/import?handler=save">Save as OAR first</button>
+        <a class="btn btn-outline-secondary btn-sm" href="/regions/region/@Model.Id/import">Cancel</a>
+    </form>
+}
+else if (Model.Files.Count == 0)
+{
+    <p>The OAR library is empty. Add a file on <a href="/regions/library">the library page</a>, then come back.</p>
+    <a class="btn btn-outline-secondary" href="/regions/region/@Model.Id">Back</a>
+}
+else
+{
+    <form method="post" asp-antiforgery="true">
+        <p>Choose the file to import.</p>
+        @if (Model.Error is not null)
+        {
+            <p class="text-danger" role="alert">@Model.Error</p>
+        }
+        @for (var i = 0; i < Model.Files.Count; i++)
+        {
+            <div class="form-check">
+                <input class="form-check-input" type="radio" name="file" id="file-@i" value="@Model.Files[i]">
+                <label class="form-check-label" for="file-@i">@Model.Files[i]</label>
+            </div>
+        }
+        <p class="form-text">Don't see it? <a href="/regions/library">The library page</a> adds files.</p>
+        <button type="submit" class="btn btn-primary">Import…</button>
+        <a class="btn btn-outline-secondary" href="/regions/region/@Model.Id">Cancel</a>
+    </form>
+}

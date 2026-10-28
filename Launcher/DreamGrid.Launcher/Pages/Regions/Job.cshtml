@@ -1,0 +1,60 @@
+@page "/regions/region/{id:guid}/job"
+@model DreamGrid.Launcher.Pages.Regions.JobModel
+@{
+    ViewData["Title"] = Model.Job.Text;
+}
+@section Head {
+    @if (Model.Job.Running)
+    {
+        @* Without JavaScript the page reloads itself; with it, the progress is polled instead. *@
+        <noscript><meta http-equiv="refresh" content="3"></noscript>
+    }
+}
+<h1 class="h3">@Model.Job.Text</h1>
+
+@if (Model.Notice is not null)
+{
+    <p class="notice alert alert-info py-2" role="status">@Model.Notice</p>
+}
+
+<div id="oar-job">
+    @if (Model.Job.Running)
+    {
+        <p><strong>Stage:</strong> <span id="job-stage">@Model.Job.Stage</span></p>
+        <p id="job-written">@Model.Job.WrittenText</p>
+        <p><strong>Elapsed:</strong> <span id="job-elapsed">@Model.Job.ElapsedText</span></p>
+        <p class="form-text">This keeps going if you close this page.</p>
+    }
+    else if (Model.Job.Error is not null)
+    {
+        <p class="text-danger" role="alert" id="job-error">@Model.Job.Error</p>
+        <p><strong>Elapsed:</strong> @Model.Job.ElapsedText</p>
+    }
+    else
+    {
+        <p id="job-done"><strong>Done.</strong></p>
+        @if (Model.Job.SavedAs is { } saved)
+        {
+            <p>Saved as <a href="/regions/library/file/@Uri.EscapeDataString(saved)">@saved</a> in <a href="/regions/library">the OAR library</a>.</p>
+        }
+        <p><strong>Elapsed:</strong> @Model.Job.ElapsedText</p>
+    }
+</div>
+<p><a href="/regions/region/@Model.Id">Back to @Model.Name</a></p>
+
+@section Scripts {
+@if (Model.Job.Running)
+{
+    <script>
+    (function () {
+        poll("/api/regions/@Model.Id/job", 2000, function (job) {
+            // Finished or failed: the page itself shows the result.
+            if (!job.running) { window.location.reload(); return; }
+            document.getElementById("job-stage").textContent = job.stage;
+            document.getElementById("job-written").textContent = job.writtenText || "";
+            document.getElementById("job-elapsed").textContent = job.elapsedText;
+        });
+    })();
+    </script>
+}
+}

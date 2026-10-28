@@ -80,6 +80,13 @@ public static class RegionsApi
             return Results.Json(new { ok = check.Ok, text = RegionAdvice.Placement(check) });
         }).RequireAuthorization(AuthSchemes.AdminPolicy);
 
+        // The OAR job of the region's program (running, or the last one that finished); 404 when there has been none.
+        app.MapGet("/api/regions/{id:guid}/job", (Guid id, OarJobs jobs, HttpContext ctx) =>
+        {
+            ctx.Response.Headers.CacheControl = "no-store";
+            return jobs.For(id) is { } job ? Results.Json(job) : Results.NotFound();
+        }).RequireAuthorization(AuthSchemes.AdminPolicy);
+
         // The add-region job's progress; regionId is the saved region's id once it is known.
         app.MapGet("/api/regions/progress", (RegionJob job, HttpContext ctx) =>
         {

@@ -99,6 +99,45 @@
         </details>
     </form>
 
+    @if (Model.BusyText is not null)
+    {
+        <p class="oar-busy alert alert-info py-2" role="status">@Model.BusyText is running. <a href="/regions/region/@Model.Id/job">See how it's going</a></p>
+    }
+    <form method="post" action="/regions/region/@Model.Id?handler=oar" asp-antiforgery="true" class="mb-3">
+        @{ var oarOff = !Model.CanOar || Model.BusyText is not null; }
+        <details class="oar-menu">
+            <summary class="btn btn-outline-primary">OAR</summary>
+            <div class="power-items list-group shadow">
+                @if (!Model.CanOar)
+                {
+                    <div class="list-group-item form-text m-0">@RegionPanelModel.OarNotRunning</div>
+                }
+                <div class="list-group-item">
+                    @if (oarOff)
+                    {
+                        <button type="button" class="btn btn-link p-0 fw-semibold" disabled>Import OAR…</button>
+                    }
+                    else
+                    {
+                        <a class="fw-semibold" href="/regions/region/@Model.Id/import">Import OAR…</a>
+                    }
+                    <span class="form-text d-block m-0">Replaces its land and objects with a file from the OAR library.</span>
+                </div>
+                <div class="list-group-item">
+                    <button type="submit" name="action" value="Save" class="btn btn-link p-0 fw-semibold" disabled="@oarOff">Save as OAR</button>
+                    <span class="form-text d-block m-0">Saves its land and objects into the OAR library.</span>
+                </div>
+                @if (Model.NeedsContent)
+                {
+                    <div class="list-group-item">
+                        <button type="submit" name="action" value="MakeLand" class="btn btn-link p-0 fw-semibold" disabled="@oarOff">Make the land again</button>
+                        <span class="form-text d-block m-0">Its land didn't finish loading when it was added.</span>
+                    </div>
+                }
+            </div>
+        </details>
+    </form>
+
     <p class="d-flex flex-wrap gap-3">
         <a href="/regions/region/@Model.Id/move">Move…</a>
         <a href="/regions/region/@Model.Id/runs">How it runs…</a>

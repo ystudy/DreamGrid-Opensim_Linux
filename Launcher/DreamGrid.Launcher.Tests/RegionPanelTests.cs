@@ -104,6 +104,59 @@ public sealed class RegionPanelTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Panel_shows_oar_items_for_a_running_region()
+    {
+        var doc = await PageAsync(SunsetId);
+
+        var save = doc.QuerySelector("details.oar-menu button[value=Save]")!;
+        Assert.Contains("Save as OAR", save.TextContent);
+        Assert.False(save.HasAttribute("disabled"));
+        var import = doc.QuerySelector($"a[href='/regions/region/{SunsetId}/import']")!;
+        Assert.Contains("Import OAR", import.TextContent);
+        Assert.Null(doc.QuerySelector("button[value=MakeLand]"));
+        Assert.DoesNotContain("Start it first", Text(doc));
+    }
+
+    [Fact]
+    public async Task Panel_disables_oar_items_when_stopped()
+    {
+        _f.Grid.RegionState = ProcessState.Stopped;
+
+        var doc = await PageAsync(SunsetId);
+
+        Assert.Contains("Start it first; an OAR needs it running.", Text(doc));
+        Assert.True(doc.QuerySelector("details.oar-menu button[value=Save]")!.HasAttribute("disabled"));
+        Assert.Null(doc.QuerySelector("a[href$='/import']"));
+    }
+
+    [Fact]
+    public async Task Panel_shows_make_land_again_only_when_needed()
+    {
+        var plain = await PageAsync(SunsetId);
+        var s = _f.Store.LoadOrCreate();
+        _f.Store.Save(s with { Regions = s.Regions.Select(r => r.Uuid == SunsetId ? r with { NeedsContent = true } : r).ToList() });
+
+        var needed = await PageAsync(SunsetId);
+
+        Assert.Null(plain.QuerySelector("button[value=MakeLand]"));
+        Assert.Contains("Make the land again", needed.QuerySelector("details.oar-menu button[value=MakeLand]")!.TextContent);
+        Assert.Contains("Its land didn't finish loading when it was added.", Text(needed));
+        Assert.Null((await PageAsync(HomeId)).QuerySelector("button[value=MakeLand]"));
+    }
+
+    [Fact]
+    public async Task Panel_says_what_job_is_running_and_links_to_it()
+    {
+        _f.Grid.Busy["Home"] = "Saving Home as an OAR";
+
+        var doc = await PageAsync(BeachId);
+
+        Assert.Contains("Saving Home as an OAR is running.", Text(doc));
+        Assert.NotNull(doc.QuerySelector($"a[href='/regions/region/{BeachId}/job']"));
+        Assert.True(doc.QuerySelector("details.oar-menu button[value=Save]")!.HasAttribute("disabled"));
+    }
+
+    [Fact]
     public async Task Panel_lists_who_is_here()
     {
         _f.OnlineUsers.Result = new OnlineList([new OnlineAvatar("Ada Lovelace", BeachId), new OnlineAvatar("Bob Smith", SunsetId)], true);

@@ -15,7 +15,7 @@ public sealed record PowerItem(string Action, string Label, string Help);
 /// One region's info panel (spec 5.4): state, who's here, running time and memory, place on the map, how it runs and its
 /// power menu. <c>?partial=1</c> renders only the fragment, which the map puts in its side panel.
 /// </summary>
-public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, RegionActions actions, LogReader logs) : PageModel
+public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, RegionActions actions, LogReader logs, OarJobs oarJobs) : PageModel
 {
     private const int LogLines = 40;
 
@@ -45,6 +45,15 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
     /// <summary>The neighbours, each with the side of this region it lies on.</summary>
     public IReadOnlyList<Neighbour> Neighbours { get; private set; } = [];
     public IReadOnlyList<PowerItem> Menu { get; private set; } = [];
+
+    /// <summary>Whether the region runs, so an OAR can be saved from or loaded into it.</summary>
+    public bool CanOar { get; private set; }
+
+    /// <summary>True while the region's land still has to be loaded (it didn't finish when the region was added).</summary>
+    public bool NeedsContent { get; private set; }
+
+    /// <summary>What OAR job is running in the region's program, in words; null when none is.</summary>
+    public string? BusyText { get; private set; }
 
     /// <summary>Set when a power post needs a yes first: the action, the question and the yes button.</summary>
     public RegionPower? Asking { get; private set; }
@@ -82,6 +91,31 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
         return Redirect("/regions/region/" + id);
     }
 
+    /// <summary>
+    /// Starts a save, or loading the region's own type again, as an OAR job and goes to its page. A region that isn't
+    /// running is refused with the notice, and a program that already has a job shows that job instead.
+    /// </summary>
+    public async Task<IActionResult> OnPostOarAsync(Guid id, string? action)
+    {
+        if (!Enum.TryParse<OarJobKind>(action, ignoreCase: true, out var kind) || kind == OarJobKind.Import || !Enum.IsDefined(kind))
+            return BadRequest();
+        if (!await LoadAsync(id)) return NotFound();
+        if (!CanOar)
+        {
+            Notice = OarNotRunning;
+            return Redirect("/regions/region/" + id);
+        }
+        if (kind == OarJobKind.MakeLand && !NeedsContent) return BadRequest();
+
+        var request = new OarJobRequest(id, kind);
+        if (!oarJobs.TryStart(request, OarJobs.Describe(request, Name)) && oarJobs.For(id) is { } running)
+            Notice = $"{running.Text} is still running. Try again when it finishes.";
+        return Redirect($"/regions/region/{id}/job");
+    }
+
+    /// <summary>What the OAR items say while the region isn't running.</summary>
+    public const string OarNotRunning = "Start it first; an OAR needs it running.";
+
     private async Task<bool> LoadAsync(Guid id)
     {
         var settings = grid.CurrentSettings();
@@ -115,6 +149,8 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
         var people = await online.ListAsync(HttpContext.RequestAborted);
         Here = people.Available ? people.Avatars.Where(a => a.RegionId == id).Select(a => a.Name).ToList() : null;
         Menu = MenuFor(State);
+        (CanOar, NeedsContent) = (State == RegionState.Running, r.NeedsContent);
+        BusyText = grid.BusyWith(r.Instance) ?? (oarJobs.For(id) is { Running: true } job ? job.Text : null);
         return true;
     }
 
