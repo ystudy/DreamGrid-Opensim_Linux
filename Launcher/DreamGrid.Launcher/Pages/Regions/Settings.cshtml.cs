@@ -13,7 +13,7 @@ namespace DreamGrid.Launcher.Pages.Regions;
 /// Each tab is one plain form posting <c>?handler=&lt;tab&gt;</c>. A wrong value comes back at its field and nothing is
 /// saved. Options belong to the region; the others belong to the program the region runs in, so every region in it shares them.
 /// </summary>
-public sealed class SettingsModel(IGridController grid, Func<CpuPriority, string?> priorityUnavailable) : PageModel
+public sealed class SettingsModel(IGridController grid, OarJobs oarJobs, Func<CpuPriority, string?> priorityUnavailable) : PageModel
 {
     public static readonly IReadOnlyList<(string Key, string Label)> Tabs =
     [
@@ -57,6 +57,17 @@ public sealed class SettingsModel(IGridController grid, Func<CpuPriority, string
     public IReadOnlyList<int> PickedCores { get; private set; } = [];
     public CpuPriority Priority { get; private set; }
 
+    /// <summary>The name as typed in the rename box.</summary>
+    public string NameText { get; private set; } = "";
+    /// <summary>The size as chosen in the resize box.</summary>
+    public int SizeChoice { get; private set; }
+    /// <summary>True while the page asks whether to shrink (land and objects outside the new edge are lost).</summary>
+    public bool Shrinking { get; private set; }
+    /// <summary>The region is loaded (running or starting), so it can't be renamed.</summary>
+    public bool Loaded { get; private set; }
+    /// <summary>The region is running, so an OAR can be saved.</summary>
+    public bool CanOar { get; private set; }
+
     [TempData] public string? Notice { get; set; }
 
     private LauncherSettings _settings = null!;
@@ -74,6 +85,93 @@ public sealed class SettingsModel(IGridController grid, Func<CpuPriority, string
         FillFromSettings();
         return Page();
     }
+
+    public async Task<IActionResult> OnPostRenameAsync(Guid id)
+    {
+        if (!Load(id, "basics")) return NotFound();
+        ModelState.Clear();
+        FillFromSettings();
+
+        NameText = Form("Name") ?? "";
+        try
+        {
+            await grid.RenameRegionAsync(id, NameText, HttpContext.RequestAborted);
+        }
+        catch (Exception e) when (e is ArgumentException or InvalidOperationException)
+        {
+            if (RegionModel.Find(grid.CurrentSettings(), id) is not { DeletedAt: null }) return NotFound(); // deleted meanwhile
+            ModelState.AddModelError("Name", e.Message);
+            return Page();
+        }
+        Notice = $"Renamed to {NameText}.";
+        return Redirect($"/regions/region/{id}/settings/basics");
+    }
+
+    /// <summary>
+    /// Resize. Growing checks the spot and saves. Shrinking asks first (<paramref name="confirmed"/>); with
+    /// <paramref name="saveFirst"/> the resize is the follow-up of an OAR save, so a failed save leaves the size alone.
+    /// </summary>
+    public async Task<IActionResult> OnPostResizeAsync(Guid id, bool confirmed, bool saveFirst)
+    {
+        if (!Load(id, "basics")) return NotFound();
+        ModelState.Clear();
+        FillFromSettings();
+
+        if (!int.TryParse(Form("Size"), NumberStyles.None, CultureInfo.InvariantCulture, out var size) || size < 1 || size > RegionPlacement.MaxSize)
+        {
+            ModelState.AddModelError("Size", $"Pick a size from 1 to {RegionPlacement.MaxSize}.");
+            return Page();
+        }
+        SizeChoice = size;
+        if (size == Size) return Redirect($"/regions/region/{id}/settings/basics");
+        if (grid.BusyWith(Instance) is { } busy)
+        {
+            Notice = $"{busy} is still running. Try again when it finishes.";
+            return Redirect($"/regions/region/{id}/settings/basics");
+        }
+
+        if (size > Size)
+        {
+            if (!RegionPlacement.OnMap(X, Y, size))
+                ModelState.AddModelError("Size", "That size reaches past the edge of the map.");
+            else if (RegionPlacement.Check(_settings, X, Y, size, ignore: id) is { Ok: false } taken)
+                ModelState.AddModelError("Size", RegionAdvice.Placement(taken));
+            if (!ModelState.IsValid) return Page();
+        }
+        else if (!confirmed)
+        {
+            Shrinking = true;
+            return Page();
+        }
+
+        var ct = HttpContext.RequestAborted;
+        if (saveFirst && size < Size)
+        {
+            if (!CanOar)
+            {
+                Notice = RegionPanelModel.OarNotRunning;
+                return Redirect($"/regions/region/{id}/settings/basics");
+            }
+            var request = new OarJobRequest(id, OarJobKind.Save);
+            if (!oarJobs.TryStart(request, OarJobs.Describe(request, Name), c => grid.ResizeRegionAsync(id, size, c)) && oarJobs.For(id) is { } running)
+                Notice = $"{running.Text} is still running. Try again when it finishes.";
+            return Redirect($"/regions/region/{id}/job");
+        }
+
+        try
+        {
+            await grid.ResizeRegionAsync(id, size, ct);
+        }
+        catch (Exception e) when (e is ArgumentException or InvalidOperationException)
+        {
+            if (RegionModel.Find(grid.CurrentSettings(), id) is not { DeletedAt: null }) return NotFound();
+            ModelState.AddModelError("Size", e.Message);
+            return Page();
+        }
+        Notice = $"Saved. {Applies()}";
+        return Redirect($"/regions/region/{id}/settings/basics");
+    }
+
 
     public Task<IActionResult> OnPostOptionsAsync(Guid id) => SaveAsync(id, "options");
     public Task<IActionResult> OnPostMapAsync(Guid id) => SaveAsync(id, "map");
@@ -207,6 +305,10 @@ public sealed class SettingsModel(IGridController grid, Func<CpuPriority, string
         if (RegionModel.ProgramOf(_settings, r) is not { } program) return false;
         (_region, _program) = (r, program);
         (Id, Tab, Name, Instance) = (id, tab, r.Name, r.Instance);
+        NameText = r.Name;
+        SizeChoice = r.Size;
+        var state = grid.GetStatus().Regions.FirstOrDefault(x => x.Id == id)?.State;
+        (Loaded, CanOar) = (state is RegionState.Running or RegionState.Starting, state == RegionState.Running);
         (X, Y, Size) = (r.X, r.Y, r.Size);
         Sharing = RegionModel.In(_settings, r.Instance).Select(x => x.Name).ToList();
         (DefaultPhysics, DefaultScripts) = (_settings.DefaultPhysics, _settings.DefaultScripts);

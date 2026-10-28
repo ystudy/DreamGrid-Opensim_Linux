@@ -303,4 +303,169 @@ public sealed class RegionSettingsPageTests : IAsyncLifetime
                 Assert.Equal("post", form.GetAttribute("method"));
         }
     }
+
+    private async Task<HttpResponseMessage> PostBasicsAsync(HttpClient client, Guid id, string handler, params (string, string)[] fields)
+    {
+        var page = await GetAsync(client, id, "basics");
+        var token = page.QuerySelector("input[name=__RequestVerificationToken]")?.GetAttribute("value");
+        Assert.NotNull(token);
+        var form = new List<KeyValuePair<string, string>> { new("__RequestVerificationToken", token) };
+        form.AddRange(fields.Select(f => new KeyValuePair<string, string>(f.Item1, f.Item2)));
+        return await client.PostAsync($"{Url(id, "basics")}?handler={handler}", new FormUrlEncodedContent(form), Ct);
+    }
+
+    private async Task<bool> WaitForCallAsync(string call)
+    {
+        for (var i = 0; i < 100; i++)
+        {
+            if (_f.Grid.Snapshot().Contains(call)) return true;
+            await Task.Delay(50, Ct);
+        }
+        return false;
+    }
+
+    private void MakeSunsetBig() =>
+        _f.Grid.UpdateSettings(l => l with { Regions = [.. l.Regions.Select(r => r.Uuid == SunsetId ? r with { Size = 3 } : r)] });
+
+    [Fact]
+    public async Task Rename_posts_to_controller_and_returns_to_basics()
+    {
+        _f.Grid.RegionState = Core.Processes.ProcessState.Stopped;
+        using var client = await SignedInAsync();
+
+        using var response = await PostBasicsAsync(client, SunsetId, "rename", ("Name", "Sunset Two"));
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal(Url(SunsetId, "basics"), response.Headers.Location!.OriginalString);
+        Assert.Contains($"RenameRegion {SunsetId} Sunset Two", _f.Grid.Snapshot());
+        Assert.Equal("Renamed to Sunset Two.", Notice(await GetAsync(client, SunsetId, "basics")));
+    }
+
+    [Fact]
+    public async Task Rename_shows_the_controllers_refusal_at_the_name()
+    {
+        _f.Grid.RegionState = Core.Processes.ProcessState.Stopped;
+        _f.Grid.OnRegionSettings = (_, _) => throw new ArgumentException("Home is already a region.");
+        using var client = await SignedInAsync();
+
+        using var response = await PostBasicsAsync(client, SunsetId, "rename", ("Name", "Home"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var doc = await ParseAsync(response);
+        Assert.Equal("Home is already a region.", doc.QuerySelector("[data-error-for=Name]")!.TextContent.Trim());
+        Assert.Equal("Home", doc.QuerySelector("#Name")!.GetAttribute("value"));
+    }
+
+    [Fact]
+    public async Task Rename_is_disabled_while_loaded()
+    {
+        using var client = await SignedInAsync();
+        var loaded = await GetAsync(client, SunsetId, "basics");
+        _f.Grid.RegionState = Core.Processes.ProcessState.Stopped;
+        var stopped = await GetAsync(client, SunsetId, "basics");
+
+        Assert.True(loaded.QuerySelector("#Name")!.HasAttribute("disabled"));
+        Assert.Contains("Stop Sunset Shore first to rename it.", loaded.Body!.TextContent);
+        Assert.False(stopped.QuerySelector("#Name")!.HasAttribute("disabled"));
+        Assert.DoesNotContain("first to rename it", stopped.Body!.TextContent);
+    }
+
+    [Fact]
+    public async Task Grow_saves_after_placement_check()
+    {
+        using var client = await SignedInAsync();
+
+        using var taken = await PostBasicsAsync(client, HomeId, "resize", ("Size", "2"));
+        var takenDoc = await ParseAsync(taken);
+        using var grown = await PostBasicsAsync(client, SunsetId, "resize", ("Size", "2"));
+
+        Assert.Equal(HttpStatusCode.OK, taken.StatusCode);
+        Assert.Contains("That spot is taken by Beach.", takenDoc.QuerySelector("[data-error-for=Size]")!.TextContent);
+        Assert.DoesNotContain($"ResizeRegion {HomeId} 2", _f.Grid.Snapshot());
+        Assert.Equal(HttpStatusCode.Redirect, grown.StatusCode);
+        Assert.Equal(Url(SunsetId, "basics"), grown.Headers.Location!.OriginalString);
+        Assert.Contains($"ResizeRegion {SunsetId} 2", _f.Grid.Snapshot());
+        Assert.Equal("Saved. It applies when Sunset Shore restarts.", Notice(await GetAsync(client, SunsetId, "basics")));
+    }
+
+    [Fact]
+    public async Task Resize_rejects_a_size_outside_the_range()
+    {
+        using var client = await SignedInAsync();
+
+        using var response = await PostBasicsAsync(client, SunsetId, "resize", ("Size", "17"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.NotEqual("", (await ParseAsync(response)).QuerySelector("[data-error-for=Size]")!.TextContent.Trim());
+        Assert.DoesNotContain(_f.Grid.Snapshot(), c => c.StartsWith("ResizeRegion", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Shrink_asks_first_and_offers_save()
+    {
+        MakeSunsetBig();
+        using var client = await SignedInAsync();
+
+        using var response = await PostBasicsAsync(client, SunsetId, "resize", ("Size", "2"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var doc = await ParseAsync(response);
+        Assert.Contains("Land and objects outside the new edge are lost.", doc.Body!.TextContent);
+        Assert.Contains("Save as OAR first, then shrink", doc.Body.TextContent);
+        Assert.Contains("Shrink without saving", doc.Body.TextContent);
+        Assert.DoesNotContain(_f.Grid.Snapshot(), c => c.StartsWith("ResizeRegion", StringComparison.Ordinal));
+        Assert.Empty(_f.Grid.OarJobs);
+
+        using var without = await PostBasicsAsync(client, SunsetId, "resize", ("Size", "2"), ("confirmed", "true"));
+        Assert.Equal(HttpStatusCode.Redirect, without.StatusCode);
+        Assert.Contains($"ResizeRegion {SunsetId} 2", _f.Grid.Snapshot());
+    }
+
+    [Fact]
+    public async Task Shrink_save_first_starts_a_save_with_resize_follow_up()
+    {
+        MakeSunsetBig();
+        using var client = await SignedInAsync();
+
+        using var response = await PostBasicsAsync(client, SunsetId, "resize", ("Size", "2"), ("confirmed", "true"), ("saveFirst", "true"));
+
+        Assert.Equal($"/regions/region/{SunsetId}/job", response.Headers.Location!.OriginalString);
+        Assert.True(await WaitForCallAsync($"ResizeRegion {SunsetId} 2"));
+        var job = Assert.Single(_f.Grid.OarJobs);
+        Assert.Equal(Core.Grid.OarJobKind.Save, job.Kind);
+        Assert.Equal(SunsetId, job.RegionId);
+    }
+
+    [Fact]
+    public async Task Shrink_save_first_failure_keeps_size()
+    {
+        MakeSunsetBig();
+        _f.Grid.OnOarJob = (_, _, _) => throw new InvalidOperationException("The save did not finish; see the region log.");
+        using var client = await SignedInAsync();
+
+        using var response = await PostBasicsAsync(client, SunsetId, "resize", ("Size", "2"), ("confirmed", "true"), ("saveFirst", "true"));
+
+        Assert.Equal($"/regions/region/{SunsetId}/job", response.Headers.Location!.OriginalString);
+        var html = "";
+        for (var i = 0; i < 100 && !html.Contains("did not finish"); i++)
+        {
+            html = await client.GetStringAsync($"/regions/region/{SunsetId}/job", Ct);
+            await Task.Delay(50, Ct);
+        }
+        Assert.Contains("The save did not finish", html);
+        Assert.DoesNotContain(_f.Grid.Snapshot(), c => c.StartsWith("ResizeRegion", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Uuid_is_shown_read_only()
+    {
+        using var client = await SignedInAsync();
+
+        var doc = await GetAsync(client, HomeId, "basics");
+
+        Assert.Contains(HomeId.ToString(), doc.QuerySelector("code")!.TextContent);
+        Assert.DoesNotContain(doc.QuerySelectorAll("input"), i => i.GetAttribute("value") == HomeId.ToString());
+        Assert.Contains("Move", doc.QuerySelector($"a[href='/regions/region/{HomeId}/move']")!.TextContent);
+        Assert.Contains("1000, 1000", doc.Body!.TextContent);
+    }
 }
