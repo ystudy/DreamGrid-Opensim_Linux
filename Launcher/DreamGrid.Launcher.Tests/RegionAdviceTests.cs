@@ -74,6 +74,34 @@ public sealed class RegionAdviceTests
         "A 2×2 region is 4 squares of land. It uses more memory than a 1×1.", RegionAdvice.SizeRisk(2));
 
     [Fact]
+    public void Size_risk_for_3() => Assert.Equal(
+        "A 3×3 region is 9 squares of land. It uses about 4 times the memory of a 1×1 and can feel slower to visitors.", RegionAdvice.SizeRisk(3));
+
+    [Fact]
+    public void Size_risk_for_8() => Assert.Equal(
+        "A 8×8 region is 64 squares of land in one region. It uses about 24 times the memory of a 1×1, needs a powerful computer, and can feel slow to visitors. Many viewers handle very large regions poorly.",
+        RegionAdvice.SizeRisk(8));
+
+    [Fact]
+    public void Size_risk_for_16() => Assert.Equal(
+        "A 16×16 region is 256 squares of land in one region. It uses about 96 times the memory of a 1×1, needs a powerful computer, and can feel slow to visitors. Many viewers handle very large regions poorly.",
+        RegionAdvice.SizeRisk(16));
+
+    [Fact]
+    public void Share_joins_three_names() => Assert.Equal(
+        "Saves memory, but these regions start, stop, restart and crash together. Restarting Sunset Shore also restarts Home, Beach and Isle, and drops everyone in them.",
+        RegionAdvice.Share(["Home", "Beach", "Isle"], "Sunset Shore"));
+
+    [Fact]
+    public void Programs_reporting_zero_memory_are_ignored()
+    {
+        var status = StatusWith(new ProgramStatus("Home", Process("Home", ProcessState.Running, 0), []));
+        var advice = RegionAdvice.OnItsOwn(status, 5_000 * MB, 1);
+        Assert.Equal(400 * MB, advice.EstimateBytes);
+        Assert.Equal(12, advice.MoreRegions);
+    }
+
+    [Fact]
     public void Size_risk_for_1_is_null() => Assert.Null(RegionAdvice.SizeRisk(1));
 
     [Fact]

@@ -26,7 +26,7 @@ public static class RegionAdvice
         var squares = (long)size * size;
         var weightMb = BaseMb + PerExtraSquareMb * (squares - 1);
         var measured = status.Programs
-            .Where(p => p.Process.State == ProcessState.Running && p.Process.MemoryBytes is not null)
+            .Where(p => p.Process.State == ProcessState.Running && p.Process.MemoryBytes is > 0)
             .Select(p => p.Process.MemoryBytes!.Value)
             .ToList();
         var estimate = measured.Count > 0
@@ -52,9 +52,14 @@ public static class RegionAdvice
     public static string? SizeRisk(int size) => size switch
     {
         <= 1 => null,
-        2 or 3 => $"A {size}×{size} region is {size * size} squares of land. It uses more memory than a 1×1.",
-        _ => $"A {size}×{size} region is {size * size} squares of land in one region. It uses several times the memory of a 1×1 and can feel slower to visitors. Many viewers handle very large regions poorly.",
+        2 => "A 2×2 region is 4 squares of land. It uses more memory than a 1×1.",
+        3 => $"A 3×3 region is 9 squares of land. It uses about {TimesA1x1(3)} times the memory of a 1×1 and can feel slower to visitors.",
+        4 => "A 4×4 region is 16 squares of land in one region. It uses several times the memory of a 1×1 and can feel slower to visitors. Many viewers handle very large regions poorly.",
+        _ => $"A {size}×{size} region is {size * size} squares of land in one region. It uses about {TimesA1x1(size)} times the memory of a 1×1, needs a powerful computer, and can feel slow to visitors. Many viewers handle very large regions poorly.",
     };
+
+    /// <summary>The size's memory estimate as a whole number of 1×1 regions (rounded down).</summary>
+    private static long TimesA1x1(int size) => (BaseMb + PerExtraSquareMb * ((long)size * size - 1)) / BaseMb;
 
     public static string Placement(PlacementCheck check)
     {
