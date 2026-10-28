@@ -60,6 +60,10 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
     public string? AskingText { get; private set; }
     public string? AskingYes { get; private set; }
 
+    /// <summary>True while the page asks whether to delete the region; <see cref="DeletingText"/> is the question.</summary>
+    public bool Deleting { get; private set; }
+    public string? DeletingText { get; private set; }
+
     [TempData] public string? Notice { get; set; }
 
     public async Task<IActionResult> OnGetAsync(Guid id)
@@ -111,6 +115,47 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
         if (!oarJobs.TryStart(request, OarJobs.Describe(request, Name)) && oarJobs.For(id) is { } running)
             Notice = $"{running.Text} is still running. Try again when it finishes.";
         return Redirect($"/regions/region/{id}/job");
+    }
+
+    /// <summary>
+    /// Delete. Without a yes the question shows (naming the regions that restart without it, and offering to save it first);
+    /// with it the region goes to Recently deleted in the background. With "save first" the delete is the follow-up of an OAR
+    /// save, so a failed save leaves the region alone, and the page goes to the job. A program that runs a job refuses.
+    /// </summary>
+    public async Task<IActionResult> OnPostDeleteAsync(Guid id, bool confirmed, bool saveFirst)
+    {
+        if (!await LoadAsync(id)) return NotFound();
+        if (BusyText is not null)
+        {
+            Notice = $"{BusyText} is still running. Try again when it finishes.";
+            return Redirect("/regions/region/" + id);
+        }
+
+        if (!confirmed)
+        {
+            var affected = RegionActions.SharingProgram(grid.GetStatus(), id);
+            Deleting = true;
+            DeletingText = $"Delete {Name}? It goes to Recently deleted, where you can restore it. Its land and objects are kept until you delete it forever."
+                + (affected.Count > 0 ? $" {RegionAdvice.Join(affected)} restart without it." : "");
+            return Page();
+        }
+
+        if (saveFirst)
+        {
+            if (!CanOar)
+            {
+                Notice = OarNotRunning;
+                return Redirect("/regions/region/" + id);
+            }
+            var request = new OarJobRequest(id, OarJobKind.Save);
+            if (!oarJobs.TryStart(request, OarJobs.Describe(request, Name), ct => grid.DeleteRegionAsync(id, ct)) && oarJobs.For(id) is { } running)
+                Notice = $"{running.Text} is still running. Try again when it finishes.";
+            return Redirect($"/regions/region/{id}/job");
+        }
+
+        if (!actions.TryDelete(id)) return NotFound();
+        Notice = $"{Name} is in Recently deleted.";
+        return Redirect("/regions");
     }
 
     /// <summary>What the OAR items say while the region isn't running.</summary>

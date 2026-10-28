@@ -7,8 +7,19 @@
     <h1 class="mb-0">Regions</h1>
 </div>
 
+@if (Model.Notice is not null)
+{
+    <p class="notice alert alert-info py-2" role="status">@Model.Notice</p>
+}
+
 <noscript><p class="alert alert-info">The map needs JavaScript. You can still add a region by its map position below.</p></noscript>
-<p><a class="btn btn-primary" href="/regions/add">Add a region</a></p>
+<p class="d-flex flex-wrap align-items-center gap-3">
+    <a class="btn btn-primary" href="/regions/add">Add a region</a>
+    @if (Model.DeletedCount > 0)
+    {
+        <a href="/regions/deleted">Recently deleted (@Model.DeletedCount)</a>
+    }
+</p>
 
 <div class="row g-3 mb-3">
     <div class="col-lg-2">
