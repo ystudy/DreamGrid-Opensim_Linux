@@ -209,6 +209,86 @@ public sealed class GridBootTests : IDisposable
         }
     }
 
+    /// <summary>The REST console of the program that runs <paramref name="regionId"/>.</summary>
+    private RestConsoleClient ConsoleOf(GridController grid, Guid regionId)
+    {
+        var s = grid.CurrentSettings();
+        var program = s.Programs.Single(p => p.Instance == RegionModel.Find(s, regionId)!.Instance);
+        return new RestConsoleClient(_http, new Uri($"http://127.0.0.1:{program.ConsolePort}"), s.Console.User, s.Console.Password);
+    }
+
+    [Fact]
+    public async Task Two_by_two_beach_region_boots()
+    {
+        var (grid, paths, s, _) = Make();
+        var ct = TestContext.Current.CancellationToken;
+        try
+        {
+            await grid.StartAsync(ct);
+            await grid.CreateOwnerAsync("Test", "Owner", "pass-word1", null, ct);
+            using var alerts = new AlertListener(s.WebPort, grid.OnRegionAlert);
+            await grid.CreateRegionAsync("Welcome", "island", ct);
+            var big = await grid.AddRegionAsync(new NewRegion("Big Beach", 1010, 1010, 2, "beach", null), ct);
+
+            var login = await XmlRpcLogin.LoginAsync(_http, grid.GetStatus().LoginUri, "Test", "Owner", "pass-word1", "uri:Big Beach&128&128&25", ct);
+            Assert.True(login.Ok, "login refused: " + login.Message);
+            Assert.Equal(big.UdpPort, login.SimPort);
+
+            var console = ConsoleOf(grid, big.Uuid);
+            try { Assert.True(await GridConsoleCommands.IslandTerrainLoadedAsync(console, TimeSpan.FromSeconds(2), TimeProvider.System, ct), "the beach shows no relief"); }
+            finally { await console.CloseAsync(); }
+
+            await grid.StopAllAsync(ct);
+        }
+        catch (Exception e) when (e is not Xunit.Sdk.XunitException)
+        {
+            throw new Exception(e.Message + Environment.NewLine + LogTail(paths), e);
+        }
+        finally
+        {
+            await grid.DetachAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Move_then_runs_change_keep_the_region_reachable()
+    {
+        var (grid, paths, s, _) = Make();
+        var ct = TestContext.Current.CancellationToken;
+        try
+        {
+            await grid.StartAsync(ct);
+            await grid.CreateOwnerAsync("Test", "Owner", "pass-word1", null, ct);
+            using var alerts = new AlertListener(s.WebPort, grid.OnRegionAlert);
+            await grid.CreateRegionAsync("Welcome", "island", ct);
+            var isle = await grid.AddRegionAsync(new NewRegion("Isle", 1010, 1010, 1, "island", null), ct);
+
+            await grid.MoveRegionAsync(isle.Uuid, 1012, 1010, ct);
+            await WaitUntilAsync(() => grid.GetStatus().Regions.All(r => r.State == RegionState.Running), TimeSpan.FromMinutes(5), ct);
+            var moved = await XmlRpcLogin.LoginAsync(_http, grid.GetStatus().LoginUri, "Test", "Owner", "pass-word1", "uri:Isle&128&128&25", ct);
+            Assert.True(moved.Ok, "login to the moved region refused: " + moved.Message);
+
+            await grid.ChangeRunsWithAsync(isle.Uuid, "Welcome", ct);
+            await WaitUntilAsync(() => grid.GetStatus().Regions.All(r => r.State == RegionState.Running), TimeSpan.FromMinutes(5), ct);
+            Assert.Equal(["Welcome"], grid.GetStatus().Regions.Single(r => r.Id == isle.Uuid).RunsWith);
+            foreach (var name in new[] { "Isle", "Welcome" })
+            {
+                var login = await XmlRpcLogin.LoginAsync(_http, grid.GetStatus().LoginUri, "Test", "Owner", "pass-word1", $"uri:{name}&128&128&25", ct);
+                Assert.True(login.Ok, $"login to {name} refused: " + login.Message);
+            }
+
+            await grid.StopAllAsync(ct);
+        }
+        catch (Exception e) when (e is not Xunit.Sdk.XunitException)
+        {
+            throw new Exception(e.Message + Environment.NewLine + LogTail(paths), e);
+        }
+        finally
+        {
+            await grid.DetachAsync();
+        }
+    }
+
     private static async Task WaitUntilAsync(Func<bool> done, TimeSpan timeout, CancellationToken ct)
     {
         var deadline = DateTime.UtcNow + timeout;
