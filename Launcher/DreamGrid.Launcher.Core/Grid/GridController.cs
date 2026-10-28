@@ -77,9 +77,16 @@ public sealed partial class GridController(
     private readonly Action<int, IReadOnlyList<int>, CpuPriority> _cpu = cpu ?? CpuTuning.Apply;
     // What each running program was started (or adopted) from: its StartKey. Written under _ops, read by NeedsRestart.
     private readonly ConcurrentDictionary<string, string> _startedWith = new();
+    // The PID whose start each program's key and CPU settings were last handled for, so a process is handled once.
+    private readonly ConcurrentDictionary<string, int> _handledPid = new();
+    // Programs a controller start (under _ops) is bringing up: it handles them itself once they run.
+    private readonly ConcurrentDictionary<string, byte> _starting = new();
 
     /// <summary>Replaces the database's state for tests, whose MariaDB cannot start.</summary>
     internal Func<bool>? DatabaseRunningForTests { get; init; }
+
+    /// <summary>Replaces how a program is launched for tests, whose OpenSim cannot start (null: OpenSim itself).</summary>
+    internal Func<string, ProcessStartInfo>? ProgramStartForTests { get; init; }
 
     private bool DatabaseRunning => DatabaseRunningForTests?.Invoke() ?? _db?.Process.State == ProcessState.Running;
 
@@ -301,23 +308,37 @@ public sealed partial class GridController(
     }
 
     /// <summary>
-    /// Under the operation lock, once a program has just started, restarted or been adopted: records what it started from, and
+    /// Once a program has just started, restarted or been adopted, from <paramref name="s"/>: records what it started from, and
     /// applies its cores and priority unless they are the defaults. A failure there is logged; the program keeps running.
     /// </summary>
-    private void ProgramUp(LauncherSettings s, Component program)
+    private void ProgramUp(LauncherSettings s, string instance, int? pid)
     {
-        var instance = program.Instance!;
+        if (pid is { } handled) _handledPid[instance] = handled;
         if (s.Programs.FirstOrDefault(p => p.Instance == instance) is not { } settings) return;
         _startedWith[instance] = StartKey(s, settings);
 
         var options = settings.Options ?? new ProgramOptions();
         var cores = RegionSettingsRules.UsableCores(options.Cores, Environment.ProcessorCount);
-        if ((cores.Count == 0 && options.Priority == CpuPriority.Normal) || program.Process.Pid is not { } pid) return;
-        try { _cpu(pid, cores, options.Priority); }
+        if ((cores.Count == 0 && options.Priority == CpuPriority.Normal) || pid is not { } target) return;
+        try { _cpu(target, cores, options.Priority); }
         catch (Exception e)
         {
             _log?.LogWarning(e, "The cores and priority of {Program} could not be set: {Reason}", instance, e.Message);
         }
+    }
+
+    /// <summary>
+    /// A program's process reached Running on its own: the monitor restarted it after a crash. The new process read the
+    /// region files as they are now (its spec names only the folder, ports and console), so it is keyed from the current
+    /// settings and gets its CPU settings again. Runs off the process's event thread and never takes the operation lock: a
+    /// controller start holds it while it waits for Running, and handles its own start (<see cref="_starting"/>).
+    /// </summary>
+    private void OnProgramRunning(string instance, ManagedProcess process)
+    {
+        if (_starting.ContainsKey(instance) || _programs.GetValueOrDefault(instance)?.Process != process) return;
+        if (process.Pid is not { } pid || (_handledPid.TryGetValue(instance, out var handled) && handled == pid)) return;
+        _log?.LogInformation("{Program} came back after a crash; its CPU settings are applied again.", instance);
+        ProgramUp(CurrentSettings(), instance, pid);
     }
 
     /// <summary>The region, which must exist and not be deleted.</summary>
@@ -1335,8 +1356,13 @@ public sealed partial class GridController(
         if (!running)
         {
             if (!adopted) _logins.Clear(regions.Select(r => r.Uuid));
-            await StartComponentAsync(program, ct);
-            ProgramUp(s, program);
+            _starting[instance] = 0;
+            try
+            {
+                await StartComponentAsync(program, ct);
+                ProgramUp(s, instance, program.Process.Pid);
+            }
+            finally { _starting.TryRemove(instance, out _); }
         }
         if (!adopted)
         {
@@ -1588,13 +1614,25 @@ public sealed partial class GridController(
         var dll = Path.Combine(paths.RuntimeOpenSim, "OpenSim.dll");
         var loadable = RegionModel.Loadable(s, p.Instance, _held).ToList();
         // Same PID file the program writes itself ([Startup] PIDFile).
-        var spec = new ProcessSpec("Region " + (loadable.FirstOrDefault()?.Name ?? p.Instance),
-            () => Dotnet(dll, "-inidirectory=" + paths.RegionDir(p.Instance), "-console=rest",
-                $"-logconfig=dreamgrid-region-{p.Instance}.log4net.xml"),
-            Path.Combine(paths.Pids, p.Instance + ".pid"), console.IsUpAsync, ct => console.SendAsync("quit", ct),
+        var instance = p.Instance;
+        var spec = new ProcessSpec("Region " + (loadable.FirstOrDefault()?.Name ?? instance),
+            () => ProgramStartForTests?.Invoke(instance) ?? Dotnet(dll, "-inidirectory=" + paths.RegionDir(instance), "-console=rest",
+                $"-logconfig=dreamgrid-region-{instance}.log4net.xml"),
+            Path.Combine(paths.Pids, instance + ".pid"), console.IsUpAsync, ct => console.SendAsync("quit", ct),
             TimeSpan.FromSeconds(300), TimeSpan.FromSeconds(60), dll);
-        return new Component("program-" + p.Instance, new ManagedProcess(spec, new RestartPolicy(), time), spec,
-            [p.HttpPort, p.ConsolePort, .. loadable.Select(r => r.UdpPort)], console, p.Instance) { Key = ProgramKey(s, p) };
+        var process = new ManagedProcess(spec, new RestartPolicy(), time);
+        // A crash restart by the monitor brings the program back without the controller.
+        process.StateChanged += state =>
+        {
+            if (state != ProcessState.Running) return;
+            _ = Task.Run(() =>
+            {
+                try { OnProgramRunning(instance, process); }
+                catch (Exception e) { _log?.LogWarning(e, "{Program} came back, but its settings could not be checked.", instance); }
+            });
+        };
+        return new Component("program-" + instance, process, spec,
+            [p.HttpPort, p.ConsolePort, .. loadable.Select(r => r.UdpPort)], console, instance) { Key = ProgramKey(s, p) };
     }
 
     private RestConsoleClient MakeConsole(LauncherSettings s, int port) =>

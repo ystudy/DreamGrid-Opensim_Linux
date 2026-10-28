@@ -52,7 +52,8 @@ public sealed class GridControllerWiringTests : IDisposable
     /// <summary>The folder of the rig's MariaDB, which does not exist.</summary>
     private const string MissingMariaDb = "no-such-dir";
 
-    private GridController NewGrid(TimeProvider time, Action<int, IReadOnlyList<int>, CpuPriority>? cpu = null)
+    /// <param name="launchStandIns">A program the controller starts is a stand-in serving like a leftover one, instead of OpenSim.</param>
+    private GridController NewGrid(TimeProvider time, Action<int, IReadOnlyList<int>, CpuPriority>? cpu = null, bool launchStandIns = false)
     {
         // A MariaDB that cannot start: anything past the port check fails with a non-port error.
         var missing = Path.Combine(_root, MissingMariaDb, "mariadbd");
@@ -60,6 +61,7 @@ public sealed class GridControllerWiringTests : IDisposable
             [new LogLevelModule()], _robust, _http, time, regionStores: _ => _regionStore, cpu: cpu ?? ((_, _, _) => { }))
         {
             DatabaseRunningForTests = () => _databaseUp,
+            ProgramStartForTests = launchStandIns ? _ => StandIn() : null,
         };
     }
 
@@ -493,14 +495,20 @@ public sealed class GridControllerWiringTests : IDisposable
     /// </summary>
     private Process StartLeftoverRegion(string instance = "Welcome")
     {
+        var fake = Process.Start(StandIn())!;
+        _paths.EnsureCreated();
+        PidFile.Write(Path.Combine(_paths.Pids, instance + ".pid"), fake.Id);
+        return fake;
+    }
+
+    /// <summary>A region program stand-in: its command line names the staged OpenSim.dll, so the controller takes it for one.</summary>
+    private ProcessStartInfo StandIn()
+    {
         var psi = new ProcessStartInfo(FakeChildExe()) { UseShellExecute = false };
         psi.ArgumentList.Add("--serve");
         psi.ArgumentList.Add(FreePorts(1)[0].ToString());
         psi.ArgumentList.Add(Path.Combine(_paths.RuntimeOpenSim, "OpenSim.dll"));
-        var fake = Process.Start(psi)!;
-        _paths.EnsureCreated();
-        PidFile.Write(Path.Combine(_paths.Pids, instance + ".pid"), fake.Id);
-        return fake;
+        return psi;
     }
 
     /// <summary>Stops watching (so no monitor restarts the stand-in), then kills it.</summary>
@@ -2191,7 +2199,7 @@ public sealed class GridControllerWiringTests : IDisposable
             Assert.Equal(20, Saved(Beach).Options!.MaxAgents);
             Assert.True(_grid.NeedsRestart("Home"));
             Assert.DoesNotContain("quit", _http.Commands(home)); // saving restarts nothing
-            Assert.Contains("MaxAgents=20",File.ReadAllText(Path.Combine(_paths.RegionDefinitionDir("Home"), "Beach.ini")));
+            Assert.Contains("MaxAgents=20", File.ReadAllText(Path.Combine(_paths.RegionDefinitionDir("Home"), "Beach.ini")));
             var invalid = await Assert.ThrowsAsync<ArgumentException>(() => _grid.SaveRegionOptionsAsync(Beach, new RegionOptions(MaxAgents: 0), ct));
             Assert.Equal(RegionSettingsRules.Options(new RegionOptions(MaxAgents: 0)).Errors["MaxAgents"], invalid.Message);
 
@@ -2289,6 +2297,87 @@ public sealed class GridControllerWiringTests : IDisposable
             Assert.False(grid.NeedsRestart("Home"));
         }
         finally { await EndAllAsync(grid, fakes); }
+    }
+
+    private static void KillPid(int? pid)
+    {
+        if (pid is not { } p) return;
+        try
+        {
+            using var process = Process.GetProcessById(p);
+            process.Kill();
+        }
+        catch (Exception e) when (e is ArgumentException or InvalidOperationException) { }
+    }
+
+    [Fact]
+    public async Task Crash_restart_applies_cpu_again_and_keys_the_new_process()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var applied = new List<(int Pid, CpuPriority Priority)>();
+        var grid = NewGrid(TimeProvider.System, (pid, _, priority) => { lock (applied) applied.Add((pid, priority)); });
+        var fakes = await RunningHomeAndBeach(grid, shared: false, s => s with
+        {
+            Programs = s.Programs.Select(p => p.Instance == "Home" ? p with { Options = new ProgramOptions(Priority: CpuPriority.BelowNormal) } : p).ToList(),
+        });
+        Process? again = null;
+        ComponentStatus HomeProgram() => grid.GetStatus().Programs.Single(p => p.Instance == "Home").Process;
+        try
+        {
+            await grid.SaveRegionOptionsAsync(Home, new RegionOptions(MaxAgents: 20), ct);
+            Assert.True(grid.NeedsRestart("Home"));
+
+            fakes[0].Kill();
+            await Until(() => HomeProgram().State == ProcessState.Crashed, "the crash was never seen");
+            again = StartLeftoverRegion("Home"); // what the monitor's restart finds and adopts
+            await Until(() => { lock (applied) return applied.Any(a => a.Pid == again.Id); }, "the restarted program never got its CPU settings");
+
+            Assert.Equal((ProcessState.Running, again.Id), (HomeProgram().State, HomeProgram().Pid));
+            lock (applied) Assert.Equal([(fakes[0].Id, CpuPriority.BelowNormal), (again.Id, CpuPriority.BelowNormal)], applied);
+            Assert.False(grid.NeedsRestart("Home")); // it read the region files as they are now
+        }
+        finally { await EndAllAsync(grid, again is null ? fakes : [.. fakes, again]); }
+    }
+
+    [Fact]
+    public async Task Controller_restart_keys_the_new_process()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var applied = new List<(int Pid, CpuPriority Priority)>();
+        var grid = NewGrid(TimeProvider.System, (pid, _, priority) => { lock (applied) applied.Add((pid, priority)); }, launchStandIns: true);
+        var fakes = await RunningHomeAndBeach(grid, shared: true, s => s with
+        {
+            Programs = s.Programs.Select(p => p with { Options = new ProgramOptions(Priority: CpuPriority.BelowNormal) }).ToList(),
+        });
+        var home = _store.LoadOrCreate().RegionConsolePort;
+        var pidFile = Path.Combine(_paths.Pids, "Home.pid");
+        // What the program does on "quit": whichever process the PID file names goes.
+        _http.OnCommand = port =>
+        {
+            if (port == home && _http.Commands(port).LastOrDefault() == "quit") KillPid(PidFile.Read(pidFile));
+        };
+        int? launched = null;
+        try
+        {
+            await grid.SaveRegionOptionsAsync(Beach, new RegionOptions(MaxAgents: 20), ct);
+            Assert.True(grid.NeedsRestart("Home"));
+
+            await grid.MoveRegionAsync(Beach, 1020, 1000, ct); // restarts Home's program, which loads Beach
+
+            var program = grid.GetStatus().Programs.Single().Process;
+            launched = program.Pid;
+            Assert.Equal(ProcessState.Running, program.State);
+            Assert.NotNull(launched);
+            Assert.NotEqual(fakes[0].Id, launched);
+            Assert.False(grid.NeedsRestart("Home"));
+            await Task.Delay(1000, ct); // the Running event of the controller's own start must not apply it twice
+            lock (applied) Assert.Equal([(fakes[0].Id, CpuPriority.BelowNormal), (launched.Value, CpuPriority.BelowNormal)], applied);
+        }
+        finally
+        {
+            await EndAllAsync(grid, fakes);
+            KillPid(launched);
+        }
     }
 
     [Fact]
