@@ -76,6 +76,12 @@ public static class RegionAdvice
     public static string Join(IReadOnlyList<string> names) =>
         names.Count <= 1 ? string.Concat(names) : $"{string.Join(", ", names.Take(names.Count - 1))} and {names[^1]}";
 
+    /// <summary>A file's size: whole KB under 1 MB, MB with one decimal under 1 GB, else GB with one decimal (1024-based).</summary>
+    public static string FileSize(long bytes) =>
+        bytes >= GB ? $"{(bytes / (double)GB).ToString("0.0", CultureInfo.InvariantCulture)} GB"
+        : bytes >= MB ? $"{(bytes / (double)MB).ToString("0.0", CultureInfo.InvariantCulture)} MB"
+        : $"{Math.Round(bytes / 1024.0).ToString("0", CultureInfo.InvariantCulture)} KB";
+
     /// <summary>GB with one decimal from 1 GB up, else MB rounded to 10 ("MB" and "GB" are 2^20 and 2^30 bytes).</summary>
     public static string Size(long bytes) => bytes >= GB
         ? $"{(bytes / (double)GB).ToString("0.0", CultureInfo.InvariantCulture)} GB"

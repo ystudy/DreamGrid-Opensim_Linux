@@ -125,4 +125,12 @@ public sealed class RegionAdviceTests
 
     [Fact]
     public void Group_label_for_one_region() => Assert.Equal("Home", RegionAdvice.GroupLabel(["Home"]));
+
+    [Theory]
+    [InlineData(512L * 1024, "512 KB")]
+    [InlineData(1L << 20, "1.0 MB")]
+    [InlineData(20L << 20, "20.0 MB")]
+    [InlineData((long)(1.2 * (1L << 30)), "1.2 GB")]
+    public void File_size_is_KB_then_MB_then_GB_with_one_decimal(long bytes, string expected) =>
+        Assert.Equal(expected, RegionAdvice.FileSize(bytes));
 }

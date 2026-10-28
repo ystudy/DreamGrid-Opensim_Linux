@@ -149,7 +149,7 @@ public sealed class LibraryPageTests : IAsyncLifetime
     public async Task Library_lists_files_with_size_and_date()
     {
         Directory.CreateDirectory(_f.Paths.Oars);
-        using (var big = File.Create(LibraryFile("castle.oar"))) big.SetLength(20 * MB);
+        using (var big = File.Create(LibraryFile("castle.oar"))) big.SetLength(1 * MB);
         PutInLibrary("Beach house.oar");
         var when = new DateTime(2026, 10, 1, 9, 30, 0, DateTimeKind.Utc);
         File.SetLastWriteTimeUtc(LibraryFile("castle.oar"), when);
@@ -160,7 +160,7 @@ public sealed class LibraryPageTests : IAsyncLifetime
         var rows = doc.QuerySelectorAll("#oar-list tbody tr");
         Assert.Equal(["Beach house.oar", "castle.oar"], rows.Select(r => r.QuerySelector(".oar-name")!.TextContent.Trim()));
         var castle = rows[1];
-        Assert.Equal("20 MB", castle.QuerySelector(".oar-size")!.TextContent.Trim());
+        Assert.Equal("1.0 MB", castle.QuerySelector(".oar-size")!.TextContent.Trim());
         Assert.Equal(new DateTimeOffset(when).ToLocalTime().ToString("d MMM yyyy HH:mm", CultureInfo.InvariantCulture),
             castle.QuerySelector(".oar-date")!.TextContent.Trim());
         Assert.Equal("/regions/library/file/castle.oar", castle.QuerySelector("a.download")!.GetAttribute("href"));

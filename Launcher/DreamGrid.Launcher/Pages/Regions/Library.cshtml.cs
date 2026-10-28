@@ -112,7 +112,7 @@ public sealed class LibraryModel(IGridController grid, OarLibrary library, Launc
     {
         var types = grid.CurrentSettings().CustomTypes;
         Types = types;
-        Files = library.List().Select(f => new LibraryRow(f.Name, RegionAdvice.Size(f.Bytes),
+        Files = library.List().Select(f => new LibraryRow(f.Name, RegionAdvice.FileSize(f.Bytes),
             f.Modified.ToLocalTime().ToString("d MMM yyyy HH:mm", CultureInfo.InvariantCulture),
             types.Where(t => SameFile(t.File, f.Name)).Select(t => t.Name).ToList())).ToList();
     }
