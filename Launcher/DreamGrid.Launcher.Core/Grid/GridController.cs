@@ -220,7 +220,7 @@ public sealed partial class GridController(
                     var httpPort = PortAllocator.Next(l, l.RegionPort);
                     var consolePort = PortAllocator.Next(l, l.RegionConsolePort, new HashSet<int> { httpPort });
                     var program = new ProgramSettings(to, httpPort, consolePort);
-                    programs.Add(RegionModel.ProgramOf(l, region) is { } old ? program with { Physics = old.Physics } : program);
+                    programs.Add(RegionModel.ProgramOf(l, region) is { } old ? program with { Physics = old.Physics, Options = old.Options } : program);
                 }
                 var regions = l.Regions.Select(r => r.Uuid == regionId ? r with { Instance = to } : r).ToList();
                 // A program left with no regions goes; one with only parked regions stays for them.

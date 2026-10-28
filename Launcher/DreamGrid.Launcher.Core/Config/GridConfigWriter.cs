@@ -83,8 +83,9 @@ public sealed class GridConfigWriter(LauncherPaths paths)
         os.Set("Startup", "regionload_regionsdir", Fwd(paths.RegionDefinitionDir(instance)) + "/");
         os.Set("Startup", "PIDFile", Fwd(Path.Combine(paths.Pids, instance + ".pid")));
         os.Set("Startup", "ConsoleHistoryFile", Fwd(Path.Combine(paths.RegionDir(instance), "ConsoleHistory.txt")));
-        os.Set("Startup", "physics", program.Physics);
-        os.Set("Startup", "meshing", program.Physics == "BulletSim" ? "Meshmerizer" : "ubODEMeshmerizer");
+        var physics = RegionSettingsRules.EffectivePhysics(s, program);
+        os.Set("Startup", "physics", physics == "ubODE" ? "ubODE" : "BulletSim");
+        os.Set("Startup", "meshing", physics == "ubODE" ? "ubODEMeshmerizer" : "Meshmerizer");
         // The region reads [Network] console_port (OpenSim.cs), unlike Robust's ConsolePort.
         SetNetwork(os, s, "console_port", program.ConsolePort);
         if (s.Setup.OwnerCreated && s.Setup.Owner is { } owner)
