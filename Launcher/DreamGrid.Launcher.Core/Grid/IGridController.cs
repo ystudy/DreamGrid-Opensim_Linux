@@ -58,6 +58,25 @@ public interface IGridController
     /// </summary>
     Task ChangeRunsWithAsync(Guid regionId, string? shareWith, CancellationToken ct);
 
+    /// <summary>
+    /// Runs an OAR job on a running region: Import loads a library file, Save writes the region to the library as
+    /// <c>&lt;Region&gt;-&lt;yyyy-MM-dd&gt;.oar</c> (numbered when taken), MakeLand loads the region's own type again. One job
+    /// runs per program at a time and holds no global lock, so other programs and the world keep working; while it runs,
+    /// the power menu, a move and a change of how the region runs are refused for every region of its program. Returns
+    /// the library name a Save wrote, and null otherwise. Throws <see cref="ArgumentException"/> in plain words for a bad
+    /// request (an unknown region, a file not in the library), and <see cref="InvalidOperationException"/> when the
+    /// region is not running ("Start &lt;Region&gt; first; an OAR needs it running."), when its program already runs a job
+    /// ("&lt;job&gt; is still running. Try again when it finishes."), and when the job fails.
+    /// <paramref name="progress"/> hears each stage and, while a save runs, the bytes written so far.
+    /// </summary>
+    Task<string?> RunOarJobAsync(OarJobRequest request, CancellationToken ct, IProgress<OarJobProgress>? progress = null);
+
+    /// <summary>
+    /// The text of the OAR job running in a program ("Importing castle.oar into Beach", "Saving Home as an OAR",
+    /// "Making the land of Home again"), or null when it runs none.
+    /// </summary>
+    string? BusyWith(string instance);
+
     /// <summary>The controller's cached settings (what the grid was configured from); the host reads these per request.</summary>
     LauncherSettings CurrentSettings();
 

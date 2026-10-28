@@ -195,6 +195,28 @@ internal sealed class FakeGridController : IGridController
         await OnChangeRunsWith(regionId, shareWith, ct);
     }
 
+    /// <summary>Every request <see cref="RunOarJobAsync"/> got, in order.</summary>
+    public List<OarJobRequest> OarJobs { get; } = new();
+
+    /// <summary>Runs inside <see cref="RunOarJobAsync"/> (blocking probes, progress, thrown exceptions).</summary>
+    public Func<OarJobRequest, IProgress<OarJobProgress>?, CancellationToken, Task> OnOarJob { get; set; } = (_, _, _) => Task.CompletedTask;
+
+    /// <summary>What <see cref="RunOarJobAsync"/> returns: the library name a save wrote, or null.</summary>
+    public string? OarJobResult { get; set; }
+
+    public async Task<string?> RunOarJobAsync(OarJobRequest request, CancellationToken ct, IProgress<OarJobProgress>? progress = null)
+    {
+        Record($"OarJob {request.Kind} {request.RegionId} {request.File}".TrimEnd());
+        lock (OarJobs) OarJobs.Add(request);
+        await OnOarJob(request, progress, ct);
+        return OarJobResult;
+    }
+
+    /// <summary>The job text <see cref="BusyWith"/> gives for each instance.</summary>
+    public Dictionary<string, string> Busy { get; } = new();
+
+    public string? BusyWith(string instance) { lock (Busy) return Busy.GetValueOrDefault(instance); }
+
     public LauncherSettings UpdateSettings(Func<LauncherSettings, LauncherSettings> change, bool writeConfig = true)
     {
         lock (UpdateWriteConfig)

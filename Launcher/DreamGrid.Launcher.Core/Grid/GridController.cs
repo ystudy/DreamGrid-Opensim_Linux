@@ -1,7 +1,10 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Globalization;
 using System.Text.RegularExpressions;
 using DreamGrid.Launcher.Core.Config;
 using DreamGrid.Launcher.Core.Database;
+using DreamGrid.Launcher.Core.Logs;
 using DreamGrid.Launcher.Core.Modules;
 using DreamGrid.Launcher.Core.OpenSim;
 using DreamGrid.Launcher.Core.Processes;
@@ -32,6 +35,9 @@ public sealed partial class GridController(
     private static readonly TimeSpan LoginPoll = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan AccountWait = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan AccountPoll = TimeSpan.FromMilliseconds(500);
+    // How long an OAR import or save may take, and how often a save is checked.
+    private static readonly TimeSpan OarJobWait = TimeSpan.FromHours(2);
+    private static readonly TimeSpan SavePoll = TimeSpan.FromSeconds(2);
 
     private readonly IReadOnlyList<IFeatureModule> _modules = modules.ToList();
     private readonly SemaphoreSlim _ops = new(1, 1);
@@ -57,8 +63,10 @@ public sealed partial class GridController(
     private volatile string? _writtenGridName, _robustGridName;
     private volatile GridActivity _activity;
     private int? _regionAlertPid;
-    private TaskCompletionSource<string>? _oarLoaded;
-
+    // The archiver's "oarloaded"/"oarnotloaded" alert awaited for each region: two programs may load at once.
+    private readonly ConcurrentDictionary<Guid, TaskCompletionSource<string>> _oarLoaded = new();
+    // The OAR job running in each program (its text), by instance. Added and checked under _ops; the job removes its own.
+    private readonly ConcurrentDictionary<string, string> _jobs = new();
 
     /// <summary>One supervised child with what the controller needs to talk to it; <see cref="Key"/> is the settings it was built from.</summary>
     private sealed record Component(string Name, ManagedProcess Process, ProcessSpec Spec, int[] Ports, RestConsoleClient? Console, string? Instance = null)
@@ -117,6 +125,7 @@ public sealed partial class GridController(
         try
         {
             var s = LoadSettings();
+            ThrowIfBusy(RegionModel.Find(s, regionId)?.Instance);
             var running = _programs.Where(p => RegionPowerPlan.IsActive(p.Value.Process.State)).Select(p => p.Key).ToHashSet();
             var steps = RegionPowerPlan.For(s, _held, running, regionId, action, _loaded);
             if ((steps.Start.Count > 0 || steps.Restart.Count > 0) && _robust!.Process.State != ProcessState.Running)
@@ -148,6 +157,7 @@ public sealed partial class GridController(
             var s = LoadSettings();
             var region = RegionModel.Find(s, regionId) ?? throw new InvalidOperationException("There is no such region.");
             if (region.DeletedAt is not null) throw new InvalidOperationException("That region has been deleted.");
+            ThrowIfBusy(region.Instance);
             if (!RegionPlacement.OnMap(x, y, region.Size)) throw new ArgumentException("That spot is off the map.");
             // The region's own square doesn't count: it may move to an overlapping spot.
             if (RegionPlacement.Check(s, x, y, region.Size, ignore: regionId) is { Ok: false } taken)
@@ -179,6 +189,7 @@ public sealed partial class GridController(
             var region = RegionModel.Find(s, regionId) ?? throw new InvalidOperationException("There is no such region.");
             if (region.DeletedAt is not null) throw new InvalidOperationException("That region has been deleted.");
             var from = region.Instance;
+            ThrowIfBusy(from, shareWith);
             if (shareWith == from) throw new ArgumentException("It already runs with them.");
             if (shareWith is not null && s.Programs.All(p => p.Instance != shareWith))
                 throw new ArgumentException("There is no such group of regions.");
@@ -588,7 +599,7 @@ public sealed partial class GridController(
         await WaitForLoginsAsync(program, uuid, ct); // the scene is up and accepts console commands for it
         progress?.Report(SetupProgress.LoadingContent);
         await LoadContentAsync(program, region, r.Content, s, ct);
-        UpdateSettings(l => l with { Regions = [.. l.Regions.Select(x => x.Uuid == uuid ? x with { NeedsContent = false } : x)] }, writeConfig: false);
+        ClearNeedsContent(uuid);
         progress?.Report(SetupProgress.WaitingForLogins);
         await WaitForLoginsAsync(program, uuid, ct);
         return region;
@@ -601,6 +612,162 @@ public sealed partial class GridController(
         var candidate = name;
         for (var n = 2; taken.Contains(candidate); n++) candidate = $"{name}_{n}";
         return candidate;
+    }
+
+    // ---- OAR jobs -----------------------------------------------------------------------------------
+
+    private const string SaveFailed = "The save did not finish; see the region log.";
+
+    public async Task<string?> RunOarJobAsync(OarJobRequest request, CancellationToken ct, IProgress<OarJobProgress>? progress = null)
+    {
+        if (!Enum.IsDefined(request.Kind)) throw new ArgumentException("There is no such OAR job.");
+        string? oar = null;
+        if (request.Kind == OarJobKind.Import)
+            oar = (request.File is { } file ? new OarLibrary(paths).Resolve(file) : null)
+                ?? throw new ArgumentException("That file is not in the OAR library.");
+        else if (request.File is not null)
+            throw new ArgumentException("Only an import names a file.");
+
+        var (s, region, program) = await BeginOarJobAsync(request, ct);
+        try
+        {
+            switch (request.Kind)
+            {
+                case OarJobKind.Import:
+                    await ImportOarAsync(s, region, program, request.File!, oar!, progress, ct);
+                    return null;
+                case OarJobKind.Save:
+                    return await SaveOarAsync(s, region, program, progress, ct);
+                default:
+                    progress?.Report(new OarJobProgress(SetupProgress.LoadingContent, null));
+                    await LoadContentAsync(program, region, region.Content, s, ct);
+                    ClearNeedsContent(region.Uuid);
+                    progress?.Report(new OarJobProgress(SetupProgress.WaitingForLogins, null));
+                    await WaitForLoginsAsync(program, region.Uuid, ct);
+                    return null;
+            }
+        }
+        finally { _jobs.TryRemove(region.Instance, out _); }
+    }
+
+    public string? BusyWith(string instance) => _jobs.TryGetValue(instance, out var job) ? job : null;
+
+    /// <summary>
+    /// Under the operation lock, briefly: checks that the region runs and its program has no job, then records the job.
+    /// Returns the settings, the region and its program.
+    /// </summary>
+    private async Task<(LauncherSettings, RegionSettings, Component)> BeginOarJobAsync(OarJobRequest request, CancellationToken ct)
+    {
+        await _ops.WaitAsync(ct);
+        try
+        {
+            var s = LoadSettings();
+            var region = RegionModel.Find(s, request.RegionId) ?? throw new ArgumentException("There is no such region.");
+            if (region.DeletedAt is not null) throw new ArgumentException("That region has been deleted.");
+            // Running means: its program runs and loaded it (an unknown list counts as loaded), and it accepts logins.
+            if (_programs.GetValueOrDefault(region.Instance) is not { Process.State: ProcessState.Running } program
+                || RegionModel.Loadable(s, region.Instance, _held).All(r => r.Uuid != region.Uuid)
+                || (_loaded.GetValueOrDefault(region.Instance) is { } ids && !ids.Contains(region.Uuid))
+                || !_logins.Enabled(region.Uuid))
+                throw new InvalidOperationException($"Start {region.Name} first; an OAR needs it running.");
+            ThrowIfBusy(region.Instance);
+            _jobs[region.Instance] = request.Kind switch
+            {
+                OarJobKind.Import => $"Importing {request.File} into {region.Name}",
+                OarJobKind.Save => $"Saving {region.Name} as an OAR",
+                _ => $"Making the land of {region.Name} again",
+            };
+            return (s, region, program);
+        }
+        finally { _ops.Release(); }
+    }
+
+    /// <summary>Under the operation lock: refuses to change a program (or programs) while an OAR job runs in it.</summary>
+    private void ThrowIfBusy(params string?[] instances)
+    {
+        foreach (var instance in instances)
+            if (instance is not null && _jobs.TryGetValue(instance, out var job))
+                throw new InvalidOperationException($"{job} is still running. Try again when it finishes.");
+    }
+
+    /// <summary>Loads a library OAR into the region at the OAR's own size and place, then waits until it accepts logins.</summary>
+    private async Task ImportOarAsync(LauncherSettings s, RegionSettings region, Component program, string file, string oar,
+        IProgress<OarJobProgress>? progress, CancellationToken ct)
+    {
+        progress?.Report(new OarJobProgress("Loading the OAR", null));
+        await OnRegionConsoleAsync(program, region, s, async console =>
+        {
+            using var loaded = ExpectOarAlert(region.Uuid);
+            await console.RunAsync($"load oar --force-terrain --force-parcels \"{Fwd(oar)}\"", ConsoleSettle, ct);
+            var deadline = time.GetUtcNow() + OarJobWait;
+            while (!loaded.Result.IsCompleted)
+            {
+                if (program.Process.State != ProcessState.Running)
+                    throw new InvalidOperationException("The region stopped before the OAR loaded.");
+                if (time.GetUtcNow() >= deadline)
+                    throw new InvalidOperationException($"The region did not load {file}; see the region log.");
+                await Task.WhenAny(loaded.Result, Task.Delay(LoginPoll, time, ct));
+                ct.ThrowIfCancellationRequested();
+            }
+            if (await loaded.Result != "oarloaded")
+                throw new InvalidOperationException($"The region could not load {file}; see the region log.");
+        }, ct);
+        ClearNeedsContent(region.Uuid);
+        progress?.Report(new OarJobProgress(SetupProgress.WaitingForLogins, null));
+        await WaitForLoginsAsync(program, region.Uuid, ct);
+    }
+
+    /// <summary>
+    /// Saves the region into <see cref="LauncherPaths.OarsSaving"/>, then moves the finished file into the library. OpenSim
+    /// reports the end of a save only in the region log (ArchiveWriteRequest.CloseArchive), so the lines the log gains are
+    /// read about every 2 s. A failed save's file is removed; when the launcher stops instead, OpenSim may still be writing
+    /// it, and the next start's <see cref="OarLibrary.ClearStaging"/> removes it.
+    /// </summary>
+    private async Task<string> SaveOarAsync(LauncherSettings s, RegionSettings region, Component program,
+        IProgress<OarJobProgress>? progress, CancellationToken ct)
+    {
+        Directory.CreateDirectory(paths.OarsSaving);
+        var staging = Path.Combine(paths.OarsSaving, Guid.NewGuid().ToString("N") + ".oar");
+        var log = new LogFollower(Path.Combine(paths.Logs, $"region-{region.Instance}.log"));
+        var finished = $"[ARCHIVER]: Finished writing out OAR for {region.Name}";
+        var moved = false;
+        try
+        {
+            await OnRegionConsoleAsync(program, region, s, async console =>
+            {
+                await console.RunAsync($"save oar \"{Fwd(staging)}\"", ConsoleSettle, ct);
+                var deadline = time.GetUtcNow() + OarJobWait;
+                while (true)
+                {
+                    progress?.Report(new OarJobProgress("Saving the OAR", File.Exists(staging) ? new FileInfo(staging).Length : null));
+                    foreach (var line in log.ReadNew())
+                    {
+                        if (line.Contains("[ARCHIVER]: Error", StringComparison.Ordinal)) throw new InvalidOperationException(SaveFailed);
+                        if (!line.TrimEnd().EndsWith(finished, StringComparison.Ordinal)) continue;
+                        if (!OarFile.LooksLikeOar(staging)) throw new InvalidOperationException(SaveFailed);
+                        return;
+                    }
+                    if (program.Process.State != ProcessState.Running)
+                        throw new InvalidOperationException("The region stopped before the save finished.");
+                    if (time.GetUtcNow() >= deadline) throw new InvalidOperationException(SaveFailed);
+                    await Task.Delay(SavePoll, time, ct);
+                }
+            }, ct);
+
+            var library = new OarLibrary(paths);
+            var name = library.FreeName($"{region.Name}-{time.GetLocalNow().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}.oar");
+            File.Move(staging, Path.Combine(paths.Oars, name));
+            moved = true;
+            return name;
+        }
+        finally
+        {
+            if (!moved && !ct.IsCancellationRequested)
+            {
+                try { File.Delete(staging); }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+            }
+        }
     }
 
     // ---- status and alerts --------------------------------------------------------------------------
@@ -654,7 +821,9 @@ public sealed partial class GridController(
                 // An alert for a region the launcher doesn't know (a hand-made region file) changes nothing.
                 _logins.Apply(alert, CurrentSettings().Regions);
                 break;
-            case "oarloaded" or "oarnotloaded": _oarLoaded?.TrySetResult(alert.Login.ToLowerInvariant()); break;
+            case "oarloaded" or "oarnotloaded":
+                if (_oarLoaded.TryGetValue(alert.RegionId, out var waiting)) waiting.TrySetResult(alert.Login.ToLowerInvariant());
+                break;
         }
     }
 
@@ -892,17 +1061,42 @@ public sealed partial class GridController(
     }
 
     /// <summary>Loads a region's content through its program's console; in a shared program the console switches to it first.</summary>
-    private async Task LoadContentAsync(Component program, RegionSettings region, string content, LauncherSettings s, CancellationToken ct)
+    private Task LoadContentAsync(Component program, RegionSettings region, string content, LauncherSettings s, CancellationToken ct) =>
+        OnRegionConsoleAsync(program, region, s, console => LoadContentCoreAsync(console, region, content, s, ct), ct);
+
+    /// <summary>
+    /// Runs <paramref name="work"/> on the program's console. In a shared program the console switches to the region first
+    /// and back to root afterwards, unless the program stopped meanwhile.
+    /// </summary>
+    private async Task OnRegionConsoleAsync(Component program, RegionSettings region, LauncherSettings s, Func<RestConsoleClient, Task> work, CancellationToken ct)
     {
         var console = program.Console!;
         var shared = RegionModel.Loadable(s, region.Instance, _held).Count() > 1;
         if (shared) await console.RunAsync($"change region {region.Name}", ConsoleSettle, ct);
-        try { await LoadContentCoreAsync(console, region, content, s, ct); }
+        try { await work(console); }
         finally
         {
-            if (shared) await console.RunAsync("change region root", ConsoleSettle, CancellationToken.None);
+            if (shared && program.Process.State == ProcessState.Running)
+                await console.RunAsync("change region root", ConsoleSettle, CancellationToken.None);
         }
     }
+
+    /// <summary>Starts waiting for the archiver's alert for <paramref name="region"/>; dispose the result to stop.</summary>
+    private OarAlertWait ExpectOarAlert(Guid region)
+    {
+        var loaded = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _oarLoaded[region] = loaded;
+        return new OarAlertWait(loaded.Task, () => _oarLoaded.TryRemove(new KeyValuePair<Guid, TaskCompletionSource<string>>(region, loaded)));
+    }
+
+    private sealed class OarAlertWait(Task<string> result, Action stop) : IDisposable
+    {
+        public Task<string> Result => result;
+        public void Dispose() => stop();
+    }
+
+    private void ClearNeedsContent(Guid region) =>
+        UpdateSettings(l => l with { Regions = [.. l.Regions.Select(x => x.Uuid == region ? x with { NeedsContent = false } : x)] }, writeConfig: false);
 
     private async Task LoadContentCoreAsync(RestConsoleClient console, RegionSettings region, string content, LauncherSettings s, CancellationToken ct)
     {
@@ -910,14 +1104,13 @@ public sealed partial class GridController(
         if (oar is not null)
         {
             // RegionReady reports the archiver's result as an "oarloaded" or "oarnotloaded" alert.
-            var loaded = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-            _oarLoaded = loaded;
+            using var loaded = ExpectOarAlert(region.Uuid);
             // A 256 m OAR goes in the middle of a larger region; the squares around it keep the flat land OpenSim makes.
             // A custom type, like an import, loads at the OAR's own size and place: it may be a larger region's OAR.
             var middle = 128 * (region.Size - 1);
             var displacement = region.Size > 1 && !RegionTypes.IsCustom(content) ? $" --displacement <{middle},{middle},0>" : "";
             await console.RunAsync($"load oar --force-terrain --force-parcels{displacement} \"{Fwd(oar)}\"", ConsoleSettle, ct);
-            if (await loaded.Task.WaitAsync(LoginWait, time, ct) != "oarloaded")
+            if (await loaded.Result.WaitAsync(LoginWait, time, ct) != "oarloaded")
                 throw new InvalidOperationException($"The region could not load {oar}; see the region log.");
             return;
         }

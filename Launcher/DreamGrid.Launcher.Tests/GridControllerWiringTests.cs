@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Formats.Tar;
+using System.IO.Compression;
 using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
@@ -894,12 +896,15 @@ public sealed class GridControllerWiringTests : IDisposable
         finally { await EndLeftoverRegionAsync(fake); }
     }
 
+    /// <summary>The region <see cref="LoadContent"/> loads into; the archiver's alerts name it.</summary>
+    private static readonly Guid ContentRegion = Guid.Parse("50000000-0000-0000-0000-000000000004");
+
     /// <summary>Runs the controller's content step for a region "Welcome" of the given size, as an added region would.</summary>
     private Task LoadContent(string content, int size)
     {
         var s = _store.LoadOrCreate();
         var client = new RestConsoleClient(_http.CreateClient("console"), new Uri($"http://127.0.0.1:{s.RegionConsolePort}/"), "u", "p");
-        var region = new RegionSettings("Welcome", "Welcome", Guid.NewGuid(), Size: size, UdpPort: s.RegionPort);
+        var region = new RegionSettings("Welcome", "Welcome", ContentRegion, Size: size, UdpPort: s.RegionPort);
         var method = typeof(GridController).GetMethod("LoadContentCoreAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
         return (Task)method.Invoke(_grid, [client, region, content, s, TestContext.Current.CancellationToken])!;
     }
@@ -914,7 +919,7 @@ public sealed class GridControllerWiringTests : IDisposable
         _http.OnCommand = port =>
         {
             if (_http.Commands(port).Any(c => c.StartsWith("load oar", StringComparison.Ordinal)))
-                _grid.OnRegionAlert(new RegionAlert("region_ready", "oarloaded", "Welcome", Guid.NewGuid(), null));
+                _grid.OnRegionAlert(new RegionAlert("region_ready", "oarloaded", "Welcome", ContentRegion, null));
         };
         return oar.Replace('\\', '/');
     }
@@ -972,7 +977,7 @@ public sealed class GridControllerWiringTests : IDisposable
         _http.OnCommand = port =>
         {
             if (_http.Commands(port).Any(c => c.StartsWith("load oar", StringComparison.Ordinal)))
-                _grid.OnRegionAlert(new RegionAlert("region_ready", "oarloaded", "Welcome", Guid.NewGuid(), null));
+                _grid.OnRegionAlert(new RegionAlert("region_ready", "oarloaded", "Welcome", ContentRegion, null));
         };
 
         var expected = Path.GetFullPath(file).Replace("\\", "/");
@@ -1072,6 +1077,456 @@ public sealed class GridControllerWiringTests : IDisposable
         Assert.Equal("Renamed meanwhile", saved.GridName);
         Assert.True(saved.Setup.OwnerCreated);
         Assert.Equal("Renamed meanwhile", _grid.CurrentSettings().GridName);
+    }
+
+    // ---- OAR jobs -----------------------------------------------------------------------------------
+
+    private static readonly Guid Home = Guid.Parse("50000000-0000-0000-0000-000000000001");
+
+    /// <summary>The console commands, other than the adoption's queries, of <see cref="RunningHomeAndBeach"/>: (port, command) → output.</summary>
+    private Func<int, string, string[]>? _console;
+
+    /// <summary>Home (at 1000, 1000) and Beach (at 1010, 1000), both in Home's program or each in its own, both still needing content.</summary>
+    private void HomeAndBeach(bool shared)
+    {
+        var s = _store.LoadOrCreate();
+        var home = new ProgramSettings("Home", s.RegionPort, s.RegionConsolePort);
+        _store.Save(s with
+        {
+            Programs = shared ? [home] : [home, new ProgramSettings("Beach", _secondPort, _secondConsole)],
+            Regions =
+            [
+                new RegionSettings("Home", "Home", Home, Content: "island", UdpPort: s.RegionPort, NeedsContent: true),
+                new RegionSettings(shared ? "Home" : "Beach", "Beach", Beach, X: 1010, Content: "island", UdpPort: _secondPort, NeedsContent: true),
+            ],
+            Setup = s.Setup with { RegionCreated = false }, // the leftover stand-ins are adopted
+        });
+    }
+
+    /// <summary>
+    /// <see cref="HomeAndBeach"/> with every program running: a leftover stand-in that <paramref name="grid"/> adopts, which
+    /// says it loaded its regions and that they accept logins.
+    /// </summary>
+    private async Task<Process[]> RunningHomeAndBeach(GridController grid, bool shared)
+    {
+        HomeAndBeach(shared);
+        var homeConsole = _store.LoadOrCreate().RegionConsolePort;
+        _http.Reply = (port, command) =>
+        {
+            (string Name, Guid Id)[] regions = port == homeConsole ? (shared ? [("Home", Home), ("Beach", Beach)] : [("Home", Home)])
+                : port == _secondConsole ? [("Beach", Beach)] : [];
+            if (command == "show regions") return regions.Select(r => $"{r.Name}  {r.Id}  1000,1000").ToArray();
+            if (command == "login status") return regions.Select(r => $"Login in {r.Name} are enabled").ToArray();
+            return _console?.Invoke(port, command) ?? [];
+        };
+        var fakes = shared ? [StartLeftoverRegion("Home")] : new[] { StartLeftoverRegion("Home"), StartLeftoverRegion("Beach") };
+        // MariaDB cannot start in this rig; the programs are adopted first.
+        Assert.IsNotType<PortConflictException>(await Record.ExceptionAsync(() => grid.StartAsync(TestContext.Current.CancellationToken)));
+        Assert.All(grid.GetStatus().Regions, r => Assert.True(r.LoginsEnabled, r.Name + " does not accept logins"));
+        return fakes;
+    }
+
+    private static async Task EndAllAsync(GridController grid, Process[] fakes)
+    {
+        await grid.DetachAsync();
+        foreach (var fake in fakes)
+        {
+            if (!fake.HasExited) fake.Kill();
+            fake.Dispose();
+        }
+    }
+
+    /// <summary>Puts a file in the OAR library; returns its full path as the console gets it.</summary>
+    private string LibraryOar(string name = "castle.oar")
+    {
+        Directory.CreateDirectory(_paths.Oars);
+        var path = Path.Combine(_paths.Oars, name);
+        File.WriteAllBytes(path, [1]);
+        return Path.GetFullPath(path).Replace('\\', '/');
+    }
+
+    /// <summary>Writes what OpenSim's save writes: a gzip tar whose first entry is archive.xml.</summary>
+    private static void WriteOar(string path)
+    {
+        using var file = File.Create(path);
+        using var gzip = new GZipStream(file, CompressionLevel.Fastest);
+        using var tar = new TarWriter(gzip);
+        tar.WriteEntry(new PaxTarEntry(TarEntryType.RegularFile, "archive.xml") { DataStream = new MemoryStream("<archive/>"u8.ToArray()) });
+        tar.WriteEntry(new PaxTarEntry(TarEntryType.RegularFile, "terrains/Home.r32") { DataStream = new MemoryStream(new byte[4096]) });
+    }
+
+    /// <summary>The path in a <c>save oar "&lt;path&gt;"</c> command, or null for any other command.</summary>
+    private static string? SavePath(string command) =>
+        command.StartsWith("save oar \"", StringComparison.Ordinal) ? command["save oar \"".Length..^1] : null;
+
+    private string RegionLog(string instance) => Path.Combine(_paths.Logs, $"region-{instance}.log");
+
+    private void AppendLog(string instance, string line) => File.AppendAllText(RegionLog(instance), $"12:00:00 - [INFO] {line}\n");
+
+    private static async Task Until(Func<bool> condition, string what)
+    {
+        var guard = DateTime.UtcNow.AddSeconds(30);
+        while (!condition())
+        {
+            if (DateTime.UtcNow > guard) throw new TimeoutException(what);
+            await Task.Delay(50, TestContext.Current.CancellationToken);
+        }
+    }
+
+    /// <summary>Real time from midday UTC of <paramref name="day"/>, in UTC, so the local date is that day.</summary>
+    private sealed class DatedClock(DateOnly day) : TimeProvider
+    {
+        private readonly Stopwatch _since = Stopwatch.StartNew();
+        public override DateTimeOffset GetUtcNow() => new DateTimeOffset(day.ToDateTime(new TimeOnly(12, 0)), TimeSpan.Zero) + _since.Elapsed;
+        public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.Utc;
+    }
+
+    /// <summary>Keeps every report, on the reporting thread.</summary>
+    private sealed class Reports<T> : IProgress<T>
+    {
+        public List<T> All { get; } = new();
+        public void Report(T value) { lock (All) All.Add(value); }
+    }
+
+    [Fact]
+    public async Task Import_switches_region_loads_and_waits_for_its_alert()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var oar = LibraryOar();
+        var fakes = await RunningHomeAndBeach(_grid, shared: true);
+        var port = _store.LoadOrCreate().RegionConsolePort;
+        _console = (_, command) =>
+        {
+            // Another region of the program finishing a load must not end this one.
+            if (command.StartsWith("load oar", StringComparison.Ordinal))
+                _grid.OnRegionAlert(new RegionAlert("region_ready", "oarloaded", "Home", Home, null));
+            return [];
+        };
+        try
+        {
+            var job = _grid.RunOarJobAsync(new OarJobRequest(Beach, OarJobKind.Import, "castle.oar"), ct);
+            await Until(() => _http.Commands(port).Any(c => c.StartsWith("load oar", StringComparison.Ordinal)), "the load was never sent");
+            await Task.Delay(3000, ct);
+            Assert.False(job.IsCompleted, "the job ended on Home's alert");
+            Assert.Equal("Importing castle.oar into Beach", _grid.BusyWith("Home"));
+
+            _grid.OnRegionAlert(new RegionAlert("region_ready", "oarloaded", "Beach", Beach, null));
+            Assert.Null(await job.WaitAsync(TimeSpan.FromSeconds(30), ct));
+
+            var commands = _http.Commands(port).ToList();
+            var load = commands.IndexOf($"load oar --force-terrain --force-parcels \"{oar}\"");
+            Assert.True(load > 0, string.Join(" | ", commands));
+            Assert.Equal("change region Beach", commands[load - 1]);
+            Assert.Equal("change region root", commands[load + 1]);
+            Assert.Null(_grid.BusyWith("Home"));
+            Assert.False(RegionModel.Find(_store.LoadOrCreate(), Beach)!.NeedsContent);
+            Assert.True(RegionModel.Find(_store.LoadOrCreate(), Home)!.NeedsContent);
+        }
+        finally { await EndAllAsync(_grid, fakes); }
+    }
+
+    [Fact]
+    public async Task Import_refuses_a_stopped_region()
+    {
+        LibraryOar();
+        HomeAndBeach(shared: true);
+
+        var e = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _grid.RunOarJobAsync(new OarJobRequest(Beach, OarJobKind.Import, "castle.oar"), TestContext.Current.CancellationToken));
+
+        Assert.Equal("Start Beach first; an OAR needs it running.", e.Message);
+        Assert.Empty(_http.CommandPorts);
+        Assert.Null(_grid.BusyWith("Home"));
+    }
+
+    [Fact]
+    public async Task Import_refuses_an_unsafe_or_missing_file()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        LibraryOar();
+        Directory.CreateDirectory(Path.Combine(_paths.Data, "elsewhere"));
+        File.WriteAllBytes(Path.Combine(_paths.Data, "elsewhere", "secret.oar"), [1]);
+        HomeAndBeach(shared: true);
+
+        foreach (var file in new[] { "missing.oar", "../elsewhere/secret.oar", "..\\elsewhere\\secret.oar", "castle.txt", "", null })
+        {
+            var e = await Assert.ThrowsAsync<ArgumentException>(() =>
+                _grid.RunOarJobAsync(new OarJobRequest(Beach, OarJobKind.Import, file), ct));
+            Assert.Equal("That file is not in the OAR library.", e.Message);
+        }
+        Assert.Empty(_http.CommandPorts);
+    }
+
+    [Fact]
+    public async Task Second_job_in_same_program_is_refused()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        LibraryOar();
+        var fakes = await RunningHomeAndBeach(_grid, shared: true);
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        try
+        {
+            var save = _grid.RunOarJobAsync(new OarJobRequest(Home, OarJobKind.Save), stop.Token); // never finishes here
+            await Until(() => _grid.BusyWith("Home") is not null, "the save never started");
+
+            var import = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                _grid.RunOarJobAsync(new OarJobRequest(Beach, OarJobKind.Import, "castle.oar"), ct));
+            var again = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                _grid.RunOarJobAsync(new OarJobRequest(Home, OarJobKind.MakeLand), ct));
+
+            Assert.Equal("Saving Home as an OAR is still running. Try again when it finishes.", import.Message);
+            Assert.Equal("Saving Home as an OAR is still running. Try again when it finishes.", again.Message);
+            Assert.Equal("Saving Home as an OAR", _grid.BusyWith("Home"));
+
+            stop.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => save.WaitAsync(TimeSpan.FromSeconds(30), ct));
+            Assert.Null(_grid.BusyWith("Home"));
+        }
+        finally { await EndAllAsync(_grid, fakes); }
+    }
+
+    [Fact]
+    public async Task Jobs_in_two_programs_run_together()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        LibraryOar();
+        var fakes = await RunningHomeAndBeach(_grid, shared: false);
+        _console = (port, command) =>
+        {
+            if (port == _secondConsole && command.StartsWith("load oar", StringComparison.Ordinal))
+                _grid.OnRegionAlert(new RegionAlert("region_ready", "oarloaded", "Beach", Beach, null));
+            return [];
+        };
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        try
+        {
+            var save = _grid.RunOarJobAsync(new OarJobRequest(Home, OarJobKind.Save), stop.Token);
+            await Until(() => _grid.BusyWith("Home") is not null, "the save never started");
+
+            var import = _grid.RunOarJobAsync(new OarJobRequest(Beach, OarJobKind.Import, "castle.oar"), ct);
+            await Until(() => _grid.BusyWith("Beach") is not null || import.IsCompleted, "the import never started");
+            Assert.Null(await import.WaitAsync(TimeSpan.FromSeconds(30), ct));
+
+            Assert.False(save.IsCompleted);
+            Assert.Equal("Saving Home as an OAR", _grid.BusyWith("Home"));
+            Assert.Null(_grid.BusyWith("Beach"));
+            stop.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => save.WaitAsync(TimeSpan.FromSeconds(30), ct));
+        }
+        finally { await EndAllAsync(_grid, fakes); }
+    }
+
+    [Fact]
+    public async Task Power_action_refused_while_job_runs()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var fakes = await RunningHomeAndBeach(_grid, shared: true);
+        var port = _store.LoadOrCreate().RegionConsolePort;
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        try
+        {
+            var save = _grid.RunOarJobAsync(new OarJobRequest(Home, OarJobKind.Save), stop.Token);
+            await Until(() => _grid.BusyWith("Home") is not null, "the save never started");
+            const string busy = "Saving Home as an OAR is still running. Try again when it finishes.";
+
+            Assert.Equal(busy, (await Assert.ThrowsAsync<InvalidOperationException>(() => _grid.RegionPowerAsync(Beach, RegionPower.Stop, ct))).Message);
+            Assert.Equal(busy, (await Assert.ThrowsAsync<InvalidOperationException>(() => _grid.MoveRegionAsync(Beach, 1020, 1000, ct))).Message);
+            Assert.Equal(busy, (await Assert.ThrowsAsync<InvalidOperationException>(() => _grid.ChangeRunsWithAsync(Beach, null, ct))).Message);
+
+            Assert.DoesNotContain("quit", _http.Commands(port));
+            var saved = RegionModel.Find(_store.LoadOrCreate(), Beach)!;
+            Assert.Equal(("Home", 1010), (saved.Instance, saved.X));
+            stop.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => save.WaitAsync(TimeSpan.FromSeconds(30), ct));
+        }
+        finally { await EndAllAsync(_grid, fakes); }
+    }
+
+    [Fact]
+    public async Task Change_runs_with_refuses_a_busy_target_program()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var fakes = await RunningHomeAndBeach(_grid, shared: false);
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        try
+        {
+            var save = _grid.RunOarJobAsync(new OarJobRequest(Home, OarJobKind.Save), stop.Token);
+            await Until(() => _grid.BusyWith("Home") is not null, "the save never started");
+
+            var e = await Assert.ThrowsAsync<InvalidOperationException>(() => _grid.ChangeRunsWithAsync(Beach, "Home", ct));
+
+            Assert.Equal("Saving Home as an OAR is still running. Try again when it finishes.", e.Message);
+            Assert.Equal("Beach", RegionModel.Find(_store.LoadOrCreate(), Beach)!.Instance);
+            stop.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => save.WaitAsync(TimeSpan.FromSeconds(30), ct));
+        }
+        finally { await EndAllAsync(_grid, fakes); }
+    }
+
+    [Fact]
+    public async Task Save_moves_a_finished_oar_into_the_library()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var grid = NewGrid(new DatedClock(new DateOnly(2026, 10, 28)));
+        var fakes = await RunningHomeAndBeach(grid, shared: true);
+        var port = _store.LoadOrCreate().RegionConsolePort;
+        // Lines from an earlier save are older than this one.
+        AppendLog("Home", "[ARCHIVER]: Error closing archive: disk full");
+        AppendLog("Home", "[ARCHIVER]: Finished writing out OAR for Home");
+        _console = (_, command) =>
+        {
+            if (SavePath(command) is { } path)
+            {
+                WriteOar(path);
+                AppendLog("Home", "[ARCHIVER]: Finished writing out OAR for Home");
+            }
+            return [];
+        };
+        try
+        {
+            var name = await grid.RunOarJobAsync(new OarJobRequest(Home, OarJobKind.Save), ct).WaitAsync(TimeSpan.FromSeconds(60), ct);
+
+            Assert.Equal("Home-2026-10-28.oar", name);
+            Assert.True(OarFile.LooksLikeOar(Path.Combine(_paths.Oars, name!)));
+            Assert.Empty(Directory.GetFileSystemEntries(_paths.OarsSaving));
+            var commands = _http.Commands(port).ToList();
+            var save = commands.FindIndex(c => SavePath(c) is not null);
+            Assert.StartsWith($"save oar \"{_paths.OarsSaving.Replace('\\', '/')}/", commands[save]);
+            Assert.Equal("change region Home", commands[save - 1]);
+            Assert.Equal("change region root", commands[save + 1]);
+            Assert.Null(grid.BusyWith("Home"));
+
+            // A second save the same day gets the next free name.
+            Assert.Equal("Home-2026-10-28-2.oar", await grid.RunOarJobAsync(new OarJobRequest(Home, OarJobKind.Save), ct).WaitAsync(TimeSpan.FromSeconds(60), ct));
+        }
+        finally { await EndAllAsync(grid, fakes); }
+    }
+
+    [Fact]
+    public async Task Save_reports_bytes_written()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var fakes = await RunningHomeAndBeach(_grid, shared: false);
+        string? staging = null;
+        _console = (port, command) =>
+        {
+            if (SavePath(command) is { } path)
+            {
+                staging = path;
+                WriteOar(path);
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(3000, CancellationToken.None);
+                    AppendLog("Home", "[ARCHIVER]: Finished writing out OAR for Home");
+                }, CancellationToken.None);
+            }
+            return [];
+        };
+        var reports = new Reports<OarJobProgress>();
+        try
+        {
+            var name = await _grid.RunOarJobAsync(new OarJobRequest(Home, OarJobKind.Save), ct, reports).WaitAsync(TimeSpan.FromSeconds(60), ct);
+
+            var length = new FileInfo(Path.Combine(_paths.Oars, name!)).Length;
+            Assert.NotNull(staging);
+            lock (reports.All) Assert.Contains(reports.All, p => p.BytesWritten == length);
+        }
+        finally { await EndAllAsync(_grid, fakes); }
+    }
+
+    [Fact]
+    public async Task Save_fails_cleanly_when_program_stops()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var fakes = await RunningHomeAndBeach(_grid, shared: false);
+        var homeConsole = _store.LoadOrCreate().RegionConsolePort;
+        string? staging = null;
+        _console = (_, command) =>
+        {
+            if (SavePath(command) is { } path) File.WriteAllBytes(staging = path, new byte[1000]); // still writing
+            return [];
+        };
+        try
+        {
+            var save = _grid.RunOarJobAsync(new OarJobRequest(Home, OarJobKind.Save), ct);
+            await Until(() => staging is not null, "the save was never sent");
+            _http.OnCommand = port =>
+            {
+                // What a region program does on "quit".
+                if (port == homeConsole && _http.Commands(port).Contains("quit") && !fakes[0].HasExited) fakes[0].Kill();
+                if (port == _secondConsole && _http.Commands(port).Contains("quit") && !fakes[1].HasExited) fakes[1].Kill();
+            };
+
+            await _grid.StopAllAsync(ct); // the world's stop is not refused
+
+            var e = await Assert.ThrowsAsync<InvalidOperationException>(() => save.WaitAsync(TimeSpan.FromSeconds(30), ct));
+            Assert.Equal("The region stopped before the save finished.", e.Message);
+            Assert.Empty(Directory.GetFileSystemEntries(_paths.OarsSaving));
+            Assert.Null(_grid.BusyWith("Home"));
+        }
+        finally { await EndAllAsync(_grid, fakes); }
+    }
+
+    [Fact]
+    public async Task Save_fails_on_archiver_error_line()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var fakes = await RunningHomeAndBeach(_grid, shared: false);
+        _console = (_, command) =>
+        {
+            if (SavePath(command) is { } path)
+            {
+                WriteOar(path);
+                AppendLog("Home", "[ARCHIVER]: Error closing archive: disk full");
+                AppendLog("Home", "[ARCHIVER]: Finished writing out OAR for Home");
+            }
+            return [];
+        };
+        try
+        {
+            var e = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                _grid.RunOarJobAsync(new OarJobRequest(Home, OarJobKind.Save), ct).WaitAsync(TimeSpan.FromSeconds(60), ct));
+
+            Assert.Equal("The save did not finish; see the region log.", e.Message);
+            Assert.Empty(Directory.GetFileSystemEntries(_paths.OarsSaving));
+            Assert.Empty(Directory.GetFiles(_paths.Oars));
+            Assert.Null(_grid.BusyWith("Home"));
+        }
+        finally { await EndAllAsync(_grid, fakes); }
+    }
+
+    [Fact]
+    public async Task Make_land_again_loads_the_type_and_clears_needs_content()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var oar = LibraryOar();
+        var fakes = await RunningHomeAndBeach(_grid, shared: true);
+        var port = _store.LoadOrCreate().RegionConsolePort;
+        _grid.UpdateSettings(l => l with
+        {
+            CustomTypes = [new CustomRegionType("c-0000abcd", "My Castle", "castle.oar")],
+            Regions = l.Regions.Select(r => r.Uuid == Home ? r with { Content = "c-0000abcd" } : r).ToList(),
+        });
+        _console = (_, command) =>
+        {
+            if (command.StartsWith("load oar", StringComparison.Ordinal))
+                _grid.OnRegionAlert(new RegionAlert("region_ready", "oarloaded", "Home", Home, null));
+            return [];
+        };
+        try
+        {
+            Assert.Null(await _grid.RunOarJobAsync(new OarJobRequest(Home, OarJobKind.MakeLand), ct).WaitAsync(TimeSpan.FromSeconds(60), ct));
+
+            var commands = _http.Commands(port).ToList();
+            var load = commands.IndexOf($"load oar --force-terrain --force-parcels \"{oar}\"");
+            Assert.True(load > 0, string.Join(" | ", commands));
+            Assert.Equal("change region Home", commands[load - 1]);
+            Assert.Equal("change region root", commands[load + 1]);
+            Assert.False(RegionModel.Find(_store.LoadOrCreate(), Home)!.NeedsContent);
+            Assert.True(RegionModel.Find(_store.LoadOrCreate(), Beach)!.NeedsContent);
+            Assert.Null(_grid.BusyWith("Home"));
+        }
+        finally { await EndAllAsync(_grid, fakes); }
     }
 
     private sealed class FakeRobust : IRobustClient
