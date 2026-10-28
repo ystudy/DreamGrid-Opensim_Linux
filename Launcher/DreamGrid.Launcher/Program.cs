@@ -144,6 +144,7 @@ builder.Services.AddSingleton<SetupProgress>();
 builder.Services.AddSingleton<SetupRunner>();
 builder.Services.AddSingleton<RegionJob>();
 builder.Services.AddSingleton<OarLibrary>();
+builder.Services.AddSingleton<UploadPartFiles>();
 // The add-region form's memory advice; tests swap it.
 builder.Services.AddSingleton<Func<long?>>(_ => SystemMemory.AvailableBytes);
 builder.Services.AddHostedService<GridHostedService>();

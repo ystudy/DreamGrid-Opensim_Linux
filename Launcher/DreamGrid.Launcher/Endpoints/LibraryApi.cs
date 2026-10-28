@@ -23,6 +23,11 @@ public static class LibraryApi
     private const string TokenHeader = "RequestVerificationToken";
     private const int MaxTokenLength = 4096;
 
+    // A full disk: ENOSPC on Linux (its errno is the HResult there); ERROR_DISK_FULL and ERROR_HANDLE_DISK_FULL on Windows.
+    private const int Enospc = 28;
+    private const int DiskFull = unchecked((int)0x80070070);
+    private const int HandleDiskFull = unchecked((int)0x80070027);
+
     public static void Map(WebApplication app)
     {
         app.MapPost("/regions/library/upload", UploadAsync)
@@ -41,7 +46,7 @@ public static class LibraryApi
     /// library page with the text as its notice.
     /// </summary>
     private static async Task<IResult> UploadAsync(HttpContext ctx, OarLibrary library, LauncherPaths paths,
-        IAntiforgery antiforgery, ITempDataDictionaryFactory tempData)
+        IAntiforgery antiforgery, ITempDataDictionaryFactory tempData, UploadPartFiles partFiles, ILoggerFactory loggers)
     {
         // No size limit for this endpoint only (Kestrel's default is 30 MB); it must be lifted before the body is read.
         if (ctx.Features.Get<IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit)
@@ -101,7 +106,7 @@ public static class LibraryApi
 
                 var uploaded = (disposition.FileNameStar.HasValue ? disposition.FileNameStar : HeaderUtilities.RemoveQuotes(disposition.FileName)).ToString();
                 if (uploaded.Length == 0) break;
-                var saved = await SaveAsync(section.Body, uploaded, library, paths, ct);
+                var saved = await SaveAsync(section.Body, uploaded, library, paths, partFiles, ct);
                 return saved is null ? Reply(false, null, NotAnOar) : Reply(true, saved, $"Uploaded {saved}.");
             }
             return Reply(false, null, "Choose an OAR file to upload.");
@@ -110,11 +115,29 @@ public static class LibraryApi
         {
             return Results.StatusCode(e.StatusCode);
         }
+        catch (PartWriteException e)
+        {
+            // SaveAsync has removed the part file.
+            var cause = e.InnerException!;
+            loggers.CreateLogger(typeof(LibraryApi).FullName!).LogWarning(cause, "An upload could not be written to {Folder}.", paths.OarsIncoming);
+            return Reply(false, null, cause.HResult is Enospc or DiskFull or HandleDiskFull
+                ? "There isn't enough disk space for that file."
+                : "The file could not be saved; see the launcher log.");
+        }
         catch (Exception e) when (e is IOException or OperationCanceledException)
         {
-            // The browser went away or the disk failed; SaveAsync has removed the part file.
+            // The browser went away; SaveAsync has removed the part file.
             return Reply(false, null, "The upload stopped before it finished. Try again.");
         }
+    }
+
+    /// <summary>A write to the upload's part file failed; the inner exception says why.</summary>
+    private sealed class PartWriteException(Exception inner) : Exception(inner.Message, inner);
+
+    private static async Task WritingAsync(Func<Task> write)
+    {
+        try { await write(); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { throw new PartWriteException(e); }
     }
 
     /// <summary>The token field's value, or null when it is longer than any token.</summary>
@@ -129,14 +152,33 @@ public static class LibraryApi
     }
 
     /// <summary>The library name the upload was saved as, or null (and nothing kept) when it isn't an OAR.</summary>
-    private static async Task<string?> SaveAsync(Stream body, string uploaded, OarLibrary library, LauncherPaths paths, CancellationToken ct)
+    /// <remarks>
+    /// The body is copied by hand so that a failed write to the part file (a <see cref="PartWriteException"/>) is told apart
+    /// from a failed read of the body, which is the browser going away.
+    /// </remarks>
+    private static async Task<string?> SaveAsync(Stream body, string uploaded, OarLibrary library, LauncherPaths paths,
+        UploadPartFiles partFiles, CancellationToken ct)
     {
         Directory.CreateDirectory(paths.OarsIncoming);
         var part = Path.Combine(paths.OarsIncoming, Guid.NewGuid().ToString("N") + ".part");
         try
         {
-            await using (var file = new FileStream(part, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, useAsync: true))
-                await body.CopyToAsync(file, ct);
+            Stream file;
+            try { file = partFiles.Create(part); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { throw new PartWriteException(e); }
+            try
+            {
+                var buffer = new byte[81920];
+                for (int n; (n = await body.ReadAsync(buffer, ct)) > 0;)
+                    await WritingAsync(() => file.WriteAsync(buffer.AsMemory(0, n), ct).AsTask());
+                await WritingAsync(() => file.FlushAsync(ct));
+            }
+            finally
+            {
+                // After a failed write, closing tries the buffered bytes again; that failure must not hide the first one.
+                try { await file.DisposeAsync(); }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+            }
             if (!OarFile.LooksLikeOar(part)) return null;
 
             var clean = OarLibrary.CleanName(uploaded);

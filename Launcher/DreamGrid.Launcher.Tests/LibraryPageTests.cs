@@ -7,9 +7,13 @@ using System.Text.Json;
 using AngleSharp.Html.Parser;
 using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.Settings;
+using DreamGrid.Launcher.Endpoints;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using Xunit;
 
 namespace DreamGrid.Launcher.Tests;
@@ -22,6 +26,9 @@ public sealed class LibraryPageTests : IAsyncLifetime
 
     /// <summary>Set by the upload probe once the server has finished an upload request.</summary>
     private readonly TaskCompletionSource _uploadDone = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>The upload's part files; a test can make their writes fail.</summary>
+    private readonly FailingPartFiles _parts = new();
 
     /// <summary>True when an upload request's form was read (ReadFormAsync ran), which would buffer the whole file.</summary>
     private volatile bool _formRead;
@@ -38,6 +45,11 @@ public sealed class LibraryPageTests : IAsyncLifetime
             {
                 TestAuth.Apply(app);
                 app.Use(UploadProbe);
+            },
+            ExtraServices = services =>
+            {
+                services.RemoveAll<UploadPartFiles>();
+                services.AddSingleton<UploadPartFiles>(_parts);
             },
         };
     }
@@ -312,6 +324,70 @@ public sealed class LibraryPageTests : IAsyncLifetime
 
         Assert.Empty(LibraryFiles());
         Assert.Empty(IncomingFiles());
+    }
+
+    [Theory]
+    [InlineData(unchecked((int)0x80070070), "There isn't enough disk space for that file.")]
+    [InlineData(unchecked((int)0x80070027), "There isn't enough disk space for that file.")]
+    [InlineData(28, "There isn't enough disk space for that file.")] // ENOSPC on Linux
+    [InlineData(unchecked((int)0x80070005), "The file could not be saved; see the launcher log.")]
+    public async Task Upload_whose_write_fails_says_why_and_is_logged(int hresult, string text)
+    {
+        _parts.Failure = new IOException("The write failed.", hresult);
+        using var client = await SignedInAsync();
+        var token = await TokenAsync(client);
+
+        using var response = await FetchUploadAsync(client, token, "castle.oar", FilePart(OarBytes()));
+
+        var json = await JsonAsync(response);
+        Assert.False(json.GetProperty("ok").GetBoolean());
+        Assert.Equal(text, json.GetProperty("text").GetString());
+        Assert.Contains(_f.Logs, l => l.Level == LogLevel.Warning && l.Category == typeof(LibraryApi).FullName
+            && l.Message.Contains("The write failed.", StringComparison.Ordinal));
+        Assert.Empty(LibraryFiles());
+        Assert.Empty(IncomingFiles());
+    }
+
+    /// <summary>Real part files, whose writes throw <see cref="Failure"/> once it is set.</summary>
+    private sealed class FailingPartFiles : UploadPartFiles
+    {
+        public volatile IOException? Failure;
+
+        public override Stream Create(string path) => new Failing(base.Create(path), this);
+
+        private sealed class Failing(Stream inner, FailingPartFiles owner) : Stream
+        {
+            public override bool CanRead => false;
+            public override bool CanSeek => false;
+            public override bool CanWrite => true;
+            public override long Length => inner.Length;
+            public override long Position { get => inner.Position; set => throw new NotSupportedException(); }
+            public override void Flush() => inner.Flush();
+            public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+            public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+            public override void SetLength(long value) => throw new NotSupportedException();
+
+            public override void Write(byte[] buffer, int offset, int count)
+            {
+                if (owner.Failure is { } e) throw e;
+                inner.Write(buffer, offset, count);
+            }
+
+            public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken ct = default) =>
+                owner.Failure is { } e ? ValueTask.FromException(e) : inner.WriteAsync(buffer, ct);
+
+            protected override void Dispose(bool disposing)
+            {
+                if (disposing) inner.Dispose();
+                base.Dispose(disposing);
+            }
+
+            public override async ValueTask DisposeAsync()
+            {
+                await inner.DisposeAsync();
+                await base.DisposeAsync();
+            }
+        }
     }
 
     [Fact]
