@@ -310,7 +310,8 @@ public sealed class AddRegionPageTests : IAsyncLifetime
         Assert.Contains("Your region could not be created.", Text(doc));
         Assert.Contains("Show details", doc.QuerySelector("details summary")!.TextContent);
         Assert.Contains("meadow exploded", doc.QuerySelector("details")!.TextContent);
-        Assert.Contains("boom", doc.QuerySelector("details")!.TextContent);
+        Assert.DoesNotContain("boom", doc.QuerySelector("details")!.TextContent); // the exception goes to the launcher log
+        Assert.True(await _f.WaitForLogAsync(l => l.Message.Contains("boom")));
         var id = _f.Store.LoadOrCreate().Regions.Single(r => r.Name == "Meadow One").Uuid;
         var open = doc.QuerySelector("a.open-region")!;
         Assert.Equal("Open Meadow One", open.TextContent.Trim());
@@ -331,6 +332,30 @@ public sealed class AddRegionPageTests : IAsyncLifetime
         var doc = await PageAsync(client, "/regions/add?working=1");
         Assert.Contains("That spot overlaps Somewhere.", Text(doc));
         Assert.NotNull(doc.QuerySelector("main form")); // nothing was saved, so the form is offered again
+    }
+
+    [Fact]
+    public async Task Refusal_text_has_no_parameter_suffix()
+    {
+        _f.Grid.OnAddRegion = (_, _, _) => throw new ArgumentException("That spot overlaps Somewhere.", "request");
+        using var client = await SignedInAsync();
+
+        (await PostAsync(client, Form())).Dispose();
+        var failed = await WaitForProgressAsync(client, p => !p.GetProperty("running").GetBoolean());
+
+        Assert.Equal("That spot overlaps Somewhere.", failed.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task Other_argument_errors_get_the_plain_message()
+    {
+        _f.Grid.OnAddRegion = (_, _, _) => throw new ArgumentOutOfRangeException("index", "deep inside");
+        using var client = await SignedInAsync();
+
+        (await PostAsync(client, Form())).Dispose();
+        var failed = await WaitForProgressAsync(client, p => !p.GetProperty("running").GetBoolean());
+
+        Assert.Equal("Your region could not be created.", failed.GetProperty("error").GetString());
     }
 
     [Fact]

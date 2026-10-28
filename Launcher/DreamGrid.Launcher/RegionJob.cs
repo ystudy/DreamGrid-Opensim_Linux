@@ -52,20 +52,23 @@ public sealed class RegionJob(
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             Saved(request.Name);
-            _progress.Fail("The launcher stopped before your region was ready. Open it to start it again.", null);
+            log.LogWarning("Adding the region {Name} was cut off at \"{Stage}\" because the launcher stopped.", request.Name, _progress.Stage);
+            // The page says what to do next, depending on whether the region was saved.
+            _progress.Fail("The launcher stopped before your region was ready.", null);
         }
         catch (Exception e)
         {
             log.LogError(e, "Adding the region {Name} failed at \"{Stage}\": {Message}", request.Name, _progress.Stage, e.Message);
             var saved = Saved(request.Name);
-            // A refused request carries words meant for the page; anything else is plain text, with the details below it.
-            if (e is ArgumentException)
+            // The controller refuses a request with exactly ArgumentException, in words meant for the page; its
+            // "(Parameter 'request')" suffix is not. Anything else is plain text, with the log lines as details.
+            if (e.GetType() == typeof(ArgumentException))
             {
-                _progress.Fail(e.Message, null);
+                var suffix = e is ArgumentException { ParamName: { Length: > 0 } param } ? $" (Parameter '{param}')" : "";
+                _progress.Fail(e.Message.EndsWith(suffix, StringComparison.Ordinal) ? e.Message[..^suffix.Length] : e.Message, null);
                 return;
             }
-            var excerpt = Excerpt(saved);
-            _progress.Fail("Your region could not be created.", excerpt is null ? e.Message : e.Message + "\n\n" + excerpt);
+            _progress.Fail("Your region could not be created.", Excerpt(saved));
         }
         finally
         {
