@@ -17,7 +17,7 @@ public sealed class OarLibrary(LauncherPaths paths)
     public IReadOnlyList<OarEntry> List()
     {
         if (!Directory.Exists(paths.Oars)) return [];
-        return new DirectoryInfo(paths.Oars).EnumerateFiles("*.oar")
+        return new DirectoryInfo(paths.Oars).EnumerateFiles()
             .Where(f => IsSafeName(f.Name))
             .OrderByDescending(f => f.LastWriteTimeUtc)
             .Select(f => new OarEntry(f.Name, f.Length, new DateTimeOffset(f.LastWriteTimeUtc, TimeSpan.Zero)))
@@ -39,7 +39,8 @@ public sealed class OarLibrary(LauncherPaths paths)
     /// <summary>True for a plain file name: no <c>/</c>, <c>\</c> or <c>"</c>, not starting with a dot, ending in <c>.oar</c> in any case, at most 120 characters.</summary>
     public static bool IsSafeName(string name) =>
         !string.IsNullOrEmpty(name) && name.Length <= MaxNameLength
-        && name.IndexOfAny(['/', '\\', '"']) < 0
+        && name.IndexOfAny(['/', '\\', '"', ':']) < 0
+        && !name.Any(char.IsControl)
         && name[0] != '.'
         && name.EndsWith(".oar", StringComparison.OrdinalIgnoreCase);
 
@@ -50,6 +51,7 @@ public sealed class OarLibrary(LauncherPaths paths)
         var clean = new StringBuilder(name.Length);
         foreach (var c in name)
             clean.Append(char.IsAsciiLetterOrDigit(c) || c is ' ' or '-' or '_' or '.' or '\'' or '(' or ')' ? c : '_');
+        // Anything else, including ':' and control characters, became '_' above.
         var text = clean.ToString().TrimStart('.');
         var hasExtension = text.EndsWith(".oar", StringComparison.OrdinalIgnoreCase);
         var stem = hasExtension ? text[..^4] : text;
@@ -66,7 +68,8 @@ public sealed class OarLibrary(LauncherPaths paths)
         var stem = name.EndsWith(".oar", StringComparison.OrdinalIgnoreCase) ? name[..^4] : name;
         for (var n = 2; ; n++)
         {
-            var candidate = $"{stem}-{n}.oar";
+            var suffix = $"-{n}.oar";
+            var candidate = (stem.Length > MaxNameLength - suffix.Length ? stem[..(MaxNameLength - suffix.Length)] : stem) + suffix;
             if (!File.Exists(Path.Combine(paths.Oars, candidate))) return candidate;
         }
     }

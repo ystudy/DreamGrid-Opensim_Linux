@@ -32,6 +32,7 @@ public sealed class OarLibraryTests : IDisposable
     [Theory]
     [InlineData("../x.oar")] [InlineData("a/b.oar")] [InlineData("..\\x.oar")] [InlineData(".hidden.oar")]
     [InlineData("x.txt")] [InlineData("")] [InlineData("a\"b.oar")]
+    [InlineData("a:b.oar")] [InlineData("a\0b.oar")] [InlineData("a\tb.oar")]
     public void Library_refuses_unsafe_names(string name)
     {
         Assert.False(OarLibrary.IsSafeName(name));
@@ -90,6 +91,32 @@ public sealed class OarLibraryTests : IDisposable
         Assert.Equal("Home-2026-10-28-3.oar", library.FreeName("Home-2026-10-28.oar"));
         Assert.Equal("fresh.oar", library.FreeName("fresh.oar"));
     }
+
+    [Fact]
+    public void FreeName_keeps_a_colliding_120_character_name_within_the_limit()
+    {
+        var name = new string('a', 116) + ".oar";
+        Add(name);
+
+        var free = new OarLibrary(_paths).FreeName(name);
+
+        Assert.NotEqual(name, free);
+        Assert.True(free.Length <= 120);
+        Assert.True(OarLibrary.IsSafeName(free));
+    }
+
+    [Fact]
+    public void List_includes_any_case_of_extension()
+    {
+        Add("c.Oar");
+        Add("d.oAR");
+
+        Assert.Equal(["c.Oar", "d.oAR"], new OarLibrary(_paths).List().Select(e => e.Name).Order());
+    }
+
+    [Fact]
+    public void CleanName_maps_colon_and_control_characters()
+        => Assert.Equal("a_b_c_d.oar", OarLibrary.CleanName("a:b\0c\td.oar"));
 
     [Theory]
     [InlineData("my world?.OAR", "my world_.OAR")]
