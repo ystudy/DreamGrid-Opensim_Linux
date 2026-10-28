@@ -39,6 +39,8 @@ public sealed partial class GridController(
     // How long an OAR import or save may take, and how often a save is checked.
     private static readonly TimeSpan OarJobWait = TimeSpan.FromHours(2);
     private static readonly TimeSpan SavePoll = TimeSpan.FromSeconds(2);
+    // How long a save may take to create its file before it counts as never started.
+    private static readonly TimeSpan SaveStartWait = TimeSpan.FromSeconds(60);
 
     private readonly IReadOnlyList<IFeatureModule> _modules = modules.ToList();
     private readonly SemaphoreSlim _ops = new(1, 1);
@@ -327,7 +329,7 @@ public sealed partial class GridController(
             var now = time.GetUtcNow();
             s = UpdateSettings(l =>
             {
-                var regions = l.Regions.Select(r => r.Uuid == regionId ? r with { DeletedAt = now, Parked = false } : r).ToList();
+                var regions = l.Regions.Select(r => r.Uuid == regionId ? r with { DeletedAt = now } : r).ToList();
                 var programs = l.Programs.ToList();
                 // A program left with no live region goes; the deleted region keeps its folder name.
                 if (!regions.Any(r => r.DeletedAt is null && r.Instance == instance)) programs.RemoveAll(p => p.Instance == instance);
@@ -899,7 +901,7 @@ public sealed partial class GridController(
     private async Task ImportOarAsync(LauncherSettings s, RegionSettings region, Component program, string file, string oar,
         IProgress<OarJobProgress>? progress, CancellationToken ct)
     {
-        const string stopped = "The region stopped before the OAR loaded.";
+        const string stopped = "The region stopped before the import finished.";
         progress?.Report(new OarJobProgress("Loading the OAR", null));
         await OnRegionConsoleAsync(program, region, s, async console =>
         {
@@ -916,8 +918,9 @@ public sealed partial class GridController(
     /// <summary>
     /// Saves the region into <see cref="LauncherPaths.OarsSaving"/>, then moves the finished file into the library. OpenSim
     /// reports the end of a save only in the region log (ArchiveWriteRequest.CloseArchive), so the lines the log gains are
-    /// read about every 2 s. A failed save's file is removed; when the launcher stops instead, OpenSim may still be writing
-    /// it, and the next start's <see cref="OarLibrary.ClearStaging"/> removes it.
+    /// read about every 2 s. OpenSim logs that end even for a save that failed, and only then rethrows the failure, so the log
+    /// is read once more after it. A failed save's file is removed; when the launcher stops instead, OpenSim may still be
+    /// writing it, and the next start's <see cref="OarLibrary.ClearStaging"/> removes it.
     /// </summary>
     private async Task<string> SaveOarAsync(LauncherSettings s, RegionSettings region, Component program,
         IProgress<OarJobProgress>? progress, CancellationToken ct)
@@ -934,21 +937,36 @@ public sealed partial class GridController(
             await OnRegionConsoleAsync(program, region, s, async console =>
             {
                 await console.RunAsync($"save oar \"{Fwd(staging)}\"", ConsoleSettle, ct);
-                var deadline = time.GetUtcNow() + OarJobWait;
+                var sent = time.GetUtcNow();
+                var deadline = sent + OarJobWait;
+                // Set once the Finished line is read; the save is whole if the next read shows no failure after it.
+                var ended = false;
                 while (true)
                 {
-                    progress?.Report(new OarJobProgress("Saving the OAR", File.Exists(staging) ? new FileInfo(staging).Length : null));
+                    var started = File.Exists(staging);
+                    progress?.Report(new OarJobProgress("Saving the OAR", started ? new FileInfo(staging).Length : null));
+                    var followed = ended;
                     foreach (var line in log.ReadNew())
                     {
-                        if (line.Contains("[ARCHIVER]: Error", StringComparison.Ordinal)) throw new InvalidOperationException(SaveFailed);
-                        if (!line.TrimEnd().EndsWith(finished, StringComparison.Ordinal)) continue;
+                        if (line.Contains("[ARCHIVER]: Error", StringComparison.Ordinal)
+                            || (ended && line.Contains("Exception", StringComparison.Ordinal)))
+                            throw new InvalidOperationException(SaveFailed);
+                        if (line.TrimEnd().EndsWith(finished, StringComparison.Ordinal)) ended = true;
+                    }
+                    if (followed)
+                    {
                         if (!OarFile.LooksLikeOar(staging)) throw new InvalidOperationException(SaveFailed);
                         whole = true;
                         return;
                     }
-                    if (program.Process.State != ProcessState.Running)
-                        throw new InvalidOperationException("The region stopped before the save finished.");
-                    if (time.GetUtcNow() >= deadline) throw new InvalidOperationException(SaveFailed);
+                    if (!ended)
+                    {
+                        if (program.Process.State != ProcessState.Running)
+                            throw new InvalidOperationException("The region stopped before the save finished.");
+                        if (!started && time.GetUtcNow() >= sent + SaveStartWait)
+                            throw new InvalidOperationException("The region did not start the save; see the region log.");
+                        if (time.GetUtcNow() >= deadline) throw new InvalidOperationException(SaveFailed);
+                    }
                     await Task.Delay(SavePoll, time, ct);
                 }
             }, ct);

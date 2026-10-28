@@ -84,9 +84,9 @@ public static class RegionPowerPlan
             .Where(p => loaded.GetValueOrDefault(p) is { } ids && RegionModel.Loadable(s, p, held).Any(r => !ids.Contains(r.Uuid)))
             .ToList();
 
-    /// <summary>Every region unparked ("Start everything").</summary>
+    /// <summary>Every live region unparked ("Start everything"); a deleted region keeps its Parked value for its restore.</summary>
     public static LauncherSettings Unparked(LauncherSettings s) =>
-        s with { Regions = s.Regions.Select(r => r.Parked ? r with { Parked = false } : r).ToList() };
+        s with { Regions = s.Regions.Select(r => r.Parked && r.DeletedAt is null ? r with { Parked = false } : r).ToList() };
 
     private static LauncherSettings WithParked(LauncherSettings s, Guid region, bool parked) =>
         s with { Regions = s.Regions.Select(r => r.Uuid == region ? r with { Parked = parked } : r).ToList() };

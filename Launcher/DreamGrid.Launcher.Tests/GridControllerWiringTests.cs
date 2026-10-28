@@ -1639,6 +1639,108 @@ public sealed class GridControllerWiringTests : IDisposable
     }
 
     [Fact]
+    public async Task Save_fails_on_an_exception_after_the_finished_line()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var fakes = await RunningHomeAndBeach(_grid, shared: false);
+        _console = (port, command) =>
+        {
+            if (SavePath(command) is { } path)
+            {
+                // OpenSim closes the tar cleanly and logs the end, and only then rethrows what went wrong.
+                WriteOar(path);
+                AppendLog("Home", "[ARCHIVER]: Finished writing out OAR for Home");
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(1000, CancellationToken.None);
+                    AppendLog("Home", "System.IO.IOException: Disk full");
+                }, CancellationToken.None);
+            }
+            return [];
+        };
+        try
+        {
+            var e = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                _grid.RunOarJobAsync(new OarJobRequest(Home, OarJobKind.Save), ct).WaitAsync(TimeSpan.FromSeconds(60), ct));
+
+            Assert.Equal("The save did not finish; see the region log.", e.Message);
+            Assert.Empty(Directory.GetFileSystemEntries(_paths.OarsSaving));
+            Assert.Empty(Directory.GetFiles(_paths.Oars));
+            Assert.Null(_grid.BusyWith("Home"));
+        }
+        finally { await EndAllAsync(_grid, fakes); }
+    }
+
+    /// <summary>Real time, moved forward on demand.</summary>
+    private sealed class ShiftedClock : TimeProvider
+    {
+        private long _shift;
+        public void Shift(TimeSpan by) => Interlocked.Add(ref _shift, by.Ticks);
+        public override DateTimeOffset GetUtcNow() => System.GetUtcNow() + TimeSpan.FromTicks(Interlocked.Read(ref _shift));
+    }
+
+    [Fact]
+    public async Task Save_that_never_starts_fails_after_a_minute()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var clock = new ShiftedClock();
+        var grid = NewGrid(clock);
+        var fakes = await RunningHomeAndBeach(grid, shared: false);
+        var port = _store.LoadOrCreate().RegionConsolePort;
+        try
+        {
+            var save = grid.RunOarJobAsync(new OarJobRequest(Home, OarJobKind.Save), ct); // the file never appears
+            await Until(() => _http.Commands(port).Any(c => SavePath(c) is not null), "the save was never sent");
+            await Task.Delay(3000, ct);
+            Assert.False(save.IsCompleted, "the save failed before a minute passed");
+
+            clock.Shift(TimeSpan.FromSeconds(61));
+
+            var e = await Assert.ThrowsAsync<InvalidOperationException>(() => save.WaitAsync(TimeSpan.FromSeconds(30), ct));
+            Assert.Equal("The region did not start the save; see the region log.", e.Message);
+            Assert.Null(grid.BusyWith("Home"));
+        }
+        finally { await EndAllAsync(grid, fakes); }
+    }
+
+    [Fact]
+    public async Task Import_fails_when_world_stops()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        LibraryOar();
+        var fakes = await RunningHomeAndBeach(_grid, shared: false);
+        var port = _store.LoadOrCreate().RegionConsolePort;
+        try
+        {
+            var job = _grid.RunOarJobAsync(new OarJobRequest(Home, OarJobKind.Import, "castle.oar"), ct); // its alert never comes
+            await Until(() => _http.Commands(port).Any(c => c.StartsWith("load oar", StringComparison.Ordinal)), "the load was never sent");
+            QuitKills(fakes, shared: false);
+
+            await _grid.StopAllAsync(ct);
+
+            var e = await Assert.ThrowsAsync<InvalidOperationException>(() => job.WaitAsync(TimeSpan.FromSeconds(15), ct));
+            Assert.Equal("The region stopped before the import finished.", e.Message);
+            Assert.Null(_grid.BusyWith("Home"));
+        }
+        finally { await EndAllAsync(_grid, fakes); }
+    }
+
+    [Fact]
+    public async Task Delete_and_restore_keep_a_region_parked()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        HomeAndBeach(shared: false);
+        _grid.UpdateSettings(l => l with { Regions = l.Regions.Select(r => r.Uuid == Beach ? r with { Parked = true } : r).ToList() });
+
+        await _grid.DeleteRegionAsync(Beach, ct);
+        Assert.True(Saved(Beach).Parked);
+        await _grid.RestoreRegionAsync(Beach, ct);
+
+        Assert.True(Saved(Beach).Parked);
+        Assert.Equal(RegionState.Parked, _grid.GetStatus().Regions.Single(r => r.Id == Beach).State);
+    }
+
+    [Fact]
     public async Task Make_land_again_loads_the_type_and_clears_needs_content()
     {
         var ct = TestContext.Current.CancellationToken;
