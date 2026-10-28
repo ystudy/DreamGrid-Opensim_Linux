@@ -131,6 +131,8 @@ builder.Services.AddRazorPages(o =>
 // The dashboard's script sends the token in this header to /api/grid/*.
 builder.Services.AddAntiforgery(o => o.HeaderName = "RequestVerificationToken");
 builder.Services.AddGrid(paths, store);
+// Robust's map tiles, fetched on the browser's behalf (the browser never reaches Robust's port).
+builder.Services.AddHttpClient(RegionsApi.RobustMapClient, c => c.Timeout = TimeSpan.FromSeconds(5));
 builder.Services.AddSingleton<LogReader>();
 builder.Services.AddSingleton<LoginThrottle>();
 builder.Services.AddSingleton<LegacyCommandApi>();
@@ -151,6 +153,7 @@ app.UseMiddleware<SetupGate>();
 app.UseAuthorization();
 LegacyEndpoints.Map(app);
 LogsApi.Map(app);
+RegionsApi.Map(app);
 StatusApi.Map(app);
 SetupApi.Map(app);
 app.MapRazorPages();

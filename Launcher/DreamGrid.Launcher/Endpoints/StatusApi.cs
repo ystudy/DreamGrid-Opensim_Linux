@@ -50,7 +50,7 @@ public static class StatusApi
         var regionNames = s.Regions.ToDictionary(r => r.Id, r => r.Name);
         return new StatusView(
             new GridView(View(s.Database, "Database"), View(s.Robust, "Grid service"),
-                s.Regions.Select(r => new RegionView(r.Name, r.State.ToString(), r.State.ToString(),
+                s.Regions.Select(r => new RegionView(r.Name, r.State.ToString(), RegionStateText(r.State),
                     withOnline ? r.RunsWith : null, withOnline ? r.LoginsEnabled : null)).ToList(),
                 s.LoginsEnabled, s.LoginUri),
             people.Avatars.Select(a => regionNames.TryGetValue(a.RegionId, out var region) ? $"{a.Name} in {region}" : a.Name).ToList(),
@@ -148,6 +148,9 @@ public static class StatusApi
 
     private static ComponentView View(ComponentStatus c, string label) =>
         new(c.Name, label, c.State.ToString(), StateText(c.State), Detail(c));
+
+    /// <summary>The dashboard's word for a region's state ("Parked" for a parked one); the Regions page uses it too.</summary>
+    public static string RegionStateText(RegionState state) => state.ToString();
 
     private static string StateText(ProcessState state) => state switch
     {
