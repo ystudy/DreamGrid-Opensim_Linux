@@ -52,12 +52,12 @@ public sealed class GridControllerWiringTests : IDisposable
     /// <summary>The folder of the rig's MariaDB, which does not exist.</summary>
     private const string MissingMariaDb = "no-such-dir";
 
-    private GridController NewGrid(TimeProvider time)
+    private GridController NewGrid(TimeProvider time, Action<int, IReadOnlyList<int>, CpuPriority>? cpu = null)
     {
         // A MariaDB that cannot start: anything past the port check fails with a non-port error.
         var missing = Path.Combine(_root, MissingMariaDb, "mariadbd");
         return new GridController(_paths, _store, new MariaDbBinaries(missing, missing, null),
-            [new LogLevelModule()], _robust, _http, time, regionStores: _ => _regionStore)
+            [new LogLevelModule()], _robust, _http, time, regionStores: _ => _regionStore, cpu: cpu ?? ((_, _, _) => { }))
         {
             DatabaseRunningForTests = () => _databaseUp,
         };
@@ -1117,9 +1117,10 @@ public sealed class GridControllerWiringTests : IDisposable
     /// says it loaded its regions and that they accept logins. Like OpenSim, a console switched with <c>change region</c>
     /// answers <c>show regions</c> and <c>login status</c> for that region only.
     /// </summary>
-    private async Task<Process[]> RunningHomeAndBeach(GridController grid, bool shared)
+    private async Task<Process[]> RunningHomeAndBeach(GridController grid, bool shared, Func<LauncherSettings, LauncherSettings>? change = null)
     {
         HomeAndBeach(shared);
+        if (change is not null) _store.Save(change(_store.LoadOrCreate()));
         var homeConsole = _store.LoadOrCreate().RegionConsolePort;
         var scenes = new System.Collections.Concurrent.ConcurrentDictionary<int, string>();
         _http.Reply = (port, command) =>
@@ -2045,6 +2046,288 @@ public sealed class GridControllerWiringTests : IDisposable
 
         Assert.Equal(1234, Assert.Single(space!, kv => kv.Key == Beach).Value);
         Assert.Contains($"Space {Beach}", _regionStore.Snapshot());
+    }
+
+    // ---- region and program settings ----------------------------------------------------------------
+
+    [Fact]
+    public async Task Rename_saves_the_name_and_turns_the_old_file_off()
+    {
+        var id = TwoRegions();
+        _grid.RegenerateConfig();
+        var dir = _paths.RegionDefinitionDir("Welcome");
+        Assert.True(File.Exists(Path.Combine(dir, "Welcome.ini")));
+
+        await _grid.RenameRegionAsync(id, "Harbour", TestContext.Current.CancellationToken);
+
+        var saved = Saved(id);
+        Assert.Equal("Harbour", saved.Name);
+        Assert.Equal(("Welcome", 2, 1000), (saved.Instance, saved.Size, saved.X)); // only the name changes
+        Assert.True(File.Exists(Path.Combine(dir, "Harbour.ini")));
+        Assert.True(File.Exists(Path.Combine(dir, "Welcome.ini.off")));
+        Assert.False(File.Exists(Path.Combine(dir, "Welcome.ini")));
+        Assert.Equal("Harbour", RegionModel.Find(_grid.CurrentSettings(), id)!.Name);
+        Assert.Empty(_http.CommandPorts);
+    }
+
+    [Fact]
+    public async Task Rename_refused_while_loaded()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var fakes = await RunningHomeAndBeach(_grid, shared: true);
+        try
+        {
+            var e = await Assert.ThrowsAsync<InvalidOperationException>(() => _grid.RenameRegionAsync(Home, "Harbour", ct));
+
+            Assert.Equal("Stop Home first; a region is renamed while it is offline.", e.Message);
+            Assert.Equal("Home", Saved(Home).Name);
+            Assert.DoesNotContain("quit", _http.Commands(_store.LoadOrCreate().RegionConsolePort));
+        }
+        finally { await EndAllAsync(_grid, fakes); }
+    }
+
+    [Fact]
+    public async Task Rename_case_only_is_allowed()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var id = TwoRegions();
+
+        await _grid.RenameRegionAsync(id, "WELCOME", ct);
+        var taken = await Assert.ThrowsAsync<ArgumentException>(() => _grid.RenameRegionAsync(id, "beach", ct));
+
+        Assert.Equal("WELCOME", Saved(id).Name);
+        Assert.Equal("There is already a region called beach.", taken.Message);
+    }
+
+    [Fact]
+    public async Task Rename_to_a_deleted_regions_name_is_refused()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var id = TwoRegions();
+        _grid.UpdateSettings(s => s with { Regions = s.Regions.Select(r => r.Uuid == Beach ? r with { DeletedAt = DateTimeOffset.UtcNow } : r).ToList() });
+
+        var taken = await Assert.ThrowsAsync<ArgumentException>(() => _grid.RenameRegionAsync(id, "Beach", ct));
+        var bad = await Assert.ThrowsAsync<ArgumentException>(() => _grid.RenameRegionAsync(id, " Bad/Name", ct));
+        var deleted = await Assert.ThrowsAsync<InvalidOperationException>(() => _grid.RenameRegionAsync(Beach, "Shore", ct));
+
+        Assert.Equal("There is already a region called Beach.", taken.Message);
+        Assert.Equal("A region name is 2-32 letters, digits, spaces, '-', '_' or '\\'' with no leading or trailing space.", bad.Message);
+        Assert.Equal("That region has been deleted.", deleted.Message);
+        Assert.Equal("Welcome", Saved(id).Name);
+    }
+
+    [Fact]
+    public async Task Rename_refused_while_job_runs()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var fakes = await RunningHomeAndBeach(_grid, shared: true);
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        try
+        {
+            var save = _grid.RunOarJobAsync(new OarJobRequest(Home, OarJobKind.Save), stop.Token);
+            await Until(() => _grid.BusyWith("Home") is not null, "the save never started");
+            const string busy = "Saving Home as an OAR is still running. Try again when it finishes.";
+
+            Assert.Equal(busy, (await Assert.ThrowsAsync<InvalidOperationException>(() => _grid.RenameRegionAsync(Beach, "Shore", ct))).Message);
+            Assert.Equal(busy, (await Assert.ThrowsAsync<InvalidOperationException>(() => _grid.ResizeRegionAsync(Beach, 2, ct))).Message);
+
+            Assert.Equal(("Beach", 1), (Saved(Beach).Name, Saved(Beach).Size));
+            stop.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => save.WaitAsync(TimeSpan.FromSeconds(30), ct));
+        }
+        finally { await EndAllAsync(_grid, fakes); }
+    }
+
+    [Fact]
+    public async Task Resize_refuses_a_taken_area()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var id = TwoRegions(); // Welcome 2x2 at 1000, Beach at 1010
+
+        var taken = await Assert.ThrowsAsync<ArgumentException>(() => _grid.ResizeRegionAsync(id, 11, ct));
+        var tooBig = await Assert.ThrowsAsync<ArgumentException>(() => _grid.ResizeRegionAsync(id, 17, ct));
+        var tooSmall = await Assert.ThrowsAsync<ArgumentException>(() => _grid.ResizeRegionAsync(id, 0, ct));
+
+        Assert.Equal(RegionAdvice.Placement(RegionPlacement.Check(_store.LoadOrCreate(), 1000, 1000, 11, ignore: id)), taken.Message);
+        Assert.Contains("That spot is taken by Beach.", taken.Message);
+        Assert.Equal("A region is 1 to 16 squares on each side.", tooBig.Message);
+        Assert.Equal("A region is 1 to 16 squares on each side.", tooSmall.Message);
+        Assert.Equal(2, Saved(id).Size);
+    }
+
+    [Fact]
+    public async Task Resize_saves_and_restarts_nothing()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var fakes = await RunningHomeAndBeach(_grid, shared: false);
+        try
+        {
+            await _grid.ResizeRegionAsync(Beach, 3, ct);
+
+            Assert.Equal(3, Saved(Beach).Size);
+            Assert.DoesNotContain("quit", _http.Commands(_secondConsole));
+            Assert.DoesNotContain("quit", _http.Commands(_store.LoadOrCreate().RegionConsolePort));
+            Assert.All(_grid.GetStatus().Programs, p => Assert.Equal(ProcessState.Running, p.Process.State));
+            Assert.True(_grid.NeedsRestart("Beach")); // the new size applies at its next start
+            Assert.False(_grid.NeedsRestart("Home"));
+        }
+        finally { await EndAllAsync(_grid, fakes); }
+    }
+
+    [Fact]
+    public async Task Saving_options_marks_the_running_program_for_restart()
+    {
+        // RegionPowerAsync(Restart) needs Robust running, which this rig can't do; a stop and an adoption stand in for it.
+        var ct = TestContext.Current.CancellationToken;
+        var fakes = await RunningHomeAndBeach(_grid, shared: true);
+        var home = _store.LoadOrCreate().RegionConsolePort;
+        Process? again = null;
+        try
+        {
+            Assert.False(_grid.NeedsRestart("Home"));
+
+            await _grid.SaveRegionOptionsAsync(Beach, new RegionOptions(MaxAgents: 20), ct);
+
+            Assert.Equal(20, Saved(Beach).Options!.MaxAgents);
+            Assert.True(_grid.NeedsRestart("Home"));
+            Assert.DoesNotContain("quit", _http.Commands(home)); // saving restarts nothing
+            Assert.Contains("MaxAgents=20",File.ReadAllText(Path.Combine(_paths.RegionDefinitionDir("Home"), "Beach.ini")));
+            var invalid = await Assert.ThrowsAsync<ArgumentException>(() => _grid.SaveRegionOptionsAsync(Beach, new RegionOptions(MaxAgents: 0), ct));
+            Assert.Equal(RegionSettingsRules.Options(new RegionOptions(MaxAgents: 0)).Errors["MaxAgents"], invalid.Message);
+
+            QuitKills(fakes, shared: true);
+            await _grid.StopAllAsync(ct);
+            Assert.False(_grid.NeedsRestart("Home")); // not running
+            again = StartLeftoverRegion("Home");
+            Assert.IsNotType<PortConflictException>(await Record.ExceptionAsync(() => _grid.StartAsync(ct)));
+
+            Assert.Equal(ProcessState.Running, _grid.GetStatus().Programs.Single().Process.State);
+            Assert.False(_grid.NeedsRestart("Home"));
+        }
+        finally { await EndAllAsync(_grid, again is null ? fakes : [.. fakes, again]); }
+    }
+
+    [Fact]
+    public async Task Cpu_change_applies_at_once_without_restart()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var applied = new List<(int Pid, int[] Cores, CpuPriority Priority)>();
+        var grid = NewGrid(TimeProvider.System, (pid, cores, priority) => { lock (applied) applied.Add((pid, cores.ToArray(), priority)); });
+        var fakes = await RunningHomeAndBeach(grid, shared: false);
+        try
+        {
+            Assert.Empty(applied); // default CPU settings: nothing to apply at adoption
+
+            var now = await grid.SaveProgramOptionsAsync("Home", null, new ProgramOptions(Cores: [0], Priority: CpuPriority.BelowNormal), ct);
+
+            Assert.True(now);
+            var call = Assert.Single(applied);
+            Assert.Equal((fakes[0].Id, CpuPriority.BelowNormal), (call.Pid, call.Priority));
+            Assert.Equal([0], call.Cores);
+            Assert.False(grid.NeedsRestart("Home"));
+            Assert.DoesNotContain("quit", _http.Commands(_store.LoadOrCreate().RegionConsolePort));
+            var saved = Assert.Single(_store.LoadOrCreate().Programs, p => p.Instance == "Home");
+            Assert.Equal(CpuPriority.BelowNormal, saved.Options!.Priority);
+
+            // Anything else applies at the next restart.
+            Assert.False(await grid.SaveProgramOptionsAsync("Home", null, new ProgramOptions(FramesPerSecond: 30, Cores: [0], Priority: CpuPriority.BelowNormal), ct));
+            Assert.Single(applied);
+            Assert.True(grid.NeedsRestart("Home"));
+
+            var bad = await Assert.ThrowsAsync<ArgumentException>(() => grid.SaveProgramOptionsAsync("Home", "Havok", new ProgramOptions(), ct));
+            Assert.Equal("Pick ubODE, BulletSim or BulletSimThreaded, or use the grid default.", bad.Message);
+        }
+        finally { await EndAllAsync(grid, fakes); }
+    }
+
+    [Fact]
+    public async Task Cpu_change_of_a_stopped_program_is_only_saved()
+    {
+        var applied = 0;
+        var grid = NewGrid(TimeProvider.System, (_, _, _) => Interlocked.Increment(ref applied));
+        HomeAndBeach(shared: false);
+
+        Assert.False(await grid.SaveProgramOptionsAsync("Beach", "BulletSim", new ProgramOptions(Priority: CpuPriority.BelowNormal), TestContext.Current.CancellationToken));
+
+        Assert.Equal(0, applied);
+        var saved = Assert.Single(_store.LoadOrCreate().Programs, p => p.Instance == "Beach");
+        Assert.Equal(("BulletSim", CpuPriority.BelowNormal), (saved.Physics, saved.Options!.Priority));
+        Assert.False(grid.NeedsRestart("Beach"));
+    }
+
+    [Fact]
+    public async Task Adopted_program_has_no_pending_restart()
+    {
+        var applied = new List<(int Pid, CpuPriority Priority)>();
+        var grid = NewGrid(TimeProvider.System, (pid, _, priority) => { lock (applied) applied.Add((pid, priority)); });
+        var fakes = await RunningHomeAndBeach(grid, shared: false, s => s with
+        {
+            Programs = s.Programs.Select(p => p.Instance == "Home"
+                ? p with { Physics = "BulletSim", Options = new ProgramOptions(FramesPerSecond: 30, Priority: CpuPriority.BelowNormal) } : p).ToList(),
+            Regions = s.Regions.Select(r => r with { Options = new RegionOptions(MaxPrims: 5000) }).ToList(),
+        });
+        try
+        {
+            Assert.False(grid.NeedsRestart("Home"));
+            Assert.False(grid.NeedsRestart("Beach"));
+            Assert.Equal([(fakes[0].Id, CpuPriority.BelowNormal)], applied); // non-default CPU settings applied at adoption
+        }
+        finally { await EndAllAsync(grid, fakes); }
+    }
+
+    [Fact]
+    public async Task A_cpu_failure_at_adoption_is_only_logged()
+    {
+        var grid = NewGrid(TimeProvider.System, (_, _, _) => throw new InvalidOperationException("Not allowed."));
+        var fakes = await RunningHomeAndBeach(grid, shared: false, s => s with
+        {
+            Programs = s.Programs.Select(p => p with { Options = new ProgramOptions(Priority: CpuPriority.BelowNormal) }).ToList(),
+        });
+        try
+        {
+            Assert.All(grid.GetStatus().Programs, p => Assert.Equal(ProcessState.Running, p.Process.State));
+            Assert.False(grid.NeedsRestart("Home"));
+        }
+        finally { await EndAllAsync(grid, fakes); }
+    }
+
+    [Fact]
+    public async Task Grid_default_physics_change_marks_programs_that_use_it()
+    {
+        var fakes = await RunningHomeAndBeach(_grid, shared: false, s => s with
+        {
+            DefaultPhysics = "ubODE",
+            Programs = s.Programs.Select(p => p.Instance == "Beach" ? p with { Physics = "ubODE" } : p).ToList(),
+        });
+        try
+        {
+            Assert.False(_grid.NeedsRestart("Home"));
+
+            _grid.UpdateSettings(s => s with { DefaultPhysics = "BulletSim" });
+
+            Assert.True(_grid.NeedsRestart("Home")); // it uses the grid default
+            Assert.False(_grid.NeedsRestart("Beach")); // its own ubODE
+            Assert.False(_grid.NeedsRestart("Nowhere"));
+        }
+        finally { await EndAllAsync(_grid, fakes); }
+    }
+
+    [Fact]
+    public async Task Own_program_copies_physics_and_options()
+    {
+        WelcomeAndIsle(shared: true, physics: "BulletSim");
+        var options = new ProgramOptions(Scripts: false, FramesPerSecond: 30, Map: MapQuality.Good, Cores: [0], Priority: CpuPriority.BelowNormal);
+        var before = _store.LoadOrCreate();
+        _store.Save(before with { Programs = before.Programs.Select(p => p with { Options = options }).ToList() });
+
+        await _grid.ChangeRunsWithAsync(Isle, null, TestContext.Current.CancellationToken);
+
+        var saved = _store.LoadOrCreate();
+        var own = Assert.Single(saved.Programs, p => p.Instance == "Isle");
+        Assert.Equal("BulletSim", own.Physics);
+        Assert.Equal((false, 30, MapQuality.Good, CpuPriority.BelowNormal),
+            (own.Options!.Scripts, own.Options.FramesPerSecond, own.Options.Map, own.Options.Priority));
+        Assert.Equal([0], own.Options.Cores);
     }
 
     /// <summary>Records each call as "Deregister|Erase|Space &lt;ids&gt;"; space comes from <see cref="Space"/>.</summary>

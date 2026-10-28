@@ -29,7 +29,8 @@ public sealed partial class GridController(
     IHttpClientFactory http,
     TimeProvider time,
     ILoggerFactory? loggers = null,
-    Func<LauncherSettings, IRegionStore>? regionStores = null) : IGridController
+    Func<LauncherSettings, IRegionStore>? regionStores = null,
+    Action<int, IReadOnlyList<int>, CpuPriority>? cpu = null) : IGridController
 {
     private static readonly TimeSpan ConsoleSettle = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan LoginWait = TimeSpan.FromSeconds(300);
@@ -72,6 +73,10 @@ public sealed partial class GridController(
     private readonly ConcurrentDictionary<string, string> _jobs = new();
     // A region's rows in the database (Delete, Delete forever, the space a deleted region holds).
     private readonly Func<LauncherSettings, IRegionStore> _regionStores = regionStores ?? (s => new RegionStore(s));
+    // Sets a running program's cores and priority (CpuTuning.Apply; tests see the calls instead).
+    private readonly Action<int, IReadOnlyList<int>, CpuPriority> _cpu = cpu ?? CpuTuning.Apply;
+    // What each running program was started (or adopted) from: its StartKey. Written under _ops, read by NeedsRestart.
+    private readonly ConcurrentDictionary<string, string> _startedWith = new();
 
     /// <summary>Replaces the database's state for tests, whose MariaDB cannot start.</summary>
     internal Func<bool>? DatabaseRunningForTests { get; init; }
@@ -188,6 +193,139 @@ public sealed partial class GridController(
             await RestartProgramAsync(s, program, ct);
         }
         finally { _activity = GridActivity.None; _ops.Release(); }
+    }
+
+    public async Task RenameRegionAsync(Guid regionId, string name, CancellationToken ct)
+    {
+        if (!IsValidRegionName(name)) throw new ArgumentException(NameRule);
+        await _ops.WaitAsync(ct);
+        try
+        {
+            var s = LoadSettings();
+            var region = LiveRegion(s, regionId);
+            ThrowIfBusy(region.Instance);
+            // A running program keeps the scene under its old name until it restarts.
+            if (HasLoaded(s, _programs.GetValueOrDefault(region.Instance), regionId))
+                throw new InvalidOperationException($"Stop {region.Name} first; a region is renamed while it is offline.");
+            // Its own name, in other letter case, is not taken.
+            if (RegionModel.FindByName(s, name) is { } other && other.Uuid != regionId) throw new ArgumentException(NameTaken(name));
+            if (name == region.Name) return;
+
+            // The writer turns the old region file off; the region registers under its new name at its next start.
+            UpdateSettings(l => l with { Regions = l.Regions.Select(r => r.Uuid == regionId ? r with { Name = name } : r).ToList() });
+        }
+        finally { _ops.Release(); }
+    }
+
+    public async Task ResizeRegionAsync(Guid regionId, int size, CancellationToken ct)
+    {
+        if (size is < 1 or > RegionPlacement.MaxSize) throw new ArgumentException(SizeRule);
+        await _ops.WaitAsync(ct);
+        try
+        {
+            var s = LoadSettings();
+            var region = LiveRegion(s, regionId);
+            ThrowIfBusy(region.Instance);
+            if (!RegionPlacement.OnMap(region.X, region.Y, size)) throw new ArgumentException("That spot is off the map.");
+            if (RegionPlacement.Check(s, region.X, region.Y, size, ignore: regionId) is { Ok: false } taken)
+                throw new ArgumentException(RegionAdvice.Placement(taken));
+
+            // Nothing restarts (Ruling E): the new size applies at the program's next start.
+            UpdateSettings(l => l with { Regions = l.Regions.Select(r => r.Uuid == regionId ? r with { Size = size } : r).ToList() });
+        }
+        finally { _ops.Release(); }
+    }
+
+    public async Task SaveRegionOptionsAsync(Guid regionId, RegionOptions options, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        if (RegionSettingsRules.Options(options) is { Ok: false } invalid) throw new ArgumentException(invalid.Errors.Values.First());
+        await _ops.WaitAsync(ct);
+        try
+        {
+            LiveRegion(LoadSettings(), regionId);
+            UpdateSettings(l => l with { Regions = l.Regions.Select(r => r.Uuid == regionId ? r with { Options = options } : r).ToList() });
+        }
+        finally { _ops.Release(); }
+    }
+
+    public async Task<bool> SaveProgramOptionsAsync(string instance, string? physics, ProgramOptions options, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        if (RegionSettingsRules.Program(physics, options, Environment.ProcessorCount) is { Ok: false } invalid)
+            throw new ArgumentException(invalid.Errors.Values.First());
+        await _ops.WaitAsync(ct);
+        try
+        {
+            var s = LoadSettings();
+            var before = (s.Programs.FirstOrDefault(p => p.Instance == instance)
+                ?? throw new ArgumentException("There is no such group of regions.")).Options ?? new ProgramOptions();
+            UpdateSettings(l => l with
+            {
+                Programs = l.Programs.Select(p => p.Instance == instance ? p with { Physics = physics, Options = options } : p).ToList(),
+            });
+
+            // The operating system changes a running process's cores and priority at once; the rest waits for a restart.
+            var cores = RegionSettingsRules.UsableCores(options.Cores, Environment.ProcessorCount);
+            var changed = options.Priority != before.Priority
+                || !cores.Order().SequenceEqual(RegionSettingsRules.UsableCores(before.Cores, Environment.ProcessorCount).Order());
+            if (!changed || _programs.GetValueOrDefault(instance) is not { Process.State: ProcessState.Running } program
+                || program.Process.Pid is not { } pid)
+                return false;
+            _cpu(pid, cores, options.Priority);
+            return true;
+        }
+        finally { _ops.Release(); }
+    }
+
+    /// <summary>Reads only cached state, so it never waits behind an operation.</summary>
+    public bool NeedsRestart(string instance)
+    {
+        if (_programs.GetValueOrDefault(instance) is not { Process.State: ProcessState.Running }
+            || !_startedWith.TryGetValue(instance, out var started))
+            return false;
+        var s = CurrentSettings();
+        return s.Programs.FirstOrDefault(p => p.Instance == instance) is { } program && StartKey(s, program) != started;
+    }
+
+    /// <summary>
+    /// Everything a program's start reads from the settings, other than ports and CPU: its effective physics and scripts,
+    /// its other options, and each loadable region's name, size and options.
+    /// </summary>
+    private string StartKey(LauncherSettings s, ProgramSettings p)
+    {
+        var options = (p.Options ?? new ProgramOptions()) with { Scripts = null, Cores = null, Priority = CpuPriority.Normal };
+        var regions = RegionModel.Loadable(s, p.Instance, _held).Select(r => $"{r.Name}|{r.Size}|{r.Options ?? new RegionOptions()}");
+        return string.Join('\n',
+            [RegionSettingsRules.EffectivePhysics(s, p), RegionSettingsRules.EffectiveScripts(s, p).ToString(), options.ToString(), .. regions]);
+    }
+
+    /// <summary>
+    /// Under the operation lock, once a program has just started, restarted or been adopted: records what it started from, and
+    /// applies its cores and priority unless they are the defaults. A failure there is logged; the program keeps running.
+    /// </summary>
+    private void ProgramUp(LauncherSettings s, Component program)
+    {
+        var instance = program.Instance!;
+        if (s.Programs.FirstOrDefault(p => p.Instance == instance) is not { } settings) return;
+        _startedWith[instance] = StartKey(s, settings);
+
+        var options = settings.Options ?? new ProgramOptions();
+        var cores = RegionSettingsRules.UsableCores(options.Cores, Environment.ProcessorCount);
+        if ((cores.Count == 0 && options.Priority == CpuPriority.Normal) || program.Process.Pid is not { } pid) return;
+        try { _cpu(pid, cores, options.Priority); }
+        catch (Exception e)
+        {
+            _log?.LogWarning(e, "The cores and priority of {Program} could not be set: {Reason}", instance, e.Message);
+        }
+    }
+
+    /// <summary>The region, which must exist and not be deleted.</summary>
+    private static RegionSettings LiveRegion(LauncherSettings s, Guid regionId)
+    {
+        var region = RegionModel.Find(s, regionId) ?? throw new InvalidOperationException("There is no such region.");
+        if (region.DeletedAt is not null) throw new InvalidOperationException("That region has been deleted.");
+        return region;
     }
 
     public async Task ChangeRunsWithAsync(Guid regionId, string? shareWith, CancellationToken ct)
@@ -661,7 +799,7 @@ public sealed partial class GridController(
     public async Task CreateRegionAsync(string name, string content, CancellationToken ct, IProgress<string>? progress = null)
     {
         if (!IsValidRegionName(name))
-            throw new ArgumentException("A region name is 2-32 letters, digits, spaces, '-', '_' or '\\'' with no leading or trailing space.", nameof(name));
+            throw new ArgumentException(NameRule, nameof(name));
         if (!IsContent(content))
             throw new ArgumentException(ContentError, nameof(content));
 
@@ -689,7 +827,7 @@ public sealed partial class GridController(
     public async Task<RegionSettings> AddRegionAsync(NewRegion request, CancellationToken ct, IProgress<string>? progress = null)
     {
         if (!IsValidRegionName(request.Name))
-            throw new ArgumentException("A region name is 2-32 letters, digits, spaces, '-', '_' or '\\'' with no leading or trailing space.", nameof(request));
+            throw new ArgumentException(NameRule, nameof(request));
         if (!IsContent(request.Content))
             throw new ArgumentException(ContentError, nameof(request));
 
@@ -711,11 +849,16 @@ public sealed partial class GridController(
         finally { _activity = GridActivity.None; _ops.Release(); }
     }
 
+    private const string NameRule = "A region name is 2-32 letters, digits, spaces, '-', '_' or '\\'' with no leading or trailing space.";
+    private const string SizeRule = "A region is 1 to 16 squares on each side.";
+
+    private static string NameTaken(string name) => $"There is already a region called {name}.";
+
     /// <summary>Why a region can't be added as asked (in words the website shows as they are), or null.</summary>
     private static string? RegionRequestError(LauncherSettings s, NewRegion r)
     {
-        if (RegionModel.FindByName(s, r.Name) is not null) return $"There is already a region called {r.Name}.";
-        if (r.Size is < 1 or > RegionPlacement.MaxSize) return "A region is 1 to 16 squares on each side.";
+        if (RegionModel.FindByName(s, r.Name) is not null) return NameTaken(r.Name);
+        if (r.Size is < 1 or > RegionPlacement.MaxSize) return SizeRule;
         if (RegionPlacement.Check(s, r.X, r.Y, r.Size) is { Ok: false } check) return RegionAdvice.Placement(check);
         if (r.ShareWith is { } share && s.Programs.All(p => p.Instance != share)) return "That group of regions no longer exists.";
         return null;
@@ -1193,6 +1336,7 @@ public sealed partial class GridController(
         {
             if (!adopted) _logins.Clear(regions.Select(r => r.Uuid));
             await StartComponentAsync(program, ct);
+            ProgramUp(s, program);
         }
         if (!adopted)
         {
