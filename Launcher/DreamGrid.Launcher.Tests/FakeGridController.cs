@@ -195,6 +195,67 @@ internal sealed class FakeGridController : IGridController
         await OnChangeRunsWith(regionId, shareWith, ct);
     }
 
+    /// <summary>Runs inside the delete, restore and erase calls (blocking probes, thrown exceptions).</summary>
+    public Func<string, Guid, CancellationToken, Task> OnDeleted { get; set; } = (_, _, _) => Task.CompletedTask;
+
+    /// <summary>Records "DeleteRegion &lt;id&gt;"; like the controller, saves DeletedAt (Parked kept) when a settings source is set.</summary>
+    public async Task DeleteRegionAsync(Guid regionId, CancellationToken ct)
+    {
+        Record($"DeleteRegion {regionId}");
+        await OnDeleted("Delete", regionId, ct);
+        if (SettingsSource is not null)
+            UpdateSettings(l => l with { Regions = l.Regions.Select(r => r.Uuid == regionId ? r with { DeletedAt = DateTimeOffset.UtcNow } : r).ToList() });
+    }
+
+    /// <summary>Records "RestoreRegion &lt;id&gt;"; like the controller, clears DeletedAt when a settings source is set.</summary>
+    public async Task RestoreRegionAsync(Guid regionId, CancellationToken ct)
+    {
+        Record($"RestoreRegion {regionId}");
+        await OnDeleted("Restore", regionId, ct);
+        if (SettingsSource is not null)
+            UpdateSettings(l => l with { Regions = l.Regions.Select(r => r.Uuid == regionId ? r with { DeletedAt = null } : r).ToList() });
+    }
+
+    /// <summary>Records "EraseRegion &lt;id&gt;"; like the controller, removes the region when a settings source is set.</summary>
+    public async Task EraseRegionAsync(Guid regionId, CancellationToken ct)
+    {
+        Record($"EraseRegion {regionId}");
+        await OnDeleted("Erase", regionId, ct);
+        if (SettingsSource is not null)
+            UpdateSettings(l => l with { Regions = l.Regions.Where(r => r.Uuid != regionId).ToList() });
+    }
+
+    /// <summary>What <see cref="DeletedSpaceAsync"/> returns; null stands for a database that isn't running.</summary>
+    public IReadOnlyDictionary<Guid, long>? DeletedSpace { get; set; } = new Dictionary<Guid, long>();
+
+    /// <summary>When set, <see cref="DeletedSpaceAsync"/> throws it (a query that fails while the database runs).</summary>
+    public Exception? DeletedSpaceFailure { get; set; }
+
+    public Task<IReadOnlyDictionary<Guid, long>?> DeletedSpaceAsync(CancellationToken ct) =>
+        DeletedSpaceFailure is { } e ? Task.FromException<IReadOnlyDictionary<Guid, long>?>(e) : Task.FromResult(DeletedSpace);
+
+    /// <summary>Every request <see cref="RunOarJobAsync"/> got, in order.</summary>
+    public List<OarJobRequest> OarJobs { get; } = new();
+
+    /// <summary>Runs inside <see cref="RunOarJobAsync"/> (blocking probes, progress, thrown exceptions).</summary>
+    public Func<OarJobRequest, IProgress<OarJobProgress>?, CancellationToken, Task> OnOarJob { get; set; } = (_, _, _) => Task.CompletedTask;
+
+    /// <summary>What <see cref="RunOarJobAsync"/> returns: the library name a save wrote, or null.</summary>
+    public string? OarJobResult { get; set; }
+
+    public async Task<string?> RunOarJobAsync(OarJobRequest request, CancellationToken ct, IProgress<OarJobProgress>? progress = null)
+    {
+        Record($"OarJob {request.Kind} {request.RegionId} {request.File}".TrimEnd());
+        lock (OarJobs) OarJobs.Add(request);
+        await OnOarJob(request, progress, ct);
+        return OarJobResult;
+    }
+
+    /// <summary>The job text <see cref="BusyWith"/> gives for each instance.</summary>
+    public Dictionary<string, string> Busy { get; } = new();
+
+    public string? BusyWith(string instance) { lock (Busy) return Busy.GetValueOrDefault(instance); }
+
     public LauncherSettings UpdateSettings(Func<LauncherSettings, LauncherSettings> change, bool writeConfig = true)
     {
         lock (UpdateWriteConfig)

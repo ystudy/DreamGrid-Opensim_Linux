@@ -1,0 +1,55 @@
+@page "/regions/deleted"
+@model DreamGrid.Launcher.Pages.Regions.DeletedModel
+@{
+    ViewData["Title"] = "Recently deleted";
+}
+<h1 class="h3">Recently deleted</h1>
+<p class="form-text">Deleted regions keep their land and objects until you delete them forever. Restore brings one back, stopped.</p>
+
+@if (Model.Notice is not null)
+{
+    <p class="notice alert alert-info py-2" role="status">@Model.Notice</p>
+}
+
+@if (Model.Asking is { } asking)
+{
+    <form method="post" action="/regions/deleted?handler=erase" asp-antiforgery="true" class="alert alert-warning">
+        <p>@Model.AskingText</p>
+        <input type="hidden" name="id" value="@asking">
+        <input type="hidden" name="confirmed" value="true">
+        <button type="submit" class="btn btn-danger btn-sm">Yes, delete forever</button>
+        <a class="btn btn-outline-secondary btn-sm" href="/regions/deleted">Cancel</a>
+    </form>
+}
+
+@if (Model.Rows.Count == 0)
+{
+    <p class="text-body-secondary">Nothing has been deleted.</p>
+}
+else
+{
+    <div class="table-responsive">
+        <table id="deleted-list" class="table align-middle">
+            <thead><tr><th>Name</th><th>Map position</th><th>Deleted</th><th>Space</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var r in Model.Rows)
+            {
+                <tr data-region="@r.Id">
+                    <td class="fw-semibold">@r.Name</td>
+                    <td>@r.X, @r.Y@(r.Size > 1 ? $" ({r.Size}×{r.Size})" : "")</td>
+                    <td>@r.DeletedText</td>
+                    <td>@r.SpaceText</td>
+                    <td>
+                        <form method="post" asp-antiforgery="true" class="d-flex flex-wrap gap-2">
+                            <input type="hidden" name="id" value="@r.Id">
+                            <button type="submit" formaction="/regions/deleted?handler=restore" class="btn btn-sm btn-outline-primary">Restore</button>
+                            <button type="submit" formaction="/regions/deleted?handler=erase" class="btn btn-sm btn-outline-danger">Delete forever…</button>
+                        </form>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+<p><a href="/regions">Back to regions</a></p>

@@ -42,7 +42,13 @@ public sealed class MoveModel(IGridController grid, RegionActions actions) : Pag
 
     public IActionResult OnPost(Guid id)
     {
-        if (!Load(id, out _)) return NotFound();
+        if (!Load(id, out var region)) return NotFound();
+        // A program that runs an OAR job refuses the move; the panel says why.
+        if (grid.BusyWith(region.Instance) is { } busy)
+        {
+            Notice = $"{busy} is still running. Try again when it finishes.";
+            return Redirect("/regions/region/" + id);
+        }
 
         // The first mistake is shown at its field; the checks run in this order.
         int x = 0, y = 0;

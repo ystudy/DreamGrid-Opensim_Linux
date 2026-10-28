@@ -154,4 +154,12 @@ public sealed class RegionPowerPlanTests
 
         Assert.All(s.Regions, r => Assert.False(r.Parked));
     }
+
+    [Fact]
+    public void Start_everything_leaves_a_deleted_region_parked()
+    {
+        var s = RegionPowerPlan.Unparked(World(Home, Beach with { Parked = true, DeletedAt = DateTimeOffset.UtcNow }));
+
+        Assert.True(s.Regions.Single(r => r.Uuid == Beach.Uuid).Parked); // a restore brings it back parked
+    }
 }

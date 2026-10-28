@@ -58,6 +58,52 @@ public interface IGridController
     /// </summary>
     Task ChangeRunsWithAsync(Guid regionId, string? shareWith, CancellationToken ct);
 
+    /// <summary>
+    /// Moves a region to Recently deleted at once, even a broken one: it keeps its database rows, name, spot, ports and
+    /// folder name. Its program then stops when no loadable region is left in it (and is removed once it has no live
+    /// regions), or restarts without the region when it had loaded it; a failed or stopped program is left alone. The
+    /// region's row in Robust's map is removed when the database runs. Throws <see cref="InvalidOperationException"/> for a
+    /// missing or deleted region and while its program runs an OAR job ("&lt;job&gt; is still running. Try again when it
+    /// finishes.").
+    /// </summary>
+    Task DeleteRegionAsync(Guid regionId, CancellationToken ct);
+
+    /// <summary>
+    /// Brings a deleted region back, stopped: into its old program, or into a new one under the same folder name with fresh
+    /// ports when that program went. Nothing restarts. Throws <see cref="InvalidOperationException"/> ("That region isn't
+    /// deleted.") for a live region.
+    /// </summary>
+    Task RestoreRegionAsync(Guid regionId, CancellationToken ct);
+
+    /// <summary>
+    /// Deletes a deleted region forever: its database rows go, then the region leaves the settings, freeing its name, spot,
+    /// ports and folder name (the folder itself stays, with its logs). Throws <see cref="InvalidOperationException"/> for a
+    /// live region ("That region isn't deleted.") and while the database isn't running ("Start the database first.").
+    /// </summary>
+    Task EraseRegionAsync(Guid regionId, CancellationToken ct);
+
+    /// <summary>An estimate of the bytes each deleted region still holds in the database; null while the database isn't running.</summary>
+    Task<IReadOnlyDictionary<Guid, long>?> DeletedSpaceAsync(CancellationToken ct);
+
+    /// <summary>
+    /// Runs an OAR job on a running region: Import loads a library file, Save writes the region to the library as
+    /// <c>&lt;Region&gt;-&lt;yyyy-MM-dd&gt;.oar</c> (numbered when taken), MakeLand loads the region's own type again. One job
+    /// runs per program at a time and holds no global lock, so other programs and the world keep working; while it runs,
+    /// the power menu, a move and a change of how the region runs are refused for every region of its program. Returns
+    /// the library name a Save wrote, and null otherwise. Throws <see cref="ArgumentException"/> in plain words for a bad
+    /// request (an unknown region, a file not in the library), and <see cref="InvalidOperationException"/> when the
+    /// region is not running ("Start &lt;Region&gt; first; an OAR needs it running."), when its program already runs a job
+    /// ("&lt;job&gt; is still running. Try again when it finishes."), and when the job fails.
+    /// <paramref name="progress"/> hears each stage and, while a save runs, the bytes written so far.
+    /// </summary>
+    Task<string?> RunOarJobAsync(OarJobRequest request, CancellationToken ct, IProgress<OarJobProgress>? progress = null);
+
+    /// <summary>
+    /// The text of the OAR job running in a program ("Importing castle.oar into Beach", "Saving Home as an OAR",
+    /// "Making the land of Home again"), or null when it runs none.
+    /// </summary>
+    string? BusyWith(string instance);
+
     /// <summary>The controller's cached settings (what the grid was configured from); the host reads these per request.</summary>
     LauncherSettings CurrentSettings();
 

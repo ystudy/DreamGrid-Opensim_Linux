@@ -15,7 +15,7 @@ public sealed record PowerItem(string Action, string Label, string Help);
 /// One region's info panel (spec 5.4): state, who's here, running time and memory, place on the map, how it runs and its
 /// power menu. <c>?partial=1</c> renders only the fragment, which the map puts in its side panel.
 /// </summary>
-public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, RegionActions actions, LogReader logs) : PageModel
+public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, RegionActions actions, LogReader logs, OarJobs oarJobs) : PageModel
 {
     private const int LogLines = 40;
 
@@ -46,10 +46,23 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
     public IReadOnlyList<Neighbour> Neighbours { get; private set; } = [];
     public IReadOnlyList<PowerItem> Menu { get; private set; } = [];
 
+    /// <summary>Whether the region runs, so an OAR can be saved from or loaded into it.</summary>
+    public bool CanOar { get; private set; }
+
+    /// <summary>True while the region's land still has to be loaded (it didn't finish when the region was added).</summary>
+    public bool NeedsContent { get; private set; }
+
+    /// <summary>What OAR job is running in the region's program, in words; null when none is.</summary>
+    public string? BusyText { get; private set; }
+
     /// <summary>Set when a power post needs a yes first: the action, the question and the yes button.</summary>
     public RegionPower? Asking { get; private set; }
     public string? AskingText { get; private set; }
     public string? AskingYes { get; private set; }
+
+    /// <summary>True while the page asks whether to delete the region; <see cref="DeletingText"/> is the question.</summary>
+    public bool Deleting { get; private set; }
+    public string? DeletingText { get; private set; }
 
     [TempData] public string? Notice { get; set; }
 
@@ -62,12 +75,17 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
 
     /// <summary>
     /// A power post. When the action also restarts other regions and the admin hasn't said yes, the confirmation shows
-    /// instead; otherwise it runs and the page comes back with the notice.
+    /// instead; otherwise it runs and the page comes back with the notice. A program that runs a job refuses.
     /// </summary>
     public async Task<IActionResult> OnPostPowerAsync(Guid id, string? action, bool confirmed)
     {
         if (!Enum.TryParse<RegionPower>(action, ignoreCase: true, out var power) || !Enum.IsDefined(power)) return BadRequest();
         if (!await LoadAsync(id)) return NotFound();
+        if (BusyText is not null)
+        {
+            Notice = $"{BusyText} is still running. Try again when it finishes.";
+            return Redirect("/regions/region/" + id);
+        }
 
         var affected = Affected(id, power);
         if (affected.Count > 0 && !confirmed)
@@ -81,6 +99,72 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
         Notice = RegionActions.Notice(power, Name);
         return Redirect("/regions/region/" + id);
     }
+
+    /// <summary>
+    /// Starts a save, or loading the region's own type again, as an OAR job and goes to its page. A region that isn't
+    /// running is refused with the notice, and a program that already has a job shows that job instead.
+    /// </summary>
+    public async Task<IActionResult> OnPostOarAsync(Guid id, string? action)
+    {
+        if (!Enum.TryParse<OarJobKind>(action, ignoreCase: true, out var kind) || kind == OarJobKind.Import || !Enum.IsDefined(kind))
+            return BadRequest();
+        if (!await LoadAsync(id)) return NotFound();
+        if (!CanOar)
+        {
+            Notice = OarNotRunning;
+            return Redirect("/regions/region/" + id);
+        }
+        if (kind == OarJobKind.MakeLand && !NeedsContent) return BadRequest();
+
+        var request = new OarJobRequest(id, kind);
+        if (!oarJobs.TryStart(request, OarJobs.Describe(request, Name)) && oarJobs.For(id) is { } running)
+            Notice = $"{running.Text} is still running. Try again when it finishes.";
+        return Redirect($"/regions/region/{id}/job");
+    }
+
+    /// <summary>
+    /// Delete. Without a yes the question shows (naming the regions that restart without it, and offering to save it first);
+    /// with it the region goes to Recently deleted in the background. With "save first" the delete is the follow-up of an OAR
+    /// save, so a failed save leaves the region alone, and the page goes to the job. A program that runs a job refuses.
+    /// </summary>
+    public async Task<IActionResult> OnPostDeleteAsync(Guid id, bool confirmed, bool saveFirst)
+    {
+        if (!await LoadAsync(id)) return NotFound();
+        if (BusyText is not null)
+        {
+            Notice = $"{BusyText} is still running. Try again when it finishes.";
+            return Redirect("/regions/region/" + id);
+        }
+
+        if (!confirmed)
+        {
+            var affected = RegionActions.SharingProgram(grid.GetStatus(), id);
+            Deleting = true;
+            DeletingText = $"Delete {Name}? It goes to Recently deleted, where you can restore it. Its land and objects are kept until you delete it forever."
+                + (affected.Count > 0 ? $" {RegionAdvice.Join(affected)} restart without it." : "");
+            return Page();
+        }
+
+        if (saveFirst)
+        {
+            if (!CanOar)
+            {
+                Notice = OarNotRunning;
+                return Redirect("/regions/region/" + id);
+            }
+            var request = new OarJobRequest(id, OarJobKind.Save);
+            if (!oarJobs.TryStart(request, OarJobs.Describe(request, Name), ct => grid.DeleteRegionAsync(id, ct)) && oarJobs.For(id) is { } running)
+                Notice = $"{running.Text} is still running. Try again when it finishes.";
+            return Redirect($"/regions/region/{id}/job");
+        }
+
+        if (!actions.TryDelete(id)) return NotFound();
+        Notice = $"{Name} is in Recently deleted.";
+        return Redirect("/regions");
+    }
+
+    /// <summary>What the OAR items say while the region isn't running.</summary>
+    public const string OarNotRunning = "Start it first; an OAR needs it running.";
 
     private async Task<bool> LoadAsync(Guid id)
     {
@@ -115,6 +199,8 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
         var people = await online.ListAsync(HttpContext.RequestAborted);
         Here = people.Available ? people.Avatars.Where(a => a.RegionId == id).Select(a => a.Name).ToList() : null;
         Menu = MenuFor(State);
+        (CanOar, NeedsContent) = (State == RegionState.Running, r.NeedsContent);
+        BusyText = grid.BusyWith(r.Instance) ?? (oarJobs.For(id) is { Running: true } job ? job.Text : null);
         return true;
     }
 

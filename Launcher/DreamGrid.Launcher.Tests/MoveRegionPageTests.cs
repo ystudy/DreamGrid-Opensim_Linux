@@ -106,6 +106,22 @@ public sealed class MoveRegionPageTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Move_is_refused_while_a_job_runs_in_its_program()
+    {
+        _f.Grid.Busy["Home"] = "Saving Home as an OAR";
+        using var client = await SignedInAsync();
+
+        using var response = await PostAsync(client, BeachId, new() { ["X"] = "1500", ["Y"] = "1500", ["Confirm"] = "true" });
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal($"/regions/region/{BeachId}", response.Headers.Location!.OriginalString);
+        var panel = new HtmlParser().ParseDocument(await client.GetStringAsync($"/regions/region/{BeachId}", Ct));
+        Assert.Equal("Saving Home as an OAR is still running. Try again when it finishes.", panel.QuerySelector(".notice")!.TextContent.Trim());
+        await Task.Delay(200, Ct);
+        Assert.DoesNotContain(_f.Grid.Snapshot(), c => c.StartsWith("MoveRegion", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Move_confirmed_in_shared_program_runs()
     {
         using var client = await SignedInAsync();

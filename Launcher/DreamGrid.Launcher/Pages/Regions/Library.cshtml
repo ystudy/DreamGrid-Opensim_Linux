@@ -1,0 +1,124 @@
+@page "/regions/library"
+@model DreamGrid.Launcher.Pages.Regions.LibraryModel
+@using DreamGrid.Launcher.Core.Grid
+@{
+    ViewData["Title"] = "OAR library";
+}
+<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+    <h1 class="mb-0">OAR library</h1>
+    <a class="ms-auto" href="/regions">Back to Regions</a>
+</div>
+
+@if (Model.Notice is not null)
+{
+    <p class="notice alert alert-info py-2" role="status">@Model.Notice</p>
+}
+
+@if (Model.Asking is not null)
+{
+    <form method="post" asp-page-handler="Delete" class="alert alert-warning">
+        <p class="delete-question">@Model.AskingText</p>
+        <input type="hidden" name="name" value="@Model.Asking">
+        <input type="hidden" name="confirmed" value="true">
+        <button type="submit" class="btn btn-danger btn-sm">Yes, delete it</button>
+        <a class="btn btn-outline-secondary btn-sm" href="/regions/library">Cancel</a>
+    </form>
+}
+
+<section class="card card-body shadow-sm mb-3">
+    <h2>Upload an OAR</h2>
+    @* The token comes first: the upload reads it before the file, so the file is never held as a form. *@
+    <form id="upload" method="post" action="/regions/library/upload" enctype="multipart/form-data" asp-antiforgery="false">
+        @Html.AntiForgeryToken()
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+            <input class="form-control w-auto" type="file" name="oar" accept=".oar" required aria-label="OAR file">
+            <button type="submit" class="btn btn-primary">Upload</button>
+        </div>
+        <div id="upload-progress" class="progress mt-2" role="progressbar" aria-label="Upload progress" aria-valuemin="0" aria-valuemax="100" hidden>
+            <div class="progress-bar" style="width: 0%">0%</div>
+        </div>
+        <p id="upload-status" class="form-text mb-0" role="status"></p>
+    </form>
+    <p class="library-path-note form-text mb-0 mt-2">Very large files can also be copied straight into <code>@Model.LibraryPath</code>, for example over SFTP. They show up here.</p>
+</section>
+
+<section class="card card-body shadow-sm mb-3">
+    <h2>Files</h2>
+    @if (Model.Files.Count == 0)
+    {
+        <p class="text-body-secondary mb-0">No OAR files yet.</p>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table id="oar-list" class="table align-middle mb-0">
+                <thead><tr><th>Name</th><th>Size</th><th>Date</th><th></th></tr></thead>
+                <tbody>
+                @foreach (var f in Model.Files)
+                {
+                    var refused = Model.TypeFor == f.Name;
+                    <tr>
+                        <td>
+                            <span class="oar-name fw-semibold">@f.Name</span>
+                            @if (f.Types.Count > 0)
+                            {
+                                <span class="form-text d-block m-0">Region type: @RegionAdvice.Join(f.Types)</span>
+                            }
+                        </td>
+                        <td class="oar-size">@f.Size</td>
+                        <td class="oar-date">@f.Date</td>
+                        <td>
+                            <div class="d-flex flex-wrap gap-2 align-items-start">
+                                <a class="download btn btn-sm btn-outline-secondary" href="/regions/library/file/@Uri.EscapeDataString(f.Name)">Download</a>
+                                <form method="post" asp-page-handler="Delete">
+                                    <input type="hidden" name="name" value="@f.Name">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                                </form>
+                                <form method="post" asp-page-handler="UseAsType" class="d-flex flex-wrap gap-1 align-items-start">
+                                    <input type="hidden" name="name" value="@f.Name">
+                                    <input class="form-control form-control-sm w-auto" name="typeName" minlength="2" maxlength="32" required
+                                           placeholder="Type name" aria-label="Region type name for @f.Name" value="@(refused ? Model.TypeName : null)">
+                                    <button type="submit" class="btn btn-sm btn-outline-primary">Use as a region type</button>
+                                    @if (refused)
+                                    {
+                                        <span class="type-error text-danger small d-block w-100">@Model.TypeError</span>
+                                    }
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+<section id="custom-types" class="card card-body shadow-sm mb-3">
+    <h2>Your region types</h2>
+    @if (Model.Types.Count == 0)
+    {
+        <p class="text-body-secondary mb-0">None yet. Use a file above as a region type and you can choose it when you add a region.</p>
+    }
+    else
+    {
+        <ul class="list-unstyled mb-2">
+            @foreach (var t in Model.Types)
+            {
+                <li class="d-flex flex-wrap gap-2 align-items-center mb-1">
+                    <span class="fw-semibold">@t.Name</span>
+                    <span class="form-text m-0">@t.File</span>
+                    <form method="post" asp-page-handler="RemoveType">
+                        <input type="hidden" name="id" value="@t.Id">
+                        <button type="submit" class="btn btn-sm btn-outline-secondary">Remove from the list</button>
+                    </form>
+                </li>
+            }
+        </ul>
+        <p class="form-text mb-0">The file stays in the library.</p>
+    }
+</section>
+
+@section Scripts {
+<script src="/js/upload.js"></script>
+}

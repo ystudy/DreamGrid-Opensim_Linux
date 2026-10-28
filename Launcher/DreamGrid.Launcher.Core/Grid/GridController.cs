@@ -1,7 +1,10 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Globalization;
 using System.Text.RegularExpressions;
 using DreamGrid.Launcher.Core.Config;
 using DreamGrid.Launcher.Core.Database;
+using DreamGrid.Launcher.Core.Logs;
 using DreamGrid.Launcher.Core.Modules;
 using DreamGrid.Launcher.Core.OpenSim;
 using DreamGrid.Launcher.Core.Processes;
@@ -25,13 +28,19 @@ public sealed partial class GridController(
     IRobustClient robust,
     IHttpClientFactory http,
     TimeProvider time,
-    ILoggerFactory? loggers = null) : IGridController
+    ILoggerFactory? loggers = null,
+    Func<LauncherSettings, IRegionStore>? regionStores = null) : IGridController
 {
     private static readonly TimeSpan ConsoleSettle = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan LoginWait = TimeSpan.FromSeconds(300);
     private static readonly TimeSpan LoginPoll = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan AccountWait = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan AccountPoll = TimeSpan.FromMilliseconds(500);
+    // How long an OAR import or save may take, and how often a save is checked.
+    private static readonly TimeSpan OarJobWait = TimeSpan.FromHours(2);
+    private static readonly TimeSpan SavePoll = TimeSpan.FromSeconds(2);
+    // How long a save may take to create its file before it counts as never started.
+    private static readonly TimeSpan SaveStartWait = TimeSpan.FromSeconds(60);
 
     private readonly IReadOnlyList<IFeatureModule> _modules = modules.ToList();
     private readonly SemaphoreSlim _ops = new(1, 1);
@@ -57,8 +66,17 @@ public sealed partial class GridController(
     private volatile string? _writtenGridName, _robustGridName;
     private volatile GridActivity _activity;
     private int? _regionAlertPid;
-    private TaskCompletionSource<string>? _oarLoaded;
+    // The archiver's "oarloaded"/"oarnotloaded" alert awaited for each region: two programs may load at once.
+    private readonly ConcurrentDictionary<Guid, TaskCompletionSource<string>> _oarLoaded = new();
+    // The OAR job running in each program (its text), by instance. Added and checked under _ops; the job removes its own.
+    private readonly ConcurrentDictionary<string, string> _jobs = new();
+    // A region's rows in the database (Delete, Delete forever, the space a deleted region holds).
+    private readonly Func<LauncherSettings, IRegionStore> _regionStores = regionStores ?? (s => new RegionStore(s));
 
+    /// <summary>Replaces the database's state for tests, whose MariaDB cannot start.</summary>
+    internal Func<bool>? DatabaseRunningForTests { get; init; }
+
+    private bool DatabaseRunning => DatabaseRunningForTests?.Invoke() ?? _db?.Process.State == ProcessState.Running;
 
     /// <summary>One supervised child with what the controller needs to talk to it; <see cref="Key"/> is the settings it was built from.</summary>
     private sealed record Component(string Name, ManagedProcess Process, ProcessSpec Spec, int[] Ports, RestConsoleClient? Console, string? Instance = null)
@@ -117,6 +135,7 @@ public sealed partial class GridController(
         try
         {
             var s = LoadSettings();
+            ThrowIfBusy(RegionModel.Find(s, regionId)?.Instance);
             var running = _programs.Where(p => RegionPowerPlan.IsActive(p.Value.Process.State)).Select(p => p.Key).ToHashSet();
             var steps = RegionPowerPlan.For(s, _held, running, regionId, action, _loaded);
             if ((steps.Start.Count > 0 || steps.Restart.Count > 0) && _robust!.Process.State != ProcessState.Running)
@@ -148,6 +167,7 @@ public sealed partial class GridController(
             var s = LoadSettings();
             var region = RegionModel.Find(s, regionId) ?? throw new InvalidOperationException("There is no such region.");
             if (region.DeletedAt is not null) throw new InvalidOperationException("That region has been deleted.");
+            ThrowIfBusy(region.Instance);
             if (!RegionPlacement.OnMap(x, y, region.Size)) throw new ArgumentException("That spot is off the map.");
             // The region's own square doesn't count: it may move to an overlapping spot.
             if (RegionPlacement.Check(s, x, y, region.Size, ignore: regionId) is { Ok: false } taken)
@@ -179,18 +199,15 @@ public sealed partial class GridController(
             var region = RegionModel.Find(s, regionId) ?? throw new InvalidOperationException("There is no such region.");
             if (region.DeletedAt is not null) throw new InvalidOperationException("That region has been deleted.");
             var from = region.Instance;
+            ThrowIfBusy(from, shareWith);
             if (shareWith == from) throw new ArgumentException("It already runs with them.");
             if (shareWith is not null && s.Programs.All(p => p.Instance != shareWith))
                 throw new ArgumentException("There is no such group of regions.");
             if (shareWith is null && RegionModel.In(s, from).All(r => r.Uuid == regionId))
                 throw new ArgumentException("It already runs on its own.");
 
-            // Whether the region ran before the change: its program is up and loaded it.
             var oldProgram = _programs.GetValueOrDefault(from);
-            var oldActive = oldProgram is not null && RegionPowerPlan.IsActive(oldProgram.Process.State);
-            var ran = oldActive
-                && RegionModel.Loadable(s, from, _held).Any(r => r.Uuid == regionId)
-                && (_loaded.GetValueOrDefault(from) is not { } ids || ids.Contains(regionId));
+            var ran = HasLoaded(s, oldProgram, regionId);
 
             var to = shareWith!;
             s = UpdateSettings(l =>
@@ -218,18 +235,7 @@ public sealed partial class GridController(
             var removed = !s.Programs.Any(p => p.Instance == from);
             var affected = new List<string>();
             var steps = new List<Func<Task>>();
-            var left = RegionModel.Loadable(s, from, _held).Select(r => r.Name).ToList();
-            if (oldActive && (removed || left.Count == 0))
-            {
-                // Nothing left to load. A removed program is stopped whole even at shutdown: nothing would adopt it later.
-                var stop = removed ? CancellationToken.None : ct;
-                steps.Add(() => StopProgramAsync(oldProgram!, stop));
-            }
-            else if (ran)
-            {
-                affected.AddRange(left);
-                steps.Add(() => RestartProgramAsync(s, oldProgram!, ct));
-            }
+            if (LeftProgramStep(s, from, oldProgram, ran, removed, affected, ct) is { } leave) steps.Add(leave);
             if (ran)
             {
                 EnsureComponents(s);
@@ -246,28 +252,188 @@ public sealed partial class GridController(
             if (affected.Count > 0)
                 _log?.LogInformation("Change how {Region} runs: also affected {Others}.", region.Name, string.Join(", ", affected));
             _activity = GridActivity.Restarting;
-            try
-            {
-                // One program that fails to come back doesn't keep the other down; the first failure is thrown afterwards.
-                Exception? first = null;
-                foreach (var step in steps)
-                {
-                    try { await step(); }
-                    catch (Exception e) when (e is not OperationCanceledException) { first ??= e; }
-                }
-                if (first is not null) throw first;
-            }
-            finally
-            {
-                // Also on cancellation: the removed program, now stopped, leaves the status.
-                if (removed)
-                {
-                    EnsureComponents(s);
-                    _loaded = _loaded.Where(kv => kv.Key != from).ToDictionary(kv => kv.Key, kv => kv.Value);
-                }
-            }
+            await RunProgramStepsAsync(s, steps, removed ? from : null);
         }
         finally { _activity = GridActivity.None; _ops.Release(); }
+    }
+
+    /// <summary>True when the program is up and loaded the region (an unknown list counts as loaded).</summary>
+    private bool HasLoaded(LauncherSettings s, Component? program, Guid regionId) =>
+        program is not null && RegionPowerPlan.IsActive(program.Process.State)
+        && RegionModel.Loadable(s, program.Instance!, _held).Any(r => r.Uuid == regionId)
+        && (_loaded.GetValueOrDefault(program.Instance!) is not { } ids || ids.Contains(regionId));
+
+    /// <summary>
+    /// What a program does once a region has left it (moved out or deleted), with <paramref name="s"/> already saved: with
+    /// nothing left to load it stops, and a <paramref name="removed"/> one stops whole even at shutdown, since nothing would
+    /// adopt it later; one that <paramref name="ran"/> the region restarts without it, adding the regions that restart with it
+    /// to <paramref name="affected"/>. A failed or stopped program is left alone (null).
+    /// </summary>
+    private Func<Task>? LeftProgramStep(LauncherSettings s, string instance, Component? program, bool ran, bool removed,
+        List<string> affected, CancellationToken ct)
+    {
+        if (program is null || !RegionPowerPlan.IsActive(program.Process.State)) return null;
+        var left = RegionModel.Loadable(s, instance, _held).Select(r => r.Name).ToList();
+        if (removed || left.Count == 0)
+        {
+            var stop = removed ? CancellationToken.None : ct;
+            return () => StopProgramAsync(program, stop);
+        }
+        if (!ran) return null;
+        affected.AddRange(left);
+        return () => RestartProgramAsync(s, program, ct);
+    }
+
+    /// <summary>
+    /// Runs a change's stop, restart and start steps. One program that fails to come back doesn't keep another down; the first
+    /// failure is thrown afterwards. A program <paramref name="removed"/> from the settings, now stopped, then leaves the status,
+    /// also on cancellation.
+    /// </summary>
+    private async Task RunProgramStepsAsync(LauncherSettings s, List<Func<Task>> steps, string? removed)
+    {
+        try
+        {
+            Exception? first = null;
+            foreach (var step in steps)
+            {
+                try { await step(); }
+                catch (Exception e) when (e is not OperationCanceledException) { first ??= e; }
+            }
+            if (first is not null) throw first;
+        }
+        finally
+        {
+            if (removed is not null)
+            {
+                EnsureComponents(s);
+                _loaded = _loaded.Where(kv => kv.Key != removed).ToDictionary(kv => kv.Key, kv => kv.Value);
+            }
+        }
+    }
+
+    // ---- delete, restore and delete forever ---------------------------------------------------------
+
+    public async Task DeleteRegionAsync(Guid regionId, CancellationToken ct)
+    {
+        await _ops.WaitAsync(ct);
+        try
+        {
+            var s = LoadSettings();
+            var region = RegionModel.Find(s, regionId) ?? throw new InvalidOperationException("There is no such region.");
+            if (region.DeletedAt is not null) throw new InvalidOperationException("That region has been deleted.");
+            var instance = region.Instance;
+            ThrowIfBusy(instance);
+            var program = _programs.GetValueOrDefault(instance);
+            var ran = HasLoaded(s, program, regionId);
+
+            var now = time.GetUtcNow();
+            s = UpdateSettings(l =>
+            {
+                var regions = l.Regions.Select(r => r.Uuid == regionId ? r with { DeletedAt = now } : r).ToList();
+                var programs = l.Programs.ToList();
+                // A program left with no live region goes; the deleted region keeps its folder name.
+                if (!regions.Any(r => r.DeletedAt is null && r.Instance == instance)) programs.RemoveAll(p => p.Instance == instance);
+                return l with { Programs = programs, Regions = regions };
+            });
+            _logins.Clear([regionId]);
+
+            var removed = !s.Programs.Any(p => p.Instance == instance);
+            var affected = new List<string>();
+            var steps = new List<Func<Task>>();
+            if (LeftProgramStep(s, instance, program, ran, removed, affected, ct) is { } leave) steps.Add(leave);
+            if (affected.Count > 0)
+                _log?.LogInformation("Delete {Region}: also affected {Others}.", region.Name, string.Join(", ", affected));
+            if (steps.Count > 0) _activity = affected.Count > 0 ? GridActivity.Restarting : GridActivity.Stopping;
+            try { await RunProgramStepsAsync(s, steps, removed ? instance : null); }
+            // Also after a program that failed to come back: the region is deleted either way.
+            finally { await DeregisterAsync(s, region, ct); }
+        }
+        finally { _activity = GridActivity.None; _ops.Release(); }
+    }
+
+    /// <summary>
+    /// Removes a deleted region's row from Robust's map, so one that crashed leaves the map too. Skipped (and logged) while
+    /// the database isn't running; a failure is logged, not thrown, since the delete itself is done.
+    /// </summary>
+    private async Task DeregisterAsync(LauncherSettings s, RegionSettings region, CancellationToken ct)
+    {
+        if (ct.IsCancellationRequested) return;
+        if (!DatabaseRunning)
+        {
+            _log?.LogInformation("Delete {Region}: the database isn't running, so its row in Robust's regions table stays.", region.Name);
+            return;
+        }
+        try { await _regionStores(s).DeregisterAsync(region.Uuid, ct); }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            _log?.LogWarning(e, "Delete {Region}: its row in Robust's regions table could not be removed.", region.Name);
+        }
+    }
+
+    public async Task RestoreRegionAsync(Guid regionId, CancellationToken ct)
+    {
+        await _ops.WaitAsync(ct);
+        try
+        {
+            var s = LoadSettings();
+            var region = RegionModel.Find(s, regionId) ?? throw new InvalidOperationException("There is no such region.");
+            if (region.DeletedAt is null) throw new InvalidOperationException("That region isn't deleted.");
+            var instance = region.Instance;
+
+            // It comes back stopped and nothing restarts: a running program holds it until its Start or the world's.
+            if (_programs.GetValueOrDefault(instance) is { } program && RegionPowerPlan.IsActive(program.Process.State))
+                _held = new HashSet<Guid>(_held) { regionId };
+            var added = false;
+            s = UpdateSettings(l =>
+            {
+                var programs = l.Programs.ToList();
+                int? udpPort = null;
+                if (programs.All(p => p.Instance != instance))
+                {
+                    // Its program went: a new one under the same folder name, with fresh ports.
+                    var httpPort = PortAllocator.Next(l, l.RegionPort);
+                    var consolePort = PortAllocator.Next(l, l.RegionConsolePort, new HashSet<int> { httpPort });
+                    programs.Add(new ProgramSettings(instance, httpPort, consolePort));
+                    udpPort = httpPort;
+                    added = true;
+                }
+                var regions = l.Regions.Select(r => r.Uuid == regionId ? r with { DeletedAt = null, UdpPort = udpPort ?? r.UdpPort } : r).ToList();
+                return l with { Programs = programs, Regions = regions };
+            });
+            if (added)
+                lock (_configGate) new RuntimeStager(paths).WriteLogConfigs(s.Programs.Select(p => p.Instance), LogLevelModule.LevelFor(s));
+            _logins.Clear([regionId]);
+            EnsureComponents(s);
+        }
+        finally { _ops.Release(); }
+    }
+
+    public async Task EraseRegionAsync(Guid regionId, CancellationToken ct)
+    {
+        await _ops.WaitAsync(ct);
+        try
+        {
+            var s = LoadSettings();
+            var region = RegionModel.Find(s, regionId) ?? throw new InvalidOperationException("There is no such region.");
+            if (region.DeletedAt is null) throw new InvalidOperationException("That region isn't deleted.");
+            if (!DatabaseRunning) throw new InvalidOperationException("Start the database first.");
+
+            await _regionStores(s).EraseAsync(regionId, ct);
+            // Its name, spot, ports and folder name are free again; the folder itself stays, with its logs.
+            _held = _held.Where(id => id != regionId).ToHashSet();
+            UpdateSettings(l => l with { Regions = l.Regions.Where(r => r.Uuid != regionId).ToList() });
+        }
+        finally { _ops.Release(); }
+    }
+
+    /// <summary>Reads the database without the operation lock, so the page never waits behind a start or stop.</summary>
+    public async Task<IReadOnlyDictionary<Guid, long>?> DeletedSpaceAsync(CancellationToken ct)
+    {
+        if (!DatabaseRunning) return null;
+        var s = CurrentSettings();
+        var deleted = s.Regions.Where(r => r.DeletedAt is not null).Select(r => r.Uuid).ToList();
+        if (deleted.Count == 0) return new Dictionary<Guid, long>();
+        return await _regionStores(s).SpaceAsync(deleted, ct);
     }
 
     /// <summary>Stops a program and starts it again with its current region files.</summary>
@@ -484,13 +650,19 @@ public sealed partial class GridController(
     }
 
     private static readonly string ContentError =
-        $"Content must be one of: starter, {string.Join(", ", RegionTypes.BuiltIn.Select(t => t.Id))}.";
+        $"Content must be starter, a built-in type ({string.Join(", ", RegionTypes.BuiltIn.Select(t => t.Id))}) or one of your region types.";
+
+    /// <summary>True for starter, a built-in type and one of the settings' custom types.</summary>
+    private bool IsContent(string content)
+    {
+        lock (_configGate) return RegionTypes.IsContent(ReloadSettings(), content);
+    }
 
     public async Task CreateRegionAsync(string name, string content, CancellationToken ct, IProgress<string>? progress = null)
     {
         if (!IsValidRegionName(name))
             throw new ArgumentException("A region name is 2-32 letters, digits, spaces, '-', '_' or '\\'' with no leading or trailing space.", nameof(name));
-        if (!RegionTypes.IsContent(content))
+        if (!IsContent(content))
             throw new ArgumentException(ContentError, nameof(content));
 
         await _ops.WaitAsync(ct);
@@ -508,7 +680,7 @@ public sealed partial class GridController(
                     await StopProgramAsync(other, ct);
                 s = UpdateSettings(l => l with { Programs = [], Regions = [] });
             }
-            await AddCoreAsync(s, new NewRegion(name, 1000, 1000, 1, content, null), uuid, progress, ct);
+            await AddCoreAsync(s, new NewRegion(name, 1000, 1000, 1, content, null), uuid, progress, ct, adoptLeftover: true);
             UpdateSettings(l => l with { Setup = l.Setup with { RegionCreated = true } }, writeConfig: false);
         }
         finally { _activity = GridActivity.None; _ops.Release(); }
@@ -518,7 +690,7 @@ public sealed partial class GridController(
     {
         if (!IsValidRegionName(request.Name))
             throw new ArgumentException("A region name is 2-32 letters, digits, spaces, '-', '_' or '\\'' with no leading or trailing space.", nameof(request));
-        if (!RegionTypes.IsContent(request.Content))
+        if (!IsContent(request.Content))
             throw new ArgumentException(ContentError, nameof(request));
 
         await _ops.WaitAsync(ct);
@@ -528,6 +700,8 @@ public sealed partial class GridController(
             LauncherSettings s;
             lock (_configGate) s = ReloadSettings();
             if (RegionRequestError(s, request) is { } error) throw new ArgumentException(error, nameof(request));
+            // Sharing restarts that program, which would cut off its OAR job.
+            ThrowIfBusy(request.ShareWith);
             progress?.Report(SetupProgress.CreatingRegion);
             s = LoadSettings();
             if (_robust!.Process.State != ProcessState.Running)
@@ -550,22 +724,24 @@ public sealed partial class GridController(
     /// <summary>
     /// Under the operation lock: saves the region (and its own program, unless it shares one) with ports from
     /// <see cref="PortAllocator"/>, starts it (a shared program restarts to load it), loads its content, and waits until
-    /// it accepts logins.
+    /// it accepts logins. <paramref name="adoptLeftover"/> lets a program of its own take over the folder of one an earlier
+    /// attempt left running (see <see cref="UniqueFolderName"/>).
     /// </summary>
-    private async Task<RegionSettings> AddCoreAsync(LauncherSettings s, NewRegion r, Guid uuid, IProgress<string>? progress, CancellationToken ct)
+    private async Task<RegionSettings> AddCoreAsync(LauncherSettings s, NewRegion r, Guid uuid, IProgress<string>? progress, CancellationToken ct,
+        bool adoptLeftover = false)
     {
         RegionSettings region = null!;
         s = UpdateSettings(l =>
         {
             if (r.ShareWith is { } share)
             {
-                region = new RegionSettings(share, r.Name, uuid, r.X, r.Y, r.Content, r.Size, PortAllocator.Next(l, l.RegionPort));
+                region = new RegionSettings(share, r.Name, uuid, r.X, r.Y, r.Content, r.Size, PortAllocator.Next(l, l.RegionPort), NeedsContent: true);
                 return l with { Regions = [.. l.Regions, region] };
             }
-            var instance = UniqueFolderName(l, SafeFolderName(r.Name));
+            var instance = UniqueFolderName(l, SafeFolderName(r.Name), adoptLeftover);
             var httpPort = PortAllocator.Next(l, l.RegionPort);
             var consolePort = PortAllocator.Next(l, l.RegionConsolePort, new HashSet<int> { httpPort });
-            region = new RegionSettings(instance, r.Name, uuid, r.X, r.Y, r.Content, r.Size, httpPort);
+            region = new RegionSettings(instance, r.Name, uuid, r.X, r.Y, r.Content, r.Size, httpPort, NeedsContent: true);
             return l with { Programs = [.. l.Programs, new ProgramSettings(instance, httpPort, consolePort)], Regions = [.. l.Regions, region] };
         });
         lock (_configGate) new RuntimeStager(paths).WriteLogConfigs(s.Programs.Select(p => p.Instance), LogLevelModule.LevelFor(s));
@@ -582,18 +758,248 @@ public sealed partial class GridController(
         await WaitForLoginsAsync(program, uuid, ct); // the scene is up and accepts console commands for it
         progress?.Report(SetupProgress.LoadingContent);
         await LoadContentAsync(program, region, r.Content, s, ct);
+        ClearNeedsContent(uuid);
         progress?.Report(SetupProgress.WaitingForLogins);
         await WaitForLoginsAsync(program, uuid, ct);
         return region;
     }
 
-    /// <summary>A program folder name no other program uses: the safe name, else with "_2", "_3", … added.</summary>
-    private static string UniqueFolderName(LauncherSettings s, string name)
+    /// <summary>
+    /// A program folder name nobody holds: the safe name, else with "_2", "_3", … added. A program holds its name, a deleted
+    /// region its program's (until it is erased), and so does a live process its PID file names (a removed program that
+    /// still runs). With <paramref name="adoptLeftover"/>, a live process under the safe name itself doesn't count: setup's
+    /// retry takes over the program an earlier attempt left running.
+    /// </summary>
+    private string UniqueFolderName(LauncherSettings s, string name, bool adoptLeftover = false)
     {
-        var taken = s.Programs.Select(p => p.Instance).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var taken = s.Programs.Select(p => p.Instance)
+            .Concat(s.Regions.Where(r => r.DeletedAt is not null).Select(r => r.Instance))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var dll = Path.Combine(paths.RuntimeOpenSim, "OpenSim.dll");
+        bool Held(string candidate) => taken.Contains(candidate)
+            || (!(adoptLeftover && candidate == name) && PidFile.ReadLive(Path.Combine(paths.Pids, candidate + ".pid"), dll) is not null);
         var candidate = name;
-        for (var n = 2; taken.Contains(candidate); n++) candidate = $"{name}_{n}";
+        for (var n = 2; Held(candidate); n++) candidate = $"{name}_{n}";
         return candidate;
+    }
+
+    // ---- OAR jobs -----------------------------------------------------------------------------------
+
+    private const string SaveFailed = "The save did not finish; see the region log.";
+    private const int MoveAttempts = 3;
+
+    public async Task<string?> RunOarJobAsync(OarJobRequest request, CancellationToken ct, IProgress<OarJobProgress>? progress = null)
+    {
+        if (!Enum.IsDefined(request.Kind)) throw new ArgumentException("There is no such OAR job.");
+        string? oar = null;
+        if (request.Kind == OarJobKind.Import)
+            oar = (request.File is { } file ? new OarLibrary(paths).Resolve(file) : null)
+                ?? throw new ArgumentException("That file is not in the OAR library.");
+        else if (request.File is not null)
+            throw new ArgumentException("Only an import names a file.");
+
+        var (s, region, program) = await BeginOarJobAsync(request, ct);
+        try
+        {
+            switch (request.Kind)
+            {
+                case OarJobKind.Import:
+                    await ImportOarAsync(s, region, program, request.File!, oar!, progress, ct);
+                    return null;
+                case OarJobKind.Save:
+                    return await SaveOarAsync(s, region, program, progress, ct);
+                default:
+                    await MakeLandAsync(s, region, program, progress, ct);
+                    return null;
+            }
+        }
+        finally { _jobs.TryRemove(region.Instance, out _); }
+    }
+
+    public string? BusyWith(string instance) => _jobs.TryGetValue(instance, out var job) ? job : null;
+
+    /// <summary>
+    /// Under the operation lock, briefly: checks that the region runs and its program has no job, then records the job.
+    /// Returns the settings, the region and its program.
+    /// </summary>
+    private async Task<(LauncherSettings, RegionSettings, Component)> BeginOarJobAsync(OarJobRequest request, CancellationToken ct)
+    {
+        await _ops.WaitAsync(ct);
+        try
+        {
+            var s = LoadSettings();
+            var region = RegionModel.Find(s, request.RegionId) ?? throw new ArgumentException("There is no such region.");
+            if (region.DeletedAt is not null) throw new ArgumentException("That region has been deleted.");
+            // Running means: its program runs and loaded it (an unknown list counts as loaded), and it accepts logins.
+            if (_programs.GetValueOrDefault(region.Instance) is not { Process.State: ProcessState.Running } program
+                || RegionModel.Loadable(s, region.Instance, _held).All(r => r.Uuid != region.Uuid)
+                || (_loaded.GetValueOrDefault(region.Instance) is { } ids && !ids.Contains(region.Uuid))
+                || !_logins.Enabled(region.Uuid))
+                throw new InvalidOperationException($"Start {region.Name} first; an OAR needs it running.");
+            ThrowIfBusy(region.Instance);
+            _jobs[region.Instance] = request.Kind switch
+            {
+                OarJobKind.Import => $"Importing {request.File} into {region.Name}",
+                OarJobKind.Save => $"Saving {region.Name} as an OAR",
+                _ => $"Making the land of {region.Name} again",
+            };
+            return (s, region, program);
+        }
+        finally { _ops.Release(); }
+    }
+
+    /// <summary>Under the operation lock: refuses to change a program (or programs) while an OAR job runs in it.</summary>
+    private void ThrowIfBusy(params string?[] instances)
+    {
+        foreach (var instance in instances)
+            if (instance is not null && _jobs.TryGetValue(instance, out var job))
+                throw new InvalidOperationException($"{job} is still running. Try again when it finishes.");
+    }
+
+    /// <summary>
+    /// Loads the region's own type again, then waits until it accepts logins. A program that stops meanwhile ends the job at
+    /// once with "The region stopped before the land loaded.".
+    /// </summary>
+    private async Task MakeLandAsync(LauncherSettings s, RegionSettings region, Component program,
+        IProgress<OarJobProgress>? progress, CancellationToken ct)
+    {
+        const string stopped = "The region stopped before the land loaded.";
+        progress?.Report(new OarJobProgress(SetupProgress.LoadingContent, null));
+        try
+        {
+            await OnRegionConsoleAsync(program, region, s,
+                console => LoadRegionContentAsync(console, region, region.Content, s, (program, stopped), ct), ct);
+        }
+        // A console that stops answering (the program went away) fails with its own error: the stop is the reason.
+        catch (Exception e) when (e is not OperationCanceledException && program.Process.State != ProcessState.Running)
+        {
+            throw new InvalidOperationException(stopped, e);
+        }
+        ClearNeedsContent(region.Uuid);
+        progress?.Report(new OarJobProgress(SetupProgress.WaitingForLogins, null));
+        await WaitForLoginsAsync(program, region.Uuid, ct, stopped);
+    }
+
+    /// <summary>
+    /// Waits for the archiver's alert for an OAR load and returns it. Fails with <paramref name="stopped"/> as soon as the
+    /// program leaves Running, and with <paramref name="timedOut"/> after <see cref="OarJobWait"/>.
+    /// </summary>
+    private async Task<string> WaitForOarAlertAsync(OarAlertWait loaded, Component program, string stopped, string timedOut, CancellationToken ct)
+    {
+        var deadline = time.GetUtcNow() + OarJobWait;
+        while (!loaded.Result.IsCompleted)
+        {
+            if (program.Process.State != ProcessState.Running) throw new InvalidOperationException(stopped);
+            if (time.GetUtcNow() >= deadline) throw new InvalidOperationException(timedOut);
+            await Task.WhenAny(loaded.Result, Task.Delay(LoginPoll, time, ct));
+            ct.ThrowIfCancellationRequested();
+        }
+        return await loaded.Result;
+    }
+
+    /// <summary>Loads a library OAR into the region at the OAR's own size and place, then waits until it accepts logins.</summary>
+    private async Task ImportOarAsync(LauncherSettings s, RegionSettings region, Component program, string file, string oar,
+        IProgress<OarJobProgress>? progress, CancellationToken ct)
+    {
+        const string stopped = "The region stopped before the import finished.";
+        progress?.Report(new OarJobProgress("Loading the OAR", null));
+        await OnRegionConsoleAsync(program, region, s, async console =>
+        {
+            using var loaded = ExpectOarAlert(region.Uuid);
+            await console.RunAsync($"load oar --force-terrain --force-parcels \"{Fwd(oar)}\"", ConsoleSettle, ct);
+            if (await WaitForOarAlertAsync(loaded, program, stopped, $"The region did not load {file}; see the region log.", ct) != "oarloaded")
+                throw new InvalidOperationException($"The region could not load {file}; see the region log.");
+        }, ct);
+        ClearNeedsContent(region.Uuid);
+        progress?.Report(new OarJobProgress(SetupProgress.WaitingForLogins, null));
+        await WaitForLoginsAsync(program, region.Uuid, ct, stopped);
+    }
+
+    /// <summary>
+    /// Saves the region into <see cref="LauncherPaths.OarsSaving"/>, then moves the finished file into the library. OpenSim
+    /// reports the end of a save only in the region log (ArchiveWriteRequest.CloseArchive), so the lines the log gains are
+    /// read about every 2 s. OpenSim logs that end even for a save that failed, and only then rethrows the failure, so the log
+    /// is read once more after it. A failed save's file is removed; when the launcher stops instead, OpenSim may still be
+    /// writing it, and the next start's <see cref="OarLibrary.ClearStaging"/> removes it.
+    /// </summary>
+    private async Task<string> SaveOarAsync(LauncherSettings s, RegionSettings region, Component program,
+        IProgress<OarJobProgress>? progress, CancellationToken ct)
+    {
+        Directory.CreateDirectory(paths.OarsSaving);
+        var staging = Path.Combine(paths.OarsSaving, Guid.NewGuid().ToString("N") + ".oar");
+        var log = new LogFollower(Path.Combine(paths.Logs, $"region-{region.Instance}.log"));
+        var finished = $"[ARCHIVER]: Finished writing out OAR for {region.Name}";
+        var moved = false;
+        // Once the save is whole, the file is kept even when the move fails.
+        var whole = false;
+        try
+        {
+            await OnRegionConsoleAsync(program, region, s, async console =>
+            {
+                await console.RunAsync($"save oar \"{Fwd(staging)}\"", ConsoleSettle, ct);
+                var sent = time.GetUtcNow();
+                var deadline = sent + OarJobWait;
+                // Set once the Finished line is read; the save is whole if the next read shows no failure after it.
+                var ended = false;
+                while (true)
+                {
+                    var started = File.Exists(staging);
+                    progress?.Report(new OarJobProgress("Saving the OAR", started ? new FileInfo(staging).Length : null));
+                    var followed = ended;
+                    foreach (var line in log.ReadNew())
+                    {
+                        if (line.Contains("[ARCHIVER]: Error", StringComparison.Ordinal)
+                            || (ended && line.Contains("Exception", StringComparison.Ordinal)))
+                            throw new InvalidOperationException(SaveFailed);
+                        if (line.TrimEnd().EndsWith(finished, StringComparison.Ordinal)) ended = true;
+                    }
+                    if (followed)
+                    {
+                        if (!OarFile.LooksLikeOar(staging)) throw new InvalidOperationException(SaveFailed);
+                        whole = true;
+                        return;
+                    }
+                    if (!ended)
+                    {
+                        if (program.Process.State != ProcessState.Running)
+                            throw new InvalidOperationException("The region stopped before the save finished.");
+                        if (!started && time.GetUtcNow() >= sent + SaveStartWait)
+                            throw new InvalidOperationException("The region did not start the save; see the region log.");
+                        if (time.GetUtcNow() >= deadline) throw new InvalidOperationException(SaveFailed);
+                    }
+                    await Task.Delay(SavePoll, time, ct);
+                }
+            }, ct);
+
+            // The free name can be taken before the move (an upload of the same name): a few tries, each with a fresh name.
+            var library = new OarLibrary(paths);
+            var wanted = $"{region.Name}-{time.GetLocalNow().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}.oar";
+            for (var attempt = 1; ; attempt++)
+            {
+                var name = library.FreeName(wanted);
+                try
+                {
+                    File.Move(staging, Path.Combine(paths.Oars, name));
+                    moved = true;
+                    return name;
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                {
+                    if (attempt < MoveAttempts) continue;
+                    _log?.LogError(e, "The saved OAR of {Region} could not be moved into the library as {Name}; it is at {Path}.", region.Name, name, staging);
+                    throw new InvalidOperationException(
+                        $"The OAR was saved but could not be moved into the library. It is at {staging} until the launcher restarts; see the launcher log.", e);
+                }
+            }
+        }
+        finally
+        {
+            if (!moved && !whole && !ct.IsCancellationRequested)
+            {
+                try { File.Delete(staging); }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+            }
+        }
     }
 
     // ---- status and alerts --------------------------------------------------------------------------
@@ -647,7 +1053,9 @@ public sealed partial class GridController(
                 // An alert for a region the launcher doesn't know (a hand-made region file) changes nothing.
                 _logins.Apply(alert, CurrentSettings().Regions);
                 break;
-            case "oarloaded" or "oarnotloaded": _oarLoaded?.TrySetResult(alert.Login.ToLowerInvariant()); break;
+            case "oarloaded" or "oarnotloaded":
+                if (_oarLoaded.TryGetValue(alert.RegionId, out var waiting)) waiting.TrySetResult(alert.Login.ToLowerInvariant());
+                break;
         }
     }
 
@@ -776,6 +1184,9 @@ public sealed partial class GridController(
     {
         var instance = program.Instance!;
         var running = program.Process.State == ProcessState.Running;
+        // An OAR job may have switched this program's console to one region, and then "show regions" and "login status"
+        // answer for that region only: what is known about the running program stays as it is.
+        if (running && _jobs.ContainsKey(instance)) return;
         var adopted = running || WillAdopt(program);
         var regions = RegionModel.In(s, instance).ToList();
         if (!running)
@@ -871,11 +1282,14 @@ public sealed partial class GridController(
         }
     }
 
-    private async Task WaitForLoginsAsync(Component program, Guid region, CancellationToken ct)
+    /// <summary>Waits until the region accepts logins; with <paramref name="stopped"/>, a program that leaves Running fails at once with it.</summary>
+    private async Task WaitForLoginsAsync(Component program, Guid region, CancellationToken ct, string? stopped = null)
     {
         var deadline = time.GetUtcNow() + LoginWait;
         while (!_logins.Enabled(region))
         {
+            if (stopped is not null && program.Process.State != ProcessState.Running)
+                throw new InvalidOperationException(stopped);
             if (program.Process.State == ProcessState.Failed)
                 throw new InvalidOperationException($"The region failed: {program.Process.LastError}");
             if (time.GetUtcNow() >= deadline)
@@ -885,32 +1299,68 @@ public sealed partial class GridController(
     }
 
     /// <summary>Loads a region's content through its program's console; in a shared program the console switches to it first.</summary>
-    private async Task LoadContentAsync(Component program, RegionSettings region, string content, LauncherSettings s, CancellationToken ct)
+    private Task LoadContentAsync(Component program, RegionSettings region, string content, LauncherSettings s, CancellationToken ct) =>
+        OnRegionConsoleAsync(program, region, s, console => LoadContentCoreAsync(console, region, content, s, ct), ct);
+
+    /// <summary>
+    /// Runs <paramref name="work"/> on the program's console. In a shared program the console switches to the region first
+    /// and back to root afterwards, unless the program stopped meanwhile.
+    /// </summary>
+    private async Task OnRegionConsoleAsync(Component program, RegionSettings region, LauncherSettings s, Func<RestConsoleClient, Task> work, CancellationToken ct)
     {
         var console = program.Console!;
         var shared = RegionModel.Loadable(s, region.Instance, _held).Count() > 1;
         if (shared) await console.RunAsync($"change region {region.Name}", ConsoleSettle, ct);
-        try { await LoadContentCoreAsync(console, region, content, ct); }
+        try { await work(console); }
         finally
         {
-            if (shared) await console.RunAsync("change region root", ConsoleSettle, CancellationToken.None);
+            if (shared && program.Process.State == ProcessState.Running)
+                await console.RunAsync("change region root", ConsoleSettle, CancellationToken.None);
         }
     }
 
-    private async Task LoadContentCoreAsync(RestConsoleClient console, RegionSettings region, string content, CancellationToken ct)
+    /// <summary>Starts waiting for the archiver's alert for <paramref name="region"/>; dispose the result to stop.</summary>
+    private OarAlertWait ExpectOarAlert(Guid region)
     {
-        var oar = content == "starter" ? StarterContent.StarterOar(paths) : RegionTypes.Oar(paths, content);
+        var loaded = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _oarLoaded[region] = loaded;
+        return new OarAlertWait(loaded.Task, () => _oarLoaded.TryRemove(new KeyValuePair<Guid, TaskCompletionSource<string>>(region, loaded)));
+    }
+
+    private sealed class OarAlertWait(Task<string> result, Action stop) : IDisposable
+    {
+        public Task<string> Result => result;
+        public void Dispose() => stop();
+    }
+
+    private void ClearNeedsContent(Guid region) =>
+        UpdateSettings(l => l with { Regions = [.. l.Regions.Select(x => x.Uuid == region ? x with { NeedsContent = false } : x)] }, writeConfig: false);
+
+    private Task LoadContentCoreAsync(RestConsoleClient console, RegionSettings region, string content, LauncherSettings s, CancellationToken ct) =>
+        LoadRegionContentAsync(console, region, content, s, null, ct);
+
+    /// <summary>
+    /// <see cref="LoadContentCoreAsync"/>; with <paramref name="watch"/>, the OAR alert wait ends as soon as that program leaves
+    /// Running, failing with its text.
+    /// </summary>
+    private async Task LoadRegionContentAsync(RestConsoleClient console, RegionSettings region, string content, LauncherSettings s,
+        (Component Program, string Stopped)? watch, CancellationToken ct)
+    {
+        var oar = content == "starter" ? StarterContent.StarterOar(paths) : RegionTypes.Oar(paths, s, content);
         if (oar is not null)
         {
             // RegionReady reports the archiver's result as an "oarloaded" or "oarnotloaded" alert.
-            var loaded = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-            _oarLoaded = loaded;
+            using var loaded = ExpectOarAlert(region.Uuid);
             // A 256 m OAR goes in the middle of a larger region; the squares around it keep the flat land OpenSim makes.
+            // A custom type, like an import, loads at the OAR's own size and place: it may be a larger region's OAR.
             var middle = 128 * (region.Size - 1);
-            var displacement = region.Size > 1 ? $" --displacement <{middle},{middle},0>" : "";
+            var displacement = region.Size > 1 && !RegionTypes.IsCustom(content) ? $" --displacement <{middle},{middle},0>" : "";
             await console.RunAsync($"load oar --force-terrain --force-parcels{displacement} \"{Fwd(oar)}\"", ConsoleSettle, ct);
-            if (await loaded.Task.WaitAsync(LoginWait, time, ct) != "oarloaded")
-                throw new InvalidOperationException($"The region could not load {oar}; see the region log.");
+            var failed = $"The region could not load {oar}; see the region log.";
+            var result = watch is { } w
+                ? await WaitForOarAlertAsync(loaded, w.Program, w.Stopped, failed, ct)
+                : await loaded.Result.WaitAsync(LoginWait, time, ct);
+            if (result != "oarloaded") throw new InvalidOperationException(failed);
             return;
         }
 

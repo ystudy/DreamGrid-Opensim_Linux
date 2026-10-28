@@ -88,6 +88,51 @@ public sealed class RegionActions(IGridController grid, BackgroundWork backgroun
         return true;
     }
 
+    /// <summary>Deletes the region (to Recently deleted) in the background; false when there is no such (live) region. Failures are logged.</summary>
+    public bool TryDelete(Guid id)
+    {
+        if (RegionModel.Find(grid.CurrentSettings(), id) is not { DeletedAt: null } region) return false;
+        RunDeleted("delete", region.Name, stopping => grid.DeleteRegionAsync(id, stopping));
+        return true;
+    }
+
+    /// <summary>Brings a deleted region back, stopped, in the background; false when there is no such deleted region. Failures are logged.</summary>
+    public bool TryRestore(Guid id)
+    {
+        if (RegionModel.Find(grid.CurrentSettings(), id) is not { DeletedAt: not null } region) return false;
+        RunDeleted("restore", region.Name, stopping => grid.RestoreRegionAsync(id, stopping));
+        return true;
+    }
+
+    /// <summary>Deletes a deleted region forever in the background; false when there is no such deleted region. Failures are logged.</summary>
+    public bool TryErase(Guid id)
+    {
+        if (RegionModel.Find(grid.CurrentSettings(), id) is not { DeletedAt: not null } region) return false;
+        RunDeleted("erase", region.Name, stopping => grid.EraseRegionAsync(id, stopping));
+        return true;
+    }
+
+    private void RunDeleted(string what, string name, Func<CancellationToken, Task> work)
+    {
+        log.LogInformation("Regions: {What} requested for {Region}.", what, name);
+        background.Run($"region {what} {name}", async stopping =>
+        {
+            try
+            {
+                await work(stopping);
+                log.LogInformation("Regions: {What} finished for {Region}.", what, name);
+            }
+            catch (OperationCanceledException) when (stopping.IsCancellationRequested)
+            {
+                log.LogInformation("Regions: the launcher stopped during {What} of {Region}.", what, name);
+            }
+            catch (Exception e)
+            {
+                log.LogError(e, "Regions: {What} of {Region} failed: {Message}", what, name, e.Message);
+            }
+        });
+    }
+
     /// <summary>Starts <paramref name="action"/> in the background; false when there is no such (live) region.</summary>
     public bool TryRun(Guid id, RegionPower action)
     {

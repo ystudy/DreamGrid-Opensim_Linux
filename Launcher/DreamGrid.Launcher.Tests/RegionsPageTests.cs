@@ -58,6 +58,28 @@ public sealed class RegionsPageTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Regions_page_lists_custom_types_after_built_in()
+    {
+        _f.Store.Save(_f.Store.LoadOrCreate() with { CustomTypes = [new CustomRegionType("c-0000abcd", "My Castle", "castle.oar")] });
+
+        var doc = await PageAsync();
+
+        var items = doc.QuerySelectorAll("#region-types li");
+        Assert.Equal(["Default Island", "Sandy Beach", "Forest", "Meadow", "My Castle"], items.Select(li => li.QuerySelector(".type-name")!.TextContent.Trim()));
+        var castle = items[4];
+        Assert.Equal("c-0000abcd", castle.GetAttribute("data-type"));
+        Assert.Equal("/img/custom-type.svg", castle.QuerySelector("img")!.GetAttribute("src"));
+    }
+
+    [Fact]
+    public async Task Custom_type_has_no_picture_endpoint()
+    {
+        using var client = await SignedInAsync();
+        using var response = await client.GetAsync("/regions/types/c-0000abcd.png", Ct);
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Page_says_map_needs_javascript()
     {
         var doc = await PageAsync();

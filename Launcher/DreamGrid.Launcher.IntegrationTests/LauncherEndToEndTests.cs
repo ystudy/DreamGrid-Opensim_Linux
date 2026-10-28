@@ -251,8 +251,12 @@ public sealed partial class LauncherEndToEndTests : IDisposable
 
     // ---- the Regions page (plan 4b) ------------------------------------------------------------------
 
-    /// <summary>Provisions the owner and "Welcome" in-process, detaches, then starts the launcher, which adopts the grid, and signs in.</summary>
-    private async Task<(LauncherProcess Launcher, WebSession Web)> LauncherWithSignedInAdminAsync(LauncherPaths paths, SettingsStore store, LauncherSettings s)
+    /// <summary>
+    /// Provisions the owner and "Welcome" in-process (then runs <paramref name="more"/> there, if given), detaches, then
+    /// starts the launcher, which adopts the grid, and signs in.
+    /// </summary>
+    private async Task<(LauncherProcess Launcher, WebSession Web)> LauncherWithSignedInAdminAsync(LauncherPaths paths, SettingsStore store, LauncherSettings s,
+        Func<GridController, Task>? more = null)
     {
         var grid = NewController(paths, store, NewRobustClient(_http, s));
         try
@@ -260,7 +264,10 @@ public sealed partial class LauncherEndToEndTests : IDisposable
             await grid.StartAsync(Ct);
             await grid.CreateOwnerAsync("Test", "Owner", Password, null, Ct);
             using (new AlertListener(s.WebPort, grid.OnRegionAlert))
+            {
                 await grid.CreateRegionAsync("Welcome", "island", Ct);
+                if (more is not null) await more(grid);
+            }
         }
         finally { await grid.DetachAsync(); }
 
@@ -328,6 +335,63 @@ public sealed partial class LauncherEndToEndTests : IDisposable
             var (status, type) = await web.GetStatusAsync("/api/map/tile/1/1000/1000");
             Assert.True(status is System.Net.HttpStatusCode.OK or System.Net.HttpStatusCode.NotFound, $"the tile answered {(int)status}");
             if (status == System.Net.HttpStatusCode.OK) Assert.StartsWith("image/", type);
+        });
+    }
+
+    // ---- the OAR library (plan 4c) -------------------------------------------------------------------
+
+    [Fact]
+    public async Task Upload_import_and_download_through_the_website()
+    {
+        var paths = RequirePaths(_root);
+        var store = new SettingsStore(paths.SettingsFile);
+        var s = SeedSettings(store);
+
+        await RunWithCleanupAsync(paths, store, async () =>
+        {
+            // A real OAR to upload: Welcome saved in-process, then taken out of the library.
+            var upload = Path.Combine(paths.Data, "upload", "Seaside.oar");
+            var (launcher, web) = await LauncherWithSignedInAdminAsync(paths, store, s, async grid =>
+            {
+                var welcome = RegionModel.FindByName(grid.CurrentSettings(), "Welcome")!;
+                var saved = await grid.RunOarJobAsync(new OarJobRequest(welcome.Uuid, OarJobKind.Save), Ct);
+                Directory.CreateDirectory(Path.GetDirectoryName(upload)!);
+                File.Move(Path.Combine(paths.Oars, saved!), upload);
+            });
+            using var _ = web;
+            var id = RegionModel.FindByName(store.LoadOrCreate(), "Welcome")!.Uuid;
+
+            var library = await web.FollowAsync("/regions/library");
+            var (status, body) = await web.UploadAsync("/regions/library/upload", web.FormToken(library, "#upload"), "oar", upload);
+            Assert.True(status == System.Net.HttpStatusCode.OK, $"the upload answered {(int)status}: {body}");
+            using (var reply = JsonDocument.Parse(body))
+            {
+                Assert.True(reply.RootElement.GetProperty("ok").GetBoolean(), body);
+                Assert.Equal("Seaside.oar", reply.RootElement.GetProperty("name").GetString());
+            }
+            Assert.Contains("Seaside.oar", (await web.FollowAsync("/regions/library")).Html);
+
+            // Import it: choose the file, say yes, then follow the job until it ends.
+            var page = await web.FollowAsync($"/regions/region/{id}/import");
+            page = await web.SubmitAsync(page, new() { ["file"] = "Seaside.oar" }, redirects: false);
+            Assert.Contains("Import Seaside.oar into Welcome?", page.Html);
+            page = await web.SubmitAsync(page, new());
+            Assert.Equal($"/regions/region/{id}/job", page.Path);
+
+            var job = "";
+            await WaitForAsync(launcher, async () =>
+            {
+                job = await web.GetStringAsync($"/api/regions/{id}/job");
+                using var doc = JsonDocument.Parse(job);
+                if (doc.RootElement.GetProperty("running").GetBoolean()) return false;
+                Assert.True(doc.RootElement.GetProperty("error").ValueKind == JsonValueKind.Null, "the import failed: " + job);
+                return true;
+            }, "the import job to finish", () => "last job: " + job);
+            Assert.Contains("Importing Seaside.oar into Welcome", job);
+            var login = await XmlRpcLogin.LoginAsync(_http, $"http://127.0.0.1:{s.RobustPublicPort}", "Test", "Owner", Password, "uri:Welcome&128&128&25", Ct);
+            Assert.True(login.Ok, "login after the import refused: " + login.Message);
+
+            Assert.Equal(await File.ReadAllBytesAsync(upload, Ct), await web.GetBytesAsync("/regions/library/file/Seaside.oar"));
         });
     }
 

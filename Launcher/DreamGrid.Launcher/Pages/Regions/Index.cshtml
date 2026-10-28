@@ -7,18 +7,32 @@
     <h1 class="mb-0">Regions</h1>
 </div>
 
+@if (Model.Notice is not null)
+{
+    <p class="notice alert alert-info py-2" role="status">@Model.Notice</p>
+}
+
 <noscript><p class="alert alert-info">The map needs JavaScript. You can still add a region by its map position below.</p></noscript>
-<p><a class="btn btn-primary" href="/regions/add">Add a region</a></p>
+<p class="d-flex flex-wrap align-items-center gap-3">
+    <a class="btn btn-primary" href="/regions/add">Add a region</a>
+    @if (Model.DeletedCount > 0)
+    {
+        <a href="/regions/deleted">Recently deleted (@Model.DeletedCount)</a>
+    }
+</p>
 
 <div class="row g-3 mb-3">
     <div class="col-lg-2">
         <section class="card card-body shadow-sm h-100">
-            <h2>Region types</h2>
+            <div class="d-flex flex-wrap align-items-baseline gap-2">
+                <h2>Region types</h2>
+                <a class="small" href="/regions/library">OAR library</a>
+            </div>
             <ul id="region-types" class="region-types list-unstyled mb-0">
                 @foreach (var t in Model.Types)
                 {
                     <li data-type="@t.Id" class="region-type">
-                        <span class="type-swatch type-@t.Id"><img src="/regions/types/@(t.Id).png" alt="" onerror="this.remove()"></span>
+                        <span class="type-swatch type-@t.Id">@if (t.Custom) { <img src="/img/custom-type.svg" alt=""> } else { <img src="/regions/types/@(t.Id).png" alt="" onerror="this.remove()"> }</span>
                         <span class="type-name fw-semibold">@t.Name</span>
                         <span class="type-description form-text d-block m-0">@t.Description</span>
                     </li>

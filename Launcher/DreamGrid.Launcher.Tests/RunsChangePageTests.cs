@@ -198,6 +198,24 @@ public sealed class RunsChangePageTests : IAsyncLifetime
         Assert.True(await WaitForCallAsync($"ChangeRunsWith {SeaId} own"));
     }
 
+    [Theory]
+    [InlineData("Sea")] // its own group
+    [InlineData("Home")] // the group it would join
+    public async Task Runs_change_is_refused_while_a_job_runs_in_either_group(string busy)
+    {
+        _f.Grid.Busy[busy] = $"Saving {busy} as an OAR";
+        using var client = await SignedInAsync();
+
+        using var response = await PostAsync(client, SeaId, ("Group", HomeId.ToString()), ("Confirm", HomeId.ToString()));
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal($"/regions/region/{SeaId}", response.Headers.Location!.OriginalString);
+        var panel = new HtmlParser().ParseDocument(await client.GetStringAsync($"/regions/region/{SeaId}", Ct));
+        Assert.Equal($"Saving {busy} as an OAR is still running. Try again when it finishes.", panel.QuerySelector(".notice")!.TextContent.Trim());
+        await Task.Delay(200, Ct);
+        Assert.DoesNotContain(_f.Grid.Snapshot(), c => c.StartsWith("ChangeRunsWith", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task Runs_page_for_an_unknown_region_is_not_found()
     {
