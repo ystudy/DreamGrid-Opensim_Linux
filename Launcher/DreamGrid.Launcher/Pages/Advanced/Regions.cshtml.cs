@@ -22,6 +22,9 @@ public sealed class RegionsModel(IGridController grid, Func<LauncherSettings> se
     /// <summary>Set after a save: the line telling which regions the change reaches.</summary>
     public string? SavedMessage { get; private set; }
 
+    /// <summary>True when the save reaches at least one region, so a restart is worth offering.</summary>
+    public bool ShowRestart { get; private set; }
+
     public void OnGet() => Fill(settings());
 
     public IActionResult OnPost()
@@ -32,19 +35,34 @@ public sealed class RegionsModel(IGridController grid, Func<LauncherSettings> se
         var physics = DefaultPhysics;
         var scripts = DefaultScripts == "true";
 
-        var before = settings();
-        var saved = grid.UpdateSettings(s => s with { DefaultPhysics = physics, DefaultScripts = scripts }, writeConfig: true);
+        // Read the old values inside the change, so the comparison cannot race another save.
+        var physicsChanged = false;
+        var scriptsChanged = false;
+        var saved = grid.UpdateSettings(s =>
+        {
+            physicsChanged = s.DefaultPhysics != physics;
+            scriptsChanged = s.DefaultScripts != scripts;
+            return s with { DefaultPhysics = physics, DefaultScripts = scripts };
+        }, writeConfig: true);
 
-        var physicsChanged = before.DefaultPhysics != physics;
-        var scriptsChanged = before.DefaultScripts != scripts;
-        var names = RegionModel.Live(saved)
-            .Where(r => RegionModel.ProgramOf(saved, r) is { } p
-                && ((physicsChanged && p.Physics is null) || (scriptsChanged && p.Options?.Scripts is null)))
-            .Select(r => r.Name)
+        var live = RegionModel.Live(saved)
+            .Select(r => (r.Name, p: RegionModel.ProgramOf(saved, r)))
+            .Where(x => x.p is not null)
             .ToList();
-        SavedMessage = names.Count == 0
-            ? "Saved. No region uses the grid default right now."
-            : $"Saved. It applies when {RegionAdvice.Join(names)} {(names.Count == 1 ? "restarts" : "restart")}.";
+        var names = live
+            .Where(x => (physicsChanged && x.p!.Physics is null) || (scriptsChanged && x.p!.Options?.Scripts is null))
+            .Select(x => x.Name)
+            .ToList();
+        if (!physicsChanged && !scriptsChanged) SavedMessage = "Saved. Nothing changed.";
+        else if (names.Count > 0)
+        {
+            SavedMessage = $"Saved. It applies when {RegionAdvice.Join(names)} {(names.Count == 1 ? "restarts" : "restart")}.";
+            ShowRestart = true;
+        }
+        else if (live.Any(x => x.p!.Physics is null || x.p.Options?.Scripts is null))
+            SavedMessage = "Saved. No region needs a restart.";
+        else
+            SavedMessage = "Saved. No region uses the grid default right now.";
         Fill(saved);
         return Page();
     }

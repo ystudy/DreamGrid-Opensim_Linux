@@ -10,9 +10,12 @@
 {
     <div class="ok-box alert alert-success" role="status">
         <p><strong>@message</strong></p>
-        <form method="post" action="/dashboard?handler=run" asp-antiforgery="true">
-            <button type="submit" name="gridAction" value="restart">Restart your world</button>
-        </form>
+        @if (Model.ShowRestart)
+        {
+            <form method="post" action="/dashboard?handler=run" asp-antiforgery="true">
+                <button type="submit" name="gridAction" value="restart">Restart your world</button>
+            </form>
+        }
     </div>
 }
 <form id="regions" method="post" asp-antiforgery="true">

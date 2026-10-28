@@ -182,9 +182,42 @@ public sealed class AdvancedSettingsTests : IAsyncLifetime
         using var r2 = await PostRegionsAsync(client, token, new() { ["DefaultPhysics"] = "BulletSim", ["DefaultScripts"] = "false" });
         Assert.Contains("Saved. It applies when Home and Beach restart.", Text(await r2.Content.ReadAsStringAsync(Ct)));
 
-        // Unchanged: nothing differs, so nothing is named.
+        Assert.NotNull(Parse(await r2.Content.ReadAsStringAsync(Ct)).QuerySelector("form[action='/dashboard?handler=run']"));
+
+        // Unchanged: nothing differs.
         using var r3 = await PostRegionsAsync(client, token, new() { ["DefaultPhysics"] = "BulletSim", ["DefaultScripts"] = "false" });
-        Assert.Contains("Saved. No region uses the grid default right now.", Text(await r3.Content.ReadAsStringAsync(Ct)));
+        var html3 = await r3.Content.ReadAsStringAsync(Ct);
+        Assert.Contains("Saved. Nothing changed.", Text(html3));
+        Assert.DoesNotContain("Restart your world", html3);
+    }
+
+    private async Task<string> SaveWithProgramsAsync(List<ProgramSettings> programs, string physics, string scripts)
+    {
+        var home = new RegionSettings("Home", "Home", Guid.NewGuid(), UdpPort: 8004);
+        _f.Store.Save(_f.Store.LoadOrCreate() with { Regions = [home], Programs = programs });
+        using var client = await SignedInAsync(_f);
+        var token = Token(await client.GetStringAsync("/advanced/regions", Ct));
+        using var resp = await PostRegionsAsync(client, token, new() { ["DefaultPhysics"] = physics, ["DefaultScripts"] = scripts });
+        return await resp.Content.ReadAsStringAsync(Ct);
+    }
+
+    [Fact]
+    public async Task Defaults_save_says_no_restart_is_needed_when_only_the_other_default_is_used()
+    {
+        // Physics changes, but Home chose its own physics; it still follows the grid's script setting.
+        var html = await SaveWithProgramsAsync([new ProgramSettings("Home", 8004, 8011, "ubODE")], "BulletSim", "true");
+
+        Assert.Contains("Saved. No region needs a restart.", Text(html));
+        Assert.DoesNotContain("Restart your world", html);
+    }
+
+    [Fact]
+    public async Task Defaults_save_says_no_region_uses_the_default_when_every_region_chose_for_itself()
+    {
+        var html = await SaveWithProgramsAsync([new ProgramSettings("Home", 8004, 8011, "ubODE", new ProgramOptions(Scripts: true))], "BulletSim", "false");
+
+        Assert.Contains("Saved. No region uses the grid default right now.", Text(html));
+        Assert.DoesNotContain("Restart your world", html);
     }
 
     [Fact]
