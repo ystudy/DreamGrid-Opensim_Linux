@@ -291,6 +291,132 @@ public sealed class GridBootTests : IDisposable
         }
     }
 
+    // ---- OAR jobs and Recently deleted (plan 4c) ----------------------------------------------------
+
+    [Fact]
+    public async Task Save_then_import_round_trips_a_region()
+    {
+        var (grid, paths, s, _) = Make();
+        var ct = TestContext.Current.CancellationToken;
+        try
+        {
+            await grid.StartAsync(ct);
+            await grid.CreateOwnerAsync("Test", "Owner", "pass-word1", null, ct);
+            using var alerts = new AlertListener(s.WebPort, grid.OnRegionAlert);
+            await grid.CreateRegionAsync("Welcome", "island", ct);
+            var welcome = RegionModel.FindByName(grid.CurrentSettings(), "Welcome")!;
+
+            // Nothing is rezzed: an empty region still saves. The save ends on the region log's "Finished writing out OAR".
+            var started = DateTime.UtcNow;
+            var saved = await grid.RunOarJobAsync(new OarJobRequest(welcome.Uuid, OarJobKind.Save), ct);
+            var took = DateTime.UtcNow - started;
+            Assert.Equal($"Welcome-{DateTime.Now:yyyy-MM-dd}.oar", saved);
+            Assert.True(OarFile.LooksLikeOar(Path.Combine(paths.Oars, saved!)), "the saved file is not an OAR");
+            Assert.True(took < TimeSpan.FromMinutes(1), $"the save took {took}");
+            Assert.Empty(Directory.GetFiles(paths.OarsSaving));
+            Assert.Null(grid.BusyWith(welcome.Instance));
+
+            Assert.Null(await grid.RunOarJobAsync(new OarJobRequest(welcome.Uuid, OarJobKind.Import, saved), ct));
+            Assert.Null(grid.BusyWith(welcome.Instance));
+            Assert.Equal(RegionState.Running, grid.GetStatus().Regions.Single().State);
+            var login = await XmlRpcLogin.LoginAsync(_http, grid.GetStatus().LoginUri, "Test", "Owner", "pass-word1", "uri:Welcome&128&128&25", ct);
+            Assert.True(login.Ok, "login after the import refused: " + login.Message);
+
+            await grid.StopAllAsync(ct);
+        }
+        catch (Exception e) when (e is not Xunit.Sdk.XunitException)
+        {
+            throw new Exception(e.Message + Environment.NewLine + LogTail(paths), e);
+        }
+        finally
+        {
+            await grid.DetachAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Delete_restore_and_erase_on_a_real_grid()
+    {
+        var (grid, paths, s, _) = Make();
+        var ct = TestContext.Current.CancellationToken;
+        try
+        {
+            await grid.StartAsync(ct);
+            await grid.CreateOwnerAsync("Test", "Owner", "pass-word1", null, ct);
+            using var alerts = new AlertListener(s.WebPort, grid.OnRegionAlert);
+            await grid.CreateRegionAsync("Welcome", "island", ct);
+            var isle = await grid.AddRegionAsync(new NewRegion("Isle", 1010, 1010, 1, "island", null), ct);
+            var pidFile = Path.Combine(paths.Pids, isle.Instance + ".pid");
+            var pid = PidFile.Read(pidFile);
+            Assert.True(pid is not null && ProcessImage.Matches(pid.Value, paths.Data), "Isle's program is not running");
+            Assert.Equal(1, await CountAsync(grid, "SELECT COUNT(*) FROM `robust`.`regions` WHERE `uuid` = @id", isle.Uuid, ct));
+            Assert.True(await CountAsync(grid, Terrain, isle.Uuid, ct) > 0, "Isle has no terrain rows");
+
+            // Delete: its program stops and leaves, the map loses it, its land stays.
+            await grid.DeleteRegionAsync(isle.Uuid, ct);
+            Assert.False(ProcessImage.IsAlive(pid!.Value) && ProcessImage.Matches(pid.Value, paths.Data), "Isle's program still runs");
+            Assert.DoesNotContain(grid.GetStatus().Programs, p => p.Instance == isle.Instance);
+            Assert.DoesNotContain(grid.GetStatus().Regions, r => r.Id == isle.Uuid);
+            Assert.Equal(0, await CountAsync(grid, "SELECT COUNT(*) FROM `robust`.`regions` WHERE `uuid` = @id", isle.Uuid, ct));
+            Assert.True(await CountAsync(grid, Terrain, isle.Uuid, ct) > 0, "the delete removed Isle's terrain rows");
+            var space = await grid.DeletedSpaceAsync(ct);
+            Assert.True(space is not null && space[isle.Uuid] > 0, "Recently deleted shows no space for Isle");
+
+            // Restore, then Start: it takes logins again at the same spot.
+            await grid.RestoreRegionAsync(isle.Uuid, ct);
+            await grid.RegionPowerAsync(isle.Uuid, RegionPower.Start, ct);
+            await WaitUntilAsync(() => grid.GetStatus().Regions.Any(r => r.Id == isle.Uuid && r.State == RegionState.Running && r.LoginsEnabled),
+                TimeSpan.FromMinutes(5), ct);
+            var restored = RegionModel.Find(grid.CurrentSettings(), isle.Uuid)!;
+            Assert.Equal((1010, 1010), (restored.X, restored.Y));
+            Assert.Equal(1, await CountAsync(grid, "SELECT COUNT(*) FROM `robust`.`regions` WHERE `uuid` = @id AND `locX` = 1010 * 256 AND `locY` = 1010 * 256",
+                isle.Uuid, ct));
+            var login = await XmlRpcLogin.LoginAsync(_http, grid.GetStatus().LoginUri, "Test", "Owner", "pass-word1", "uri:Isle&128&128&25", ct);
+            Assert.True(login.Ok, "login to the restored region refused: " + login.Message);
+            Assert.Equal(restored.UdpPort, login.SimPort);
+
+            // Delete forever: every row goes, and the name is free again.
+            await grid.DeleteRegionAsync(isle.Uuid, ct);
+            await grid.EraseRegionAsync(isle.Uuid, ct);
+            Assert.Null(RegionModel.Find(grid.CurrentSettings(), isle.Uuid));
+            Assert.Equal(0, await CountAsync(grid, Terrain, isle.Uuid, ct));
+            Assert.Equal(0, await CountAsync(grid, "SELECT COUNT(*) FROM `opensim`.`land` WHERE `RegionUUID` = @id", isle.Uuid, ct));
+            Assert.Equal(0, await CountAsync(grid, "SELECT COUNT(*) FROM `opensim`.`regionsettings` WHERE `regionUUID` = @id", isle.Uuid, ct));
+            Assert.Equal(0, await CountAsync(grid, "SELECT COUNT(*) FROM `robust`.`regions` WHERE `uuid` = @id", isle.Uuid, ct));
+            var again = await grid.AddRegionAsync(new NewRegion("Isle", 1010, 1010, 1, "island", null), ct);
+            Assert.NotEqual(isle.Uuid, again.Uuid);
+            Assert.Equal(RegionState.Running, grid.GetStatus().Regions.Single(r => r.Id == again.Uuid).State);
+
+            await grid.StopAllAsync(ct);
+        }
+        catch (Exception e) when (e is not Xunit.Sdk.XunitException)
+        {
+            throw new Exception(e.Message + Environment.NewLine + LogTail(paths), e);
+        }
+        finally
+        {
+            await grid.DetachAsync();
+        }
+    }
+
+    private const string Terrain = "SELECT COUNT(*) FROM `opensim`.`terrain` WHERE `RegionUUID` = @id";
+
+    /// <summary>Runs a COUNT(*) query with <c>@id</c> as the region's id, as root on the grid's own MariaDB.</summary>
+    private static async Task<long> CountAsync(GridController grid, string sql, Guid id, CancellationToken ct)
+    {
+        var s = grid.CurrentSettings();
+        var root = new MySqlConnector.MySqlConnectionStringBuilder
+        {
+            Server = "127.0.0.1", Port = (uint)s.MariaDbPort, UserID = "root", Password = s.Db.RootPassword,
+            Pooling = false, SslMode = MySqlConnector.MySqlSslMode.Disabled,
+        }.ConnectionString;
+        await using var conn = new MySqlConnector.MySqlConnection(root);
+        await conn.OpenAsync(ct);
+        await using var cmd = new MySqlConnector.MySqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("@id", id.ToString());
+        return Convert.ToInt64(await cmd.ExecuteScalarAsync(ct));
+    }
+
     private static async Task WaitUntilAsync(Func<bool> done, TimeSpan timeout, CancellationToken ct)
     {
         var deadline = DateTime.UtcNow + timeout;

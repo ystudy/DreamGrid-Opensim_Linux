@@ -46,11 +46,45 @@ internal sealed class WebSession : IDisposable
 
     public async Task<WebPage> FollowAsync(string url) => await FollowAsync(await _client.GetAsync(url, Ct));
 
+    /// <summary>The bytes a GET answers with 200.</summary>
+    public async Task<byte[]> GetBytesAsync(string url)
+    {
+        using var response = await _client.GetAsync(url, Ct);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        return await response.Content.ReadAsByteArrayAsync(Ct);
+    }
+
+    /// <summary>The antiforgery token of the page's form matching <paramref name="selector"/>.</summary>
+    public string FormToken(WebPage page, string selector)
+    {
+        var token = _parser.ParseDocument(page.Html).QuerySelector(selector + " input[name=__RequestVerificationToken]")?.GetAttribute("value");
+        Assert.True(token is { Length: > 0 }, $"{page.Path} has no antiforgery token in \"{selector}\"");
+        return token!;
+    }
+
+    /// <summary>
+    /// Posts <paramref name="file"/> as the multipart field <paramref name="field"/>, with <paramref name="token"/> in the
+    /// RequestVerificationToken header and <c>X-Requested-With: fetch</c>, the way the library page's script uploads.
+    /// </summary>
+    public async Task<(HttpStatusCode Status, string Body)> UploadAsync(string url, string token, string field, string file)
+    {
+        using var content = new MultipartFormDataContent();
+        var part = new StreamContent(File.OpenRead(file));
+        part.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
+        content.Add(part, field, System.IO.Path.GetFileName(file));
+        using var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = content };
+        request.Headers.Add("RequestVerificationToken", token);
+        request.Headers.Add("X-Requested-With", "fetch");
+        using var response = await _client.SendAsync(request, Ct);
+        return (response.StatusCode, await response.Content.ReadAsStringAsync(Ct));
+    }
+
     /// <summary>
     /// Posts the page's form (<paramref name="selector"/>, by default the one in &lt;main&gt;) with its own
-    /// values, overridden by <paramref name="fields"/>; every field must exist in the form.
+    /// values, overridden by <paramref name="fields"/>; every field must exist in the form. The answer must be a redirect,
+    /// unless <paramref name="redirects"/> is false: then it must be a page (a question asked on the same page).
     /// </summary>
-    public async Task<WebPage> SubmitAsync(WebPage page, Dictionary<string, string> fields, string selector = "main form")
+    public async Task<WebPage> SubmitAsync(WebPage page, Dictionary<string, string> fields, string selector = "main form", bool redirects = true)
     {
         var doc = await _parser.ParseDocumentAsync(page.Html, Ct);
         var form = doc.QuerySelector(selector);
@@ -78,6 +112,14 @@ internal sealed class WebSession : IDisposable
         var action = new Uri(page.Uri, form.GetAttribute("action") is { Length: > 0 } a ? a : page.PathAndQuery);
         using var content = new FormUrlEncodedContent(values);
         var response = await _client.PostAsync(action, content, Ct);
+        if (!redirects)
+        {
+            using (response)
+            {
+                Assert.True(response.StatusCode == HttpStatusCode.OK, $"POST {action.PathAndQuery} answered {(int)response.StatusCode}, not a page");
+                return new WebPage(action, await response.Content.ReadAsStringAsync(Ct));
+            }
+        }
         Assert.True(response.StatusCode == HttpStatusCode.Redirect,
             $"POST {action.PathAndQuery} answered {(int)response.StatusCode}, not a redirect:{Environment.NewLine}{ErrorText(await response.Content.ReadAsStringAsync(Ct))}");
         return await FollowAsync(response);
