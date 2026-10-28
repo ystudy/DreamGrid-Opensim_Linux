@@ -146,14 +146,28 @@ internal sealed class FakeGridController : IGridController
         return Task.CompletedTask;
     }
 
+    /// <summary>Every request <see cref="AddRegionAsync"/> got, in order.</summary>
+    public List<NewRegion> AddedRegions { get; } = new();
+
+    /// <summary>Runs inside <see cref="AddRegionAsync"/> before the region is saved (blocking probes, thrown exceptions).</summary>
+    public Func<NewRegion, IProgress<string>?, CancellationToken, Task> OnAddRegion { get; set; } = (_, progress, _) =>
+    {
+        progress?.Report("Creating your region");
+        progress?.Report("Loading the region content");
+        progress?.Report("Waiting for the region to accept logins");
+        return Task.CompletedTask;
+    };
+
     /// <summary>The region <see cref="AddRegionAsync"/> saves; each added region gets a program of its own unless shared.</summary>
-    public Task<RegionSettings> AddRegionAsync(NewRegion request, CancellationToken ct, IProgress<string>? progress = null)
+    public async Task<RegionSettings> AddRegionAsync(NewRegion request, CancellationToken ct, IProgress<string>? progress = null)
     {
         Record($"AddRegion {request.Name}");
+        lock (AddedRegions) AddedRegions.Add(request);
+        await OnAddRegion(request, progress, ct);
         var region = new RegionSettings(request.ShareWith ?? GridController.SafeFolderName(request.Name), request.Name, Guid.NewGuid(),
             request.X, request.Y, request.Content, request.Size);
         UpdateSettings(l => l with { Regions = [.. l.Regions, region] });
-        return Task.FromResult(region);
+        return region;
     }
 
     public Task RegionPowerAsync(Guid regionId, RegionPower action, CancellationToken ct) => Component($"RegionPower {action} {regionId}", ct);

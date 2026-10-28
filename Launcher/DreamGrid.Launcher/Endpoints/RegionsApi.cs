@@ -81,5 +81,13 @@ public static class RegionsApi
             var check = RegionPlacement.Check(grid.CurrentSettings(), x, y, size, ignore);
             return Results.Json(new { ok = check.Ok, text = RegionAdvice.Placement(check) });
         }).RequireAuthorization(AuthSchemes.AdminPolicy);
+
+        // The add-region job's progress; regionId is the saved region's id once it is known.
+        app.MapGet("/api/regions/progress", (RegionJob job, HttpContext ctx) =>
+        {
+            ctx.Response.Headers.CacheControl = "no-store";
+            var s = job.Snapshot();
+            return Results.Json(new { s.Stage, s.Percent, s.Running, s.Error, s.LogExcerpt, RegionId = job.RegionId });
+        }).RequireAuthorization(AuthSchemes.AdminPolicy);
     }
 }

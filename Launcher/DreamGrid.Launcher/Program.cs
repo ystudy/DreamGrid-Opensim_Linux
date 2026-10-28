@@ -141,6 +141,9 @@ builder.Services.AddSingleton<IOnlineUsers>(sp => new OnlineUsers(sp.GetRequired
 builder.Services.AddSingleton<GridActions>();
 builder.Services.AddSingleton<SetupProgress>();
 builder.Services.AddSingleton<SetupRunner>();
+builder.Services.AddSingleton<RegionJob>();
+// The add-region form's memory advice; tests swap it.
+builder.Services.AddSingleton<Func<long?>>(_ => SystemMemory.AvailableBytes);
 builder.Services.AddHostedService<GridHostedService>();
 // Registered after GridHostedService, so it stops first: running work is awaited before the controller detaches.
 builder.Services.AddSingleton<BackgroundWork>();
