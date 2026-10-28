@@ -28,7 +28,8 @@ public sealed partial class GridController(
     IRobustClient robust,
     IHttpClientFactory http,
     TimeProvider time,
-    ILoggerFactory? loggers = null) : IGridController
+    ILoggerFactory? loggers = null,
+    Func<LauncherSettings, IRegionStore>? regionStores = null) : IGridController
 {
     private static readonly TimeSpan ConsoleSettle = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan LoginWait = TimeSpan.FromSeconds(300);
@@ -67,6 +68,13 @@ public sealed partial class GridController(
     private readonly ConcurrentDictionary<Guid, TaskCompletionSource<string>> _oarLoaded = new();
     // The OAR job running in each program (its text), by instance. Added and checked under _ops; the job removes its own.
     private readonly ConcurrentDictionary<string, string> _jobs = new();
+    // A region's rows in the database (Delete, Delete forever, the space a deleted region holds).
+    private readonly Func<LauncherSettings, IRegionStore> _regionStores = regionStores ?? (s => new RegionStore(s));
+
+    /// <summary>Replaces the database's state for tests, whose MariaDB cannot start.</summary>
+    internal Func<bool>? DatabaseRunningForTests { get; init; }
+
+    private bool DatabaseRunning => DatabaseRunningForTests?.Invoke() ?? _db?.Process.State == ProcessState.Running;
 
     /// <summary>One supervised child with what the controller needs to talk to it; <see cref="Key"/> is the settings it was built from.</summary>
     private sealed record Component(string Name, ManagedProcess Process, ProcessSpec Spec, int[] Ports, RestConsoleClient? Console, string? Instance = null)
@@ -196,12 +204,8 @@ public sealed partial class GridController(
             if (shareWith is null && RegionModel.In(s, from).All(r => r.Uuid == regionId))
                 throw new ArgumentException("It already runs on its own.");
 
-            // Whether the region ran before the change: its program is up and loaded it.
             var oldProgram = _programs.GetValueOrDefault(from);
-            var oldActive = oldProgram is not null && RegionPowerPlan.IsActive(oldProgram.Process.State);
-            var ran = oldActive
-                && RegionModel.Loadable(s, from, _held).Any(r => r.Uuid == regionId)
-                && (_loaded.GetValueOrDefault(from) is not { } ids || ids.Contains(regionId));
+            var ran = HasLoaded(s, oldProgram, regionId);
 
             var to = shareWith!;
             s = UpdateSettings(l =>
@@ -229,18 +233,7 @@ public sealed partial class GridController(
             var removed = !s.Programs.Any(p => p.Instance == from);
             var affected = new List<string>();
             var steps = new List<Func<Task>>();
-            var left = RegionModel.Loadable(s, from, _held).Select(r => r.Name).ToList();
-            if (oldActive && (removed || left.Count == 0))
-            {
-                // Nothing left to load. A removed program is stopped whole even at shutdown: nothing would adopt it later.
-                var stop = removed ? CancellationToken.None : ct;
-                steps.Add(() => StopProgramAsync(oldProgram!, stop));
-            }
-            else if (ran)
-            {
-                affected.AddRange(left);
-                steps.Add(() => RestartProgramAsync(s, oldProgram!, ct));
-            }
+            if (LeftProgramStep(s, from, oldProgram, ran, removed, affected, ct) is { } leave) steps.Add(leave);
             if (ran)
             {
                 EnsureComponents(s);
@@ -257,28 +250,188 @@ public sealed partial class GridController(
             if (affected.Count > 0)
                 _log?.LogInformation("Change how {Region} runs: also affected {Others}.", region.Name, string.Join(", ", affected));
             _activity = GridActivity.Restarting;
-            try
-            {
-                // One program that fails to come back doesn't keep the other down; the first failure is thrown afterwards.
-                Exception? first = null;
-                foreach (var step in steps)
-                {
-                    try { await step(); }
-                    catch (Exception e) when (e is not OperationCanceledException) { first ??= e; }
-                }
-                if (first is not null) throw first;
-            }
-            finally
-            {
-                // Also on cancellation: the removed program, now stopped, leaves the status.
-                if (removed)
-                {
-                    EnsureComponents(s);
-                    _loaded = _loaded.Where(kv => kv.Key != from).ToDictionary(kv => kv.Key, kv => kv.Value);
-                }
-            }
+            await RunProgramStepsAsync(s, steps, removed ? from : null);
         }
         finally { _activity = GridActivity.None; _ops.Release(); }
+    }
+
+    /// <summary>True when the program is up and loaded the region (an unknown list counts as loaded).</summary>
+    private bool HasLoaded(LauncherSettings s, Component? program, Guid regionId) =>
+        program is not null && RegionPowerPlan.IsActive(program.Process.State)
+        && RegionModel.Loadable(s, program.Instance!, _held).Any(r => r.Uuid == regionId)
+        && (_loaded.GetValueOrDefault(program.Instance!) is not { } ids || ids.Contains(regionId));
+
+    /// <summary>
+    /// What a program does once a region has left it (moved out or deleted), with <paramref name="s"/> already saved: with
+    /// nothing left to load it stops, and a <paramref name="removed"/> one stops whole even at shutdown, since nothing would
+    /// adopt it later; one that <paramref name="ran"/> the region restarts without it, adding the regions that restart with it
+    /// to <paramref name="affected"/>. A failed or stopped program is left alone (null).
+    /// </summary>
+    private Func<Task>? LeftProgramStep(LauncherSettings s, string instance, Component? program, bool ran, bool removed,
+        List<string> affected, CancellationToken ct)
+    {
+        if (program is null || !RegionPowerPlan.IsActive(program.Process.State)) return null;
+        var left = RegionModel.Loadable(s, instance, _held).Select(r => r.Name).ToList();
+        if (removed || left.Count == 0)
+        {
+            var stop = removed ? CancellationToken.None : ct;
+            return () => StopProgramAsync(program, stop);
+        }
+        if (!ran) return null;
+        affected.AddRange(left);
+        return () => RestartProgramAsync(s, program, ct);
+    }
+
+    /// <summary>
+    /// Runs a change's stop, restart and start steps. One program that fails to come back doesn't keep another down; the first
+    /// failure is thrown afterwards. A program <paramref name="removed"/> from the settings, now stopped, then leaves the status,
+    /// also on cancellation.
+    /// </summary>
+    private async Task RunProgramStepsAsync(LauncherSettings s, List<Func<Task>> steps, string? removed)
+    {
+        try
+        {
+            Exception? first = null;
+            foreach (var step in steps)
+            {
+                try { await step(); }
+                catch (Exception e) when (e is not OperationCanceledException) { first ??= e; }
+            }
+            if (first is not null) throw first;
+        }
+        finally
+        {
+            if (removed is not null)
+            {
+                EnsureComponents(s);
+                _loaded = _loaded.Where(kv => kv.Key != removed).ToDictionary(kv => kv.Key, kv => kv.Value);
+            }
+        }
+    }
+
+    // ---- delete, restore and delete forever ---------------------------------------------------------
+
+    public async Task DeleteRegionAsync(Guid regionId, CancellationToken ct)
+    {
+        await _ops.WaitAsync(ct);
+        try
+        {
+            var s = LoadSettings();
+            var region = RegionModel.Find(s, regionId) ?? throw new InvalidOperationException("There is no such region.");
+            if (region.DeletedAt is not null) throw new InvalidOperationException("That region has been deleted.");
+            var instance = region.Instance;
+            ThrowIfBusy(instance);
+            var program = _programs.GetValueOrDefault(instance);
+            var ran = HasLoaded(s, program, regionId);
+
+            var now = time.GetUtcNow();
+            s = UpdateSettings(l =>
+            {
+                var regions = l.Regions.Select(r => r.Uuid == regionId ? r with { DeletedAt = now, Parked = false } : r).ToList();
+                var programs = l.Programs.ToList();
+                // A program left with no live region goes; the deleted region keeps its folder name.
+                if (!regions.Any(r => r.DeletedAt is null && r.Instance == instance)) programs.RemoveAll(p => p.Instance == instance);
+                return l with { Programs = programs, Regions = regions };
+            });
+            _logins.Clear([regionId]);
+
+            var removed = !s.Programs.Any(p => p.Instance == instance);
+            var affected = new List<string>();
+            var steps = new List<Func<Task>>();
+            if (LeftProgramStep(s, instance, program, ran, removed, affected, ct) is { } leave) steps.Add(leave);
+            if (affected.Count > 0)
+                _log?.LogInformation("Delete {Region}: also affected {Others}.", region.Name, string.Join(", ", affected));
+            if (steps.Count > 0) _activity = affected.Count > 0 ? GridActivity.Restarting : GridActivity.Stopping;
+            try { await RunProgramStepsAsync(s, steps, removed ? instance : null); }
+            // Also after a program that failed to come back: the region is deleted either way.
+            finally { await DeregisterAsync(s, region, ct); }
+        }
+        finally { _activity = GridActivity.None; _ops.Release(); }
+    }
+
+    /// <summary>
+    /// Removes a deleted region's row from Robust's map, so one that crashed leaves the map too. Skipped (and logged) while
+    /// the database isn't running; a failure is logged, not thrown, since the delete itself is done.
+    /// </summary>
+    private async Task DeregisterAsync(LauncherSettings s, RegionSettings region, CancellationToken ct)
+    {
+        if (ct.IsCancellationRequested) return;
+        if (!DatabaseRunning)
+        {
+            _log?.LogInformation("Delete {Region}: the database isn't running, so its row in Robust's regions table stays.", region.Name);
+            return;
+        }
+        try { await _regionStores(s).DeregisterAsync(region.Uuid, ct); }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            _log?.LogWarning(e, "Delete {Region}: its row in Robust's regions table could not be removed.", region.Name);
+        }
+    }
+
+    public async Task RestoreRegionAsync(Guid regionId, CancellationToken ct)
+    {
+        await _ops.WaitAsync(ct);
+        try
+        {
+            var s = LoadSettings();
+            var region = RegionModel.Find(s, regionId) ?? throw new InvalidOperationException("There is no such region.");
+            if (region.DeletedAt is null) throw new InvalidOperationException("That region isn't deleted.");
+            var instance = region.Instance;
+
+            // It comes back stopped and nothing restarts: a running program holds it until its Start or the world's.
+            if (_programs.GetValueOrDefault(instance) is { } program && RegionPowerPlan.IsActive(program.Process.State))
+                _held = new HashSet<Guid>(_held) { regionId };
+            var added = false;
+            s = UpdateSettings(l =>
+            {
+                var programs = l.Programs.ToList();
+                int? udpPort = null;
+                if (programs.All(p => p.Instance != instance))
+                {
+                    // Its program went: a new one under the same folder name, with fresh ports.
+                    var httpPort = PortAllocator.Next(l, l.RegionPort);
+                    var consolePort = PortAllocator.Next(l, l.RegionConsolePort, new HashSet<int> { httpPort });
+                    programs.Add(new ProgramSettings(instance, httpPort, consolePort));
+                    udpPort = httpPort;
+                    added = true;
+                }
+                var regions = l.Regions.Select(r => r.Uuid == regionId ? r with { DeletedAt = null, UdpPort = udpPort ?? r.UdpPort } : r).ToList();
+                return l with { Programs = programs, Regions = regions };
+            });
+            if (added)
+                lock (_configGate) new RuntimeStager(paths).WriteLogConfigs(s.Programs.Select(p => p.Instance), LogLevelModule.LevelFor(s));
+            _logins.Clear([regionId]);
+            EnsureComponents(s);
+        }
+        finally { _ops.Release(); }
+    }
+
+    public async Task EraseRegionAsync(Guid regionId, CancellationToken ct)
+    {
+        await _ops.WaitAsync(ct);
+        try
+        {
+            var s = LoadSettings();
+            var region = RegionModel.Find(s, regionId) ?? throw new InvalidOperationException("There is no such region.");
+            if (region.DeletedAt is null) throw new InvalidOperationException("That region isn't deleted.");
+            if (!DatabaseRunning) throw new InvalidOperationException("Start the database first.");
+
+            await _regionStores(s).EraseAsync(regionId, ct);
+            // Its name, spot, ports and folder name are free again; the folder itself stays, with its logs.
+            _held = _held.Where(id => id != regionId).ToHashSet();
+            UpdateSettings(l => l with { Regions = l.Regions.Where(r => r.Uuid != regionId).ToList() });
+        }
+        finally { _ops.Release(); }
+    }
+
+    /// <summary>Reads the database without the operation lock, so the page never waits behind a start or stop.</summary>
+    public async Task<IReadOnlyDictionary<Guid, long>?> DeletedSpaceAsync(CancellationToken ct)
+    {
+        if (!DatabaseRunning) return null;
+        var s = CurrentSettings();
+        var deleted = s.Regions.Where(r => r.DeletedAt is not null).Select(r => r.Uuid).ToList();
+        if (deleted.Count == 0) return new Dictionary<Guid, long>();
+        return await _regionStores(s).SpaceAsync(deleted, ct);
     }
 
     /// <summary>Stops a program and starts it again with its current region files.</summary>
@@ -525,7 +678,7 @@ public sealed partial class GridController(
                     await StopProgramAsync(other, ct);
                 s = UpdateSettings(l => l with { Programs = [], Regions = [] });
             }
-            await AddCoreAsync(s, new NewRegion(name, 1000, 1000, 1, content, null), uuid, progress, ct);
+            await AddCoreAsync(s, new NewRegion(name, 1000, 1000, 1, content, null), uuid, progress, ct, adoptLeftover: true);
             UpdateSettings(l => l with { Setup = l.Setup with { RegionCreated = true } }, writeConfig: false);
         }
         finally { _activity = GridActivity.None; _ops.Release(); }
@@ -569,9 +722,11 @@ public sealed partial class GridController(
     /// <summary>
     /// Under the operation lock: saves the region (and its own program, unless it shares one) with ports from
     /// <see cref="PortAllocator"/>, starts it (a shared program restarts to load it), loads its content, and waits until
-    /// it accepts logins.
+    /// it accepts logins. <paramref name="adoptLeftover"/> lets a program of its own take over the folder of one an earlier
+    /// attempt left running (see <see cref="UniqueFolderName"/>).
     /// </summary>
-    private async Task<RegionSettings> AddCoreAsync(LauncherSettings s, NewRegion r, Guid uuid, IProgress<string>? progress, CancellationToken ct)
+    private async Task<RegionSettings> AddCoreAsync(LauncherSettings s, NewRegion r, Guid uuid, IProgress<string>? progress, CancellationToken ct,
+        bool adoptLeftover = false)
     {
         RegionSettings region = null!;
         s = UpdateSettings(l =>
@@ -581,7 +736,7 @@ public sealed partial class GridController(
                 region = new RegionSettings(share, r.Name, uuid, r.X, r.Y, r.Content, r.Size, PortAllocator.Next(l, l.RegionPort), NeedsContent: true);
                 return l with { Regions = [.. l.Regions, region] };
             }
-            var instance = UniqueFolderName(l, SafeFolderName(r.Name));
+            var instance = UniqueFolderName(l, SafeFolderName(r.Name), adoptLeftover);
             var httpPort = PortAllocator.Next(l, l.RegionPort);
             var consolePort = PortAllocator.Next(l, l.RegionConsolePort, new HashSet<int> { httpPort });
             region = new RegionSettings(instance, r.Name, uuid, r.X, r.Y, r.Content, r.Size, httpPort, NeedsContent: true);
@@ -607,12 +762,22 @@ public sealed partial class GridController(
         return region;
     }
 
-    /// <summary>A program folder name no other program uses: the safe name, else with "_2", "_3", … added.</summary>
-    private static string UniqueFolderName(LauncherSettings s, string name)
+    /// <summary>
+    /// A program folder name nobody holds: the safe name, else with "_2", "_3", … added. A program holds its name, a deleted
+    /// region its program's (until it is erased), and so does a live process its PID file names (a removed program that
+    /// still runs). With <paramref name="adoptLeftover"/>, a live process under the safe name itself doesn't count: setup's
+    /// retry takes over the program an earlier attempt left running.
+    /// </summary>
+    private string UniqueFolderName(LauncherSettings s, string name, bool adoptLeftover = false)
     {
-        var taken = s.Programs.Select(p => p.Instance).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var taken = s.Programs.Select(p => p.Instance)
+            .Concat(s.Regions.Where(r => r.DeletedAt is not null).Select(r => r.Instance))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var dll = Path.Combine(paths.RuntimeOpenSim, "OpenSim.dll");
+        bool Held(string candidate) => taken.Contains(candidate)
+            || (!(adoptLeftover && candidate == name) && PidFile.ReadLive(Path.Combine(paths.Pids, candidate + ".pid"), dll) is not null);
         var candidate = name;
-        for (var n = 2; taken.Contains(candidate); n++) candidate = $"{name}_{n}";
+        for (var n = 2; Held(candidate); n++) candidate = $"{name}_{n}";
         return candidate;
     }
 

@@ -59,6 +59,33 @@ public interface IGridController
     Task ChangeRunsWithAsync(Guid regionId, string? shareWith, CancellationToken ct);
 
     /// <summary>
+    /// Moves a region to Recently deleted at once, even a broken one: it keeps its database rows, name, spot, ports and
+    /// folder name. Its program then stops when no loadable region is left in it (and is removed once it has no live
+    /// regions), or restarts without the region when it had loaded it; a failed or stopped program is left alone. The
+    /// region's row in Robust's map is removed when the database runs. Throws <see cref="InvalidOperationException"/> for a
+    /// missing or deleted region and while its program runs an OAR job ("&lt;job&gt; is still running. Try again when it
+    /// finishes.").
+    /// </summary>
+    Task DeleteRegionAsync(Guid regionId, CancellationToken ct);
+
+    /// <summary>
+    /// Brings a deleted region back, stopped: into its old program, or into a new one under the same folder name with fresh
+    /// ports when that program went. Nothing restarts. Throws <see cref="InvalidOperationException"/> ("That region isn't
+    /// deleted.") for a live region.
+    /// </summary>
+    Task RestoreRegionAsync(Guid regionId, CancellationToken ct);
+
+    /// <summary>
+    /// Deletes a deleted region forever: its database rows go, then the region leaves the settings, freeing its name, spot,
+    /// ports and folder name (the folder itself stays, with its logs). Throws <see cref="InvalidOperationException"/> for a
+    /// live region ("That region isn't deleted.") and while the database isn't running ("Start the database first.").
+    /// </summary>
+    Task EraseRegionAsync(Guid regionId, CancellationToken ct);
+
+    /// <summary>An estimate of the bytes each deleted region still holds in the database; null while the database isn't running.</summary>
+    Task<IReadOnlyDictionary<Guid, long>?> DeletedSpaceAsync(CancellationToken ct);
+
+    /// <summary>
     /// Runs an OAR job on a running region: Import loads a library file, Save writes the region to the library as
     /// <c>&lt;Region&gt;-&lt;yyyy-MM-dd&gt;.oar</c> (numbered when taken), MakeLand loads the region's own type again. One job
     /// runs per program at a time and holds no global lock, so other programs and the world keep working; while it runs,

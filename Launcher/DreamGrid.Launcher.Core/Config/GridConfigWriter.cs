@@ -50,6 +50,13 @@ public sealed class GridConfigWriter(LauncherPaths paths)
 
         foreach (var program in s.Programs)
             WriteProgram(s, program, RegionModel.Loadable(s, program.Instance, held ?? NoRegions).ToList(), host, extra);
+
+        // A deleted region whose program went keeps that folder; its region file goes off too.
+        foreach (var r in s.Regions.Where(r => r.DeletedAt is not null && RegionModel.ProgramOf(s, r) is null))
+        {
+            var file = Path.Combine(paths.RegionDefinitionDir(r.Instance), r.Name + ".ini");
+            if (File.Exists(file)) File.Move(file, file + ".off", overwrite: true);
+        }
     }
 
     private static readonly IReadOnlySet<Guid> NoRegions = new HashSet<Guid>();

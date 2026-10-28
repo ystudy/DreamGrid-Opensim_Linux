@@ -57,8 +57,17 @@ public sealed class GridControllerWiringTests : IDisposable
         // A MariaDB that cannot start: anything past the port check fails with a non-port error.
         var missing = Path.Combine(_root, MissingMariaDb, "mariadbd");
         return new GridController(_paths, _store, new MariaDbBinaries(missing, missing, null),
-            [new LogLevelModule()], _robust, _http, time);
+            [new LogLevelModule()], _robust, _http, time, regionStores: _ => _regionStore)
+        {
+            DatabaseRunningForTests = () => _databaseUp,
+        };
     }
+
+    /// <summary>What the controller's region store gets; the rig has no database.</summary>
+    private readonly FakeRegionStore _regionStore = new();
+
+    /// <summary>Whether the controller sees the database running (the rig's MariaDB never starts).</summary>
+    private volatile bool _databaseUp;
 
     public void Dispose()
     {
@@ -1661,6 +1670,300 @@ public sealed class GridControllerWiringTests : IDisposable
             Assert.Null(_grid.BusyWith("Home"));
         }
         finally { await EndAllAsync(_grid, fakes); }
+    }
+
+    // ---- delete, restore and delete forever -----------------------------------------------------------
+
+    private RegionSettings Saved(Guid id) => RegionModel.Find(_store.LoadOrCreate(), id)!;
+
+    [Fact]
+    public async Task Delete_alone_in_program_stops_and_removes_it()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var fakes = await RunningHomeAndBeach(_grid, shared: false);
+        var homeConsole = _store.LoadOrCreate().RegionConsolePort;
+        QuitKills(fakes, shared: false);
+        _databaseUp = true;
+        try
+        {
+            await _grid.DeleteRegionAsync(Beach, ct);
+
+            var saved = _store.LoadOrCreate();
+            var beach = RegionModel.Find(saved, Beach)!;
+            Assert.NotNull(beach.DeletedAt);
+            Assert.False(beach.Parked);
+            Assert.Equal("Beach", beach.Instance); // the folder name stays the region's
+            Assert.DoesNotContain(saved.Programs, p => p.Instance == "Beach");
+            Assert.DoesNotContain(_grid.GetStatus().Programs, p => p.Instance == "Beach");
+            Assert.DoesNotContain(_grid.GetStatus().Regions, r => r.Id == Beach);
+            Assert.Contains("quit", _http.Commands(_secondConsole));
+            Assert.DoesNotContain("quit", _http.Commands(homeConsole));
+            var dir = _paths.RegionDefinitionDir("Beach");
+            Assert.True(File.Exists(Path.Combine(dir, "Beach.ini.off")));
+            Assert.False(File.Exists(Path.Combine(dir, "Beach.ini")));
+            Assert.Equal([$"Deregister {Beach}"], _regionStore.Snapshot());
+        }
+        finally { await EndAllAsync(_grid, fakes); }
+    }
+
+    [Fact]
+    public async Task Delete_in_shared_program_restarts_it_without_the_region()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var fakes = await RunningHomeAndBeach(_grid, shared: true);
+        var homeConsole = _store.LoadOrCreate().RegionConsolePort;
+        QuitKills(fakes, shared: true);
+        try
+        {
+            // The restart itself can't finish here (the stand-in OpenSim is one byte).
+            Assert.IsNotType<PortConflictException>(await Record.ExceptionAsync(() => _grid.DeleteRegionAsync(Beach, ct)));
+
+            var saved = _store.LoadOrCreate();
+            Assert.NotNull(RegionModel.Find(saved, Beach)!.DeletedAt);
+            Assert.Contains(saved.Programs, p => p.Instance == "Home");
+            Assert.Contains("quit", _http.Commands(homeConsole)); // stopped to start again without Beach
+            var dir = _paths.RegionDefinitionDir("Home");
+            Assert.True(File.Exists(Path.Combine(dir, "Beach.ini.off")));
+            Assert.True(File.Exists(Path.Combine(dir, "Home.ini")));
+            Assert.Empty(_regionStore.Snapshot()); // the database isn't running: nothing to deregister from
+        }
+        finally { await EndAllAsync(_grid, fakes); }
+    }
+
+    [Fact]
+    public async Task Delete_works_when_program_failed()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var fakes = await RunningHomeAndBeach(_grid, shared: false);
+        // Beach's program dies, and its restart fails at once: its runtime folder is away meanwhile.
+        var runtime = _paths.RuntimeOpenSim;
+        Directory.Move(runtime, runtime + "-away");
+        try
+        {
+            fakes[1].Kill();
+            await Until(() => _grid.GetStatus().Programs.Single(p => p.Instance == "Beach").Process.State == ProcessState.Failed,
+                "Beach's program never failed");
+        }
+        finally { Directory.Move(runtime + "-away", runtime); }
+        _http.Override = r => r.Uri.Port == _secondConsole ? throw new HttpRequestException("Connection refused") : null;
+        var commands = _http.Commands(_secondConsole).Length;
+        _databaseUp = true;
+        try
+        {
+            await _grid.DeleteRegionAsync(Beach, ct).WaitAsync(TimeSpan.FromSeconds(30), ct);
+
+            Assert.NotNull(Saved(Beach).DeletedAt);
+            Assert.DoesNotContain(_store.LoadOrCreate().Programs, p => p.Instance == "Beach");
+            Assert.Equal(commands, _http.Commands(_secondConsole).Length); // no stop or restart was tried
+            Assert.Equal([$"Deregister {Beach}"], _regionStore.Snapshot());
+        }
+        finally { await EndAllAsync(_grid, fakes); }
+    }
+
+    [Fact]
+    public async Task Delete_refused_while_its_program_has_a_job()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var fakes = await RunningHomeAndBeach(_grid, shared: true);
+        var port = _store.LoadOrCreate().RegionConsolePort;
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        try
+        {
+            var save = _grid.RunOarJobAsync(new OarJobRequest(Home, OarJobKind.Save), stop.Token);
+            await Until(() => _grid.BusyWith("Home") is not null, "the save never started");
+
+            var e = await Assert.ThrowsAsync<InvalidOperationException>(() => _grid.DeleteRegionAsync(Beach, ct));
+
+            Assert.Equal("Saving Home as an OAR is still running. Try again when it finishes.", e.Message);
+            Assert.Null(Saved(Beach).DeletedAt);
+            Assert.DoesNotContain("quit", _http.Commands(port));
+            stop.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => save.WaitAsync(TimeSpan.FromSeconds(30), ct));
+        }
+        finally { await EndAllAsync(_grid, fakes); }
+    }
+
+    [Fact]
+    public async Task Deleted_region_reserves_its_folder_name()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var s = _store.LoadOrCreate();
+        var other = Guid.NewGuid();
+        _store.Save(s with
+        {
+            Programs = [new ProgramSettings("Home", s.RegionPort, s.RegionConsolePort), new ProgramSettings("Be_ach", _secondPort, _secondConsole)],
+            Regions =
+            [
+                new RegionSettings("Home", "Home", Home, UdpPort: s.RegionPort),
+                new RegionSettings("Be_ach", "Be_ach", Beach, X: 1010, UdpPort: _secondPort),
+                new RegionSettings("Home", "Be ach", other, X: 1020, UdpPort: FreePorts(1)[0]),
+            ],
+            Setup = s.Setup with { RegionCreated = true },
+        });
+        await _grid.DeleteRegionAsync(Beach, ct);
+
+        await _grid.ChangeRunsWithAsync(other, null, ct); // "Be ach" gets a folder of its own
+
+        Assert.Equal("Be_ach_2", Saved(other).Instance);
+        Assert.Equal("Be_ach", Saved(Beach).Instance);
+    }
+
+    [Fact]
+    public async Task Folder_of_a_live_removed_program_is_not_reused()
+    {
+        HomeAndBeach(shared: true);
+        var fake = StartLeftoverRegion("Beach"); // a program called Beach still runs, though the settings no longer have it
+        try
+        {
+            await _grid.ChangeRunsWithAsync(Beach, null, TestContext.Current.CancellationToken);
+
+            Assert.Equal("Beach_2", Saved(Beach).Instance);
+        }
+        finally { await EndLeftoverRegionAsync(fake); }
+    }
+
+    [Fact]
+    public async Task Restore_after_program_removed_recreates_its_folder()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        HomeAndBeach(shared: false);
+        await _grid.DeleteRegionAsync(Beach, ct);
+        Assert.DoesNotContain(_store.LoadOrCreate().Programs, p => p.Instance == "Beach");
+        var before = _store.LoadOrCreate();
+
+        await _grid.RestoreRegionAsync(Beach, ct);
+
+        var saved = _store.LoadOrCreate();
+        var beach = RegionModel.Find(saved, Beach)!;
+        Assert.Null(beach.DeletedAt);
+        Assert.Equal("Beach", beach.Instance);
+        var program = Assert.Single(saved.Programs, p => p.Instance == "Beach");
+        var taken = PortAllocator.Taken(before);
+        Assert.DoesNotContain(program.HttpPort, taken);
+        Assert.DoesNotContain(program.ConsolePort, taken);
+        Assert.NotEqual(program.HttpPort, program.ConsolePort);
+        Assert.Equal(program.HttpPort, beach.UdpPort);
+        Assert.True(File.Exists(Path.Combine(_paths.RegionDefinitionDir("Beach"), "Beach.ini")));
+        Assert.Equal(RegionState.Stopped, _grid.GetStatus().Regions.Single(r => r.Id == Beach).State);
+        Assert.Contains(_grid.GetStatus().Programs, p => p.Instance == "Beach");
+        Assert.Empty(_http.CommandPorts);
+    }
+
+    [Fact]
+    public async Task Restore_into_running_program_comes_back_stopped()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var fakes = await RunningHomeAndBeach(_grid, shared: true);
+        var port = _store.LoadOrCreate().RegionConsolePort;
+        QuitKills(fakes, shared: true);
+        // Deleted earlier; the program still runs with Home.
+        _grid.UpdateSettings(l => l with { Regions = l.Regions.Select(r => r.Uuid == Beach ? r with { DeletedAt = DateTimeOffset.UtcNow } : r).ToList() });
+        var commands = _http.Commands(port).Length;
+        try
+        {
+            await _grid.RestoreRegionAsync(Beach, ct);
+
+            Assert.Null(Saved(Beach).DeletedAt);
+            Assert.Equal("Home", Saved(Beach).Instance);
+            Assert.Equal(commands, _http.Commands(port).Length); // nothing was sent to the shared program: no stop, no restart
+            var status = _grid.GetStatus();
+            Assert.Equal(ProcessState.Running, status.Programs.Single().Process.State);
+            Assert.Equal(RegionState.Stopped, status.Regions.Single(r => r.Id == Beach).State);
+            Assert.Equal(RegionState.Running, status.Regions.Single(r => r.Id == Home).State);
+            Assert.False(File.Exists(Path.Combine(_paths.RegionDefinitionDir("Home"), "Beach.ini"))); // not loaded until its Start
+        }
+        finally { await EndAllAsync(_grid, fakes); }
+    }
+
+    [Fact]
+    public async Task Restore_refuses_a_live_region()
+    {
+        HomeAndBeach(shared: false);
+
+        var e = await Assert.ThrowsAsync<InvalidOperationException>(() => _grid.RestoreRegionAsync(Beach, TestContext.Current.CancellationToken));
+
+        Assert.Equal("That region isn't deleted.", e.Message);
+    }
+
+    [Fact]
+    public async Task Erase_needs_a_deleted_region_and_the_database()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        HomeAndBeach(shared: false);
+
+        var live = await Assert.ThrowsAsync<InvalidOperationException>(() => _grid.EraseRegionAsync(Beach, ct));
+        await _grid.DeleteRegionAsync(Beach, ct);
+        var noDatabase = await Assert.ThrowsAsync<InvalidOperationException>(() => _grid.EraseRegionAsync(Beach, ct));
+
+        Assert.Equal("That region isn't deleted.", live.Message);
+        Assert.Equal("Start the database first.", noDatabase.Message);
+        Assert.NotNull(Saved(Beach).DeletedAt);
+        Assert.Empty(_regionStore.Snapshot());
+    }
+
+    [Fact]
+    public async Task Erase_removes_the_region_and_frees_its_name()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        HomeAndBeach(shared: false);
+        _grid.RegenerateConfig(); // Beach's folder exists
+        await _grid.DeleteRegionAsync(Beach, ct);
+        _databaseUp = true;
+        _regionStore.Clear();
+
+        await _grid.EraseRegionAsync(Beach, ct);
+
+        Assert.Equal([$"Erase {Beach}"], _regionStore.Snapshot());
+        var saved = _store.LoadOrCreate();
+        Assert.Null(RegionModel.Find(saved, Beach));
+        Assert.Null(RegionModel.FindByName(saved, "Beach")); // the name can be used again
+        Assert.True(Directory.Exists(_paths.RegionDir("Beach"))); // its folder (with the logs) stays
+
+        // The folder name is free again too: a new Beach given a folder of its own gets "Beach", not "Beach_2".
+        _grid.UpdateSettings(l => l with
+        {
+            Regions = [.. l.Regions, new RegionSettings("Home", "Beach", Guid.NewGuid(), X: 1010, UdpPort: _secondPort)],
+        });
+        var again = RegionModel.FindByName(_store.LoadOrCreate(), "Beach")!.Uuid;
+        await _grid.ChangeRunsWithAsync(again, null, ct);
+        Assert.Equal("Beach", Saved(again).Instance);
+    }
+
+    [Fact]
+    public async Task Deleted_space_needs_the_database()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        HomeAndBeach(shared: false);
+        await _grid.DeleteRegionAsync(Beach, ct);
+
+        Assert.Null(await _grid.DeletedSpaceAsync(ct));
+        _databaseUp = true;
+        _regionStore.Space[Beach] = 1234;
+        var space = await _grid.DeletedSpaceAsync(ct);
+
+        Assert.Equal(1234, Assert.Single(space!, kv => kv.Key == Beach).Value);
+        Assert.Contains($"Space {Beach}", _regionStore.Snapshot());
+    }
+
+    /// <summary>Records each call as "Deregister|Erase|Space &lt;ids&gt;"; space comes from <see cref="Space"/>.</summary>
+    private sealed class FakeRegionStore : IRegionStore
+    {
+        private readonly List<string> _calls = new();
+        public Dictionary<Guid, long> Space { get; } = new();
+
+        public string[] Snapshot() { lock (_calls) return _calls.ToArray(); }
+        public void Clear() { lock (_calls) _calls.Clear(); }
+        private void Record(string call) { lock (_calls) _calls.Add(call); }
+
+        public Task<IReadOnlyDictionary<Guid, long>> SpaceAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct)
+        {
+            Record("Space " + string.Join(",", ids));
+            return Task.FromResult<IReadOnlyDictionary<Guid, long>>(ids.ToDictionary(id => id, id => Space.GetValueOrDefault(id)));
+        }
+
+        public Task DeregisterAsync(Guid id, CancellationToken ct) { Record($"Deregister {id}"); return Task.CompletedTask; }
+
+        public Task EraseAsync(Guid id, CancellationToken ct) { Record($"Erase {id}"); return Task.CompletedTask; }
     }
 
     private sealed class FakeRobust : IRobustClient
