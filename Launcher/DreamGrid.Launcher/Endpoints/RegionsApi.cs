@@ -1,3 +1,4 @@
+using DreamGrid.Launcher.Core;
 using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Security;
 
@@ -50,6 +51,11 @@ public static class RegionsApi
                 return Results.NotFound();
             }
         }).RequireAuthorization(AuthSchemes.AdminPolicy);
+
+        // A region type's picture; the page shows a coloured square when there is none. Only built-in ids resolve.
+        app.MapGet("/regions/types/{id}.png", (string id, LauncherPaths paths) =>
+            RegionTypes.Picture(paths, id) is { } file ? Results.File(file, "image/png") : Results.NotFound())
+            .RequireAuthorization(AuthSchemes.AdminPolicy);
 
         app.MapGet("/api/regions", (HttpContext ctx, IGridController grid) =>
         {

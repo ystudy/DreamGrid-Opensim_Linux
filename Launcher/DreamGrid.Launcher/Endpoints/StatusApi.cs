@@ -10,9 +10,10 @@ namespace DreamGrid.Launcher.Endpoints;
 /// <param name="Detail">Uptime and memory in words, or "".</param>
 public sealed record ComponentView(string Name, string Label, string State, string StateText, string Detail);
 
+/// <param name="Id">The region's id, for the dashboard's link to the Regions page; null for anonymous callers.</param>
 /// <param name="RunsWith">The other regions in its program; null for anonymous callers, who get names and states only.</param>
 /// <param name="LoginsEnabled">Null for anonymous callers.</param>
-public sealed record RegionView(string Name, string State, string StateText, IReadOnlyList<string>? RunsWith, bool? LoginsEnabled);
+public sealed record RegionView(Guid? Id, string Name, string State, string StateText, IReadOnlyList<string>? RunsWith, bool? LoginsEnabled);
 
 public sealed record GridView(ComponentView Database, ComponentView Robust, IReadOnlyList<RegionView> Regions, bool LoginsEnabled, string LoginUri);
 
@@ -50,7 +51,7 @@ public static class StatusApi
         var regionNames = s.Regions.ToDictionary(r => r.Id, r => r.Name);
         return new StatusView(
             new GridView(View(s.Database, "Database"), View(s.Robust, "Grid service"),
-                s.Regions.Select(r => new RegionView(r.Name, r.State.ToString(), RegionStateText(r.State),
+                s.Regions.Select(r => new RegionView(withOnline ? r.Id : null, r.Name, r.State.ToString(), RegionStateText(r.State),
                     withOnline ? r.RunsWith : null, withOnline ? r.LoginsEnabled : null)).ToList(),
                 s.LoginsEnabled, s.LoginUri),
             people.Avatars.Select(a => regionNames.TryGetValue(a.RegionId, out var region) ? $"{a.Name} in {region}" : a.Name).ToList(),

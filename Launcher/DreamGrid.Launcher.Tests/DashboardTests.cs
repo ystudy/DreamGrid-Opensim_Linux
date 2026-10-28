@@ -343,8 +343,27 @@ public sealed partial class DashboardTests : IAsyncLifetime
         var html = await client.GetStringAsync("/", Ct);
 
         Assert.Contains("Coming soon", html);
-        foreach (var item in new[] { "Backups", "Visitors from the internet", "Hypergrid", "More regions", "SmartStart", "Voice", "Birds", "Tides" })
+        foreach (var item in new[] { "Backups", "Visitors from the internet", "Hypergrid", "SmartStart", "Voice", "Birds", "Tides" })
             Assert.Contains(item, html);
+    }
+
+    [Fact]
+    public async Task Coming_soon_no_longer_lists_more_regions()
+    {
+        using var client = await SignedInAsync();
+        var doc = new AngleSharp.Html.Parser.HtmlParser().ParseDocument(await client.GetStringAsync("/", Ct));
+
+        Assert.DoesNotContain("More regions", doc.QuerySelectorAll(".coming-soon li").Select(li => li.TextContent.Trim()));
+    }
+
+    [Fact]
+    public async Task Dashboard_region_links_to_regions_page()
+    {
+        _f.Grid.Status = Status(ProcessState.Running, ProcessState.Running, ProcessState.Running);
+        using var client = await SignedInAsync();
+        var doc = new AngleSharp.Html.Parser.HtmlParser().ParseDocument(await client.GetStringAsync("/", Ct));
+
+        Assert.Equal("Welcome", doc.QuerySelector($"a[href='/regions?region={WelcomeId}']")!.TextContent.Trim());
     }
 
     [Fact]

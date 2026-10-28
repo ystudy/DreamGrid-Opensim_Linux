@@ -50,3 +50,15 @@ progress { width: 100%; height: 1.25rem; accent-color: var(--bs-primary); }
 .power-menu > summary { list-style: none; }
 .power-menu > summary::-webkit-details-marker { display: none; }
 .power-menu .power-items { position: absolute; z-index: 10; min-width: 18rem; margin-top: .25rem; }
+
+/* Regions page */
+.region-type { display: grid; grid-template-columns: 2.5rem 1fr; column-gap: .6rem; align-items: center; padding: .4rem 0; }
+.region-type .type-description { grid-column: 2; }
+.type-swatch { grid-row: span 2; width: 2.5rem; height: 2.5rem; border-radius: .35rem; overflow: hidden; background: var(--bs-secondary-bg); }
+.type-swatch img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.type-swatch.type-island { background: #3f8f6b; }
+.type-swatch.type-beach { background: #e0c98a; }
+.type-swatch.type-forest { background: #2f6b3a; }
+.type-swatch.type-meadow { background: #9bc46a; }
+.region-map { min-height: 22rem; background: var(--bs-secondary-bg); border-radius: var(--bs-border-radius); position: relative; overflow: hidden; }
+.region-panel[hidden] { display: none; }
