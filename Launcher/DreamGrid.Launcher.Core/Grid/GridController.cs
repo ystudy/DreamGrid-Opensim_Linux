@@ -350,12 +350,15 @@ public sealed partial class GridController(
         finally { _ops.Release(); }
     }
 
+    private static readonly string ContentError =
+        $"Content must be one of: starter, {string.Join(", ", RegionTypes.BuiltIn.Select(t => t.Id))}.";
+
     public async Task CreateRegionAsync(string name, string content, CancellationToken ct, IProgress<string>? progress = null)
     {
         if (!IsValidRegionName(name))
             throw new ArgumentException("A region name is 2-32 letters, digits, spaces, '-', '_' or '\\'' with no leading or trailing space.", nameof(name));
-        if (content is not ("starter" or "island"))
-            throw new ArgumentException("Content must be \"starter\" or \"island\".", nameof(content));
+        if (!RegionTypes.IsContent(content))
+            throw new ArgumentException(ContentError, nameof(content));
 
         await _ops.WaitAsync(ct);
         _activity = GridActivity.Starting;
@@ -382,8 +385,8 @@ public sealed partial class GridController(
     {
         if (!IsValidRegionName(request.Name))
             throw new ArgumentException("A region name is 2-32 letters, digits, spaces, '-', '_' or '\\'' with no leading or trailing space.", nameof(request));
-        if (request.Content is not ("starter" or "island"))
-            throw new ArgumentException("Content must be \"starter\" or \"island\".", nameof(request));
+        if (!RegionTypes.IsContent(request.Content))
+            throw new ArgumentException(ContentError, nameof(request));
 
         await _ops.WaitAsync(ct);
         _activity = GridActivity.Starting;
@@ -754,20 +757,25 @@ public sealed partial class GridController(
 
     private async Task LoadContentCoreAsync(RestConsoleClient console, RegionSettings region, string content, CancellationToken ct)
     {
-        var oar = content == "starter" ? StarterContent.StarterOar(paths) : null;
+        var oar = content == "starter" ? StarterContent.StarterOar(paths) : RegionTypes.Oar(paths, content);
         if (oar is not null)
         {
             // RegionReady reports the archiver's result as an "oarloaded" or "oarnotloaded" alert.
             var loaded = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
             _oarLoaded = loaded;
-            await console.RunAsync($"load oar --force-terrain --force-parcels \"{Fwd(oar)}\"", ConsoleSettle, ct);
+            // A 256 m OAR goes in the middle of a larger region; the squares around it keep the flat land OpenSim makes.
+            var middle = 128 * (region.Size - 1);
+            var displacement = region.Size > 1 ? $" --displacement <{middle},{middle},0>" : "";
+            await console.RunAsync($"load oar --force-terrain --force-parcels{displacement} \"{Fwd(oar)}\"", ConsoleSettle, ct);
             if (await loaded.Task.WaitAsync(LoginWait, time, ct) != "oarloaded")
                 throw new InvalidOperationException($"The region could not load {oar}; see the region log.");
             return;
         }
 
+        // Without an OAR the land is generated at the region's size; a starter without its OAR is the default island.
+        var shape = RegionTypes.Find(content)?.Shape ?? TerrainShape.Island;
         var r32 = Path.Combine(paths.RegionDir(region.Instance), "island.r32");
-        IslandTerrain.WriteR32(r32);
+        TerrainShapes.WriteR32(r32, shape, 256 * region.Size);
         // Flatten first: the check below tells the island from flat land, and a starter OAR an earlier attempt
         // loaded has relief of its own that would pass for the island if this load failed.
         await console.RunAsync("terrain fill 0", ConsoleSettle, ct);

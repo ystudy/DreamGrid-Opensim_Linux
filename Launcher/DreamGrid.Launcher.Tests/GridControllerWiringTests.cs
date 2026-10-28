@@ -600,6 +600,73 @@ public sealed class GridControllerWiringTests : IDisposable
         finally { await EndLeftoverRegionAsync(fake); }
     }
 
+    /// <summary>Runs the controller's content step for a region "Welcome" of the given size, as an added region would.</summary>
+    private Task LoadContent(string content, int size)
+    {
+        var s = _store.LoadOrCreate();
+        var client = new RestConsoleClient(_http.CreateClient("console"), new Uri($"http://127.0.0.1:{s.RegionConsolePort}/"), "u", "p");
+        var region = new RegionSettings("Welcome", "Welcome", Guid.NewGuid(), Size: size, UdpPort: s.RegionPort);
+        var method = typeof(GridController).GetMethod("LoadContentCoreAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        return (Task)method.Invoke(_grid, [client, region, content, TestContext.Current.CancellationToken])!;
+    }
+
+    /// <summary>Puts a stand-in OAR in the region-types folder and answers the load with the archiver's "oarloaded" alert.</summary>
+    private string ProvideOar(string id)
+    {
+        var dir = Path.Combine(_root, "content", "region-types");
+        Directory.CreateDirectory(dir);
+        var oar = Path.Combine(dir, id + ".oar");
+        File.WriteAllBytes(oar, [1]);
+        _http.OnCommand = port =>
+        {
+            if (_http.Commands(port).Any(c => c.StartsWith("load oar", StringComparison.Ordinal)))
+                _grid.OnRegionAlert(new RegionAlert("region_ready", "oarloaded", "Welcome", Guid.NewGuid(), null));
+        };
+        return oar.Replace('\\', '/');
+    }
+
+    [Fact]
+    public async Task Size_2_region_gets_512_terrain()
+    {
+        var regionPort = _store.LoadOrCreate().RegionConsolePort;
+        var terrain = "max/min/avg/sum: 0/0/0/0";
+        Directory.CreateDirectory(_paths.RegionDir("Welcome")); // the region's program made it when it started
+        _http.Reply = (_, command) =>
+        {
+            if (command == "terrain stats") return [terrain];
+            if (command.StartsWith("terrain load ", StringComparison.Ordinal)) terrain = IslandStats;
+            return [];
+        };
+
+        await LoadContent("meadow", 2);
+
+        Assert.Contains(_http.Commands(regionPort), c => c.StartsWith("terrain load ", StringComparison.Ordinal));
+        Assert.Equal(512L * 512 * 4, new FileInfo(Path.Combine(_paths.RegionDir("Welcome"), "island.r32")).Length);
+    }
+
+    [Fact]
+    public async Task Size_3_oar_loads_in_the_middle()
+    {
+        var regionPort = _store.LoadOrCreate().RegionConsolePort;
+        var oar = ProvideOar("forest");
+
+        await LoadContent("forest", 3);
+
+        Assert.Contains($"load oar --force-terrain --force-parcels --displacement <256,256,0> \"{oar}\"", _http.Commands(regionPort));
+        Assert.DoesNotContain(_http.Commands(regionPort), c => c.StartsWith("terrain load ", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Size_1_oar_loads_without_a_displacement()
+    {
+        var regionPort = _store.LoadOrCreate().RegionConsolePort;
+        var oar = ProvideOar("beach");
+
+        await LoadContent("beach", 1);
+
+        Assert.Contains($"load oar --force-terrain --force-parcels \"{oar}\"", _http.Commands(regionPort));
+    }
+
     [Fact]
     public async Task A_MariaDB_without_our_datadir_is_not_adopted()
     {

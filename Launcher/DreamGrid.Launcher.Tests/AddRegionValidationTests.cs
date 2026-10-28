@@ -64,6 +64,21 @@ public sealed class AddRegionValidationTests : IDisposable
     public Task Invalid_name_is_refused() =>
         Refused(new NewRegion("../evil", 1005, 1005, 1, "island", null), "A region name is 2-32 letters");
 
+    [Fact]
+    public Task Unknown_content_is_refused() =>
+        Refused(new NewRegion("Beach", 1005, 1005, 1, "lava", null), "Content must be one of: starter, island, beach, forest, meadow.");
+
+    [Fact]
+    public async Task Add_accepts_built_in_type_content()
+    {
+        // The rig cannot start anything, so the request gets past the content check and fails later, not as a refusal.
+        var e = await Record.ExceptionAsync(() =>
+            _grid.AddRegionAsync(new NewRegion("Beach", 1005, 1005, 1, "beach", null), TestContext.Current.CancellationToken));
+
+        Assert.NotNull(e);
+        Assert.IsNotType<ArgumentException>(e);
+    }
+
     private sealed class NoRobust : IRobustClient
     {
         public Task<bool> IsReadyAsync(CancellationToken ct) => throw new InvalidOperationException("not expected");
