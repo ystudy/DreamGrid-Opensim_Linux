@@ -45,7 +45,20 @@ public static class CpuTuning
     internal static InvalidOperationException Refused(string reason) =>
         new($"This computer refused the priority: {reason.TrimEnd('.')}.");
 
-    private static long AllCoresMask() => (1L << Math.Min(Environment.ProcessorCount, 63)) - 1;
+    /// <summary>Every core the system has, from the system affinity mask (not the launcher's own, which may be narrower).</summary>
+    private static long SystemMask()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            using var self = Process.GetCurrentProcess();
+            if (GetProcessAffinityMask(self.Handle, out _, out var system) && (long)system != 0) return (long)system;
+        }
+        return (1L << Math.Min(Environment.ProcessorCount, 63)) - 1;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetProcessAffinityMask(IntPtr process, out UIntPtr processMask, out UIntPtr systemMask);
 
     private static void ApplyWindows(int pid, IReadOnlyList<int> cores, CpuPriority priority)
     {
@@ -58,7 +71,7 @@ public static class CpuTuning
             {
                 if (core is >= 0 and < 63) mask |= 1L << core;
             }
-            if (mask == 0) mask = AllCoresMask();
+            if (mask == 0) mask = SystemMask();
             process.ProcessorAffinity = (IntPtr)mask;
             process.PriorityClass = priority switch
             {
@@ -140,7 +153,7 @@ public static class CpuTuning
             }
             if (mask.All(b => b == 0))
             {
-                for (var i = 0; i < Math.Min(Environment.ProcessorCount, MaskBytes * 8); i++) mask[i / 8] |= (byte)(1 << (i % 8));
+                Array.Fill(mask, (byte)0xFF); // every bit: the kernel intersects with the CPUs this program may use
             }
             var nice = Nice(priority);
 
@@ -157,6 +170,8 @@ public static class CpuTuning
             }
             if (threads.Length == 0) throw Refused(new Win32Exception(Esrch).Message);
 
+            // Affinity on every thread first, then priority, so a refused priority never leaves a mix of cores.
+            var alive = new List<int>();
             foreach (var tid in threads)
             {
                 if (sched_setaffinity(tid, MaskBytes, mask) != 0)
@@ -165,6 +180,10 @@ public static class CpuTuning
                     if (errno == Esrch) continue; // the thread ended in the middle
                     throw Refused(new Win32Exception(errno).Message);
                 }
+                alive.Add(tid);
+            }
+            foreach (var tid in alive)
+            {
                 if (setpriority(PrioProcess, (uint)tid, nice) != 0)
                 {
                     var errno = Marshal.GetLastPInvokeError();
@@ -184,11 +203,17 @@ public static class CpuTuning
             {
                 if ((mask[i / 8] & (1 << (i % 8))) != 0) cores.Add(i);
             }
-            // /proc/<pid>/stat is "pid (comm) state ..."; comm may hold spaces and parentheses, so split after the last ')'.
-            var stat = File.ReadAllText($"/proc/{pid}/stat");
-            var fields = stat[(stat.LastIndexOf(')') + 2)..].Split(' ');
-            if (fields.Length < 17 || !int.TryParse(fields[16], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var nice)) return null;
+                        if (ParseNice(File.ReadAllText($"/proc/{pid}/stat")) is not { } nice) return null;
             return (cores, FromNice(nice));
+        }
+
+        /// <summary>The nice value (field 19) of a /proc stat line, or null when the line is malformed.</summary>
+        internal static int? ParseNice(string stat)
+        {
+            var close = stat.LastIndexOf(')');
+            if (close < 0 || close + 2 > stat.Length) return null;
+            var fields = stat[(close + 2)..].Split(' ');
+            return fields.Length >= 17 && int.TryParse(fields[16], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var nice) ? nice : null;
         }
     }
 }

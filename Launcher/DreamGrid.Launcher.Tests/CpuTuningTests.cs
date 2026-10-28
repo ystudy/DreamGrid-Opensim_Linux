@@ -43,10 +43,11 @@ public sealed class CpuTuningTests : IDisposable
     [Fact]
     public void Empty_cores_means_every_core()
     {
+        var fresh = Start(); // a fresh child gets the default: every core this program may use
         var p = Start();
         CpuTuning.Apply(p.Id, [0], CpuPriority.Normal);
         CpuTuning.Apply(p.Id, [], CpuPriority.Normal);
-        Assert.Equal(Enumerable.Range(0, Environment.ProcessorCount), CpuTuning.Read(p.Id)!.Value.Cores);
+        Assert.Equal(CpuTuning.Read(fresh.Id)!.Value.Cores, CpuTuning.Read(p.Id)!.Value.Cores);
     }
 
     [Fact]
@@ -71,6 +72,13 @@ public sealed class CpuTuningTests : IDisposable
             Assert.Equal("10", fields[16]); // field 19 overall
         }
     }
+
+    [Theory]
+    [InlineData("1234 (sleep) S 1 1234 1234 0 -1 4194304 100 0 0 0 0 0 0 0 20 0 1 0 5 1000 50 18446744073709551615", 0)]
+    [InlineData("1234 (a) b) S 1 1234 1234 0 -1 4194304 100 0 0 0 0 0 0 0 20 10 1 0 5 1000 50 18446744073709551615", 10)]
+    [InlineData("1234 (x) S 1 1234 1234 0 -1 4194304 100 0 0 0 0 0 0 0 -100 -20 1 0 5 1000 50 1", -20)]
+    public void Nice_is_read_after_the_last_bracket(string stat, int nice)
+        => Assert.Equal(nice, CpuTuning.LinuxCpu.ParseNice(stat));
 
     [Fact]
     public void A_process_that_exited_throws_plain_words()
