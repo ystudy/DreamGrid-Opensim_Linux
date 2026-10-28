@@ -99,6 +99,12 @@ public sealed class RegionSettingsPageTests : IAsyncLifetime
             new FormUrlEncodedContent(new Dictionary<string, string> { ["MaxAgents"] = "50" }), Ct);
 
         Assert.True(get.StatusCode is HttpStatusCode.Redirect or HttpStatusCode.Unauthorized, get.StatusCode.ToString());
+        // The same status the other region pages give anonymous visitors (not a 400 by accident).
+        using var otherGet = await anon.GetAsync($"/regions/region/{HomeId}/move", Ct);
+        using var otherPost = await anon.PostAsync($"/regions/region/{HomeId}/move",
+            new FormUrlEncodedContent(new Dictionary<string, string> { ["X"] = "1" }), Ct);
+        Assert.Equal(otherGet.StatusCode, get.StatusCode);
+        Assert.Equal(otherPost.StatusCode, post.StatusCode);
         Assert.False(post.IsSuccessStatusCode);
         Assert.DoesNotContain(_f.Grid.Snapshot(), c => c.StartsWith("Save", StringComparison.Ordinal));
     }
@@ -230,6 +236,30 @@ public sealed class RegionSettingsPageTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Cpu_with_every_core_ticked_saves_an_empty_list()
+    {
+        using var client = await SignedInAsync();
+        var all = Enumerable.Range(0, Environment.ProcessorCount).Select(i => ("Cores", i.ToString())).ToArray();
+
+        (await PostAsync(client, SunsetId, "cpu", all)).Dispose();
+
+        Assert.Empty(Assert.Single(_f.Grid.SavedProgramOptions).Options.Cores ?? []);
+    }
+
+    [Fact]
+    public async Task Non_cpu_save_says_restart_even_when_the_program_is_stopped()
+    {
+        _f.Grid.ProgramStates["Sunset"] = DreamGrid.Launcher.Core.Processes.ProcessState.Stopped;
+        using var client = await SignedInAsync();
+
+        (await PostAsync(client, SunsetId, "map", ("Map", "Best"))).Dispose();
+        Assert.Equal("Saved. It applies when Sunset Shore restarts.", Notice(await GetAsync(client, SunsetId, "map")));
+
+        (await PostAsync(client, SunsetId, "cpu", ("Priority", "Normal"))).Dispose();
+        Assert.Equal("Saved. It applies when Sunset Shore starts.", Notice(await GetAsync(client, SunsetId, "cpu")));
+    }
+
+    [Fact]
     public async Task Cpu_with_a_core_that_does_not_exist_shows_at_the_field()
     {
         using var client = await SignedInAsync();
@@ -251,7 +281,7 @@ public sealed class RegionSettingsPageTests : IAsyncLifetime
         Assert.True(doc.QuerySelector("#Priority-RealTime")!.HasAttribute("disabled"));
         Assert.False(doc.QuerySelector("#Priority-AboveNormal")!.HasAttribute("disabled"));
         Assert.Contains("Only an administrator can raise it that far.", doc.QuerySelector("#Priority-High")!.ParentElement!.TextContent);
-        Assert.Contains("slow", doc.QuerySelector("#Priority-High")!.ParentElement!.TextContent);
+        Assert.Contains("This can make the whole computer slow to respond while these regions are busy.", doc.QuerySelector("#Priority-High")!.ParentElement!.TextContent);
         using var forged = await PostAsync(client, SunsetId, "cpu", ("Priority", "High"));
         Assert.Contains("Only an administrator", (await ParseAsync(forged)).QuerySelector("[data-error-for=Priority]")!.TextContent);
         Assert.Empty(_f.Grid.SavedProgramOptions);

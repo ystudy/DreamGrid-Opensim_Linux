@@ -151,6 +151,8 @@ public sealed class SettingsModel(IGridController grid, Func<CpuPriority, string
                             if (int.TryParse(c, NumberStyles.None, CultureInfo.InvariantCulture, out var n)) picked.Add(n);
                             else ModelState.AddModelError(nameof(ProgramOptions.Cores), "Pick cores from the list.");
                         }
+                        // Every core ticked is the same as none: it must not pin the cores when the settings move to another computer.
+                        if (picked.Count == Cores && picked.Distinct().Count() == Cores && picked.All(c => c >= 0 && c < Cores)) picked = [];
                         PickedCores = picked;
                         if (Form("Priority") is { } p)
                         {
@@ -192,7 +194,7 @@ public sealed class SettingsModel(IGridController grid, Func<CpuPriority, string
             return NotFound(); // the region was deleted meanwhile
         }
 
-        Notice = applied ? "Saved and applied." : $"Saved. {Applies()}";
+        Notice = applied ? "Saved and applied." : $"Saved. {Applies(allowStart: tab == "cpu")}";
         return Redirect($"/regions/region/{id}/settings/{tab}");
     }
 
@@ -228,9 +230,9 @@ public sealed class SettingsModel(IGridController grid, Func<CpuPriority, string
     }
 
     /// <summary>"It applies when Home and Beach restart." while their program runs, else "...start."</summary>
-    private string Applies()
+    private string Applies(bool allowStart = false)
     {
-        var running = grid.GetStatus().Programs.FirstOrDefault(p => p.Instance == Instance)?.Process.State == ProcessState.Running;
+        var running = !allowStart || grid.GetStatus().Programs.FirstOrDefault(p => p.Instance == Instance)?.Process.State == ProcessState.Running;
         var names = RegionModel.In(grid.CurrentSettings(), Instance).Select(r => r.Name).ToList();
         return $"It applies when {RegionAdvice.Join(names)} {Verb(names.Count, running)}.";
     }
