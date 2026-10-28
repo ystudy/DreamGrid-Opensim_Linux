@@ -31,13 +31,17 @@ internal static class GridTestSupport
     /// <summary>Writes settings.json through the real store: fresh secrets, loopback host, free ports.</summary>
     public static LauncherSettings SeedSettings(SettingsStore store)
     {
-        var p = FreePorts(7);
+        var p = FreePorts(5);
+        // New programs and regions take the ports after these two (PortAllocator), so each starts a free block below the
+        // ephemeral range: there no outgoing connection can take a port between the check and the bind.
+        var regions = FreeBlock(RegionBlock);
+        var consoles = FreeBlock(RegionBlock, regions);
         var settings = store.LoadOrCreate() with
         {
             Hostname = "127.0.0.1",
             GridName = "Test Grid",
-            WebPort = p[0], RobustPublicPort = p[1], RobustPrivatePort = p[2], RegionPort = p[3],
-            MariaDbPort = p[4], RobustConsolePort = p[5], RegionConsolePort = p[6],
+            WebPort = p[0], RobustPublicPort = p[1], RobustPrivatePort = p[2], RegionPort = regions,
+            MariaDbPort = p[3], RobustConsolePort = p[4], RegionConsolePort = consoles,
         };
         store.Save(settings);
         return settings;
@@ -79,6 +83,37 @@ internal static class GridTestSupport
             .Where(f => PidFile.Read(f) is { } pid && ProcessImage.Matches(pid, paths.Data))
             .Select(f => $"{Path.GetFileName(f)} ({PidFile.Read(f)})")
             .ToList();
+    }
+
+    /// <summary>How many ports from each seeded first port the tests may hand out.</summary>
+    private const int RegionBlock = 16;
+
+    /// <summary>
+    /// The first of <paramref name="length"/> consecutive ports free for TCP and UDP, between 20000 and 32000: below the
+    /// ephemeral range (Linux from 32768, Windows from 49152), at a random start so parallel test classes rarely meet.
+    /// </summary>
+    public static int FreeBlock(int length, int? avoid = null)
+    {
+        for (var attempt = 0; attempt < 200; attempt++)
+        {
+            var start = Random.Shared.Next(20000, 32000 - length);
+            if (avoid is { } a && start < a + length && a < start + length) continue;
+            if (Enumerable.Range(start, length).All(IsFree)) return start;
+        }
+        throw new InvalidOperationException($"No block of {length} free ports between 20000 and 32000.");
+    }
+
+    private static bool IsFree(int port)
+    {
+        try
+        {
+            var l = new TcpListener(IPAddress.Any, port);
+            l.Start();
+            try { new UdpClient(new IPEndPoint(IPAddress.Any, port)).Dispose(); }
+            finally { l.Stop(); }
+            return true;
+        }
+        catch (SocketException) { return false; }
     }
 
     /// <summary>Ports that are free for both TCP and UDP (the region needs both on its port).</summary>

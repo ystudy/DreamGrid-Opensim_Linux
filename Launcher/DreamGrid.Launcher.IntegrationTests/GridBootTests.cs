@@ -84,15 +84,11 @@ public sealed class GridBootTests : IDisposable
         }
     }
 
-    /// <summary>
-    /// Adds a program with one region of its own, on free ports. The allocator's neighbours of the rig's free ports can be
-    /// taken by other programs on a CI runner; its rules are covered by the unit tests.
-    /// </summary>
+    /// <summary>Adds a program with one region of its own, on ports from the allocator (plan 4a's rules).</summary>
     private static LauncherSettings WithOwnProgram(LauncherSettings l, string name, int x, int y)
     {
-        var used = l.Programs.SelectMany(p => new[] { p.HttpPort, p.ConsolePort }).ToHashSet();
-        var ports = FreePorts(2 + used.Count).Where(p => !used.Contains(p)).ToArray();
-        var (http, console) = (ports[0], ports[1]);
+        var http = PortAllocator.Next(l, l.RegionPort);
+        var console = PortAllocator.Next(l, l.RegionConsolePort, new HashSet<int> { http });
         return l with
         {
             Programs = [.. l.Programs, new ProgramSettings(name, http, console)],
