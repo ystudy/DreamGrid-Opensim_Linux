@@ -62,6 +62,7 @@ function startMap(map) {
     var tiles = {};        // "z/x/y" -> <img> in the layer
     var tileOk = {};       // "z/x/y" -> true once its picture loaded
     var tileMissing = {};  // "z/x/y" -> when it failed; tried again after MISSING_RETRY_MS
+    var tileVersion = 0;   // bumped when the regions change, so changed tiles skip the browser's cache
     var regions = [];      // the latest /api/regions list
     var regionsJson = "";
     var markers = {};      // region id -> marker element
@@ -154,6 +155,26 @@ function startMap(map) {
         }
     }
 
+    // The tile API ignores the query string; ?v= only gets past the browser's cache after a change.
+    function tileSrc(key) { return tilesUrl + "/" + key + (tileVersion ? "?v=" + tileVersion : ""); }
+
+    // After the regions change: the tiles in view under a changed region are fetched again, and tiles that had no
+    // picture are tried again, since a region that came up or went may have redrawn them. Tiles out of view wait.
+    function refreshTiles(changed) {
+        tileVersion++;
+        tileMissing = {};
+        var n = span(view.zoom);
+        changed.forEach(function (r) {
+            for (var tx = Math.floor(r.x / n) * n; tx < r.x + r.size; tx += n) {
+                for (var ty = Math.floor(r.y / n) * n; ty < r.y + r.size; ty += n) {
+                    var img = tiles[view.zoom + "/" + tx + "/" + ty];
+                    if (img) img.src = tileSrc(view.zoom + "/" + tx + "/" + ty);
+                }
+            }
+        });
+        loadTiles();
+    }
+
     function makeTile(key, tx, ty, n) {
         var img = document.createElement("img");
         img.className = "map-tile";
@@ -169,7 +190,7 @@ function startMap(map) {
             tileMissing[key] = Date.now();
             markTiles();
         };
-        img.src = tilesUrl + "/" + key;
+        img.src = tileSrc(key);
         layer.insertBefore(img, layer.firstChild);
         return img;
     }
@@ -233,6 +254,16 @@ function startMap(map) {
 
     // Markers: one per region, its name always on top, a class for its state.
     function showRegions(list) {
+        // What changed since the last poll (state, place or size; added or gone), for the tiles. Not on the first.
+        var before = {}, changed = [];
+        regions.forEach(function (r) { before[r.id] = r; });
+        list.forEach(function (r) {
+            var old = before[r.id];
+            if (!old || old.state !== r.state || old.x !== r.x || old.y !== r.y || old.size !== r.size) changed.push(r);
+            delete before[r.id];
+        });
+        for (var gone in before) changed.push(before[gone]);
+        var first = regionsJson === "";
         regions = list;
         var seen = {};
         list.forEach(function (r) {
@@ -257,15 +288,16 @@ function startMap(map) {
         }
         backButton.hidden = !list.some(function (r) { return !r.reserved; });
         markTiles();
+        if (!first && changed.length > 0) refreshTiles(changed);
     }
 
     function refresh() {
         return getJson(regionsUrl).then(function (json) {
             var text = JSON.stringify(json.regions);
             if (text === regionsJson) return;
-            regionsJson = text;
             answers = {};
             showRegions(json.regions);
+            regionsJson = text;
             fitFirst();
         });
     }
@@ -367,12 +399,16 @@ function startMap(map) {
         return { x: Math.floor(w.x), y: Math.floor(w.y) };
     }
 
-    // The placement API's answer ({ ok, text }) for a square, asked once until the regions change.
+    // The placement API's answer ({ ok, text }) for a square, asked once until the regions change. Every request
+    // keeps ASK_GAP_MS after the one before (at most 4 a second): a click right after a hover waits its turn.
     function ask(sq) {
         var key = sq.x + "," + sq.y;
         if (!answers[key]) {
-            lastAsk = Date.now();
-            answers[key] = getJson(placementUrl + "?x=" + sq.x + "&y=" + sq.y + "&size=1").then(function (json) {
+            var wait = Math.max(0, lastAsk + ASK_GAP_MS - Date.now());
+            lastAsk = Date.now() + wait;
+            answers[key] = new Promise(function (resolve) { setTimeout(resolve, wait); }).then(function () {
+                return getJson(placementUrl + "?x=" + sq.x + "&y=" + sq.y + "&size=1");
+            }).then(function (json) {
                 return { ok: json.ok === true, text: json.text };
             }, function (e) {
                 delete answers[key];
