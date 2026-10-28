@@ -1343,6 +1343,35 @@ public sealed class GridControllerWiringTests : IDisposable
     }
 
     [Fact]
+    public async Task Add_sharing_a_busy_program_is_refused()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var fakes = await RunningHomeAndBeach(_grid, shared: false);
+        var port = _store.LoadOrCreate().RegionConsolePort;
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        try
+        {
+            var save = _grid.RunOarJobAsync(new OarJobRequest(Home, OarJobKind.Save), stop.Token);
+            await Until(() => _grid.BusyWith("Home") is not null, "the save never started");
+            var before = _store.LoadOrCreate();
+
+            var e = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                _grid.AddRegionAsync(new NewRegion("Cove", 1020, 1000, 1, "island", "Home"), ct));
+
+            Assert.Equal("Saving Home as an OAR is still running. Try again when it finishes.", e.Message);
+            var after = _store.LoadOrCreate();
+            Assert.Equal(before.Regions, after.Regions);
+            Assert.Equal(before.Programs, after.Programs);
+            Assert.DoesNotContain("quit", _http.Commands(port));
+            Assert.False(save.IsCompleted);
+            Assert.Equal("Saving Home as an OAR", _grid.BusyWith("Home"));
+            stop.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => save.WaitAsync(TimeSpan.FromSeconds(30), ct));
+        }
+        finally { await EndAllAsync(_grid, fakes); }
+    }
+
+    [Fact]
     public async Task Change_runs_with_refuses_a_busy_target_program()
     {
         var ct = TestContext.Current.CancellationToken;

@@ -545,6 +545,8 @@ public sealed partial class GridController(
             LauncherSettings s;
             lock (_configGate) s = ReloadSettings();
             if (RegionRequestError(s, request) is { } error) throw new ArgumentException(error, nameof(request));
+            // Sharing restarts that program, which would cut off its OAR job.
+            ThrowIfBusy(request.ShareWith);
             progress?.Report(SetupProgress.CreatingRegion);
             s = LoadSettings();
             if (_robust!.Process.State != ProcessState.Running)
