@@ -52,6 +52,9 @@ public sealed partial class GridController(
     private readonly RegionLogins _logins = new();
     private readonly ILogger? _log = loggers?.CreateLogger<GridController>();
     private volatile StartFailure? _startFailure;
+    // The world name in the config last written, and in the one Robust read when this launcher started it (null: not
+    // started by this launcher, or adopted, so unknown).
+    private volatile string? _writtenGridName, _robustGridName;
     private volatile GridActivity _activity;
     private int? _regionAlertPid;
     private TaskCompletionSource<string>? _oarLoaded;
@@ -619,7 +622,8 @@ public sealed partial class GridController(
             GridStatus.ComputeLoginsEnabled(regions, held),
             $"http://{_host}:{s.RobustPublicPort}",
             _startFailure,
-            _activity);
+            _activity,
+            _robustGridName is { } started && _robust?.Process.State == ProcessState.Running && started != s.GridName);
     }
 
     /// <summary>The settings the controller last loaded (the file only on first use); never waits behind an operation.</summary>
@@ -680,8 +684,11 @@ public sealed partial class GridController(
         return s;
     }
 
-    private void WriteConfig(LauncherSettings s) =>
+    private void WriteConfig(LauncherSettings s)
+    {
         new GridConfigWriter(paths).Write(s, _modules.Cast<IIniContributor>().ToList(), _held);
+        _writtenGridName = s.GridName;
+    }
 
     /// <summary>Stages the runtime, writes the configs and checks the ports (the web port is the host's; adoptable children keep theirs).</summary>
     private async Task PrepareAsync(LauncherSettings s, CancellationToken ct)
@@ -727,8 +734,11 @@ public sealed partial class GridController(
         }
         lock (_configGate)
         {
-            stager.WriteLogConfigs(s.Programs.Select(p => p.Instance), LogLevelModule.LevelFor(s));
-            WriteConfig(s);
+            // The latest settings, not the ones this start read: a change saved while staging ran (setup's world name,
+            // which waited for the config lock) has written its config already and must not be overwritten.
+            var latest = ReloadSettings();
+            stager.WriteLogConfigs(latest.Programs.Select(p => p.Instance), LogLevelModule.LevelFor(latest));
+            WriteConfig(latest);
         }
     }
 
@@ -819,6 +829,8 @@ public sealed partial class GridController(
             EnsureMonitor(c, onlyIfMissing: true);
             return;
         }
+        // Robust reads the world name only when it starts; an adopted one may have read any.
+        if (c == _robust) _robustGridName = WillAdopt(c) ? null : _writtenGridName;
         await c.Process.StartAsync(ct);
         EnsureMonitor(c);
         if (c.Process.State != ProcessState.Running)

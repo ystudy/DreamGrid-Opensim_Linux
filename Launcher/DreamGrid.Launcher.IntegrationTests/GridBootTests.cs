@@ -302,6 +302,36 @@ public sealed class GridBootTests : IDisposable
     }
 
     [Fact]
+    public async Task A_world_named_after_Robust_started_shows_as_outdated_until_a_restart()
+    {
+        var (grid, paths, s, _) = Make();
+        var ct = TestContext.Current.CancellationToken;
+        try
+        {
+            await grid.StartAsync(ct);
+            Assert.False(grid.GetStatus().RobustOutdated);
+
+            grid.UpdateSettings(l => l with { GridName = "Renamed World" });
+            Assert.True(grid.GetStatus().RobustOutdated);
+
+            await grid.RestartComponentAsync("robust", ct);
+            Assert.False(grid.GetStatus().RobustOutdated);
+            var info = await _http.GetStringAsync($"http://127.0.0.1:{s.RobustPublicPort}/get_grid_info", ct);
+            Assert.Contains("<gridname>Renamed World</gridname>", info);
+
+            await grid.StopAllAsync(ct);
+        }
+        catch (Exception e) when (e is not Xunit.Sdk.XunitException)
+        {
+            throw new Exception(e.Message + Environment.NewLine + LogTail(paths), e);
+        }
+        finally
+        {
+            await grid.DetachAsync();
+        }
+    }
+
+    [Fact]
     public async Task Port_conflict_on_Robust_public_port_is_reported_before_anything_starts()
     {
         var (grid, paths, s, _) = Make();

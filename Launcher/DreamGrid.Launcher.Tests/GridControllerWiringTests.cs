@@ -439,6 +439,43 @@ public sealed class GridControllerWiringTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task A_world_name_saved_while_a_start_stages_is_in_the_config_it_writes()
+    {
+        // Setup's world step can land while the launcher's first start stages the runtime: that start's config must not
+        // be the settings it read before (Robust would come up with the old world name).
+        var ct = TestContext.Current.CancellationToken;
+        var s = _store.LoadOrCreate();
+        var psi = new ProcessStartInfo(FakeChildExe()) { UseShellExecute = false };
+        psi.ArgumentList.Add("--serve");
+        psi.ArgumentList.Add(FreePorts(1)[0].ToString());
+        psi.ArgumentList.Add(Path.Combine(_paths.RuntimeOpenSim, "Robust.dll"));
+        using var fake = Process.Start(psi)!;
+        try
+        {
+            _paths.EnsureCreated();
+            PidFile.Write(Path.Combine(_paths.Pids, "robust.pid"), fake.Id);
+            _http.OnCommand = port =>
+            {
+                if (port != s.RobustConsolePort) return;
+                // Mid-start, after the start read the settings: the person names the world.
+                _grid.UpdateSettings(l => l with { GridName = "Named Meanwhile" });
+                fake.Kill();
+            };
+            File.SetLastWriteTimeUtc(Path.Combine(_paths.OpenSimProgram, "OpenSim.dll"), DateTime.UtcNow.AddHours(1));
+
+            var e = await Record.ExceptionAsync(() => _grid.StartAsync(ct));
+
+            Assert.NotNull(e); // MariaDB cannot start in this rig
+            var ini = File.ReadAllText(Path.Combine(_paths.RuntimeOpenSim, "Robust.HG.ini"));
+            Assert.Contains("Named Meanwhile", ini);
+        }
+        finally
+        {
+            if (!fake.HasExited) fake.Kill();
+        }
+    }
+
     /// <summary>
     /// A stand-in for the region program (default "Welcome") an earlier launcher run left behind: its command line names the staged
     /// OpenSim.dll and its PID file is written after it started, so the controller would adopt it.

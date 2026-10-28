@@ -502,6 +502,42 @@ public sealed class SetupFlowTests
     }
 
     [Fact]
+    public async Task Region_step_restarts_a_grid_service_running_with_an_old_world_name()
+    {
+        // The world was named while the first start was bringing Robust up: Robust still says the old name.
+        await using var f = AfterOwner();
+        var running = new ComponentStatus("database", ProcessState.Running, null, null, null, null);
+        f.Grid.Status = new GridStatus(running, running with { Name = "robust" }, [], [], false, "http://127.0.0.1:8002",
+            RobustOutdated: true);
+        using var client = await SignedInClientAsync(f);
+
+        (await PostFormAsync(client, "/setup/region", new() { ["RegionName"] = "Welcome", ["Content"] = "island" })).Dispose();
+
+        var done = await WaitForProgressAsync(client, p => !p.GetProperty("running").GetBoolean());
+        Assert.Equal("Ready", Str(done, "stage"));
+        var calls = f.Grid.Snapshot();
+        var restart = Array.IndexOf(calls, "Restart robust");
+        var region = Array.FindIndex(calls, c => c.StartsWith("CreateRegion", StringComparison.Ordinal));
+        Assert.True(restart >= 0 && restart < region, string.Join(", ", calls));
+        Assert.DoesNotContain("Start database", calls);
+    }
+
+    [Fact]
+    public async Task Region_step_leaves_a_current_grid_service_running()
+    {
+        await using var f = AfterOwner();
+        var running = new ComponentStatus("database", ProcessState.Running, null, null, null, null);
+        f.Grid.Status = new GridStatus(running, running with { Name = "robust" }, [], [], false, "http://127.0.0.1:8002");
+        using var client = await SignedInClientAsync(f);
+
+        (await PostFormAsync(client, "/setup/region", new() { ["RegionName"] = "Welcome", ["Content"] = "island" })).Dispose();
+
+        var done = await WaitForProgressAsync(client, p => !p.GetProperty("running").GetBoolean());
+        Assert.Equal("Ready", Str(done, "stage"));
+        Assert.DoesNotContain(f.Grid.Snapshot(), c => c.EndsWith(" robust", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Progress_api_is_not_served_anonymously_after_the_owner_exists()
     {
         await using var f = AfterOwner();
