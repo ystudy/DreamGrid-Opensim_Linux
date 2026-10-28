@@ -249,6 +249,88 @@ public sealed partial class LauncherEndToEndTests : IDisposable
         });
     }
 
+    // ---- the Regions page (plan 4b) ------------------------------------------------------------------
+
+    /// <summary>Provisions the owner and "Welcome" in-process, detaches, then starts the launcher, which adopts the grid, and signs in.</summary>
+    private async Task<(LauncherProcess Launcher, WebSession Web)> LauncherWithSignedInAdminAsync(LauncherPaths paths, SettingsStore store, LauncherSettings s)
+    {
+        var grid = NewController(paths, store, NewRobustClient(_http, s));
+        try
+        {
+            await grid.StartAsync(Ct);
+            await grid.CreateOwnerAsync("Test", "Owner", Password, null, Ct);
+            using (new AlertListener(s.WebPort, grid.OnRegionAlert))
+                await grid.CreateRegionAsync("Welcome", "island", Ct);
+        }
+        finally { await grid.DetachAsync(); }
+
+        var launcher = StartLauncher(paths);
+        await WaitForLogAsync(launcher, GridRunning);
+        var web = new WebSession(s.WebPort);
+        var page = await web.FollowAsync("/login");
+        await web.SubmitAsync(page, new() { ["Name"] = "Test Owner", ["Password"] = Password });
+        return (launcher, web);
+    }
+
+    [Fact]
+    public async Task Website_adds_a_second_region_and_it_accepts_logins()
+    {
+        var paths = RequirePaths(_root);
+        var store = new SettingsStore(paths.SettingsFile);
+        var s = SeedSettings(store);
+
+        await RunWithCleanupAsync(paths, store, async () =>
+        {
+            var (launcher, web) = await LauncherWithSignedInAdminAsync(paths, store, s);
+            using var _ = web;
+
+            var page = await web.FollowAsync("/regions/add");
+            Assert.Equal("/regions/add", page.Path);
+            page = await web.SubmitAsync(page, new()
+            {
+                ["Name"] = "Beach", ["Type"] = "beach", ["X"] = "1001", ["Y"] = "1000", ["Size"] = "1", ["Group"] = "own",
+            });
+            Assert.Equal("/regions/add?working=1", page.PathAndQuery);
+
+            var progress = "";
+            await WaitForAsync(launcher, async () =>
+            {
+                progress = await web.GetStringAsync("/api/regions/progress");
+                using var doc = JsonDocument.Parse(progress);
+                if (doc.RootElement.GetProperty("error").GetString() is { } error)
+                    Assert.Fail("Adding the region failed: " + error + Environment.NewLine + progress);
+                return !doc.RootElement.GetProperty("running").GetBoolean();
+            }, "the add-region job to finish", () => "last progress: " + progress);
+
+            using var list = JsonDocument.Parse(await web.GetStringAsync("/api/regions"));
+            var beach = list.RootElement.GetProperty("regions").EnumerateArray().Single(r => r.GetProperty("name").GetString() == "Beach");
+            Assert.Equal("running", beach.GetProperty("state").GetString());
+
+            var udp = RegionModel.FindByName(store.LoadOrCreate(), "Beach")!.UdpPort;
+            var login = await XmlRpcLogin.LoginAsync(_http, $"http://127.0.0.1:{s.RobustPublicPort}", "Test", "Owner", Password, "uri:Beach&128&128&25", Ct);
+            Assert.True(login.Ok, "login refused: " + login.Message);
+            Assert.Equal(udp, login.SimPort);
+        });
+    }
+
+    [Fact]
+    public async Task Map_tile_proxy_answers_for_a_running_grid()
+    {
+        var paths = RequirePaths(_root);
+        var store = new SettingsStore(paths.SettingsFile);
+        var s = SeedSettings(store);
+
+        await RunWithCleanupAsync(paths, store, async () =>
+        {
+            var (_, web) = await LauncherWithSignedInAdminAsync(paths, store, s);
+            using var __ = web;
+
+            var (status, type) = await web.GetStatusAsync("/api/map/tile/1/1000/1000");
+            Assert.True(status is System.Net.HttpStatusCode.OK or System.Net.HttpStatusCode.NotFound, $"the tile answered {(int)status}");
+            if (status == System.Net.HttpStatusCode.OK) Assert.StartsWith("image/", type);
+        });
+    }
+
     // ---- helpers ------------------------------------------------------------------------------------
 
     /// <summary>

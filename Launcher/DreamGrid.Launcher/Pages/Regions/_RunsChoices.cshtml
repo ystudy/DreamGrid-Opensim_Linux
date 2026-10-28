@@ -1,0 +1,64 @@
+@model DreamGrid.Launcher.Pages.Regions.RunsChoices
+@using DreamGrid.Launcher.Core.Grid
+@using DreamGrid.Launcher.Pages.Regions
+@{
+    string Error(string key) => ViewData.ModelState.TryGetValue(key, out var e) && e.Errors.Count > 0 ? e.Errors[0].ErrorMessage : "";
+
+    // The "will restart" box of one choice, when choosing it restarts other regions.
+    void Confirm(string value)
+    {
+        var names = Model.Restarts(value);
+        if (names.Count == 0) return;
+        <label class="confirm form-check-label d-block mt-1">
+            <input class="form-check-input" type="checkbox" name="Confirm" value="@value" checked="@Model.Confirmed.Contains(value)">
+            I understand @RegionAdvice.Join(names) will restart
+        </label>
+    }
+}
+<fieldset class="mt-3 runs-choices">
+    <legend class="fs-6 fw-semibold">How it runs</legend>
+    @if (Model.Own is { } own)
+    {
+        <div class="form-check mb-2" data-group="@RunsChoices.OwnValue">
+            <label class="choice form-check-label">
+                <input class="form-check-input" type="radio" name="Group" value="@RunsChoices.OwnValue" checked="@(Model.Chosen == RunsChoices.OwnValue)">
+                <span class="group-label">Runs on its own</span>
+            </label>
+            <span class="form-text d-block m-0">@own.Text</span>
+            @{ Confirm(RunsChoices.OwnValue); }
+        </div>
+    }
+    @foreach (var g in Model.Groups)
+    {
+        <div class="form-check mb-2" data-group="@g.Value">
+            <label class="choice form-check-label">
+                <input class="form-check-input" type="radio" name="Group" value="@g.Value" checked="@(Model.Chosen == g.Value)">
+                <span class="group-label">@g.Label</span>
+            </label>
+            <span class="form-text d-block m-0">@Model.ShareText(g)</span>
+            @if (Model.Note?.Invoke(g) is { } note)
+            {
+                <span class="form-text d-block m-0 group-note">@note</span>
+            }
+            @{ Confirm(g.Value); }
+        </div>
+    }
+    <span class="field-error text-danger small d-block">@Error("Group")</span>
+    <span class="field-error text-danger small d-block">@Error("Confirm")</span>
+    <script>
+    (function () {
+        // Only the chosen choice's "will restart" box matters.
+        var set = document.currentScript.parentElement;
+        function boxes() {
+            var chosen = set.querySelector("input[name=Group]:checked");
+            set.querySelectorAll("[data-group]").forEach(function (g) {
+                var box = g.querySelector(".confirm");
+                if (box) box.hidden = !chosen || g.getAttribute("data-group") !== chosen.value;
+            });
+        }
+        set.querySelectorAll("input[name=Group]").forEach(function (r) { r.addEventListener("change", boxes); });
+        boxes();
+    })();
+    </script>
+</fieldset>
+

@@ -41,6 +41,23 @@ public interface IGridController
     /// <summary>A region's power menu action; other regions in its program may restart (they are logged).</summary>
     Task RegionPowerAsync(Guid regionId, RegionPower action, CancellationToken ct);
 
+    /// <summary>
+    /// Moves a region to (<paramref name="x"/>, <paramref name="y"/>) and saves it. Throws <see cref="ArgumentException"/> with the
+    /// reason in plain words when the spot is off the map or taken, and <see cref="InvalidOperationException"/> for a missing or
+    /// deleted region. A running program that loads the region restarts (the others in it are logged); otherwise the new spot
+    /// applies at the next start.
+    /// </summary>
+    Task MoveRegionAsync(Guid regionId, int x, int y, CancellationToken ct);
+
+    /// <summary>
+    /// Changes how a region runs, at once: with the program named <paramref name="shareWith"/>, or in a new program of its
+    /// own when it is null (with the old program's physics). Throws <see cref="ArgumentException"/> for an unknown group,
+    /// its own group, or "on its own" when it already is; <see cref="InvalidOperationException"/> for a missing or deleted
+    /// region. The old program then stops when no loadable region is left in it (and is removed once it has no regions),
+    /// or restarts without the region; the new one starts, or restarts, to load it. The region keeps its UDP port.
+    /// </summary>
+    Task ChangeRunsWithAsync(Guid regionId, string? shareWith, CancellationToken ct);
+
     /// <summary>The controller's cached settings (what the grid was configured from); the host reads these per request.</summary>
     LauncherSettings CurrentSettings();
 

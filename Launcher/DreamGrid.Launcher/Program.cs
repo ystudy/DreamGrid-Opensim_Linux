@@ -131,14 +131,20 @@ builder.Services.AddRazorPages(o =>
 // The dashboard's script sends the token in this header to /api/grid/*.
 builder.Services.AddAntiforgery(o => o.HeaderName = "RequestVerificationToken");
 builder.Services.AddGrid(paths, store);
+// Robust's map tiles, fetched on the browser's behalf (the browser never reaches Robust's port).
+builder.Services.AddHttpClient(RegionsApi.RobustMapClient, c => c.Timeout = TimeSpan.FromSeconds(5));
 builder.Services.AddSingleton<LogReader>();
 builder.Services.AddSingleton<LoginThrottle>();
 builder.Services.AddSingleton<LegacyCommandApi>();
 builder.Services.AddSingleton<IOnlineUsers>(sp => new OnlineUsers(sp.GetRequiredService<Func<LauncherSettings>>(),
     sp.GetRequiredService<ILogger<OnlineUsers>>()));
 builder.Services.AddSingleton<GridActions>();
+builder.Services.AddSingleton<RegionActions>();
 builder.Services.AddSingleton<SetupProgress>();
 builder.Services.AddSingleton<SetupRunner>();
+builder.Services.AddSingleton<RegionJob>();
+// The add-region form's memory advice; tests swap it.
+builder.Services.AddSingleton<Func<long?>>(_ => SystemMemory.AvailableBytes);
 builder.Services.AddHostedService<GridHostedService>();
 // Registered after GridHostedService, so it stops first: running work is awaited before the controller detaches.
 builder.Services.AddSingleton<BackgroundWork>();
@@ -151,6 +157,7 @@ app.UseMiddleware<SetupGate>();
 app.UseAuthorization();
 LegacyEndpoints.Map(app);
 LogsApi.Map(app);
+RegionsApi.Map(app);
 StatusApi.Map(app);
 SetupApi.Map(app);
 app.MapRazorPages();

@@ -1,0 +1,93 @@
+@page "/regions"
+@model DreamGrid.Launcher.Pages.Regions.IndexModel
+@{
+    ViewData["Title"] = "Regions";
+}
+<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+    <h1 class="mb-0">Regions</h1>
+</div>
+
+<noscript><p class="alert alert-info">The map needs JavaScript. You can still add a region by its map position below.</p></noscript>
+<p><a class="btn btn-primary" href="/regions/add">Add a region</a></p>
+
+<div class="row g-3 mb-3">
+    <div class="col-lg-2">
+        <section class="card card-body shadow-sm h-100">
+            <h2>Region types</h2>
+            <ul id="region-types" class="region-types list-unstyled mb-0">
+                @foreach (var t in Model.Types)
+                {
+                    <li data-type="@t.Id" class="region-type">
+                        <span class="type-swatch type-@t.Id"><img src="/regions/types/@(t.Id).png" alt="" onerror="this.remove()"></span>
+                        <span class="type-name fw-semibold">@t.Name</span>
+                        <span class="type-description form-text d-block m-0">@t.Description</span>
+                    </li>
+                }
+            </ul>
+        </section>
+    </div>
+    @* The map takes the panel's room until map.js opens a region's panel. *@
+    <div id="map-column" class="col-lg-10">
+        <section class="card card-body shadow-sm h-100">
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                <button type="button" id="back-to-mine" class="btn btn-sm btn-outline-secondary" hidden>Back to my regions</button>
+                <span class="ms-auto btn-group btn-group-sm">
+                    <button type="button" id="zoom-out" class="btn btn-outline-secondary" aria-label="Zoom out" hidden>&minus;</button>
+                    <button type="button" id="zoom-in" class="btn btn-outline-secondary" aria-label="Zoom in" hidden>+</button>
+                </span>
+            </div>
+            <div id="map" class="region-map"
+                 data-tiles="/api/map/tile" data-regions="/api/regions" data-placement="/api/regions/placement"
+                 data-add="/regions/add" data-panel="/regions/region/"
+                 data-selected="@Model.Selected"
+                 data-move="@Model.Moving?.Uuid" data-move-name="@Model.Moving?.Name" data-move-size="@Model.Moving?.Size"></div>
+            <p id="placement-text" class="form-text mb-0" role="status"></p>
+        </section>
+    </div>
+    <div id="panel-column" class="col-lg-3" hidden>
+        @* On phones the panel opens as an offcanvas over the map; from lg up it is a column. *@
+        <div id="region-panel" class="offcanvas-lg offcanvas-bottom region-panel" tabindex="-1" aria-label="Region">
+            <div class="offcanvas-header d-lg-none">
+                <h2 class="offcanvas-title">Region</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#region-panel" aria-label="Close"></button>
+            </div>
+            <div class="offcanvas-body">
+                <section class="card card-body shadow-sm w-100 position-relative">
+                    <button type="button" id="close-panel" class="btn-close d-none d-lg-block position-absolute top-0 end-0 m-2" aria-label="Close"></button>
+                    <div class="region-panel-body"></div>
+                </section>
+            </div>
+        </div>
+    </div>
+</div>
+
+<section class="card card-body shadow-sm mb-3">
+    <h2>Your regions</h2>
+    @if (Model.Rows.Count == 0)
+    {
+        <p class="text-body-secondary mb-0">No regions yet.</p>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table id="region-list" class="table align-middle mb-0">
+                <thead><tr><th>Name</th><th>State</th><th>Runs</th><th>Map position</th></tr></thead>
+                <tbody>
+                @foreach (var r in Model.Rows)
+                {
+                    <tr class="@(r.Id == Model.Selected ? "table-active" : "")" data-region="@r.Id">
+                        <td><a class="fw-semibold" href="/regions/region/@r.Id">@r.Name</a></td>
+                        <td><span class="badge state-@r.StateText.ToLowerInvariant()">@r.StateText</span></td>
+                        <td>@r.RunsWithText</td>
+                        <td>@r.X, @r.Y@(r.Size > 1 ? $" ({r.Size}×{r.Size})" : "")</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@section Scripts {
+<script src="/js/map.js"></script>
+}

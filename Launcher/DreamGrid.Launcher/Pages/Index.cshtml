@@ -21,7 +21,14 @@
         @foreach (var r in g.Regions)
         {
             <li class="list-group-item px-0">
-                <span class="component-label">@r.Name</span>
+                @if (r.Id is { } rid)
+                {
+                    <a class="component-label" href="/regions?region=@rid">@r.Name</a>
+                }
+                else
+                {
+                    <span class="component-label">@r.Name</span>
+                }
                 <span class="badge state-@r.State.ToLowerInvariant()">@r.StateText</span>
                 @if (r.RunsWith is { Count: > 0 } others)
                 {
@@ -135,7 +142,6 @@
         <li>Backups</li>
         <li>Visitors from the internet</li>
         <li>Hypergrid</li>
-        <li>More regions</li>
         <li>SmartStart</li>
         <li>Voice</li>
         <li>Birds</li>
@@ -180,7 +186,8 @@
             li.className = "list-group-item px-0";
             spans.forEach(function (p) {
                 if (!p[1]) return;
-                var span = document.createElement("span");
+                var span = document.createElement(p[2] ? "a" : "span");
+                if (p[2]) span.href = p[2];
                 span.className = p[0];
                 span.textContent = p[1];
                 li.appendChild(span);
@@ -193,7 +200,7 @@
         });
         s.grid.regions.forEach(function (r) {
             var others = r.runsWith && r.runsWith.length ? "runs with " + r.runsWith.join(", ") : "";
-            row([["component-label", r.name], ["badge state-" + r.state.toLowerCase(), r.stateText], ["text-body-secondary", others]]);
+            row([["component-label", r.name, r.id ? "/regions?region=" + encodeURIComponent(r.id) : null], ["badge state-" + r.state.toLowerCase(), r.stateText], ["text-body-secondary", others]]);
         });
 
         var online = document.getElementById("online");

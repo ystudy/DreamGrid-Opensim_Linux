@@ -1,0 +1,24 @@
+@page "/regions/region/{id:guid}/runs"
+@model DreamGrid.Launcher.Pages.Regions.RunsModel
+@using DreamGrid.Launcher.Core.Grid
+@{
+    ViewData["Title"] = "How " + Model.Name + " runs";
+}
+<h1>How @Model.Name runs</h1>
+
+<p class="runs-now">@(Model.Others.Count == 0 ? $"{Model.Name} runs on its own." : $"{Model.Name} runs with {RegionAdvice.Join(Model.Others)}.")</p>
+
+@if (Model.HasChoices)
+{
+    <form method="post">
+        <partial name="_RunsChoices" model="Model.Choices" />
+        <p class="form-text">The change applies at once.</p>
+        <button type="submit" class="btn btn-primary">Change how it runs</button>
+        <a class="btn btn-outline-secondary" href="/regions/region/@Model.Id">Cancel</a>
+    </form>
+}
+else
+{
+    <p>There are no other regions to run with yet.</p>
+    <a class="btn btn-outline-secondary" href="/regions/region/@Model.Id">Back</a>
+}

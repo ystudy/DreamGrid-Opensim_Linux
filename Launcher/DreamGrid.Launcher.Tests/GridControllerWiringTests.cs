@@ -36,7 +36,8 @@ public sealed class GridControllerWiringTests : IDisposable
         new Core.Runtime.RuntimeStager(_paths).StageIfNeeded();
 
         _store = new SettingsStore(_paths.SettingsFile);
-        var p = FreePorts(7);
+        var p = FreePorts(9);
+        (_secondPort, _secondConsole) = (p[7], p[8]);
         _store.Save(_store.LoadOrCreate() with
         {
             Hostname = "127.0.0.1",
@@ -75,6 +76,9 @@ public sealed class GridControllerWiringTests : IDisposable
             File.Copy(Path.Combine(bin, "config-include", "Proto", "Robust", f),
                 Path.Combine(program, "config-include", "Proto", "Robust", f));
     }
+
+    /// <summary>The second program's ports, free like every other port (a fixed offset from the first is often taken).</summary>
+    private readonly int _secondPort, _secondConsole;
 
     private static int[] FreePorts(int count)
     {
@@ -435,11 +439,48 @@ public sealed class GridControllerWiringTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task A_world_name_saved_while_a_start_stages_is_in_the_config_it_writes()
+    {
+        // Setup's world step can land while the launcher's first start stages the runtime: that start's config must not
+        // be the settings it read before (Robust would come up with the old world name).
+        var ct = TestContext.Current.CancellationToken;
+        var s = _store.LoadOrCreate();
+        var psi = new ProcessStartInfo(FakeChildExe()) { UseShellExecute = false };
+        psi.ArgumentList.Add("--serve");
+        psi.ArgumentList.Add(FreePorts(1)[0].ToString());
+        psi.ArgumentList.Add(Path.Combine(_paths.RuntimeOpenSim, "Robust.dll"));
+        using var fake = Process.Start(psi)!;
+        try
+        {
+            _paths.EnsureCreated();
+            PidFile.Write(Path.Combine(_paths.Pids, "robust.pid"), fake.Id);
+            _http.OnCommand = port =>
+            {
+                if (port != s.RobustConsolePort) return;
+                // Mid-start, after the start read the settings: the person names the world.
+                _grid.UpdateSettings(l => l with { GridName = "Named Meanwhile" });
+                fake.Kill();
+            };
+            File.SetLastWriteTimeUtc(Path.Combine(_paths.OpenSimProgram, "OpenSim.dll"), DateTime.UtcNow.AddHours(1));
+
+            var e = await Record.ExceptionAsync(() => _grid.StartAsync(ct));
+
+            Assert.NotNull(e); // MariaDB cannot start in this rig
+            var ini = File.ReadAllText(Path.Combine(_paths.RuntimeOpenSim, "Robust.HG.ini"));
+            Assert.Contains("Named Meanwhile", ini);
+        }
+        finally
+        {
+            if (!fake.HasExited) fake.Kill();
+        }
+    }
+
     /// <summary>
-    /// A stand-in for the region "Welcome" an earlier launcher run left behind: its command line names the staged
+    /// A stand-in for the region program (default "Welcome") an earlier launcher run left behind: its command line names the staged
     /// OpenSim.dll and its PID file is written after it started, so the controller would adopt it.
     /// </summary>
-    private Process StartLeftoverRegion()
+    private Process StartLeftoverRegion(string instance = "Welcome")
     {
         var psi = new ProcessStartInfo(FakeChildExe()) { UseShellExecute = false };
         psi.ArgumentList.Add("--serve");
@@ -447,7 +488,7 @@ public sealed class GridControllerWiringTests : IDisposable
         psi.ArgumentList.Add(Path.Combine(_paths.RuntimeOpenSim, "OpenSim.dll"));
         var fake = Process.Start(psi)!;
         _paths.EnsureCreated();
-        PidFile.Write(Path.Combine(_paths.Pids, "Welcome.pid"), fake.Id);
+        PidFile.Write(Path.Combine(_paths.Pids, instance + ".pid"), fake.Id);
         return fake;
     }
 
@@ -457,6 +498,259 @@ public sealed class GridControllerWiringTests : IDisposable
         await _grid.DetachAsync();
         if (!fake.HasExited) fake.Kill();
         fake.Dispose();
+    }
+
+    private static readonly Guid Beach = Guid.Parse("50000000-0000-0000-0000-000000000002");
+
+    /// <summary>Welcome (2x2 at 1000, 1000) and Beach (1x1 at 1010, 1000), each in a program of its own.</summary>
+    private Guid TwoRegions(bool created = true)
+    {
+        var s = _store.LoadOrCreate();
+        var welcome = RegionModel.First(s)?.Uuid ?? Guid.NewGuid();
+        _store.Save(s with
+        {
+            Programs = [new ProgramSettings("Welcome", s.RegionPort, s.RegionConsolePort), new ProgramSettings("Beach", _secondPort, _secondConsole)],
+            Regions =
+            [
+                new RegionSettings("Welcome", "Welcome", welcome, Size: 2, UdpPort: s.RegionPort),
+                new RegionSettings("Beach", "Beach", Beach, X: 1010, UdpPort: _secondPort),
+            ],
+            Setup = s.Setup with { RegionCreated = created },
+        });
+        return welcome;
+    }
+
+    [Fact]
+    public async Task Move_saves_spot_and_restarts_running_program()
+    {
+        var id = TwoRegions(created: false);
+        var regionPort = _store.LoadOrCreate().RegionConsolePort;
+        var fake = StartLeftoverRegion();
+        try
+        {
+            Assert.IsNotType<PortConflictException>(await Record.ExceptionAsync(() => _grid.StartAsync(TestContext.Current.CancellationToken))); // MariaDB cannot start; the region is adopted
+            Assert.Equal(ProcessState.Running, _grid.GetStatus().Programs.Single(p => p.Instance == "Welcome").Process.State);
+            _http.OnCommand = port =>
+            {
+                if (port == regionPort && _http.Commands(port).Contains("quit")) fake.Kill(); // what the region does on "quit"
+            };
+
+            // Overlapping its own old square is fine. The restart itself can't finish here (the stand-in OpenSim is one byte).
+            Assert.IsNotType<PortConflictException>(await Record.ExceptionAsync(() => _grid.MoveRegionAsync(id, 1001, 1000, TestContext.Current.CancellationToken)));
+
+            var saved = RegionModel.Find(_store.LoadOrCreate(), id)!;
+            Assert.Equal((1001, 1000), (saved.X, saved.Y));
+            Assert.Contains("quit", _http.Commands(regionPort)); // the running program was stopped to start again
+        }
+        finally { await EndLeftoverRegionAsync(fake); }
+    }
+
+    [Fact]
+    public async Task Move_of_stopped_region_restarts_nothing()
+    {
+        var id = TwoRegions();
+
+        await _grid.MoveRegionAsync(id, 2000, 3000, TestContext.Current.CancellationToken);
+
+        var saved = RegionModel.Find(_store.LoadOrCreate(), id)!;
+        Assert.Equal((2000, 3000), (saved.X, saved.Y));
+        Assert.Equal((2000, 3000), (RegionModel.Find(_grid.CurrentSettings(), id)!.X, RegionModel.Find(_grid.CurrentSettings(), id)!.Y));
+        Assert.Empty(_http.CommandPorts);
+        Assert.All(_grid.GetStatus().Programs, p => Assert.Equal(ProcessState.Stopped, p.Process.State));
+    }
+
+    [Fact]
+    public async Task Move_onto_another_region_is_refused()
+    {
+        var id = TwoRegions();
+
+        var taken = await Assert.ThrowsAsync<ArgumentException>(() => _grid.MoveRegionAsync(id, 1009, 1000, TestContext.Current.CancellationToken));
+        var off = await Assert.ThrowsAsync<ArgumentException>(() => _grid.MoveRegionAsync(id, 65535, 0, TestContext.Current.CancellationToken));
+
+        Assert.Contains("That spot is taken by Beach.", taken.Message);
+        Assert.Contains("That spot is off the map.", off.Message);
+        var saved = RegionModel.Find(_store.LoadOrCreate(), id)!;
+        Assert.Equal((1000, 1000), (saved.X, saved.Y));
+    }
+
+    [Fact]
+    public async Task Move_next_to_itself_is_allowed()
+    {
+        var id = TwoRegions();
+
+        await _grid.MoveRegionAsync(id, 1001, 1001, TestContext.Current.CancellationToken); // overlaps its own old square
+
+        var saved = RegionModel.Find(_store.LoadOrCreate(), id)!;
+        Assert.Equal((1001, 1001), (saved.X, saved.Y));
+    }
+
+    [Fact]
+    public async Task Move_of_a_deleted_region_throws()
+    {
+        var id = TwoRegions();
+        _grid.UpdateSettings(s => s with { Regions = s.Regions.Select(r => r.Uuid == id ? r with { DeletedAt = DateTimeOffset.UtcNow } : r).ToList() });
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _grid.MoveRegionAsync(id, 2000, 2000, TestContext.Current.CancellationToken));
+    }
+
+    private static readonly Guid Isle = Guid.Parse("50000000-0000-0000-0000-000000000003");
+
+    /// <summary>
+    /// Welcome (at 1000, 1000) and Isle (at 1010, 1000): in a program each, or both in Welcome's when
+    /// <paramref name="shared"/>. Isle's UDP port is <c>_secondPort</c> either way.
+    /// </summary>
+    private void WelcomeAndIsle(bool shared, bool isleParked = false, string physics = "ubODE")
+    {
+        var s = _store.LoadOrCreate();
+        var welcome = new ProgramSettings("Welcome", s.RegionPort, s.RegionConsolePort, physics);
+        _store.Save(s with
+        {
+            Programs = shared ? [welcome] : [welcome, new ProgramSettings("Isle", _secondPort, _secondConsole)],
+            Regions =
+            [
+                new RegionSettings("Welcome", "Welcome", Guid.NewGuid(), UdpPort: s.RegionPort),
+                new RegionSettings(shared ? "Welcome" : "Isle", "Isle", Isle, X: 1010, UdpPort: _secondPort, Parked: isleParked),
+            ],
+            Setup = s.Setup with { RegionCreated = false }, // the leftover stand-ins are adopted
+        });
+    }
+
+    [Fact]
+    public async Task Share_moves_region_and_stops_emptied_program()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        WelcomeAndIsle(shared: false);
+        var s = _store.LoadOrCreate();
+        var (welcomeConsole, isleConsole) = (s.RegionConsolePort, _secondConsole);
+        var welcome = StartLeftoverRegion("Welcome");
+        var isle = StartLeftoverRegion("Isle");
+        try
+        {
+            Assert.IsNotType<PortConflictException>(await Record.ExceptionAsync(() => _grid.StartAsync(ct))); // MariaDB cannot start; both programs are adopted
+            Assert.All(_grid.GetStatus().Programs, p => Assert.Equal(ProcessState.Running, p.Process.State));
+            _http.OnCommand = port =>
+            {
+                // What a region program does on "quit".
+                if (port == welcomeConsole && _http.Commands(port).Contains("quit") && !welcome.HasExited) welcome.Kill();
+                if (port == isleConsole && _http.Commands(port).Contains("quit") && !isle.HasExited) isle.Kill();
+            };
+
+            // Welcome's restart can't finish here (the stand-in OpenSim is one byte).
+            Assert.IsNotType<PortConflictException>(await Record.ExceptionAsync(() => _grid.ChangeRunsWithAsync(Isle, "Welcome", ct)));
+
+            var saved = _store.LoadOrCreate();
+            Assert.Equal("Welcome", RegionModel.Find(saved, Isle)!.Instance);
+            Assert.Equal(_secondPort, RegionModel.Find(saved, Isle)!.UdpPort);
+            Assert.DoesNotContain(saved.Programs, p => p.Instance == "Isle");
+            Assert.Contains("quit", _http.Commands(isleConsole)); // Isle's emptied program stopped
+            Assert.Contains("quit", _http.Commands(welcomeConsole)); // Welcome's restarted to load Isle
+            Assert.DoesNotContain(_grid.GetStatus().Programs, p => p.Instance == "Isle");
+        }
+        finally
+        {
+            await EndLeftoverRegionAsync(welcome);
+            if (!isle.HasExited) isle.Kill();
+            isle.Dispose();
+        }
+    }
+
+    [Fact]
+    public async Task Share_of_stopped_region_restarts_nothing()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        WelcomeAndIsle(shared: false);
+        var welcomeConsole = _store.LoadOrCreate().RegionConsolePort;
+        var welcome = StartLeftoverRegion("Welcome"); // Welcome runs; Isle's program does not
+        try
+        {
+            Assert.IsNotType<PortConflictException>(await Record.ExceptionAsync(() => _grid.StartAsync(ct))); // MariaDB cannot start; Welcome is adopted
+            Assert.Equal(ProcessState.Running, _grid.GetStatus().Programs.Single(p => p.Instance == "Welcome").Process.State);
+
+            await _grid.ChangeRunsWithAsync(Isle, "Welcome", ct);
+
+            var saved = _store.LoadOrCreate();
+            Assert.Equal("Welcome", RegionModel.Find(saved, Isle)!.Instance);
+            Assert.DoesNotContain(saved.Programs, p => p.Instance == "Isle");
+            Assert.DoesNotContain("quit", _http.Commands(welcomeConsole)); // Isle loads at Welcome's next start
+            Assert.Equal(ProcessState.Running, _grid.GetStatus().Programs.Single(p => p.Instance == "Welcome").Process.State);
+        }
+        finally { await EndLeftoverRegionAsync(welcome); }
+    }
+
+    [Fact]
+    public async Task Own_makes_a_new_program_keeping_udp_port()
+    {
+        WelcomeAndIsle(shared: true, physics: "BulletSim");
+        var before = _store.LoadOrCreate();
+
+        await _grid.ChangeRunsWithAsync(Isle, null, TestContext.Current.CancellationToken);
+
+        var saved = _store.LoadOrCreate();
+        var region = RegionModel.Find(saved, Isle)!;
+        Assert.Equal("Isle", region.Instance);
+        Assert.Equal(_secondPort, region.UdpPort);
+        var program = Assert.Single(saved.Programs, p => p.Instance == "Isle");
+        Assert.Equal("BulletSim", program.Physics); // the old group's, so nothing about the region changes
+        var taken = PortAllocator.Taken(before);
+        Assert.DoesNotContain(program.HttpPort, taken);
+        Assert.DoesNotContain(program.ConsolePort, taken);
+        Assert.NotEqual(program.HttpPort, program.ConsolePort);
+        Assert.Contains(saved.Programs, p => p.Instance == "Welcome");
+        Assert.True(File.Exists(Path.Combine(_paths.RegionDefinitionDir("Isle"), "Isle.ini")));
+        Assert.True(File.Exists(Path.Combine(_paths.RuntimeOpenSim, "dreamgrid-region-Isle.log4net.xml")));
+        Assert.Empty(_http.CommandPorts); // nothing was running: nothing restarts or starts
+        Assert.Contains(_grid.GetStatus().Programs, p => p.Instance == "Isle");
+    }
+
+    [Fact]
+    public async Task Own_of_parked_region_starts_nothing()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        WelcomeAndIsle(shared: true, isleParked: true);
+        var welcomeConsole = _store.LoadOrCreate().RegionConsolePort;
+        var welcome = StartLeftoverRegion("Welcome");
+        try
+        {
+            Assert.IsNotType<PortConflictException>(await Record.ExceptionAsync(() => _grid.StartAsync(ct))); // MariaDB cannot start; Welcome is adopted
+            Assert.Equal(ProcessState.Running, _grid.GetStatus().Programs.Single().Process.State);
+
+            await _grid.ChangeRunsWithAsync(Isle, null, ct);
+
+            Assert.Equal("Isle", RegionModel.Find(_store.LoadOrCreate(), Isle)!.Instance);
+            Assert.DoesNotContain("quit", _http.Commands(welcomeConsole)); // Welcome didn't load Isle: it keeps running
+            var programs = _grid.GetStatus().Programs;
+            Assert.Equal(ProcessState.Running, programs.Single(p => p.Instance == "Welcome").Process.State);
+            Assert.Equal(ProcessState.Stopped, programs.Single(p => p.Instance == "Isle").Process.State);
+        }
+        finally { await EndLeftoverRegionAsync(welcome); }
+    }
+
+    [Fact]
+    public async Task Share_with_own_group_is_refused()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        WelcomeAndIsle(shared: false);
+        var before = _store.LoadOrCreate();
+
+        var own = await Assert.ThrowsAsync<ArgumentException>(() => _grid.ChangeRunsWithAsync(Isle, "Isle", ct));
+        var unknown = await Assert.ThrowsAsync<ArgumentException>(() => _grid.ChangeRunsWithAsync(Isle, "Nowhere", ct));
+        var alone = await Assert.ThrowsAsync<ArgumentException>(() => _grid.ChangeRunsWithAsync(Isle, null, ct));
+
+        Assert.Contains("It already runs with them.", own.Message);
+        Assert.Contains("There is no such group of regions.", unknown.Message);
+        Assert.Contains("It already runs on its own.", alone.Message);
+        Assert.Equal(before.Programs, _store.LoadOrCreate().Programs);
+        Assert.Equal(before.Regions, _store.LoadOrCreate().Regions);
+        Assert.Empty(_http.CommandPorts);
+    }
+
+    [Fact]
+    public async Task Change_of_a_deleted_region_throws()
+    {
+        WelcomeAndIsle(shared: true);
+        _grid.UpdateSettings(s => s with { Regions = s.Regions.Select(r => r.Uuid == Isle ? r with { DeletedAt = DateTimeOffset.UtcNow } : r).ToList() });
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _grid.ChangeRunsWithAsync(Isle, null, TestContext.Current.CancellationToken));
     }
 
     private const string IslandStats = "max/min/avg/sum: 26.3/4.8/12.5/819200";
@@ -598,6 +892,73 @@ public sealed class GridControllerWiringTests : IDisposable
             Assert.Equal("island", RegionModel.First(saved)?.Content);
         }
         finally { await EndLeftoverRegionAsync(fake); }
+    }
+
+    /// <summary>Runs the controller's content step for a region "Welcome" of the given size, as an added region would.</summary>
+    private Task LoadContent(string content, int size)
+    {
+        var s = _store.LoadOrCreate();
+        var client = new RestConsoleClient(_http.CreateClient("console"), new Uri($"http://127.0.0.1:{s.RegionConsolePort}/"), "u", "p");
+        var region = new RegionSettings("Welcome", "Welcome", Guid.NewGuid(), Size: size, UdpPort: s.RegionPort);
+        var method = typeof(GridController).GetMethod("LoadContentCoreAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        return (Task)method.Invoke(_grid, [client, region, content, TestContext.Current.CancellationToken])!;
+    }
+
+    /// <summary>Puts a stand-in OAR in the region-types folder and answers the load with the archiver's "oarloaded" alert.</summary>
+    private string ProvideOar(string id)
+    {
+        var dir = Path.Combine(_root, "content", "region-types");
+        Directory.CreateDirectory(dir);
+        var oar = Path.Combine(dir, id + ".oar");
+        File.WriteAllBytes(oar, [1]);
+        _http.OnCommand = port =>
+        {
+            if (_http.Commands(port).Any(c => c.StartsWith("load oar", StringComparison.Ordinal)))
+                _grid.OnRegionAlert(new RegionAlert("region_ready", "oarloaded", "Welcome", Guid.NewGuid(), null));
+        };
+        return oar.Replace('\\', '/');
+    }
+
+    [Fact]
+    public async Task Size_2_region_gets_512_terrain()
+    {
+        var regionPort = _store.LoadOrCreate().RegionConsolePort;
+        var terrain = "max/min/avg/sum: 0/0/0/0";
+        Directory.CreateDirectory(_paths.RegionDir("Welcome")); // the region's program made it when it started
+        _http.Reply = (_, command) =>
+        {
+            if (command == "terrain stats") return [terrain];
+            if (command.StartsWith("terrain load ", StringComparison.Ordinal)) terrain = IslandStats;
+            return [];
+        };
+
+        await LoadContent("meadow", 2);
+
+        Assert.Contains(_http.Commands(regionPort), c => c.StartsWith("terrain load ", StringComparison.Ordinal));
+        Assert.Equal(512L * 512 * 4, new FileInfo(Path.Combine(_paths.RegionDir("Welcome"), "island.r32")).Length);
+    }
+
+    [Fact]
+    public async Task Size_3_oar_loads_in_the_middle()
+    {
+        var regionPort = _store.LoadOrCreate().RegionConsolePort;
+        var oar = ProvideOar("forest");
+
+        await LoadContent("forest", 3);
+
+        Assert.Contains($"load oar --force-terrain --force-parcels --displacement <256,256,0> \"{oar}\"", _http.Commands(regionPort));
+        Assert.DoesNotContain(_http.Commands(regionPort), c => c.StartsWith("terrain load ", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Size_1_oar_loads_without_a_displacement()
+    {
+        var regionPort = _store.LoadOrCreate().RegionConsolePort;
+        var oar = ProvideOar("beach");
+
+        await LoadContent("beach", 1);
+
+        Assert.Contains($"load oar --force-terrain --force-parcels \"{oar}\"", _http.Commands(regionPort));
     }
 
     [Fact]

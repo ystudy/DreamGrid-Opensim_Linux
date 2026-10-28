@@ -32,10 +32,12 @@ public sealed record NewRegion(string Name, int X, int Y, int Size, string Conte
 /// <summary>
 /// <see cref="LoginUri"/> is <c>http://{host}:{RobustPublicPort}</c>. <see cref="LoginsEnabled"/>: see
 /// <see cref="ComputeLoginsEnabled"/>. <see cref="StartFailure"/> is the last failed start, cleared by a successful one.
+/// <see cref="RobustOutdated"/>: Robust runs with a world name other than the saved one (the world was named while it
+/// started); restarting it applies the name.
 /// </summary>
 public sealed record GridStatus(ComponentStatus Database, ComponentStatus Robust, IReadOnlyList<ProgramStatus> Programs,
     IReadOnlyList<RegionStatus> Regions, bool LoginsEnabled, string LoginUri, StartFailure? StartFailure = null,
-    GridActivity Activity = GridActivity.None)
+    GridActivity Activity = GridActivity.None, bool RobustOutdated = false)
 {
     /// <summary>
     /// True when at least one region counts and every counted region runs with logins enabled; parked regions and

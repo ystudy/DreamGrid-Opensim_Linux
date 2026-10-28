@@ -37,6 +37,13 @@ internal sealed class WebSession : IDisposable
         return await response.Content.ReadAsStringAsync(Ct);
     }
 
+    /// <summary>A plain GET that does not insist on 200: the status and content type.</summary>
+    public async Task<(HttpStatusCode Status, string? ContentType)> GetStatusAsync(string url)
+    {
+        using var response = await _client.GetAsync(url, Ct);
+        return (response.StatusCode, response.Content.Headers.ContentType?.MediaType);
+    }
+
     public async Task<WebPage> FollowAsync(string url) => await FollowAsync(await _client.GetAsync(url, Ct));
 
     /// <summary>

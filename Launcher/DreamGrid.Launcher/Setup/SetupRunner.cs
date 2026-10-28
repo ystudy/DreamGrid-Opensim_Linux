@@ -59,7 +59,10 @@ public sealed class SetupRunner(
         });
     }
 
-    /// <summary>Starts the database, then the grid service, when they are not running; each start is reported first.</summary>
+    /// <summary>
+    /// Starts the database, then the grid service, when they are not running; each start is reported first. A grid
+    /// service that started before the world was named restarts, so it says the new name.
+    /// </summary>
     public async Task EnsureGridAsync(IProgress<string>? stages, CancellationToken ct)
     {
         if (grid.GetStatus().Database.State != ProcessState.Running)
@@ -67,10 +70,16 @@ public sealed class SetupRunner(
             stages?.Report(SetupProgress.PreparingDatabase);
             await grid.StartComponentAsync("database", ct);
         }
-        if (grid.GetStatus().Robust.State != ProcessState.Running)
+        var status = grid.GetStatus();
+        if (status.Robust.State != ProcessState.Running)
         {
             stages?.Report(SetupProgress.StartingGrid);
             await grid.StartComponentAsync("robust", ct);
+        }
+        else if (status.RobustOutdated)
+        {
+            stages?.Report(SetupProgress.StartingGrid);
+            await grid.RestartComponentAsync("robust", ct);
         }
     }
 

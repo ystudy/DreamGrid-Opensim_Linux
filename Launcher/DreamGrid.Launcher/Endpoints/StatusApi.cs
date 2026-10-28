@@ -10,9 +10,10 @@ namespace DreamGrid.Launcher.Endpoints;
 /// <param name="Detail">Uptime and memory in words, or "".</param>
 public sealed record ComponentView(string Name, string Label, string State, string StateText, string Detail);
 
+/// <param name="Id">The region's id, for the dashboard's link to the Regions page; null for anonymous callers.</param>
 /// <param name="RunsWith">The other regions in its program; null for anonymous callers, who get names and states only.</param>
 /// <param name="LoginsEnabled">Null for anonymous callers.</param>
-public sealed record RegionView(string Name, string State, string StateText, IReadOnlyList<string>? RunsWith, bool? LoginsEnabled);
+public sealed record RegionView(Guid? Id, string Name, string State, string StateText, IReadOnlyList<string>? RunsWith, bool? LoginsEnabled);
 
 public sealed record GridView(ComponentView Database, ComponentView Robust, IReadOnlyList<RegionView> Regions, bool LoginsEnabled, string LoginUri);
 
@@ -50,7 +51,7 @@ public static class StatusApi
         var regionNames = s.Regions.ToDictionary(r => r.Id, r => r.Name);
         return new StatusView(
             new GridView(View(s.Database, "Database"), View(s.Robust, "Grid service"),
-                s.Regions.Select(r => new RegionView(r.Name, r.State.ToString(), r.State.ToString(),
+                s.Regions.Select(r => new RegionView(withOnline ? r.Id : null, r.Name, r.State.ToString(), RegionStateText(r.State),
                     withOnline ? r.RunsWith : null, withOnline ? r.LoginsEnabled : null)).ToList(),
                 s.LoginsEnabled, s.LoginUri),
             people.Avatars.Select(a => regionNames.TryGetValue(a.RegionId, out var region) ? $"{a.Name} in {region}" : a.Name).ToList(),
@@ -149,6 +150,9 @@ public static class StatusApi
     private static ComponentView View(ComponentStatus c, string label) =>
         new(c.Name, label, c.State.ToString(), StateText(c.State), Detail(c));
 
+    /// <summary>The dashboard's word for a region's state ("Parked" for a parked one); the Regions page uses it too.</summary>
+    public static string RegionStateText(RegionState state) => state.ToString();
+
     private static string StateText(ProcessState state) => state switch
     {
         ProcessState.Crashed => "Restarting after a crash",
@@ -163,7 +167,7 @@ public static class StatusApi
         return string.Join(" · ", parts);
     }
 
-    private static string Uptime(TimeSpan t) =>
+    internal static string Uptime(TimeSpan t) =>
         t.TotalMinutes < 1 ? "less than a minute"
         : t.TotalHours < 1 ? $"{(int)t.TotalMinutes} min"
         : t.TotalDays < 1 ? $"{(int)t.TotalHours} h {t.Minutes} min"

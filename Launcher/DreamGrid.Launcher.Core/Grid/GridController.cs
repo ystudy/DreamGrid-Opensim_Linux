@@ -52,6 +52,9 @@ public sealed partial class GridController(
     private readonly RegionLogins _logins = new();
     private readonly ILogger? _log = loggers?.CreateLogger<GridController>();
     private volatile StartFailure? _startFailure;
+    // The world name in the config last written, and in the one Robust read when this launcher started it (null: not
+    // started by this launcher, or adopted, so unknown).
+    private volatile string? _writtenGridName, _robustGridName;
     private volatile GridActivity _activity;
     private int? _regionAlertPid;
     private TaskCompletionSource<string>? _oarLoaded;
@@ -132,6 +135,136 @@ public sealed partial class GridController(
             {
                 EnsureComponents(s);
                 await StartProgramAsync(s, _programs[instance], ct);
+            }
+        }
+        finally { _activity = GridActivity.None; _ops.Release(); }
+    }
+
+    public async Task MoveRegionAsync(Guid regionId, int x, int y, CancellationToken ct)
+    {
+        await _ops.WaitAsync(ct);
+        try
+        {
+            var s = LoadSettings();
+            var region = RegionModel.Find(s, regionId) ?? throw new InvalidOperationException("There is no such region.");
+            if (region.DeletedAt is not null) throw new InvalidOperationException("That region has been deleted.");
+            if (!RegionPlacement.OnMap(x, y, region.Size)) throw new ArgumentException("That spot is off the map.");
+            // The region's own square doesn't count: it may move to an overlapping spot.
+            if (RegionPlacement.Check(s, x, y, region.Size, ignore: regionId) is { Ok: false } taken)
+                throw new ArgumentException(RegionAdvice.Placement(taken));
+
+            s = UpdateSettings(l => l with { Regions = l.Regions.Select(r => r.Uuid == regionId ? r with { X = x, Y = y } : r).ToList() });
+
+            // The program reads its region files when it starts: a running one that loads this region restarts to apply the move.
+            if (_programs.GetValueOrDefault(region.Instance) is not { } program || !RegionPowerPlan.IsActive(program.Process.State)) return;
+            var loadable = RegionModel.Loadable(s, region.Instance, _held).ToList();
+            if (loadable.All(r => r.Uuid != regionId)) return;
+            if (_loaded.GetValueOrDefault(region.Instance) is { } ids && !ids.Contains(regionId)) return;
+
+            var others = loadable.Where(r => r.Uuid != regionId).Select(r => r.Name).ToList();
+            if (others.Count > 0)
+                _log?.LogInformation("Move {Region}: also affected {Others}.", region.Name, string.Join(", ", others));
+            _activity = GridActivity.Restarting;
+            await RestartProgramAsync(s, program, ct);
+        }
+        finally { _activity = GridActivity.None; _ops.Release(); }
+    }
+
+    public async Task ChangeRunsWithAsync(Guid regionId, string? shareWith, CancellationToken ct)
+    {
+        await _ops.WaitAsync(ct);
+        try
+        {
+            var s = LoadSettings();
+            var region = RegionModel.Find(s, regionId) ?? throw new InvalidOperationException("There is no such region.");
+            if (region.DeletedAt is not null) throw new InvalidOperationException("That region has been deleted.");
+            var from = region.Instance;
+            if (shareWith == from) throw new ArgumentException("It already runs with them.");
+            if (shareWith is not null && s.Programs.All(p => p.Instance != shareWith))
+                throw new ArgumentException("There is no such group of regions.");
+            if (shareWith is null && RegionModel.In(s, from).All(r => r.Uuid == regionId))
+                throw new ArgumentException("It already runs on its own.");
+
+            // Whether the region ran before the change: its program is up and loaded it.
+            var oldProgram = _programs.GetValueOrDefault(from);
+            var oldActive = oldProgram is not null && RegionPowerPlan.IsActive(oldProgram.Process.State);
+            var ran = oldActive
+                && RegionModel.Loadable(s, from, _held).Any(r => r.Uuid == regionId)
+                && (_loaded.GetValueOrDefault(from) is not { } ids || ids.Contains(regionId));
+
+            var to = shareWith!;
+            s = UpdateSettings(l =>
+            {
+                var programs = l.Programs.ToList();
+                if (shareWith is null)
+                {
+                    // A program of its own with the old one's physics, so nothing about the region itself changes.
+                    to = UniqueFolderName(l, SafeFolderName(region.Name));
+                    var httpPort = PortAllocator.Next(l, l.RegionPort);
+                    var consolePort = PortAllocator.Next(l, l.RegionConsolePort, new HashSet<int> { httpPort });
+                    var program = new ProgramSettings(to, httpPort, consolePort);
+                    programs.Add(RegionModel.ProgramOf(l, region) is { } old ? program with { Physics = old.Physics } : program);
+                }
+                var regions = l.Regions.Select(r => r.Uuid == regionId ? r with { Instance = to } : r).ToList();
+                // A program left with no regions goes; one with only parked regions stays for them.
+                if (!regions.Any(r => r.DeletedAt is null && r.Instance == from)) programs.RemoveAll(p => p.Instance == from);
+                return l with { Programs = programs, Regions = regions };
+            });
+            if (shareWith is null)
+                lock (_configGate) new RuntimeStager(paths).WriteLogConfigs(s.Programs.Select(p => p.Instance), LogLevelModule.LevelFor(s));
+
+            // Only a running region moves at once (the page asks first, naming the same regions). Otherwise only the
+            // settings change: the region loads at its new program's next start, and a stopped world stays stopped.
+            var removed = !s.Programs.Any(p => p.Instance == from);
+            var affected = new List<string>();
+            var steps = new List<Func<Task>>();
+            var left = RegionModel.Loadable(s, from, _held).Select(r => r.Name).ToList();
+            if (oldActive && (removed || left.Count == 0))
+            {
+                // Nothing left to load. A removed program is stopped whole even at shutdown: nothing would adopt it later.
+                var stop = removed ? CancellationToken.None : ct;
+                steps.Add(() => StopProgramAsync(oldProgram!, stop));
+            }
+            else if (ran)
+            {
+                affected.AddRange(left);
+                steps.Add(() => RestartProgramAsync(s, oldProgram!, ct));
+            }
+            if (ran)
+            {
+                EnsureComponents(s);
+                var newProgram = _programs[to];
+                if (RegionPowerPlan.IsActive(newProgram.Process.State))
+                {
+                    affected.AddRange(RegionModel.Loadable(s, to, _held).Where(r => r.Uuid != regionId).Select(r => r.Name));
+                    steps.Add(() => RestartProgramAsync(s, newProgram, ct));
+                }
+                else
+                    steps.Add(async () => { EnsureComponents(s); await StartProgramAsync(s, _programs[to], ct); });
+            }
+
+            if (affected.Count > 0)
+                _log?.LogInformation("Change how {Region} runs: also affected {Others}.", region.Name, string.Join(", ", affected));
+            _activity = GridActivity.Restarting;
+            try
+            {
+                // One program that fails to come back doesn't keep the other down; the first failure is thrown afterwards.
+                Exception? first = null;
+                foreach (var step in steps)
+                {
+                    try { await step(); }
+                    catch (Exception e) when (e is not OperationCanceledException) { first ??= e; }
+                }
+                if (first is not null) throw first;
+            }
+            finally
+            {
+                // Also on cancellation: the removed program, now stopped, leaves the status.
+                if (removed)
+                {
+                    EnsureComponents(s);
+                    _loaded = _loaded.Where(kv => kv.Key != from).ToDictionary(kv => kv.Key, kv => kv.Value);
+                }
             }
         }
         finally { _activity = GridActivity.None; _ops.Release(); }
@@ -350,12 +483,15 @@ public sealed partial class GridController(
         finally { _ops.Release(); }
     }
 
+    private static readonly string ContentError =
+        $"Content must be one of: starter, {string.Join(", ", RegionTypes.BuiltIn.Select(t => t.Id))}.";
+
     public async Task CreateRegionAsync(string name, string content, CancellationToken ct, IProgress<string>? progress = null)
     {
         if (!IsValidRegionName(name))
             throw new ArgumentException("A region name is 2-32 letters, digits, spaces, '-', '_' or '\\'' with no leading or trailing space.", nameof(name));
-        if (content is not ("starter" or "island"))
-            throw new ArgumentException("Content must be \"starter\" or \"island\".", nameof(content));
+        if (!RegionTypes.IsContent(content))
+            throw new ArgumentException(ContentError, nameof(content));
 
         await _ops.WaitAsync(ct);
         _activity = GridActivity.Starting;
@@ -382,8 +518,8 @@ public sealed partial class GridController(
     {
         if (!IsValidRegionName(request.Name))
             throw new ArgumentException("A region name is 2-32 letters, digits, spaces, '-', '_' or '\\'' with no leading or trailing space.", nameof(request));
-        if (request.Content is not ("starter" or "island"))
-            throw new ArgumentException("Content must be \"starter\" or \"island\".", nameof(request));
+        if (!RegionTypes.IsContent(request.Content))
+            throw new ArgumentException(ContentError, nameof(request));
 
         await _ops.WaitAsync(ct);
         _activity = GridActivity.Starting;
@@ -406,8 +542,8 @@ public sealed partial class GridController(
     {
         if (RegionModel.FindByName(s, r.Name) is not null) return $"There is already a region called {r.Name}.";
         if (r.Size is < 1 or > RegionPlacement.MaxSize) return "A region is 1 to 16 squares on each side.";
-        if (RegionPlacement.Check(s, r.X, r.Y, r.Size) is { Ok: false } check) return $"That spot overlaps {check.OverlapsWith}.";
-        if (r.ShareWith is { } share && s.Programs.All(p => p.Instance != share)) return $"There is no region group {share}.";
+        if (RegionPlacement.Check(s, r.X, r.Y, r.Size) is { Ok: false } check) return RegionAdvice.Placement(check);
+        if (r.ShareWith is { } share && s.Programs.All(p => p.Instance != share)) return "That group of regions no longer exists.";
         return null;
     }
 
@@ -486,7 +622,8 @@ public sealed partial class GridController(
             GridStatus.ComputeLoginsEnabled(regions, held),
             $"http://{_host}:{s.RobustPublicPort}",
             _startFailure,
-            _activity);
+            _activity,
+            _robustGridName is { } started && _robust?.Process.State == ProcessState.Running && started != s.GridName);
     }
 
     /// <summary>The settings the controller last loaded (the file only on first use); never waits behind an operation.</summary>
@@ -547,8 +684,11 @@ public sealed partial class GridController(
         return s;
     }
 
-    private void WriteConfig(LauncherSettings s) =>
+    private void WriteConfig(LauncherSettings s)
+    {
         new GridConfigWriter(paths).Write(s, _modules.Cast<IIniContributor>().ToList(), _held);
+        _writtenGridName = s.GridName;
+    }
 
     /// <summary>Stages the runtime, writes the configs and checks the ports (the web port is the host's; adoptable children keep theirs).</summary>
     private async Task PrepareAsync(LauncherSettings s, CancellationToken ct)
@@ -594,8 +734,11 @@ public sealed partial class GridController(
         }
         lock (_configGate)
         {
-            stager.WriteLogConfigs(s.Programs.Select(p => p.Instance), LogLevelModule.LevelFor(s));
-            WriteConfig(s);
+            // The latest settings, not the ones this start read: a change saved while staging ran (setup's world name,
+            // which waited for the config lock) has written its config already and must not be overwritten.
+            var latest = ReloadSettings();
+            stager.WriteLogConfigs(latest.Programs.Select(p => p.Instance), LogLevelModule.LevelFor(latest));
+            WriteConfig(latest);
         }
     }
 
@@ -686,6 +829,8 @@ public sealed partial class GridController(
             EnsureMonitor(c, onlyIfMissing: true);
             return;
         }
+        // Robust reads the world name only when it starts; an adopted one may have read any.
+        if (c == _robust) _robustGridName = WillAdopt(c) ? null : _writtenGridName;
         await c.Process.StartAsync(ct);
         EnsureMonitor(c);
         if (c.Process.State != ProcessState.Running)
@@ -754,20 +899,25 @@ public sealed partial class GridController(
 
     private async Task LoadContentCoreAsync(RestConsoleClient console, RegionSettings region, string content, CancellationToken ct)
     {
-        var oar = content == "starter" ? StarterContent.StarterOar(paths) : null;
+        var oar = content == "starter" ? StarterContent.StarterOar(paths) : RegionTypes.Oar(paths, content);
         if (oar is not null)
         {
             // RegionReady reports the archiver's result as an "oarloaded" or "oarnotloaded" alert.
             var loaded = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
             _oarLoaded = loaded;
-            await console.RunAsync($"load oar --force-terrain --force-parcels \"{Fwd(oar)}\"", ConsoleSettle, ct);
+            // A 256 m OAR goes in the middle of a larger region; the squares around it keep the flat land OpenSim makes.
+            var middle = 128 * (region.Size - 1);
+            var displacement = region.Size > 1 ? $" --displacement <{middle},{middle},0>" : "";
+            await console.RunAsync($"load oar --force-terrain --force-parcels{displacement} \"{Fwd(oar)}\"", ConsoleSettle, ct);
             if (await loaded.Task.WaitAsync(LoginWait, time, ct) != "oarloaded")
                 throw new InvalidOperationException($"The region could not load {oar}; see the region log.");
             return;
         }
 
+        // Without an OAR the land is generated at the region's size; a starter without its OAR is the default island.
+        var shape = RegionTypes.Find(content)?.Shape ?? TerrainShape.Island;
         var r32 = Path.Combine(paths.RegionDir(region.Instance), "island.r32");
-        IslandTerrain.WriteR32(r32);
+        TerrainShapes.WriteR32(r32, shape, 256 * region.Size);
         // Flatten first: the check below tells the island from flat land, and a starter OAR an earlier attempt
         // loaded has relief of its own that would pass for the island if this load failed.
         await console.RunAsync("terrain fill 0", ConsoleSettle, ct);
