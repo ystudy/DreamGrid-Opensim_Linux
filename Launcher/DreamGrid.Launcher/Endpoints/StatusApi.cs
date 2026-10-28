@@ -167,7 +167,7 @@ public static class StatusApi
         return string.Join(" · ", parts);
     }
 
-    private static string Uptime(TimeSpan t) =>
+    internal static string Uptime(TimeSpan t) =>
         t.TotalMinutes < 1 ? "less than a minute"
         : t.TotalHours < 1 ? $"{(int)t.TotalMinutes} min"
         : t.TotalDays < 1 ? $"{(int)t.TotalHours} h {t.Minutes} min"

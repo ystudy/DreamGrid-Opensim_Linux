@@ -1,0 +1,107 @@
+@page "/regions/region/{id:guid}"
+@model DreamGrid.Launcher.Pages.Regions.RegionPanelModel
+@using DreamGrid.Launcher.Core.Grid
+@{
+    ViewData["Title"] = Model.Name;
+    // The map asks for ?partial=1: the fragment goes into its side panel, with no page around it.
+    if (Model.IsPartial) Layout = null;
+    var sharedBy = Model.RunsWith.Count > 0 ? ", shared by " + RegionAdvice.Join([Model.Name, .. Model.RunsWith]) : "";
+}
+<div class="region-info">
+    <h2 class="h4">@Model.Name</h2>
+    <p><span class="badge state-@Model.StateText.ToLowerInvariant()">@Model.StateText</span></p>
+
+    @if (Model.Notice is not null)
+    {
+        <p class="notice alert alert-info py-2" role="status">@Model.Notice</p>
+    }
+
+    @if (Model.Asking is not null)
+    {
+        <form method="post" action="/regions/region/@Model.Id?handler=power" asp-antiforgery="true" class="alert alert-warning">
+            <p>@Model.AskingText</p>
+            <input type="hidden" name="action" value="@Model.Asking">
+            <input type="hidden" name="confirmed" value="true">
+            <button type="submit" class="btn btn-warning btn-sm">@Model.AskingYes</button>
+            <a class="btn btn-outline-secondary btn-sm" href="/regions/region/@Model.Id">Cancel</a>
+        </form>
+    }
+
+    @if (Model.State == RegionState.Failed)
+    {
+        <div class="region-failure">
+            @if (!string.IsNullOrWhiteSpace(Model.FailureMessage))
+            {
+                <p class="text-danger">@Model.FailureMessage</p>
+            }
+            @if (Model.FailureLog.Count > 0)
+            {
+                <details>
+                    <summary>The last lines it wrote</summary>
+                    <pre class="small">@string.Join('\n', Model.FailureLog)</pre>
+                </details>
+            }
+        </div>
+    }
+
+    <h3 class="h6">Who's here</h3>
+    @if (Model.Here is null)
+    {
+        <p class="text-body-secondary">Who's here isn't available right now.</p>
+    }
+    else if (Model.Here.Count == 0)
+    {
+        <p class="text-body-secondary">Nobody is here right now.</p>
+    }
+    else
+    {
+        <ul class="list-unstyled">
+            @foreach (var name in Model.Here)
+            {
+                <li>@name</li>
+            }
+        </ul>
+    }
+
+    <dl class="region-facts">
+        @if (Model.RunningTime is not null)
+        {
+            <dt>Running time</dt>
+            <dd>@(Model.RunningTime + sharedBy)</dd>
+        }
+        @if (Model.Memory is not null)
+        {
+            <dt>Memory</dt>
+            <dd>@(Model.Memory + sharedBy)</dd>
+        }
+        <dt>Map position</dt>
+        <dd>@Model.X, @Model.Y</dd>
+        <dt>Size</dt>
+        <dd>@Model.Size×@Model.Size</dd>
+        <dt>Neighbours</dt>
+        <dd>@(Model.Neighbours.Count == 0 ? "No neighbours" : string.Join(", ", Model.Neighbours.Select(n => $"Next to {n.Name} ({n.Side})")))</dd>
+        <dt>How it runs</dt>
+        <dd>@(Model.RunsWith.Count == 0 ? "Runs on its own" : "Runs with " + string.Join(", ", Model.RunsWith))</dd>
+    </dl>
+
+    <form method="post" action="/regions/region/@Model.Id?handler=power" asp-antiforgery="true" class="mb-3">
+        <details class="power-menu">
+            <summary class="btn btn-primary">&#x23FB; Power</summary>
+            <div class="power-items list-group shadow">
+                @foreach (var item in Model.Menu)
+                {
+                    <div class="list-group-item">
+                        <button type="submit" name="action" value="@item.Action" class="btn btn-link p-0 fw-semibold">@item.Label</button>
+                        <span class="form-text d-block m-0">@item.Help</span>
+                    </div>
+                }
+            </div>
+        </details>
+    </form>
+
+    <p class="d-flex flex-wrap gap-3">
+        <a href="/regions/region/@Model.Id/move">Move…</a>
+        <a href="/regions/region/@Model.Id/runs">How it runs…</a>
+    </p>
+    <p class="form-text mb-0">Region settings are coming next.</p>
+</div>

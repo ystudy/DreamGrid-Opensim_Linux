@@ -73,11 +73,11 @@ public static class RegionAdvice
         regionNames.Count == 1 ? regionNames[0] : $"{string.Join(", ", regionNames)} ({regionNames.Count} regions)";
 
     /// <summary>"Home", "Home and Beach", "Home, Beach and Forest".</summary>
-    private static string Join(IReadOnlyList<string> names) =>
+    public static string Join(IReadOnlyList<string> names) =>
         names.Count <= 1 ? string.Concat(names) : $"{string.Join(", ", names.Take(names.Count - 1))} and {names[^1]}";
 
-    /// <summary>GB with one decimal from 1 GB up, else MB rounded to 10.</summary>
-    private static string Size(long bytes) => bytes >= GB
+    /// <summary>GB with one decimal from 1 GB up, else MB rounded to 10 ("MB" and "GB" are 2^20 and 2^30 bytes).</summary>
+    public static string Size(long bytes) => bytes >= GB
         ? $"{(bytes / (double)GB).ToString("0.0", CultureInfo.InvariantCulture)} GB"
         : $"{(long)Math.Round(bytes / (double)MB / 10) * 10} MB";
 }
