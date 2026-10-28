@@ -36,7 +36,8 @@ public sealed class GridControllerWiringTests : IDisposable
         new Core.Runtime.RuntimeStager(_paths).StageIfNeeded();
 
         _store = new SettingsStore(_paths.SettingsFile);
-        var p = FreePorts(7);
+        var p = FreePorts(9);
+        (_secondPort, _secondConsole) = (p[7], p[8]);
         _store.Save(_store.LoadOrCreate() with
         {
             Hostname = "127.0.0.1",
@@ -75,6 +76,9 @@ public sealed class GridControllerWiringTests : IDisposable
             File.Copy(Path.Combine(bin, "config-include", "Proto", "Robust", f),
                 Path.Combine(program, "config-include", "Proto", "Robust", f));
     }
+
+    /// <summary>The second program's ports, free like every other port (a fixed offset from the first is often taken).</summary>
+    private readonly int _secondPort, _secondConsole;
 
     private static int[] FreePorts(int count)
     {
@@ -468,11 +472,11 @@ public sealed class GridControllerWiringTests : IDisposable
         var welcome = RegionModel.First(s)?.Uuid ?? Guid.NewGuid();
         _store.Save(s with
         {
-            Programs = [new ProgramSettings("Welcome", s.RegionPort, s.RegionConsolePort), new ProgramSettings("Beach", s.RegionPort + 100, s.RegionConsolePort + 100)],
+            Programs = [new ProgramSettings("Welcome", s.RegionPort, s.RegionConsolePort), new ProgramSettings("Beach", _secondPort, _secondConsole)],
             Regions =
             [
                 new RegionSettings("Welcome", "Welcome", welcome, Size: 2, UdpPort: s.RegionPort),
-                new RegionSettings("Beach", "Beach", Beach, X: 1010, UdpPort: s.RegionPort + 100),
+                new RegionSettings("Beach", "Beach", Beach, X: 1010, UdpPort: _secondPort),
             ],
             Setup = s.Setup with { RegionCreated = created },
         });
@@ -487,7 +491,7 @@ public sealed class GridControllerWiringTests : IDisposable
         var fake = StartLeftoverRegion();
         try
         {
-            await Record.ExceptionAsync(() => _grid.StartAsync(TestContext.Current.CancellationToken)); // MariaDB cannot start; the region is adopted
+            Assert.IsNotType<PortConflictException>(await Record.ExceptionAsync(() => _grid.StartAsync(TestContext.Current.CancellationToken))); // MariaDB cannot start; the region is adopted
             Assert.Equal(ProcessState.Running, _grid.GetStatus().Programs.Single(p => p.Instance == "Welcome").Process.State);
             _http.OnCommand = port =>
             {
@@ -495,7 +499,7 @@ public sealed class GridControllerWiringTests : IDisposable
             };
 
             // Overlapping its own old square is fine. The restart itself can't finish here (the stand-in OpenSim is one byte).
-            await Record.ExceptionAsync(() => _grid.MoveRegionAsync(id, 1001, 1000, TestContext.Current.CancellationToken));
+            Assert.IsNotType<PortConflictException>(await Record.ExceptionAsync(() => _grid.MoveRegionAsync(id, 1001, 1000, TestContext.Current.CancellationToken)));
 
             var saved = RegionModel.Find(_store.LoadOrCreate(), id)!;
             Assert.Equal((1001, 1000), (saved.X, saved.Y));
@@ -556,7 +560,7 @@ public sealed class GridControllerWiringTests : IDisposable
 
     /// <summary>
     /// Welcome (at 1000, 1000) and Isle (at 1010, 1000): in a program each, or both in Welcome's when
-    /// <paramref name="shared"/>. Isle's UDP port is the region port + 100 either way.
+    /// <paramref name="shared"/>. Isle's UDP port is <c>_secondPort</c> either way.
     /// </summary>
     private void WelcomeAndIsle(bool shared, bool isleParked = false, string physics = "ubODE")
     {
@@ -564,11 +568,11 @@ public sealed class GridControllerWiringTests : IDisposable
         var welcome = new ProgramSettings("Welcome", s.RegionPort, s.RegionConsolePort, physics);
         _store.Save(s with
         {
-            Programs = shared ? [welcome] : [welcome, new ProgramSettings("Isle", s.RegionPort + 100, s.RegionConsolePort + 100)],
+            Programs = shared ? [welcome] : [welcome, new ProgramSettings("Isle", _secondPort, _secondConsole)],
             Regions =
             [
                 new RegionSettings("Welcome", "Welcome", Guid.NewGuid(), UdpPort: s.RegionPort),
-                new RegionSettings(shared ? "Welcome" : "Isle", "Isle", Isle, X: 1010, UdpPort: s.RegionPort + 100, Parked: isleParked),
+                new RegionSettings(shared ? "Welcome" : "Isle", "Isle", Isle, X: 1010, UdpPort: _secondPort, Parked: isleParked),
             ],
             Setup = s.Setup with { RegionCreated = false }, // the leftover stand-ins are adopted
         });
@@ -580,12 +584,12 @@ public sealed class GridControllerWiringTests : IDisposable
         var ct = TestContext.Current.CancellationToken;
         WelcomeAndIsle(shared: false);
         var s = _store.LoadOrCreate();
-        var (welcomeConsole, isleConsole) = (s.RegionConsolePort, s.RegionConsolePort + 100);
+        var (welcomeConsole, isleConsole) = (s.RegionConsolePort, _secondConsole);
         var welcome = StartLeftoverRegion("Welcome");
         var isle = StartLeftoverRegion("Isle");
         try
         {
-            await Record.ExceptionAsync(() => _grid.StartAsync(ct)); // MariaDB cannot start; both programs are adopted
+            Assert.IsNotType<PortConflictException>(await Record.ExceptionAsync(() => _grid.StartAsync(ct))); // MariaDB cannot start; both programs are adopted
             Assert.All(_grid.GetStatus().Programs, p => Assert.Equal(ProcessState.Running, p.Process.State));
             _http.OnCommand = port =>
             {
@@ -595,11 +599,11 @@ public sealed class GridControllerWiringTests : IDisposable
             };
 
             // Welcome's restart can't finish here (the stand-in OpenSim is one byte).
-            await Record.ExceptionAsync(() => _grid.ChangeRunsWithAsync(Isle, "Welcome", ct));
+            Assert.IsNotType<PortConflictException>(await Record.ExceptionAsync(() => _grid.ChangeRunsWithAsync(Isle, "Welcome", ct)));
 
             var saved = _store.LoadOrCreate();
             Assert.Equal("Welcome", RegionModel.Find(saved, Isle)!.Instance);
-            Assert.Equal(s.RegionPort + 100, RegionModel.Find(saved, Isle)!.UdpPort);
+            Assert.Equal(_secondPort, RegionModel.Find(saved, Isle)!.UdpPort);
             Assert.DoesNotContain(saved.Programs, p => p.Instance == "Isle");
             Assert.Contains("quit", _http.Commands(isleConsole)); // Isle's emptied program stopped
             Assert.Contains("quit", _http.Commands(welcomeConsole)); // Welcome's restarted to load Isle
@@ -622,7 +626,7 @@ public sealed class GridControllerWiringTests : IDisposable
         var welcome = StartLeftoverRegion("Welcome"); // Welcome runs; Isle's program does not
         try
         {
-            await Record.ExceptionAsync(() => _grid.StartAsync(ct)); // MariaDB cannot start; Welcome is adopted
+            Assert.IsNotType<PortConflictException>(await Record.ExceptionAsync(() => _grid.StartAsync(ct))); // MariaDB cannot start; Welcome is adopted
             Assert.Equal(ProcessState.Running, _grid.GetStatus().Programs.Single(p => p.Instance == "Welcome").Process.State);
 
             await _grid.ChangeRunsWithAsync(Isle, "Welcome", ct);
@@ -647,7 +651,7 @@ public sealed class GridControllerWiringTests : IDisposable
         var saved = _store.LoadOrCreate();
         var region = RegionModel.Find(saved, Isle)!;
         Assert.Equal("Isle", region.Instance);
-        Assert.Equal(before.RegionPort + 100, region.UdpPort);
+        Assert.Equal(_secondPort, region.UdpPort);
         var program = Assert.Single(saved.Programs, p => p.Instance == "Isle");
         Assert.Equal("BulletSim", program.Physics); // the old group's, so nothing about the region changes
         var taken = PortAllocator.Taken(before);
@@ -670,7 +674,7 @@ public sealed class GridControllerWiringTests : IDisposable
         var welcome = StartLeftoverRegion("Welcome");
         try
         {
-            await Record.ExceptionAsync(() => _grid.StartAsync(ct)); // MariaDB cannot start; Welcome is adopted
+            Assert.IsNotType<PortConflictException>(await Record.ExceptionAsync(() => _grid.StartAsync(ct))); // MariaDB cannot start; Welcome is adopted
             Assert.Equal(ProcessState.Running, _grid.GetStatus().Programs.Single().Process.State);
 
             await _grid.ChangeRunsWithAsync(Isle, null, ct);

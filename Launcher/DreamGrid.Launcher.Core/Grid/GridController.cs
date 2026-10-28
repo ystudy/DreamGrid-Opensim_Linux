@@ -539,8 +539,8 @@ public sealed partial class GridController(
     {
         if (RegionModel.FindByName(s, r.Name) is not null) return $"There is already a region called {r.Name}.";
         if (r.Size is < 1 or > RegionPlacement.MaxSize) return "A region is 1 to 16 squares on each side.";
-        if (RegionPlacement.Check(s, r.X, r.Y, r.Size) is { Ok: false } check) return $"That spot overlaps {check.OverlapsWith}.";
-        if (r.ShareWith is { } share && s.Programs.All(p => p.Instance != share)) return $"There is no region group {share}.";
+        if (RegionPlacement.Check(s, r.X, r.Y, r.Size) is { Ok: false } check) return RegionAdvice.Placement(check);
+        if (r.ShareWith is { } share && s.Programs.All(p => p.Instance != share)) return "That group of regions no longer exists.";
         return null;
     }
 

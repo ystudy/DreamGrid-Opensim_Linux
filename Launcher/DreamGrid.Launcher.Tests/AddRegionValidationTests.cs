@@ -50,7 +50,7 @@ public sealed class AddRegionValidationTests : IDisposable
 
     [Fact]
     public Task Overlapping_spot_is_refused() =>
-        Refused(new NewRegion("Beach", 999, 999, 2, "island", null), "That spot overlaps Home.");
+        Refused(new NewRegion("Beach", 999, 999, 2, "island", null), "That spot is taken by Home.");
 
     [Fact]
     public Task Size_17_is_refused() =>
@@ -58,7 +58,7 @@ public sealed class AddRegionValidationTests : IDisposable
 
     [Fact]
     public Task Unknown_share_target_is_refused() =>
-        Refused(new NewRegion("Beach", 1001, 1000, 1, "island", "Nowhere"), "There is no region group Nowhere.");
+        Refused(new NewRegion("Beach", 1001, 1000, 1, "island", "Nowhere"), "That group of regions no longer exists.");
 
     [Fact]
     public Task Invalid_name_is_refused() =>

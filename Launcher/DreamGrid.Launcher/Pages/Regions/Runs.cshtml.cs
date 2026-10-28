@@ -12,6 +12,8 @@ namespace DreamGrid.Launcher.Pages.Regions;
 /// </summary>
 public sealed class RunsModel(IGridController grid, RegionActions actions, Func<long?> freeMemory) : PageModel
 {
+    private const string GridDefault = "the grid default";
+
     public Guid Id { get; private set; }
     public string Name { get; private set; } = "";
 
@@ -28,7 +30,7 @@ public sealed class RunsModel(IGridController grid, RegionActions actions, Func<
     [TempData] public string? Notice { get; set; }
 
     private string _instance = "";
-    private string _physics = "";
+    private string? _physics;
     private bool _ran;
     private GridStatus _status = null!;
     private IReadOnlyList<string> _leaving = [];
@@ -63,7 +65,7 @@ public sealed class RunsModel(IGridController grid, RegionActions actions, Func<
         if (RegionModel.Find(s, id) is not { DeletedAt: null } region) return false;
         var status = _status = grid.GetStatus();
         (Id, Name, _instance) = (id, region.Name, region.Instance);
-        _physics = RegionModel.ProgramOf(s, region)?.Physics ?? "";
+        _physics = RegionModel.ProgramOf(s, region)?.Physics;
         Others = RegionModel.In(s, region.Instance).Where(r => r.Uuid != id).Select(r => r.Name).ToList();
         // The controller's rule: only a region an active program loads moves at once, restarting both groups. Otherwise
         // only the settings change and nothing restarts.
@@ -97,6 +99,6 @@ public sealed class RunsModel(IGridController grid, RegionActions actions, Func<
     /// <summary>The group's settings win; physics is named when it differs.</summary>
     private string? PhysicsNote(GroupChoice g) =>
         _settings.Programs.FirstOrDefault(p => p.Instance == g.Instance)?.Physics is { } physics && physics != _physics
-            ? $"Physics will change from {_physics} to {physics} to match {g.Names[0]}."
+            ? $"Physics will change from {_physics ?? GridDefault} to {physics} to match {g.Names[0]}."
             : null;
 }

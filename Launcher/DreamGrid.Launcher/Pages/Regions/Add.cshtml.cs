@@ -37,6 +37,8 @@ public sealed class AddModel(IGridController grid, RegionJob job, Func<long?> fr
     public SetupProgressSnapshot Progress { get; private set; } = new("", 0, false, null, null);
     public Guid? SavedId { get; private set; }
     public string? JobName { get; private set; }
+    /// <summary>True when the failed add got as far as loading the region's content.</summary>
+    public bool ContentLoaded { get; private set; }
     /// <summary>True when the world is not running, so nothing can be added yet.</summary>
     public bool WorldStopped { get; private set; }
     private bool ShowResult { get; set; }
@@ -109,6 +111,7 @@ public sealed class AddModel(IGridController grid, RegionJob job, Func<long?> fr
         Progress = job.Snapshot();
         JobName = job.Name;
         SavedId = job.RegionId;
+        ContentLoaded = job.ContentLoaded;
         ShowResult = showResult;
 
         Groups = GroupChoice.All(grid.CurrentSettings(), grid.GetStatus());

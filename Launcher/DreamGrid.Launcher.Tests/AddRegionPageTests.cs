@@ -5,6 +5,7 @@ using AngleSharp.Html.Parser;
 using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.Processes;
 using DreamGrid.Launcher.Core.Settings;
+using DreamGrid.Launcher.Core.Setup;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -318,6 +319,32 @@ public sealed class AddRegionPageTests : IAsyncLifetime
         Assert.Equal($"/regions?region={id}", open.GetAttribute("href"));
         Assert.Null(doc.QuerySelector("main form")); // the region stays saved; its panel starts it again
         Assert.Null(doc.QuerySelector("meta[http-equiv=refresh]"));
+    }
+
+    [Theory]
+    [InlineData(false, "Meadow One is saved, but its land wasn't made. Starting it from its page brings it up as plain land.")]
+    [InlineData(true, "Meadow One is saved. Open it to start it again.")]
+    public async Task Failed_add_says_whether_the_land_was_made(bool contentLoaded, string expected)
+    {
+        _f.Grid.OnAddRegion = (request, progress, _) =>
+        {
+            _f.Grid.UpdateSettings(l => l with
+            {
+                Programs = [.. l.Programs, new ProgramSettings("Meadow_One", 8006, 8013)],
+                Regions = [.. l.Regions, new RegionSettings("Meadow_One", request.Name, Guid.NewGuid(), request.X, request.Y, request.Content, request.Size)],
+            });
+            progress!.Report(SetupProgress.LoadingContent);
+            if (contentLoaded) progress.Report(SetupProgress.WaitingForLogins);
+            throw new InvalidOperationException("The region failed: boom");
+        };
+        using var client = await SignedInAsync();
+
+        (await PostAsync(client, Form())).Dispose();
+        await WaitForProgressAsync(client, p => !p.GetProperty("running").GetBoolean());
+
+        var doc = await PageAsync(client, "/regions/add?working=1");
+        Assert.Contains(expected, Text(doc));
+        Assert.Equal("Open Meadow One", doc.QuerySelector("a.open-region")!.TextContent.Trim());
     }
 
     [Fact]

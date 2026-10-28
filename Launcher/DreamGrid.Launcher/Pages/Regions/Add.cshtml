@@ -44,7 +44,14 @@ else if (Model.Failed)
         }
         @if (Model.SavedId is { } failedId)
         {
-            <p>@Model.JobName is saved. Open it to start it again.</p>
+            @if (Model.ContentLoaded)
+            {
+                <p>@Model.JobName is saved. Open it to start it again.</p>
+            }
+            else
+            {
+                <p>@Model.JobName is saved, but its land wasn't made. Starting it from its page brings it up as plain land.</p>
+            }
             <a class="open-region button btn btn-primary" href="/regions?region=@failedId">Open @Model.JobName</a>
         }
         else

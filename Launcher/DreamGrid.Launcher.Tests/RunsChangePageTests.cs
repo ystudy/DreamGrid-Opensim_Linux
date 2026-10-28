@@ -143,6 +143,19 @@ public sealed class RunsChangePageTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Runs_change_names_the_grid_default_when_the_regions_program_entry_is_missing()
+    {
+        var lostId = Guid.Parse("70000000-0000-0000-0000-000000000006");
+        _f.Grid.UpdateSettings(l => l with { Regions = [.. l.Regions, new RegionSettings("Lost", "Lost", lostId, X: 1060, UdpPort: 8009)] });
+        using var client = await SignedInAsync();
+
+        var page = await GetAsync(client, lostId);
+
+        var text = page.QuerySelector($"[data-group='{HomeId}']")!.TextContent;
+        Assert.Contains("Physics will change from the grid default to BulletSim to match Home.", text);
+    }
+
+    [Fact]
     public async Task Runs_page_never_says_program()
     {
         using var client = await SignedInAsync();

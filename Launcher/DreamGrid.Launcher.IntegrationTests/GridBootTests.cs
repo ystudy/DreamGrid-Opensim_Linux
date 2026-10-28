@@ -264,6 +264,8 @@ public sealed class GridBootTests : IDisposable
             var isle = await grid.AddRegionAsync(new NewRegion("Isle", 1010, 1010, 1, "island", null), ct);
 
             await grid.MoveRegionAsync(isle.Uuid, 1012, 1010, ct);
+            var saved = RegionModel.Find(grid.CurrentSettings(), isle.Uuid)!;
+            Assert.Equal((1012, 1010), (saved.X, saved.Y));
             await WaitUntilAsync(() => grid.GetStatus().Regions.All(r => r.State == RegionState.Running), TimeSpan.FromMinutes(5), ct);
             var moved = await XmlRpcLogin.LoginAsync(_http, grid.GetStatus().LoginUri, "Test", "Owner", "pass-word1", "uri:Isle&128&128&25", ct);
             Assert.True(moved.Ok, "login to the moved region refused: " + moved.Message);

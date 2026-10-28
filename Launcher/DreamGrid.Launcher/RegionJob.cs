@@ -22,6 +22,7 @@ public sealed class RegionJob(
     private readonly object _gate = new();
     private string? _name;
     private Guid? _regionId;
+    private bool _contentLoaded;
 
     /// <summary>The region being (or last) added; null before the first add.</summary>
     public string? Name { get { lock (_gate) return _name; } }
@@ -29,13 +30,19 @@ public sealed class RegionJob(
     /// <summary>The saved region's id: set once the add has returned, or, after a failure, when the region was saved anyway.</summary>
     public Guid? RegionId { get { lock (_gate) return _regionId; } }
 
+    /// <summary>
+    /// True once the add reported that the region's content was loaded (the stage after it). A saved region whose add failed
+    /// before that comes up as plain land when it is started from its page.
+    /// </summary>
+    public bool ContentLoaded { get { lock (_gate) return _contentLoaded; } }
+
     public SetupProgressSnapshot Snapshot() => _progress.Snapshot();
 
     /// <summary>Starts adding <paramref name="request"/> in the background; false (nothing changes) while another add is running.</summary>
     public bool TryStart(NewRegion request, Func<NewRegion, CancellationToken, IProgress<string>, Task<RegionSettings>> add)
     {
         if (!_progress.TryBegin()) return false;
-        lock (_gate) (_name, _regionId) = (request.Name, null);
+        lock (_gate) (_name, _regionId, _contentLoaded) = (request.Name, null, false);
         background.Run("add region", ct => AddAsync(request, add, ct));
         return true;
     }
@@ -44,7 +51,7 @@ public sealed class RegionJob(
     {
         try
         {
-            var region = await add(request, ct, _progress);
+            var region = await add(request, ct, new StageWatcher(_progress, () => { lock (_gate) _contentLoaded = true; }));
             lock (_gate) _regionId = region.Uuid;
             _progress.Complete();
             log.LogInformation("The region {Name} is ready.", request.Name);
@@ -75,6 +82,16 @@ public sealed class RegionJob(
             // Never leave the run marked as going: that would refuse every later add until a restart.
             if (_progress.Running)
                 _progress.Fail("Your region could not be created.", null);
+        }
+    }
+
+    /// <summary>Passes the stages on to the progress, and says when the one after the content loaded arrives.</summary>
+    private sealed class StageWatcher(SetupProgress inner, Action contentLoaded) : IProgress<string>
+    {
+        public void Report(string stage)
+        {
+            if (stage == SetupProgress.WaitingForLogins) contentLoaded();
+            inner.Report(stage);
         }
     }
 
