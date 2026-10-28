@@ -74,7 +74,7 @@ public sealed class AdvancedSettingsTests : IAsyncLifetime
     public async Task Advanced_pages_need_the_admin_role()
     {
         using var client = _f.CreateClient(new() { AllowAutoRedirect = false });
-        foreach (var url in new[] { "/advanced", "/advanced/network", "/advanced/database", "/advanced/module/loglevel" })
+        foreach (var url in new[] { "/advanced", "/advanced/network", "/advanced/database", "/advanced/regions", "/advanced/module/loglevel" })
         {
             using var resp = await client.GetAsync(url, Ct);
             Assert.Equal(HttpStatusCode.Redirect, resp.StatusCode);
@@ -90,8 +90,114 @@ public sealed class AdvancedSettingsTests : IAsyncLifetime
 
         var links = doc.QuerySelectorAll("main a").Select(a => (a.TextContent.Trim(), a.GetAttribute("href"))).ToList();
         Assert.Equal(
-            [("Network", "/advanced/network"), ("Database", "/advanced/database"), ("Log level", "/advanced/module/loglevel"), ("Logs", "/logs")],
+            [("Network", "/advanced/network"), ("Database", "/advanced/database"), ("Regions", "/advanced/regions"), ("Log level", "/advanced/module/loglevel"), ("Logs", "/logs")],
             links);
+    }
+
+    [Fact]
+    public async Task Advanced_menu_links_to_regions_defaults()
+    {
+        using var client = await SignedInAsync(_f);
+        var doc = Parse(await client.GetStringAsync("/advanced", Ct));
+
+        var links = doc.QuerySelectorAll("main a").Select(a => a.GetAttribute("href")).ToList();
+        Assert.Equal(links.IndexOf("/advanced/database") + 1, links.IndexOf("/advanced/regions"));
+    }
+
+    private static Task<HttpResponseMessage> PostRegionsAsync(HttpClient client, string token, Dictionary<string, string> form)
+    {
+        form["__RequestVerificationToken"] = token;
+        return client.PostAsync("/advanced/regions", new FormUrlEncodedContent(form), Ct);
+    }
+
+    [Fact]
+    public async Task Regions_defaults_page_saves_physics_and_scripts()
+    {
+        using var client = await SignedInAsync(_f);
+        var page = await client.GetStringAsync("/advanced/regions", Ct);
+        var doc = Parse(page);
+        Assert.Equal(["ubODE", "BulletSim", "BulletSimThreaded"],
+            doc.QuerySelectorAll("input[name=DefaultPhysics]").Select(i => i.GetAttribute("value")).ToList());
+        Assert.Equal("ubODE", doc.QuerySelector("input[name=DefaultPhysics][checked]")!.GetAttribute("value"));
+        Assert.Equal("true", doc.QuerySelector("input[name=DefaultScripts][checked]")!.GetAttribute("value"));
+        Assert.Contains("BulletSim in its own thread", Text(page));
+
+        using var resp = await PostRegionsAsync(client, Token(page), new() { ["DefaultPhysics"] = "BulletSim", ["DefaultScripts"] = "false" });
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var saved = _f.Store.LoadOrCreate();
+        Assert.Equal("BulletSim", saved.DefaultPhysics);
+        Assert.False(saved.DefaultScripts);
+        Assert.NotNull(Parse(await resp.Content.ReadAsStringAsync(Ct)).QuerySelector("input[name=DefaultScripts][value=false][checked]"));
+    }
+
+    [Fact]
+    public async Task Regions_defaults_reject_values_that_are_not_offered_and_save_nothing()
+    {
+        using var client = await SignedInAsync(_f);
+        var token = Token(await client.GetStringAsync("/advanced/regions", Ct));
+        var before = SettingsBytes();
+
+        foreach (var bad in new Dictionary<string, string>[]
+        {
+            new() { ["DefaultPhysics"] = "Havok", ["DefaultScripts"] = "true" },
+            new() { ["DefaultPhysics"] = "ubODE", ["DefaultScripts"] = "maybe" },
+            new() { ["DefaultScripts"] = "true" },
+        })
+        {
+            using var resp = await PostRegionsAsync(client, token, bad);
+            Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        }
+
+        Assert.Equal(before, SettingsBytes());
+    }
+
+    [Fact]
+    public async Task Defaults_save_names_the_regions_that_use_them()
+    {
+        var home = new RegionSettings("Home", "Home", Guid.NewGuid(), UdpPort: 8004);
+        var beach = new RegionSettings("Home", "Beach", Guid.NewGuid(), X: 1001, UdpPort: 8005);
+        var forest = new RegionSettings("Forest", "Forest", Guid.NewGuid(), X: 1002, UdpPort: 8006);
+        var gone = new RegionSettings("Gone", "Gone", Guid.NewGuid(), X: 1003, UdpPort: 8007, DeletedAt: DateTimeOffset.UtcNow);
+        var own = new RegionSettings("Own", "Own", Guid.NewGuid(), X: 1004, UdpPort: 8008);
+        _f.Store.Save(_f.Store.LoadOrCreate() with
+        {
+            Regions = [home, beach, forest, gone, own],
+            Programs =
+            [
+                new ProgramSettings("Home", 8004, 8011),                                       // both from the grid
+                new ProgramSettings("Forest", 8005, 8012, "ubODE", new ProgramOptions(Scripts: false)), // neither
+                new ProgramSettings("Gone", 8006, 8013),                                       // deleted region only
+                new ProgramSettings("Own", 8007, 8014, null, new ProgramOptions(Scripts: true)), // physics from the grid
+            ],
+        });
+        using var client = await SignedInAsync(_f);
+        var token = Token(await client.GetStringAsync("/advanced/regions", Ct));
+
+        // Physics only: Home, Beach (shared program) and Own use the grid physics.
+        using var r1 = await PostRegionsAsync(client, token, new() { ["DefaultPhysics"] = "BulletSim", ["DefaultScripts"] = "true" });
+        Assert.Contains("Saved. It applies when Home, Beach and Own restart.", Text(await r1.Content.ReadAsStringAsync(Ct)));
+
+        // Scripts only: just the Home program's regions.
+        using var r2 = await PostRegionsAsync(client, token, new() { ["DefaultPhysics"] = "BulletSim", ["DefaultScripts"] = "false" });
+        Assert.Contains("Saved. It applies when Home and Beach restart.", Text(await r2.Content.ReadAsStringAsync(Ct)));
+
+        // Unchanged: nothing differs, so nothing is named.
+        using var r3 = await PostRegionsAsync(client, token, new() { ["DefaultPhysics"] = "BulletSim", ["DefaultScripts"] = "false" });
+        Assert.Contains("Saved. No region uses the grid default right now.", Text(await r3.Content.ReadAsStringAsync(Ct)));
+    }
+
+    [Fact]
+    public async Task Defaults_save_with_a_single_region_uses_the_singular_verb()
+    {
+        var home = new RegionSettings("Home", "Home", Guid.NewGuid(), UdpPort: 8004);
+        _f.Store.Save(_f.Store.LoadOrCreate() with { Regions = [home], Programs = [new ProgramSettings("Home", 8004, 8011)] });
+        using var client = await SignedInAsync(_f);
+        var token = Token(await client.GetStringAsync("/advanced/regions", Ct));
+
+        using var resp = await PostRegionsAsync(client, token, new() { ["DefaultPhysics"] = "BulletSimThreaded", ["DefaultScripts"] = "true" });
+
+        Assert.Contains("Saved. It applies when Home restarts.", Text(await resp.Content.ReadAsStringAsync(Ct)));
     }
 
     [Fact]
