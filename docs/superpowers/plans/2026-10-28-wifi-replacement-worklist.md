@@ -20,7 +20,7 @@ Legend: **[S]** security requirement, **[X]** cross-platform note, **[?]** decis
 
 > **On hold (owner, 2026-10-29)** until install and owner plans are designed and built: `docs/superpowers/specs/2026-10-29-install-and-plans-design.md`. 1.1 HTTPS moves to the future public WAN website; its draft is kept as notes in `docs/superpowers/specs/2026-10-29-https-design.md`.
 
-> 6a done; 6b Region Server, 6c Connected Server next.
+> 6a done; 6b Region Server done; 6c Connected Server next.
 
 ### 1.1 HTTPS
 - [ ] **[S]** Serve the website over HTTPS. Options: a certificate the user supplies (PEM or PFX), Let's Encrypt (ACME), or a self-signed certificate made on first run for a LAN.
