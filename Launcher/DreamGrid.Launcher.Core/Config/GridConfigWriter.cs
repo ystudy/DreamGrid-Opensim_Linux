@@ -40,6 +40,12 @@ public sealed class GridConfigWriter(LauncherPaths paths)
         robust.Set("GatekeeperService", "ForeignAgentsAllowed", Bool(hypergrid));
         robust.Set("GridInfoService", "welcome", $"http://{host}:{s.WebPort}/welcome");
         robust.Set("GridInfoService", "gridname", s.GridName);
+        // What a Region Server reads to join this grid.
+        robust.Set("GridInfoService", GridInfoKeys.Version, LauncherVersion.Current);
+        robust.Set("GridInfoService", GridInfoKeys.PrivatePort, s.RobustPrivatePort.ToString());
+        robust.Set("GridInfoService", GridInfoKeys.Hypergrid, Bool(hypergrid));
+        robust.Set("GridInfoService", GridInfoKeys.RegionPorts, RegionPorts(s));
+        robust.Set("GridInfoService", GridInfoKeys.Plan, s.Plan is { } plan ? PlanCatalog.Get(plan).Id : "");
         Finish(robust, "robust", extra, Path.Combine(rt, "Robust.HG.ini"));
 
         // 2. GridCommon.ini
@@ -142,6 +148,13 @@ public sealed class GridConfigWriter(LauncherPaths paths)
             if (ro.ClampSize) def.Set(r.Name, "ClampPrimSize", "True");
             Finish(def, "region", extra, Path.Combine(dir, r.Name + ".ini"), applyExtra: false);
         }
+    }
+
+    /// <summary>The lowest and highest of every program's HTTP port and every live region's UDP port as "from-to"; empty without programs.</summary>
+    private static string RegionPorts(LauncherSettings s)
+    {
+        var ports = s.Programs.Select(p => p.HttpPort).Concat(RegionModel.Live(s).Select(r => r.UdpPort)).ToList();
+        return ports.Count == 0 ? "" : $"{ports.Min()}-{ports.Max()}";
     }
 
     private static string Num(int v) => v.ToString(CultureInfo.InvariantCulture);

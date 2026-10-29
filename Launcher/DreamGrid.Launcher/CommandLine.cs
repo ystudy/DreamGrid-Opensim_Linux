@@ -1,7 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
-using System.Reflection;
 using DreamGrid.Launcher.Core;
 using DreamGrid.Launcher.Core.Config;
 using DreamGrid.Launcher.Core.Grid;
@@ -26,8 +25,7 @@ public static class CommandLine
     private static readonly TimeSpan StopGridExitWait = TimeSpan.FromSeconds(60);
 
     /// <summary>The assembly's InformationalVersion as built (e.g. 0.0.0-dev+abc1234); the site footer shows the same text.</summary>
-    public static string Version() =>
-        typeof(CommandLine).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion is { Length: > 0 } v ? v : "dev";
+    public static string Version() => LauncherVersion.Current;
 
     /// <summary>The verb's exit code, or null when <paramref name="args"/> names no verb (the host runs). A verb is recognised only as the first argument.</summary>
     public static async Task<int?> RunVerbAsync(string[] args, IDictionary<string, string?> env, TextWriter output, CancellationToken ct)

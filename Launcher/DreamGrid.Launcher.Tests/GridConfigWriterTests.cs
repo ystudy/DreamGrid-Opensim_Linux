@@ -2,6 +2,7 @@ using System.Net;
 using DreamGrid.Launcher.Core;
 using DreamGrid.Launcher.Core.Config;
 using DreamGrid.Launcher.Core.Ini;
+using DreamGrid.Launcher.Core.Plans;
 using DreamGrid.Launcher.Core.Settings;
 using Xunit;
 
@@ -124,6 +125,46 @@ public sealed class GridConfigWriterTests : IDisposable
         Assert.Equal("8001", r.Get("Const", "DiagnosticsPort"));
         Assert.Equal("8010", r.Get("Network", "ConsolePort"));
         Assert.Equal("http://192.168.1.50:8001/welcome", r.Get("GridInfoService", "welcome"));
+    }
+
+    private static LauncherSettings JoinMake(OwnerPlan plan, bool programs) => Make(plan: plan, hypergrid: true, hostname: "203.0.113.7") with
+    {
+        RobustPrivatePort = 8003,
+        Programs = programs ? [new ProgramSettings("Region1", 8004, 8011), new ProgramSettings("Region2", 8006, 8012)] : [],
+        Regions = programs
+            ?
+            [
+                new RegionSettings("Region1", "A", Guid.NewGuid(), UdpPort: 8004),
+                new RegionSettings("Region1", "B", Guid.NewGuid(), 1001, 1000, UdpPort: 8005),
+                new RegionSettings("Region2", "C", Guid.NewGuid(), 1002, 1000, UdpPort: 8006),
+            ]
+            : [],
+    };
+
+    [Fact]
+    public void Robust_grid_info_publishes_the_join_keys()
+    {
+        Write(JoinMake(OwnerPlan.GridAsset, programs: true));
+        var r = Robust();
+        Assert.Equal("8003", r.Get("GridInfoService", "dreamgrid_private_port"));
+        Assert.Equal("true", r.Get("GridInfoService", "dreamgrid_hypergrid"));
+        Assert.Equal("8004-8006", r.Get("GridInfoService", "dreamgrid_region_ports"));
+        Assert.Equal("grid-asset", r.Get("GridInfoService", "dreamgrid_plan"));
+        Assert.Equal(LauncherVersion.Current, r.Get("GridInfoService", "dreamgrid_version"));
+    }
+
+    [Fact]
+    public void Robust_grid_info_region_ports_are_empty_without_programs()
+    {
+        Write(JoinMake(OwnerPlan.GridAsset, programs: false));
+        Assert.Equal("", Robust().Get("GridInfoService", "dreamgrid_region_ports") ?? "");
+    }
+
+    [Fact]
+    public void Robust_grid_info_names_the_local_plan()
+    {
+        Write(Make(plan: OwnerPlan.Local));
+        Assert.Equal("local", Robust().Get("GridInfoService", "dreamgrid_plan"));
     }
 
     [Fact]

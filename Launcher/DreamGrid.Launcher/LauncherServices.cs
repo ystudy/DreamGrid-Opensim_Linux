@@ -4,6 +4,7 @@ using DreamGrid.Launcher.Core.Database;
 using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.Modules;
 using DreamGrid.Launcher.Core.OpenSim;
+using DreamGrid.Launcher.Core.Plans;
 using DreamGrid.Launcher.Core.Settings;
 
 namespace DreamGrid.Launcher;
@@ -42,6 +43,8 @@ public static class LauncherServices
             sp.GetRequiredService<IHttpClientFactory>().CreateClient("DreamGrid.Robust"),
             // Resolved per call: the controller itself depends on this client.
             () => sp.GetRequiredService<IGridController>().CurrentSettings()));
+        services.AddHttpClient("DreamGrid.Join", c => c.Timeout = TimeSpan.FromSeconds(10));
+        services.AddSingleton<IGridJoinClient>(sp => new GridJoinClient(sp.GetRequiredService<IHttpClientFactory>().CreateClient("DreamGrid.Join")));
         services.AddSingleton<GridController>();
         services.AddSingleton<IGridController>(sp => sp.GetRequiredService<GridController>());
         return services;
