@@ -13,6 +13,27 @@ public static class HostAddress
         return !string.IsNullOrEmpty(trimmed) && SettingsValidator.HostnameError(trimmed) is null ? trimmed : Detect();
     }
 
+    /// <summary>
+    /// Whether a configured hostname is reachable from the internet: false for null or empty (the detected LAN address) and for
+    /// loopback, private, link-local and CGNAT addresses; true for any other IP and for any name.
+    /// </summary>
+    public static bool IsPublic(string? configured)
+    {
+        var host = configured?.Trim();
+        if (string.IsNullOrEmpty(host)) return false;
+        if (!IPAddress.TryParse(host, out var ip)) return true;
+        if (ip.IsIPv4MappedToIPv6) ip = ip.MapToIPv4();
+        if (IPAddress.IsLoopback(ip)) return false;
+        if (ip.AddressFamily == AddressFamily.InterNetworkV6)
+            return !(ip.IsIPv6LinkLocal || (ip.GetAddressBytes()[0] & 0xFE) == 0xFC); // fe80::/10, fc00::/7
+        var b = ip.GetAddressBytes();
+        return !(b[0] == 10
+            || (b[0] == 172 && b[1] is >= 16 and <= 31)
+            || (b[0] == 192 && b[1] == 168)
+            || (b[0] == 169 && b[1] == 254)
+            || (b[0] == 100 && b[1] is >= 64 and <= 127));
+    }
+
     /// <summary>The LAN IPv4 of the default route; 127.0.0.1 when none can be found. Sends no packet.</summary>
     public static string Detect()
     {
