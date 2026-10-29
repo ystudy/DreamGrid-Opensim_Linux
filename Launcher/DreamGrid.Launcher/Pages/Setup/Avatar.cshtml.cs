@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Text.RegularExpressions;
 using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.OpenSim;
+using DreamGrid.Launcher.Core.Plans;
 using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Security;
 using DreamGrid.Launcher.Setup;
@@ -101,7 +102,7 @@ public sealed partial class AvatarModel(
         {
             account = await runner.TrySetEstateOwnerAsync(first, last, lifetime.ApplicationStopping);
         }
-        catch (Exception e) when (e is ArgumentException or GridAssetUnreachableException)
+        catch (Exception e) when (e is ArgumentException or GridAssetUnreachableException or GridJoinException)
         {
             log.LogWarning("Setup: {First} {Last} could not be made the owner: {Message}", first, last, e.Message);
             Error = e.Message;

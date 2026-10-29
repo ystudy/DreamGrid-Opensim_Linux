@@ -165,8 +165,8 @@ public sealed class SetupRunner(
             // The headline stays plain newcomer text; the technical message leads the details, above the log lines.
             var where = stage == "" ? "" : $" It stopped at \"{stage}\".";
             var excerpt = Excerpt();
-            // A Grid Asset Server that doesn't answer is said as is: the owner can act on it.
-            var headline = e is GridAssetUnreachableException ? e.Message : PortConflictText(e);
+            // A Grid Asset Server that doesn't answer, or isn't one this computer can join, is said as is: the owner can act on it.
+            var headline = e is GridAssetUnreachableException or GridJoinException ? e.Message : PortConflictText(e);
             progress.Fail(headline ?? $"Your region could not be set up.{where} Check the details, then try again.",
                 excerpt is null ? e.Message : e.Message + "\n\n" + excerpt);
         }

@@ -5,8 +5,16 @@ using DreamGrid.Launcher.Core.Settings;
 
 namespace DreamGrid.Launcher.Core.Plans;
 
-/// <summary>An owner-readable reason a Grid Asset Server could not be joined; the message is shown as is.</summary>
-public sealed class GridJoinException(string message) : Exception(message);
+/// <summary>
+/// An owner-readable reason a Grid Asset Server could not be joined; the message is shown as is. <paramref name="noAnswer"/>
+/// is true when nothing answered at the address (refused, unreachable or timed out), false when something answered but
+/// isn't a Grid Asset Server this computer can join.
+/// </summary>
+public sealed class GridJoinException(string message, bool noAnswer = false) : Exception(message)
+{
+    /// <summary>True when nothing answered at the address: the Grid Asset Server may simply be off.</summary>
+    public bool NoAnswer { get; } = noAnswer;
+}
 
 /// <summary>The grid information keys a Grid Asset Server publishes through Robust's get_grid_info.</summary>
 public static class GridInfoKeys
@@ -152,7 +160,7 @@ public sealed class GridJoinClient(HttpClient http) : IGridJoinClient
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
         {
-            throw new GridJoinException($"Nothing answered at {host}:{port}. Check the address, and that the Grid Asset Server is running.");
+            throw new GridJoinException($"Nothing answered at {host}:{port}. Check the address, and that the Grid Asset Server is running.", noAnswer: true);
         }
         return GridJoin.Parse(host, port, xml);
     }

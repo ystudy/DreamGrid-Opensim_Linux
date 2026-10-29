@@ -32,10 +32,12 @@ public sealed partial class GridController
     internal TimeSpan GridAssetWatchInterval { get; init; } = TimeSpan.FromSeconds(30);
 
     /// <summary>
-    /// Under the operation lock, once the database runs: on a plan that runs Robust, starts it. On a Region Server, reads the
-    /// Grid Asset Server's join information again and saves it (keeping the address the owner chose), then watches that
-    /// server; when it can't be read the last values stay and <see cref="GridAssetUnreachableException"/> is thrown.
-    /// Returns the settings the rest of the start uses.
+    /// Under the operation lock, once the database runs: on a plan that runs Robust, starts it. On a Region Server, first
+    /// stops a Robust of this computer's own that still runs (one a start before the plan was chosen began), then reads
+    /// the Grid Asset Server's join information again and saves it (keeping the address the owner chose), then watches
+    /// that server. When nothing answers, the last values stay and <see cref="GridAssetUnreachableException"/> is thrown;
+    /// when something else answered (another plan, not DreamGrid), the last values stay and the
+    /// <see cref="GridJoinException"/> is thrown with its own message. Returns the settings the rest of the start uses.
     /// </summary>
     private async Task<LauncherSettings> StartGridServiceAsync(LauncherSettings s, CancellationToken ct)
     {
@@ -44,10 +46,22 @@ public sealed partial class GridController
             await StartComponentAsync(_robust!, ct);
             return s;
         }
+        if (_robust is { } local && (local.Process.State != ProcessState.Stopped || WillAdopt(local)))
+        {
+            _log?.LogInformation("Stopping this computer's own grid service: a Region Server uses the Grid Asset Server's.");
+            await local.Process.StopAsync(ct);
+        }
         if (s.Join is not { } joined) return s;
 
         JoinedGrid read;
         try { read = await join.ReadAsync(joined.Host, joined.PublicPort, ct); }
+        catch (GridJoinException e) when (!e.NoAnswer && !ct.IsCancellationRequested)
+        {
+            // Something answered, but not a Grid Asset Server this computer can join: say so, not "isn't answering".
+            _gridAsset = ProcessState.Failed;
+            _log?.LogWarning("The Grid Asset Server at {Host}:{Port} can't be joined: {Reason}", joined.Host, joined.PublicPort, e.Message);
+            throw;
+        }
         catch (Exception e) when (e is GridJoinException or HttpRequestException && !ct.IsCancellationRequested)
         {
             _gridAsset = ProcessState.Failed;
@@ -57,11 +71,14 @@ public sealed partial class GridController
         }
         _gridAsset = ProcessState.Running;
         WatchGridAsset();
-        return UpdateSettings(l => l.Join is not { } current ? l : l with
-        {
-            GridName = read.GridName,
-            Join = read with { Host = current.Host, PublicPort = current.PublicPort },
-        });
+        // Saved only while the join still names the server this start read: an Advanced re-point saved meanwhile wins.
+        return UpdateSettings(l => l.Join is not { } current || current.Host != joined.Host || current.PublicPort != joined.PublicPort
+            ? l
+            : l with
+            {
+                GridName = read.GridName,
+                Join = read with { Host = current.Host, PublicPort = current.PublicPort },
+            });
     }
 
     /// <summary>Starts the Grid Asset Server watch unless one runs; it ends with the monitors (<see cref="DetachAsync"/>).</summary>
@@ -108,10 +125,14 @@ public sealed partial class GridController
         return new ComponentStatus("robust", state, null, null, null, error);
     }
 
-    /// <summary>True when the grid service answers: this computer's Robust runs, or (on a Region Server) the Grid Asset Server's last check answered.</summary>
+    /// <summary>
+    /// True when the grid service answers: this computer's Robust runs, or (on a Region Server) the Grid Asset Server's
+    /// last check answered. A Robust of this computer's own never counts on a Region Server.
+    /// </summary>
     private bool GridServiceUp() =>
-        _robust?.Process.State == ProcessState.Running
-        || (!PlanCatalog.RunsRobust(CurrentSettings()) && _gridAsset == ProcessState.Running);
+        PlanCatalog.RunsRobust(CurrentSettings())
+            ? _robust?.Process.State == ProcessState.Running
+            : _gridAsset == ProcessState.Running;
 
     /// <summary>Why a region can't start while the grid service is down.</summary>
     private static InvalidOperationException GridServiceDown(LauncherSettings s) =>

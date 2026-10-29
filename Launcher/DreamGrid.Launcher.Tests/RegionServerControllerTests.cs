@@ -32,6 +32,7 @@ public sealed class RegionServerControllerTests : IAsyncLifetime
     private readonly SettingsStore _store;
     private readonly GridRobust _robust = new();
     private readonly FakeGridJoin _join = new() { Result = Avalon };
+    private readonly AnswerAll _consoles = new();
     private readonly int[] _ports;
     private readonly List<GridController> _grids = new();
 
@@ -74,7 +75,7 @@ public sealed class RegionServerControllerTests : IAsyncLifetime
         var missing = Path.Combine(_root, "no-such-dir", "mariadbd");
         var marker = Path.Combine(_root, "stand-in-mariadb");
         var grid = new GridController(_paths, _store, new MariaDbBinaries(missing, missing, null),
-            [new LogLevelModule()], _robust, _join, new AnswerAll(), TimeProvider.System, cpu: (_, _, _) => { })
+            [new LogLevelModule()], _robust, _join, _consoles, TimeProvider.System, cpu: (_, _, _) => { })
         {
             DatabaseSpecForTests = _ => new ProcessSpec("MariaDB", () => StandIn(marker), Path.Combine(_paths.Pids, "mariadb.pid"),
                 _ => Task.FromResult(true), _ => Task.CompletedTask, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(1), marker),
@@ -142,7 +143,7 @@ public sealed class RegionServerControllerTests : IAsyncLifetime
     public async Task Region_server_start_waits_when_the_grid_asset_server_is_off()
     {
         AddWelcome();
-        _join.Error = new GridJoinException("Nothing answered at 192.168.1.5:8002.");
+        _join.Error = new GridJoinException("Nothing answered at 192.168.1.5:8002.", noAnswer: true);
         var before = _store.LoadOrCreate().Join;
         var grid = NewGrid();
 
@@ -297,6 +298,114 @@ public sealed class RegionServerControllerTests : IAsyncLifetime
         await Assert.ThrowsAsync<InvalidOperationException>(() => grid.JoinedRegionCountAsync(TestContext.Current.CancellationToken));
     }
 
+    [Fact]
+    public async Task Region_server_start_names_a_grid_that_is_not_a_grid_asset_server()
+    {
+        AddWelcome();
+        const string reason = "The grid at 192.168.1.5:8002 runs as a Local grid. A Region Server can only join a Grid Asset Server.";
+        _join.Error = new GridJoinException(reason);
+        var before = _store.LoadOrCreate().Join;
+        var grid = NewGrid();
+
+        var e = await Assert.ThrowsAnyAsync<Exception>(() => grid.StartAsync(TestContext.Current.CancellationToken));
+
+        Assert.IsNotType<GridAssetUnreachableException>(e);
+        var status = grid.GetStatus();
+        Assert.Contains("runs as a Local grid", status.StartFailure!.Message);
+        Assert.DoesNotContain("isn't answering", status.StartFailure.Message);
+        Assert.Equal(ProcessState.Failed, status.Robust.State);
+        Assert.Equal(before, _store.LoadOrCreate().Join);
+    }
+
+    [Fact]
+    public async Task Region_server_start_keeps_a_join_re_pointed_while_it_read()
+    {
+        AddWelcome(created: false);
+        var elsewhere = Avalon with { Host = "192.168.1.9", GridName = "Elsewhere", LoginUri = "http://192.168.1.9:8002/" };
+        _join.Result = Avalon with { GridName = "Avalon 2" };
+        var grid = NewGrid();
+        // Advanced -> Grid Asset Server saves another server after this start read the old one, before it saves.
+        _join.OnRead = () => grid.UpdateSettings(l => l with { Join = elsewhere, GridName = "Elsewhere" });
+
+        await grid.StartAsync(TestContext.Current.CancellationToken);
+
+        var s = _store.LoadOrCreate();
+        Assert.Equal(elsewhere, s.Join);
+        Assert.Equal("Elsewhere", s.GridName);
+    }
+
+    [Fact]
+    public async Task Region_power_start_is_refused_while_the_grid_asset_server_does_not_answer()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var id = AddWelcome();
+        _join.Error = new GridJoinException("Nothing answered at 192.168.1.5:8002.", noAnswer: true);
+        var grid = NewGrid();
+        await Assert.ThrowsAsync<GridAssetUnreachableException>(() => grid.StartAsync(ct));
+        Assert.Equal(ProcessState.Failed, grid.GetStatus().Robust.State);
+
+        var e = await Assert.ThrowsAsync<GridAssetUnreachableException>(() => grid.RegionPowerAsync(id, RegionPower.Start, ct));
+
+        Assert.Contains("192.168.1.5:8002", e.Message);
+        Assert.False(File.Exists(Path.Combine(_paths.Pids, "Welcome.pid")));
+    }
+
+    [Fact]
+    public async Task Adding_a_region_when_the_map_does_not_answer_says_the_grid_asset_server_is_off()
+    {
+        AddWelcome();
+        _robust.MapError = new HttpRequestException("Connection refused");
+        var grid = NewGrid();
+        var before = File.ReadAllText(_paths.SettingsFile);
+
+        var e = await Assert.ThrowsAsync<GridAssetUnreachableException>(() =>
+            grid.AddRegionAsync(new NewRegion("Beach", 1001, 1000, 1, "island", null), TestContext.Current.CancellationToken));
+
+        Assert.Contains("192.168.1.5:8002", e.Message);
+        Assert.Equal(before, File.ReadAllText(_paths.SettingsFile));
+    }
+
+    [Fact]
+    public async Task A_robust_left_running_before_the_plan_was_chosen_stops_on_a_region_server()
+    {
+        // A fresh install starts before the owner picks a plan; that start runs this computer's Robust (here a stand-in
+        // adopted through robust.pid). Once the plan is Region Server, the next start must stop it: it would otherwise
+        // count as the grid service and hide a Grid Asset Server that is off.
+        var ct = TestContext.Current.CancellationToken;
+        Save(s => s with { Plan = null, Join = null });
+        var robustDll = Path.Combine(_paths.RuntimeOpenSim, "Robust.dll");
+        var robustPid = Path.Combine(_paths.Pids, "robust.pid");
+        using var fake = Process.Start(StandIn(robustDll))!;
+        try
+        {
+            _paths.EnsureCreated();
+            PidFile.Write(robustPid, fake.Id);
+            _consoles.OnCommand = port =>
+            {
+                // What Robust does on "quit".
+                if (port == _ports[5])
+                    try { fake.Kill(); } catch (InvalidOperationException) { }
+            };
+            var grid = NewGrid();
+            await grid.StartAsync(ct);
+            Assert.True(grid.GetStatus().RunsRobust);
+            Assert.Equal(ProcessState.Running, grid.GetStatus().Robust.State);
+
+            var id = AddWelcome();
+            Save(s => s with { Plan = OwnerPlan.RegionServer, Join = Avalon });
+            _join.Error = new GridJoinException("Nothing answered at 192.168.1.5:8002.", noAnswer: true);
+            await Assert.ThrowsAsync<GridAssetUnreachableException>(() => grid.StartAsync(ct));
+
+            Assert.True(fake.WaitForExit(10_000), "this computer's Robust still runs");
+            Assert.Null(PidFile.ReadLive(robustPid, robustDll));
+            await Assert.ThrowsAsync<GridAssetUnreachableException>(() => grid.RegionPowerAsync(id, RegionPower.Start, ct));
+        }
+        finally
+        {
+            if (!fake.HasExited) fake.Kill();
+        }
+    }
+
     // ---- rig ----------------------------------------------------------------------------------------
 
     private static void CopyPrototypes(string program)
@@ -379,19 +488,24 @@ public sealed class RegionServerControllerTests : IAsyncLifetime
             MapError is { } e ? Task.FromException<IReadOnlyList<MapRegion>>(e) : Task.FromResult<IReadOnlyList<MapRegion>>(Map.ToList());
     }
 
-    /// <summary>Consoles that accept everything and print nothing.</summary>
+    /// <summary>Consoles that accept everything and print nothing; <see cref="OnCommand"/> sees the console port of each command.</summary>
     private sealed class AnswerAll : IHttpClientFactory
     {
-        public HttpClient CreateClient(string name) => new(new Handler());
+        public Action<int>? OnCommand { get; set; }
 
-        private sealed class Handler : HttpMessageHandler
+        public HttpClient CreateClient(string name) => new(new Handler(this));
+
+        private sealed class Handler(AnswerAll owner) : HttpMessageHandler
         {
-            protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) =>
-                Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+            {
+                if (request.RequestUri!.AbsolutePath == "/SessionCommand/") owner.OnCommand?.Invoke(request.RequestUri.Port);
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
                 {
-                    Content = new StringContent(request.RequestUri!.AbsolutePath == "/StartSession/"
+                    Content = new StringContent(request.RequestUri.AbsolutePath == "/StartSession/"
                         ? "<ConsoleSession><SessionID>sid</SessionID></ConsoleSession>" : "<ConsoleSession></ConsoleSession>"),
                 });
+            }
         }
     }
 }

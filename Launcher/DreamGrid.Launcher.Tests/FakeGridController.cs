@@ -381,12 +381,16 @@ internal sealed class FakeGridJoin : IGridJoinClient
     /// <summary>Every (host, port) read, in order.</summary>
     public List<(string Host, int Port)> Reads { get; } = new();
 
+    /// <summary>Runs during each read, before it answers (a test changes the settings between a read and its save).</summary>
+    public Action? OnRead { get; set; }
+
     public Task<JoinedGrid> ReadAsync(string host, int port, CancellationToken ct)
     {
         lock (Reads) Reads.Add((host, port));
+        OnRead?.Invoke();
         if (Error is { } e) return Task.FromException<JoinedGrid>(e);
         return Result is { } joined ? Task.FromResult(joined)
-            : Task.FromException<JoinedGrid>(new GridJoinException($"Nothing answered at {host}:{port}."));
+            : Task.FromException<JoinedGrid>(new GridJoinException($"Nothing answered at {host}:{port}.", noAnswer: true));
     }
 }
 
