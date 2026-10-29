@@ -116,7 +116,7 @@ jobs:
   # directories (under the runner temp directory) so their logs can be uploaded when a test fails.
   launcher-windows:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       MARIADB_VERSION: 11.4.9
       # From https://archive.mariadb.org/mariadb-11.4.9/winx64-packages/sha256sums.txt
@@ -188,7 +188,7 @@ jobs:
 
   launcher-debian:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
