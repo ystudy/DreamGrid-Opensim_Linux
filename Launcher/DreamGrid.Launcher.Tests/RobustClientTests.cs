@@ -52,6 +52,21 @@ public class RobustClientTests
     }
 
     [Fact]
+    public async Task Region_server_reaches_the_grid_asset_server_at_the_typed_address_not_its_public_name()
+    {
+        var h = new StubHandler(r => (HttpStatusCode.OK, "<gridinfo></gridinfo>"));
+        var region = Defaults with
+        {
+            Plan = OwnerPlan.RegionServer,
+            Join = new JoinedGrid("192.168.1.5", 8002, 8003, "Avalon", "http://grid.example.org:8002/", "7.1.0", false, 8004, 8006),
+        };
+
+        await new RobustClient(new HttpClient(h), () => region).IsReadyAsync(CancellationToken.None);
+
+        Assert.Equal(["http://192.168.1.5:8002/get_grid_info"], h.Requests.Select(q => q.Uri.ToString()));
+    }
+
+    [Fact]
     public async Task Authenticate_sends_md5_hex_of_password()
     {
         var (c, h) = Make(r => (HttpStatusCode.OK, "<ServerResponse><Result>Success</Result><Token>tok-1</Token></ServerResponse>"));

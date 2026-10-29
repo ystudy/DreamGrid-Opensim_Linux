@@ -19,15 +19,27 @@ public static class GridEndpoints
     public static Uri PublicBase(LauncherSettings s) =>
         Joined(s) is { } j ? new Uri($"http://{j.Host}:{j.PublicPort}") : new Uri($"http://127.0.0.1:{s.RobustPublicPort}");
 
-    /// <summary>The port of Robust's public services.</summary>
-    public static int PublicPort(LauncherSettings s) => Joined(s)?.PublicPort ?? s.RobustPublicPort;
-
     /// <summary>The port of Robust's private services.</summary>
     public static int PrivatePort(LauncherSettings s) => Joined(s)?.PrivatePort ?? s.RobustPrivatePort;
 
-    /// <summary>The host written into <c>BaseURL</c>: the Grid Asset Server on a Region Server, otherwise this computer's address.</summary>
-    public static string ServiceHost(LauncherSettings s) =>
-        Joined(s)?.Host ?? HostAddress.Effective(s.Hostname);
+    /// <summary>
+    /// What the region INI's <c>BaseURL</c> and <c>PublicPort</c> advertise as the grid's home: everywhere but a joined
+    /// Region Server, this computer's address and Robust's public port. On a Region Server it is the grid's own published
+    /// login address (Robust's <c>BaseURL:PublicPort/</c>, the get_grid_info <c>login</c>), split into scheme and host,
+    /// and port, so the grid's own users are not taken for hypergrid visitors when the owner typed a LAN address. A login
+    /// address that can't be read falls back to the typed host and port. Only the advertised address follows the
+    /// login: the Region Server itself still reaches the Grid Asset Server at the typed address (<see cref="PublicBase"/>,
+    /// <see cref="PrivateHost"/>).
+    /// </summary>
+    public static (string BaseUrl, int PublicPort) Advertised(LauncherSettings s)
+    {
+        if (Joined(s) is not { } j) return ($"http://{HostAddress.Effective(s.Hostname)}", s.RobustPublicPort);
+        if (Uri.TryCreate(j.LoginUri, UriKind.Absolute, out var login)
+            && (login.Scheme == Uri.UriSchemeHttp || login.Scheme == Uri.UriSchemeHttps)
+            && login.Host.Length > 0)
+            return ($"{login.Scheme}://{login.Host}", login.Port);
+        return ($"http://{j.Host}", j.PublicPort);
+    }
 
     /// <summary>The host written into <c>PrivURL</c>: the Grid Asset Server on a Region Server, otherwise this computer.</summary>
     public static string PrivateHost(LauncherSettings s) => Joined(s)?.Host ?? "127.0.0.1";

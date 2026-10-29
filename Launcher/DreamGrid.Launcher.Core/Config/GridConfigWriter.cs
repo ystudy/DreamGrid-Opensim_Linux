@@ -86,9 +86,11 @@ public sealed class GridConfigWriter(LauncherPaths paths)
         var os = LoadProto(Path.Combine(rt, "config-include", "Proto", "Robust", "OpenSim.ini"));
         os.Set("Architecture", "Include-Architecture", hypergrid ? "\"config-include/GridHypergrid.ini\"" : "\"config-include/Grid.ini\"");
         os.Set("Const", "BaseHostname", host);
-        // On a Region Server BaseURL, PrivURL and the ports are the Grid Asset Server's; BaseHostname stays this computer.
-        os.Set("Const", "BaseURL", $"http://{GridEndpoints.ServiceHost(s)}");
-        os.Set("Const", "PublicPort", GridEndpoints.PublicPort(s).ToString());
+        // On a Region Server BaseURL and PublicPort are the grid's published login address, PrivURL and PrivatePort the
+        // Grid Asset Server's typed address; BaseHostname stays this computer.
+        var (baseUrl, publicPort) = GridEndpoints.Advertised(s);
+        os.Set("Const", "BaseURL", baseUrl);
+        os.Set("Const", "PublicPort", publicPort.ToString());
         os.Set("Const", "PrivatePort", GridEndpoints.PrivatePort(s).ToString());
         os.Set("Const", "PrivURL", $"http://{GridEndpoints.PrivateHost(s)}");
         os.Set("Const", "http_listener_port", program.HttpPort.ToString());

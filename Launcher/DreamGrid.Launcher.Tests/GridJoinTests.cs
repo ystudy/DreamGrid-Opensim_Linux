@@ -69,4 +69,33 @@ public sealed class GridJoinTests
         Assert.Null(JoinAddress.Parse(typed, out var error));
         Assert.False(string.IsNullOrEmpty(error));
     }
+
+    [Fact]
+    public async Task Client_marks_nothing_answering_as_no_answer()
+    {
+        using var http = new HttpClient(new Answer(_ => throw new HttpRequestException("Connection refused")));
+
+        var e = await Assert.ThrowsAsync<GridJoinException>(() =>
+            new GridJoinClient(http).ReadAsync("192.168.1.5", 8002, TestContext.Current.CancellationToken));
+
+        Assert.True(e.NoAnswer);
+        Assert.Contains("Nothing answered", e.Message);
+    }
+
+    [Fact]
+    public async Task Client_does_not_mark_another_plan_as_no_answer()
+    {
+        using var http = new HttpClient(new Answer(_ => new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(Xml("local")) }));
+
+        var e = await Assert.ThrowsAsync<GridJoinException>(() =>
+            new GridJoinClient(http).ReadAsync("192.168.1.5", 8002, TestContext.Current.CancellationToken));
+
+        Assert.False(e.NoAnswer);
+    }
+
+    private sealed class Answer(Func<HttpRequestMessage, HttpResponseMessage> answer) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) =>
+            Task.FromResult(answer(request));
+    }
 }

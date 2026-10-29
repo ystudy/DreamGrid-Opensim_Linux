@@ -1451,7 +1451,7 @@ public sealed class SetupFlowTests
     public async Task Join_shows_why_it_could_not_read()
     {
         await using var f = RegionServer();
-        f.Join.Error = new GridJoinException("Nothing answered at 192.168.1.5:8002. Check the address, and that the Grid Asset Server is running.");
+        f.Join.Error = new GridJoinException("Nothing answered at 192.168.1.5:8002. Check the address, and that the Grid Asset Server is running.", noAnswer: true);
         using var client = await SetupClientAsync(f);
 
         foreach (var url in new[] { "/setup/join", "/setup/join?handler=Confirm" })

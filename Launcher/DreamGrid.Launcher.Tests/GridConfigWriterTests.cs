@@ -672,11 +672,13 @@ public sealed class GridConfigWriterTests : IDisposable
     [Fact]
     public void Region_server_points_regions_at_the_grid_asset_server()
     {
-        Write(RegionServer(hypergrid: false));
+        // The owner typed the Grid Asset Server's LAN address; the grid publishes its own public name as its login.
+        var s = RegionServer(hypergrid: false);
+        Write(s with { Join = s.Join! with { LoginUri = "http://grid.example.org:8002/" } });
 
         var r = Region();
         Assert.Equal("192.168.1.20", r.Get("Const", "BaseHostname"));
-        Assert.Equal("http://192.168.1.5", r.Get("Const", "BaseURL"));
+        Assert.Equal("http://grid.example.org", r.Get("Const", "BaseURL"));
         Assert.Equal("http://192.168.1.5", r.Get("Const", "PrivURL"));
         Assert.Equal("8002", r.Get("Const", "PublicPort"));
         Assert.Equal("8003", r.Get("Const", "PrivatePort"));
@@ -685,6 +687,33 @@ public sealed class GridConfigWriterTests : IDisposable
         Assert.True(string.IsNullOrWhiteSpace(r.Get("Estates", "DefaultEstateOwnerUUID")));
         Assert.Equal("false", Grid().Get("GridService", "AllowHypergridMapSearch"));
         Assert.Equal("192.168.1.20", IniDocument.Load(RegionFile("Region1", "Welcome Area")).Get("Welcome Area", "ExternalHostName"));
+    }
+
+    [Fact]
+    public void Region_server_advertises_the_port_of_the_grids_login_address()
+    {
+        var s = RegionServer(hypergrid: false);
+        Write(s with { Join = s.Join! with { LoginUri = "https://grid.example.org:9000/" } });
+
+        var r = Region();
+        Assert.Equal("https://grid.example.org", r.Get("Const", "BaseURL"));
+        Assert.Equal("9000", r.Get("Const", "PublicPort"));
+        Assert.Equal("http://192.168.1.5", r.Get("Const", "PrivURL"));
+        Assert.Equal("8003", r.Get("Const", "PrivatePort"));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("not a url")]
+    [InlineData("ftp://grid.example.org:21/")]
+    public void Region_server_falls_back_to_the_typed_address_when_the_login_address_cannot_be_read(string login)
+    {
+        var s = RegionServer(hypergrid: false);
+        Write(s with { Join = s.Join! with { LoginUri = login } });
+
+        var r = Region();
+        Assert.Equal("http://192.168.1.5", r.Get("Const", "BaseURL"));
+        Assert.Equal("8002", r.Get("Const", "PublicPort"));
     }
 
     [Fact]
