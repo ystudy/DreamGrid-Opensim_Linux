@@ -31,8 +31,11 @@ public sealed class NetworkModel(IGridController grid, Func<LauncherSettings> se
     public string Ports { get; private set; } = "";
     public HypergridSwitchModel Switch { get; private set; } = new(false, true, null, 0, 0);
 
-    /// <summary>The plan's advisories that apply to the chosen kind of address.</summary>
-    public IReadOnlyList<string> Advisories { get; private set; } = [];
+    /// <summary>The advisories for a network-only address; empty for Simple Public, which is always public.</summary>
+    public IReadOnlyList<string> LanAdvisories { get; private set; } = [];
+
+    /// <summary>The advisories for a public address; empty for Local, which is always network-only.</summary>
+    public IReadOnlyList<string> PublicAdvisories { get; private set; } = [];
 
     public IActionResult OnGet()
     {
@@ -82,8 +85,9 @@ public sealed class NetworkModel(IGridController grid, Func<LauncherSettings> se
 
     private void Fill(LauncherSettings s, bool hypergridOn)
     {
-        var isPublic = Plan == OwnerPlan.SimplePublic || (Plan == OwnerPlan.GridAsset && AddressKind == "public");
-        Advisories = PlanCatalog.AdvisoriesFor(PlanCatalog.Get(Plan), isPublic);
+        var info = PlanCatalog.Get(Plan);
+        LanAdvisories = Plan == OwnerPlan.SimplePublic ? [] : PlanCatalog.AdvisoriesFor(info, publicAddress: false);
+        PublicAdvisories = Plan == OwnerPlan.Local ? [] : PlanCatalog.AdvisoriesFor(info, publicAddress: true);
         Ports = string.Create(CultureInfo.InvariantCulture, $"{s.RobustPublicPort}, and {s.RegionPort} upward for regions");
         Switch = new HypergridSwitchModel(hypergridOn, true, null, s.RobustPublicPort, s.RegionPort);
     }

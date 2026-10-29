@@ -1130,19 +1130,17 @@ public sealed class SetupFlowTests
     }
 
     [Fact]
-    public async Task Network_step_for_grid_asset_shows_only_the_advisories_for_the_chosen_address()
+    public async Task Network_step_for_grid_asset_shows_only_the_advisories_for_the_chosen_address_after_an_error()
     {
         await using var f = OnNetwork(OwnerPlan.GridAsset);
         using var client = await SetupClientAsync(f);
 
-        var lan = (await client.GetStringAsync("/setup/network", Ct));
-        Assert.Contains("only computers on this network can visit", lan);
-        Assert.DoesNotContain("passwords cross the internet", lan);
-
         using var pub = await PostFormAsync(client, "/setup/network", new() { ["AddressKind"] = "public", ["PublicAddress"] = "10.1.2.3" });
-        var text = await pub.Content.ReadAsStringAsync(Ct);
-        Assert.Contains("passwords cross the internet", text);
-        Assert.DoesNotContain("only computers on this network can visit", text);
+        var page = new HtmlParser().ParseDocument(await pub.Content.ReadAsStringAsync(Ct));
+
+        Assert.True(page.QuerySelector("#advisories-lan")!.HasAttribute("hidden"));
+        Assert.False(page.QuerySelector("#advisories-public")!.HasAttribute("hidden"));
+        Assert.False(page.QuerySelector("#public-part")!.HasAttribute("hidden"));
     }
 
     [Fact]
@@ -1189,5 +1187,28 @@ public sealed class SetupFlowTests
         using var resp = await client.GetAsync("/setup/network", Ct);
 
         Assert.Equal("/setup", Location(resp));
+    }
+
+    [Fact]
+    public async Task Fresh_grid_asset_page_has_both_advisory_lists_lan_shown_and_public_hidden_and_can_pick_public()
+    {
+        await using var f = OnNetwork(OwnerPlan.GridAsset);
+        using var client = await SetupClientAsync(f);
+
+        var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/network", Ct));
+
+        var lan = page.QuerySelector("#advisories-lan")!;
+        var pub = page.QuerySelector("#advisories-public")!;
+        Assert.False(lan.HasAttribute("hidden"));
+        Assert.True(pub.HasAttribute("hidden"));
+        Assert.Contains("only computers on this network can visit", lan.TextContent);
+        Assert.Contains("passwords cross the internet", pub.TextContent);
+        Assert.Contains("Your router must forward", pub.TextContent);
+        // The public choice and its field are in the form (the script only shows/hides them; without it all parts show).
+        Assert.NotNull(page.QuerySelector("input[name=AddressKind][value=public]"));
+        Assert.NotNull(page.QuerySelector("#public-part input[name=PublicAddress]"));
+        Assert.NotNull(page.QuerySelector("#switch-part input[name=Hypergrid]"));
+        Assert.NotNull(page.QuerySelector("noscript style"));
+        Assert.Contains(page.QuerySelectorAll("script"), x => x.TextContent.Contains("advisories-public"));
     }
 }

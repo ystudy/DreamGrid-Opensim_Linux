@@ -45,16 +45,23 @@
     }
 
     <h2 class="h5 mt-4">Before you go on</h2>
-    <ul class="plan-advisories">
-        @foreach (var advisory in Model.Advisories)
-        {
-            <li>@advisory</li>
-        }
-    </ul>
+    @if (Model.LanAdvisories.Count > 0)
+    {
+        <ul id="advisories-lan" class="plan-advisories" hidden="@showPublic">
+            @foreach (var advisory in Model.LanAdvisories) { <li>@advisory</li> }
+        </ul>
+    }
+    @if (Model.PublicAdvisories.Count > 0)
+    {
+        <ul id="advisories-public" class="plan-advisories" hidden="@(!showPublic)">
+            @foreach (var advisory in Model.PublicAdvisories) { <li>@advisory</li> }
+        </ul>
+    }
     <button type="submit" class="btn btn-primary mt-3">Continue</button>
 </form>
 @if (gridAsset)
 {
+    <noscript><style>[hidden] { display: block !important; }</style></noscript>
     <script>
         // Show the part that matches the address choice; the server enforces it either way.
         (function () {
@@ -64,6 +71,8 @@
                 document.getElementById('public-part').hidden = !pub;
                 document.getElementById('switch-part').hidden = !pub;
                 document.getElementById('lan-hypergrid').hidden = pub;
+                document.getElementById('advisories-lan').hidden = pub;
+                document.getElementById('advisories-public').hidden = !pub;
             }
             document.querySelectorAll('input[name=AddressKind]').forEach(function (k) { k.addEventListener('change', update); });
             update();
