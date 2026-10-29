@@ -164,6 +164,25 @@ public sealed class RegionServerPagesTests
         Assert.Contains("restart-database", html);
     }
 
+    [Theory]
+    [InlineData(OwnerPlan.RegionServer, "Restarting the database. Your regions restart with it.")]
+    [InlineData(OwnerPlan.Local, "Restarting the database. The grid service and your regions restart with it.")]
+    public async Task Restart_database_notice_names_the_grid_service_only_when_this_computer_runs_one(OwnerPlan plan, string notice)
+    {
+        await using var f = Factory(plan);
+        using var client = await SignedInAsync(f);
+        var token = new HtmlParser().ParseDocument(await client.GetStringAsync("/", Ct))
+            .QuerySelector("input[name=__RequestVerificationToken]")!.GetAttribute("value")!;
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/grid/restart-database");
+        request.Headers.Add("RequestVerificationToken", token);
+
+        using var resp = await client.SendAsync(request, Ct);
+
+        Assert.Equal(HttpStatusCode.Accepted, resp.StatusCode);
+        using var json = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(Ct));
+        Assert.Equal(notice, json.RootElement.GetProperty("notice").GetString());
+    }
+
     [Fact]
     public async Task Local_dashboard_keeps_the_restart_grid_service_button_and_label()
     {

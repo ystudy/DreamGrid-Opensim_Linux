@@ -60,7 +60,7 @@ public sealed class IndexModel(IGridController grid, IOnlineUsers online, GridAc
     public IActionResult OnPostRun(string? gridAction)
     {
         if (gridAction is not null && actions.TryRun(gridAction))
-            Notice = GridActions.Notices[gridAction];
+            Notice = GridActions.NoticeFor(gridAction, settings());
         return Redirect("/");
     }
 

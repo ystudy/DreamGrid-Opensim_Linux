@@ -1,4 +1,6 @@
 using DreamGrid.Launcher.Core.Grid;
+using DreamGrid.Launcher.Core.Plans;
+using DreamGrid.Launcher.Core.Settings;
 
 namespace DreamGrid.Launcher.Endpoints;
 
@@ -18,6 +20,15 @@ public sealed class GridActions(IGridController grid, BackgroundWork background,
         ["restart-database"] = "Restarting the database. The grid service and your regions restart with it.",
         ["restart-robust"] = "Restarting the grid service.",
     };
+
+    /// <summary>
+    /// What the dashboard says once <paramref name="action"/> is under way. On a plan without a grid service of its own
+    /// (a Region Server) a database restart restarts only the regions.
+    /// </summary>
+    public static string NoticeFor(string action, LauncherSettings s) =>
+        action == "restart-database" && !PlanCatalog.RunsRobust(s)
+            ? "Restarting the database. Your regions restart with it."
+            : Notices[action];
 
     /// <summary>Starts <paramref name="action"/> in the background; false for an unknown action.</summary>
     public bool TryRun(string action)

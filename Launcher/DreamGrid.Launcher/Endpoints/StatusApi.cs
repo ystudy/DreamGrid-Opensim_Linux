@@ -33,12 +33,13 @@ public static class StatusApi
             return Results.Json(await BuildAsync(grid, online, ctx.User.IsInRole(AuthSchemes.AdminRole), ctx.RequestAborted, settings()));
         }).AllowAnonymous();
 
-        app.MapPost("/api/grid/{action}", async (string action, HttpContext ctx, IAntiforgery antiforgery, GridActions actions) =>
+        app.MapPost("/api/grid/{action}", async (string action, HttpContext ctx, IAntiforgery antiforgery, GridActions actions,
+            Func<LauncherSettings> settings) =>
         {
             if (!await antiforgery.IsRequestValidAsync(ctx))
                 return Results.BadRequest("The request verification token is missing or wrong. Reload the page and try again.");
             return actions.TryRun(action)
-                ? Results.Accepted(value: new { notice = GridActions.Notices[action] })
+                ? Results.Accepted(value: new { notice = GridActions.NoticeFor(action, settings()) })
                 : Results.NotFound();
         }).RequireAuthorization(AuthSchemes.AdminPolicy);
     }
