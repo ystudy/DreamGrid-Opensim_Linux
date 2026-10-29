@@ -1024,4 +1024,170 @@ public sealed class SetupFlowTests
         Assert.Equal(8004, saved.Programs.Single().HttpPort);
         Assert.Equal(8004, saved.RegionPort);
     }
+
+    /// <summary>On the network step under <paramref name="plan"/>: the plan is chosen, nothing after it is.</summary>
+    private static LauncherFactory OnNetwork(OwnerPlan plan) => new(s => s with { SetupToken = Token, Plan = plan })
+    {
+        Before = TestAuth.Apply,
+    };
+
+    private const string NotPublic = "That's an address only computers on your network can reach. Enter your public IP address or your grid's name.";
+
+    [Theory]
+    [InlineData("192.168.1.20")]
+    [InlineData("10.0.0.5")]
+    [InlineData("100.64.0.9")]
+    [InlineData("127.0.0.1")]
+    public async Task Network_step_for_simple_public_refuses_lan_addresses(string address)
+    {
+        await using var f = OnNetwork(OwnerPlan.SimplePublic);
+        using var client = await SetupClientAsync(f);
+
+        using var resp = await PostFormAsync(client, "/setup/network", new() { ["PublicAddress"] = address, ["Hypergrid"] = "on" });
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        Assert.Contains("only computers on your network can reach", await resp.Content.ReadAsStringAsync(Ct));
+        var page = new HtmlParser().ParseDocument(await resp.Content.ReadAsStringAsync(Ct));
+        Assert.Equal(NotPublic, page.QuerySelector(".field-error")!.TextContent.Trim());
+        Assert.False(f.Store.LoadOrCreate().Setup.NetworkSet);
+    }
+
+    [Fact]
+    public async Task Network_step_for_simple_public_requires_an_address()
+    {
+        await using var f = OnNetwork(OwnerPlan.SimplePublic);
+        using var client = await SetupClientAsync(f);
+
+        using var resp = await PostFormAsync(client, "/setup/network", new() { ["PublicAddress"] = "  " });
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        Assert.False(f.Store.LoadOrCreate().Setup.NetworkSet);
+    }
+
+    [Fact]
+    public async Task Network_step_for_simple_public_saves_address_and_switch()
+    {
+        await using var f = OnNetwork(OwnerPlan.SimplePublic);
+        using var client = await SetupClientAsync(f);
+
+        using var resp = await PostFormAsync(client, "/setup/network", new() { ["PublicAddress"] = "203.0.113.7", ["Hypergrid"] = "on" });
+
+        Assert.Equal("/setup", Location(resp));
+        var s = f.Store.LoadOrCreate();
+        Assert.Equal("203.0.113.7", s.Hostname);
+        Assert.True(s.Hypergrid);
+        Assert.True(s.Setup.NetworkSet);
+        Assert.True(f.Grid.UpdateWriteConfig.Last());
+    }
+
+    [Fact]
+    public async Task Network_step_for_simple_public_without_the_switch_saves_it_off()
+    {
+        await using var f = OnNetwork(OwnerPlan.SimplePublic);
+        using var client = await SetupClientAsync(f);
+
+        using var resp = await PostFormAsync(client, "/setup/network", new() { ["PublicAddress"] = "world.example.com" });
+
+        Assert.Equal("/setup", Location(resp));
+        var s = f.Store.LoadOrCreate();
+        Assert.Equal("world.example.com", s.Hostname);
+        Assert.False(s.Hypergrid);
+    }
+
+    [Fact]
+    public async Task Network_step_for_grid_asset_lan_forces_hypergrid_off()
+    {
+        await using var f = OnNetwork(OwnerPlan.GridAsset);
+        using var client = await SetupClientAsync(f);
+
+        using var resp = await PostFormAsync(client, "/setup/network",
+            new() { ["AddressKind"] = "lan", ["PublicAddress"] = "203.0.113.7", ["Hypergrid"] = "on" });
+
+        Assert.Equal("/setup", Location(resp));
+        var s = f.Store.LoadOrCreate();
+        Assert.False(s.Hypergrid);
+        Assert.Null(s.Hostname);
+        Assert.True(s.Setup.NetworkSet);
+    }
+
+    [Fact]
+    public async Task Network_step_for_grid_asset_public_checks_the_address()
+    {
+        await using var f = OnNetwork(OwnerPlan.GridAsset);
+        using var client = await SetupClientAsync(f);
+
+        using (var bad = await PostFormAsync(client, "/setup/network", new() { ["AddressKind"] = "public", ["PublicAddress"] = "10.1.2.3" }))
+        {
+            Assert.Equal(HttpStatusCode.OK, bad.StatusCode);
+            Assert.Contains("only computers on your network can reach", await bad.Content.ReadAsStringAsync(Ct));
+        }
+        using var ok = await PostFormAsync(client, "/setup/network",
+            new() { ["AddressKind"] = "public", ["PublicAddress"] = "203.0.113.7", ["Hypergrid"] = "on" });
+        Assert.Equal("/setup", Location(ok));
+        var s = f.Store.LoadOrCreate();
+        Assert.Equal("203.0.113.7", s.Hostname);
+        Assert.True(s.Hypergrid);
+    }
+
+    [Fact]
+    public async Task Network_step_for_grid_asset_shows_only_the_advisories_for_the_chosen_address()
+    {
+        await using var f = OnNetwork(OwnerPlan.GridAsset);
+        using var client = await SetupClientAsync(f);
+
+        var lan = (await client.GetStringAsync("/setup/network", Ct));
+        Assert.Contains("only computers on this network can visit", lan);
+        Assert.DoesNotContain("passwords cross the internet", lan);
+
+        using var pub = await PostFormAsync(client, "/setup/network", new() { ["AddressKind"] = "public", ["PublicAddress"] = "10.1.2.3" });
+        var text = await pub.Content.ReadAsStringAsync(Ct);
+        Assert.Contains("passwords cross the internet", text);
+        Assert.DoesNotContain("only computers on this network can visit", text);
+    }
+
+    [Fact]
+    public async Task Network_step_for_local_has_no_switch_and_saves_the_detected_address()
+    {
+        await using var f = OnNetwork(OwnerPlan.Local);
+        using var client = await SetupClientAsync(f);
+
+        var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/network", Ct));
+        Assert.Null(page.QuerySelector("input[name=Hypergrid]"));
+        Assert.Null(page.QuerySelector("input[name=PublicAddress]"));
+
+        using var resp = await PostFormAsync(client, "/setup/network", new() { ["PublicAddress"] = "203.0.113.7", ["Hypergrid"] = "on" });
+        Assert.Equal("/setup", Location(resp));
+        var s = f.Store.LoadOrCreate();
+        Assert.Null(s.Hostname);
+        Assert.False(s.Hypergrid);
+        Assert.True(s.Setup.NetworkSet);
+    }
+
+    [Fact]
+    public async Task Router_advice_names_the_forwarded_ports()
+    {
+        await using var f = new LauncherFactory(s => s with { SetupToken = Token, Plan = OwnerPlan.SimplePublic, RobustPublicPort = 9102, RegionPort = 9204 })
+        {
+            Before = TestAuth.Apply,
+        };
+        using var client = await SetupClientAsync(f);
+
+        var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/network", Ct));
+
+        var advice = page.QuerySelector(".router-advice")!.TextContent;
+        Assert.Contains("9102", advice);
+        Assert.Contains("9204 upward for regions", advice);
+        Assert.NotNull(page.QuerySelector("input[name=Hypergrid]"));
+    }
+
+    [Fact]
+    public async Task Network_step_is_closed_until_the_plan_is_chosen()
+    {
+        await using var f = Unplanned();
+        using var client = await SetupClientAsync(f);
+
+        using var resp = await client.GetAsync("/setup/network", Ct);
+
+        Assert.Equal("/setup", Location(resp));
+    }
 }

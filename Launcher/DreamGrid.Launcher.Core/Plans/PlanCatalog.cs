@@ -47,6 +47,10 @@ public static class PlanCatalog
     private const string CgnatAdvice =
         "Some internet providers share one address between customers; if yours does, nobody outside can reach you.";
 
+    // The two Grid Asset Server advisories that depend on the address; AdvisoriesFor picks by these prefixes.
+    private const string LanOnlyPrefix = "With a network-only address";
+    private const string PublicPrefix = "With a public address: ";
+
     /// <summary>All plans in card order.</summary>
     public static IReadOnlyList<PlanInfo> All { get; } =
     [
@@ -108,6 +112,19 @@ public static class PlanCatalog
             ],
             false),
     ];
+
+    /// <summary>
+    /// The advisories that apply once the address kind is known: the Grid Asset Server's list mixes network-only and
+    /// public advice, so the other kind's entry is left out and the "With a public address:" lead-in is dropped.
+    /// Other plans have one kind of address and show everything.
+    /// </summary>
+    public static IReadOnlyList<string> AdvisoriesFor(PlanInfo plan, bool publicAddress) =>
+        plan.Plan != OwnerPlan.GridAsset
+            ? plan.Advisories
+            : plan.Advisories
+                .Where(a => publicAddress ? !a.StartsWith(LanOnlyPrefix, StringComparison.Ordinal) : !a.StartsWith(PublicPrefix, StringComparison.Ordinal))
+                .Select(a => a.StartsWith(PublicPrefix, StringComparison.Ordinal) ? a[PublicPrefix.Length..] : a)
+                .ToList();
 
     /// <summary>The plan with this id, or null.</summary>
     public static PlanInfo? ById(string? id) => All.FirstOrDefault(p => p.Id == id);

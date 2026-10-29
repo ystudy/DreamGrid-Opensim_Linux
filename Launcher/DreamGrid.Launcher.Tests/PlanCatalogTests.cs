@@ -98,4 +98,20 @@ public class PlanCatalogTests
         Assert.Contains(PlanCatalog.Get(OwnerPlan.GridAsset).Advisories,
             a => a.Contains("You can run regions here too, but it isn't advised: busy regions slow down logins, inventory and the map for everyone on the grid."));
     }
+
+    [Fact]
+    public void Grid_asset_advisories_split_by_address_kind()
+    {
+        var info = PlanCatalog.Get(OwnerPlan.GridAsset);
+        var lan = PlanCatalog.AdvisoriesFor(info, publicAddress: false);
+        var pub = PlanCatalog.AdvisoriesFor(info, publicAddress: true);
+
+        Assert.Contains(lan, a => a.Contains("only computers on this network can visit"));
+        Assert.DoesNotContain(lan, a => a.Contains("passwords cross the internet"));
+        Assert.Contains(pub, a => a.Contains("passwords cross the internet") && a.StartsWith("Your router must forward"));
+        Assert.DoesNotContain(pub, a => a.Contains("only computers on this network can visit"));
+        Assert.Contains(lan, a => a.StartsWith("If this computer is off"));
+        Assert.Contains(pub, a => a.StartsWith("If this computer is off"));
+        Assert.Equal(PlanCatalog.Get(OwnerPlan.Local).Advisories, PlanCatalog.AdvisoriesFor(PlanCatalog.Get(OwnerPlan.Local), true));
+    }
 }
