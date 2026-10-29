@@ -1,0 +1,36 @@
+@page "/setup/plan"
+@using DreamGrid.Launcher.Core.Plans
+@model DreamGrid.Launcher.Pages.Setup.PlanModel
+@{
+    ViewData["Title"] = "Choose your plan";
+}
+<partial name="_Checklist" />
+<h1>Welcome to DreamGrid. What will this computer be?</h1>
+<p>Pick the plan that fits how you want to share your world. Press ⓘ on a card to read more about it.</p>
+@if (Model.Error is not null)
+{
+    <div class="error-box alert alert-danger"><p>@Model.Error</p></div>
+}
+<form method="post">
+    <div class="plan-cards">
+        @foreach (var plan in PlanCatalog.All)
+        {
+            <div class="plan-card card@(plan.Available ? "" : " unavailable")" data-plan="@plan.Id">
+                <a class="plan-info-link" href="/setup/plan/@plan.Id" title="More about @plan.Title" aria-label="More about @plan.Title">ⓘ</a>
+                <label class="plan-pick">
+                    <input type="radio" name="Id" value="@plan.Id" checked="@(Model.Id == plan.Id)" disabled="@(!plan.Available)" required>
+                    <span class="plan-icon" aria-hidden="true">@plan.Icon</span>
+                    <span class="plan-title">@plan.Title</span>
+                    <span class="plan-subtitle">@plan.Subtitle</span>
+                    <span class="plan-summary">@plan.Summary</span>
+                    <span class="plan-runs">Runs: @string.Join(", ", plan.Runs)</span>
+                    @if (!plan.Available)
+                    {
+                        <span class="plan-later">Coming in a later version of DreamGrid.</span>
+                    }
+                </label>
+            </div>
+        }
+    </div>
+    <button type="submit" class="btn btn-primary mt-3">Continue</button>
+</form>

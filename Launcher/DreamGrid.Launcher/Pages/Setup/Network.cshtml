@@ -1,0 +1,11 @@
+@page "/setup/network"
+@model DreamGrid.Launcher.Pages.Setup.NetworkModel
+@{
+    ViewData["Title"] = "Your network";
+}
+<partial name="_Checklist" />
+<h1>Your network</h1>
+<p>DreamGrid keeps this computer's address as it is now. You can change it later in Advanced settings.</p>
+<form method="post">
+    <button type="submit" class="btn btn-primary mt-3">Continue</button>
+</form>

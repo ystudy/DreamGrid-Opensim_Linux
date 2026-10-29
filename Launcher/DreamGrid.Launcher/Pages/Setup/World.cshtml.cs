@@ -16,11 +16,15 @@ public sealed class WorldModel(IGridController grid, Func<LauncherSettings> sett
     public string? Error { get; private set; }
     public string? Details { get; private set; }
 
-    public void OnGet()
+    public IActionResult OnGet()
     {
+        if (Closed() is { } closed) return closed;
         GridName = settings().GridName;
         ShowStartFailure();
+        return Page();
     }
+
+    private IActionResult? Closed() => SetupSteps.CanOpen(settings(), "/setup/world") ? null : Redirect("/setup");
 
     private void ShowStartFailure()
     {
@@ -32,6 +36,7 @@ public sealed class WorldModel(IGridController grid, Func<LauncherSettings> sett
 
     public IActionResult OnPost()
     {
+        if (Closed() is { } closed) return closed;
         var name = GridName?.Trim() ?? "";
         if (name == "")
             ModelState.AddModelError(nameof(GridName), "Give your world a name.");

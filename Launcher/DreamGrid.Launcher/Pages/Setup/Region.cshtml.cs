@@ -58,7 +58,7 @@ public sealed class RegionModel(Func<LauncherSettings> settings, LauncherPaths p
         return Redirect(WorkingUrl);
     }
 
-    private IActionResult? Closed() => SetupSteps.CanOpen(settings().Setup, 3) ? null : Redirect("/setup");
+    private IActionResult? Closed() => SetupSteps.CanOpen(settings(), "/setup/region") ? null : Redirect("/setup");
 
     private void Load()
     {

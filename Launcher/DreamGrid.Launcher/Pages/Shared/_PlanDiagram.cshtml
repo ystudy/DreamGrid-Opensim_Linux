@@ -1,0 +1,96 @@
+@using System.Globalization
+@using DreamGrid.Launcher.Core.Settings
+@model OwnerPlan
+@{
+    // Who connects to whom under the plan (spec 6.2). Colours come from site.css (Bootstrap's variables), so the
+    // diagram follows the light and dark themes.
+    var (nodes, links, description) = Diagram(Model);
+    var arrow = "plan-arrow-" + Model;
+}
+<svg class="plan-diagram" viewBox="0 0 680 240" role="img" aria-label="@description" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+        <marker id="@arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+            <path class="arrow-head" d="M0,0 L10,5 L0,10 z" />
+        </marker>
+    </defs>
+    @foreach (var (from, to) in links)
+    {
+        var (x1, y1, x2, y2) = Edge(nodes[from], nodes[to]);
+        <line class="link" x1="@F(x1)" y1="@F(y1)" x2="@F(x2)" y2="@F(y2)" marker-end="url(#@arrow)" />
+    }
+    @foreach (var node in nodes.Values)
+    {
+        var lines = node.Label.Split('\n');
+        <g class="node@(node.Here ? " here" : "")">
+            <rect x="@F(node.X - HalfWidth)" y="@F(node.Y - HalfHeight)" width="@F(HalfWidth * 2)" height="@F(HalfHeight * 2)" rx="8" />
+            <text x="@F(node.X)" y="@F(node.Y - (lines.Length - 1) * 8)" text-anchor="middle" dominant-baseline="middle">
+                @for (var i = 0; i < lines.Length; i++)
+                {
+                    <tspan x="@F(node.X)" dy="@(i == 0 ? "0" : "16")">@lines[i]</tspan>
+                }
+            </text>
+        </g>
+    }
+</svg>
+@functions {
+    private const double HalfWidth = 85, HalfHeight = 24, Gap = 4;
+    private const double Left = 100, Middle = 340, Right = 580, Top = 50, Centre = 120, Bottom = 190;
+
+    private sealed record Node(string Label, double X, double Y, bool Here = false);
+
+    private static string F(double v) => v.ToString("0.#", CultureInfo.InvariantCulture);
+
+    private static (Dictionary<string, Node> Nodes, (string From, string To)[] Links, string Description) Diagram(OwnerPlan plan)
+    {
+        var nodes = new Dictionary<string, Node>();
+        void Add(string key, string label, double x, double y, bool here = false) => nodes[key] = new Node(label, x, y, here);
+        switch (plan)
+        {
+            case OwnerPlan.Local:
+                Add("friends", "Friends' computers", Left, Centre);
+                Add("lan", "Your network", Middle, Centre);
+                Add("here", "This computer", Right, Centre, true);
+                return (nodes, [("friends", "lan"), ("lan", "here")],
+                    "Friends' computers connect through your network to this computer.");
+            case OwnerPlan.SimplePublic:
+                Add("visitors", "Visitors\n(internet)", Left, Top);
+                Add("router", "Your router", Middle, Top);
+                Add("here", "This computer", Right, Centre, true);
+                Add("friends", "Friends on\nyour network", Middle, Bottom);
+                return (nodes, [("visitors", "router"), ("router", "here"), ("friends", "here")],
+                    "Visitors from the internet come through your router to this computer; friends on your network connect to it directly.");
+            case OwnerPlan.GridAsset:
+                Add("visitors", "Visitors\n(internet)", Left, Top);
+                Add("router", "Your router", Middle, Top);
+                Add("here", "This computer", Right, Centre, true);
+                Add("regions", "Region Servers on\nyour network", Middle, Bottom);
+                return (nodes, [("visitors", "router"), ("router", "here"), ("regions", "here")],
+                    "Visitors come through your router to this computer; Region Servers on your network connect to it too.");
+            case OwnerPlan.RegionServer:
+                Add("visitors", "Visitors\n(internet)", Left, Centre);
+                Add("router", "Your router", Middle, Centre);
+                Add("asset", "Grid Asset Server", Right, Top);
+                Add("here", "This computer", Right, Bottom, true);
+                return (nodes, [("visitors", "router"), ("router", "asset"), ("router", "here"), ("here", "asset")],
+                    "Visitors come through your router to the Grid Asset Server and to this computer; this computer connects to the Grid Asset Server over your network.");
+            default:
+                Add("grid", "The other grid\n(e.g. OSgrid)", Left, Top);
+                Add("internet", "The internet", Middle, Top);
+                Add("here", "This computer", Right, Centre, true);
+                Add("visitors", "Visitors", Left, Bottom);
+                Add("router", "Your router", Middle, Bottom);
+                return (nodes, [("here", "internet"), ("internet", "grid"), ("visitors", "router"), ("router", "here")],
+                    "This computer connects over the internet to the other grid; visitors come through your router to this computer.");
+        }
+    }
+
+    /// <summary>A line from the edge of one box to the edge of the other, a little clear of both.</summary>
+    private static (double X1, double Y1, double X2, double Y2) Edge(Node a, Node b)
+    {
+        double dx = b.X - a.X, dy = b.Y - a.Y;
+        var length = Math.Sqrt(dx * dx + dy * dy);
+        var s = Math.Min(dx == 0 ? double.MaxValue : HalfWidth / Math.Abs(dx), dy == 0 ? double.MaxValue : HalfHeight / Math.Abs(dy))
+            + Gap / length;
+        return (a.X + dx * s, a.Y + dy * s, b.X - dx * s, b.Y - dy * s);
+    }
+}

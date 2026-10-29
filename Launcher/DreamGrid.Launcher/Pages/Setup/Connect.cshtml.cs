@@ -30,5 +30,5 @@ public sealed class ConnectModel(IGridController grid, Func<LauncherSettings> se
         return Redirect("/");
     }
 
-    private IActionResult? Closed() => SetupSteps.CanOpen(settings().Setup, 4) ? null : Redirect("/setup");
+    private IActionResult? Closed() => SetupSteps.CanOpen(settings(), "/setup/connect") ? null : Redirect("/setup");
 }

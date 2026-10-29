@@ -34,11 +34,18 @@ public sealed partial class LauncherEndToEndTests
             await WaitForAsync(launcher, () => Task.FromResult((link = SetupLink(paths)) != ""), "the setup link in launcher.log");
             Assert.StartsWith($"http://127.0.0.1:{s.WebPort}/setup?token=", link);
 
-            // 2. The link sets the setup cookie and lands on the first step.
+            // 2. The link sets the setup cookie and lands on the plan cards.
             var page = await web.FollowAsync(link);
+            Assert.Equal("/setup/plan", page.Path);
+
+            // 3. The Local plan from its own page, then the network step.
+            page = await web.FollowAsync("/setup/plan/local");
+            page = await web.SubmitAsync(page, new());
+            Assert.Equal("/setup/network", page.Path);
+            page = await web.SubmitAsync(page, new());
             Assert.Equal("/setup/world", page.Path);
 
-            // 3. Step 1: the world's name.
+            // The world's name.
             page = await web.SubmitAsync(page, new() { ["GridName"] = "Avalon" });
             Assert.Equal("/setup/avatar", page.Path);
 

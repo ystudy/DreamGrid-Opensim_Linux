@@ -31,6 +31,32 @@ progress { width: 100%; height: 1.25rem; accent-color: var(--bs-primary); }
 .checklist li.done::before { content: "\2713  "; }
 .checklist li.current { color: var(--bs-primary-text-emphasis); border-color: var(--bs-primary); background: var(--bs-primary-bg-subtle); font-weight: 600; }
 
+/* Setup's plan cards: the whole card picks the plan; the corner ⓘ opens its page. */
+.plan-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: .75rem; }
+.plan-card { position: relative; }
+.plan-pick { display: flex; flex-direction: column; gap: .2rem; height: 100%; padding: 1rem 2.75rem 1rem 1rem; cursor: pointer; border-radius: inherit; }
+.plan-pick input[type=radio] { position: absolute; opacity: 0; pointer-events: none; }
+.plan-card:has(input:checked) { border-color: var(--bs-primary); background: var(--bs-primary-bg-subtle); outline: 2px solid var(--bs-primary); }
+.plan-card:has(input:focus-visible) { box-shadow: 0 0 0 .25rem rgba(var(--bs-primary-rgb), .25); }
+.plan-card.unavailable { opacity: .7; }
+.plan-card.unavailable .plan-pick { cursor: not-allowed; }
+.plan-info-link { position: absolute; top: .4rem; right: .6rem; z-index: 1; padding: .1rem .3rem; font-size: 1.25rem; line-height: 1; text-decoration: none; }
+.plan-icon { font-size: 1.75rem; line-height: 1.2; }
+.plan-title { font-weight: 600; }
+.plan-subtitle, .plan-card .plan-runs, .plan-later { color: var(--bs-secondary-color); font-size: .875rem; }
+
+/* A plan's layout diagram: inline SVG coloured from the theme, this computer highlighted. */
+.plan-diagram { display: block; width: 100%; max-width: 42rem; height: auto; }
+.plan-diagram .node rect { fill: var(--bs-body-bg); stroke: var(--bs-border-color); stroke-width: 1.5; }
+.plan-diagram .node text { fill: var(--bs-body-color); font-size: 14px; }
+.plan-diagram .node.here rect { fill: var(--bs-primary-bg-subtle); stroke: var(--bs-primary); stroke-width: 2.5; }
+.plan-diagram .node.here text { fill: var(--bs-primary-text-emphasis); font-weight: 600; }
+.plan-diagram .link { stroke: var(--bs-secondary-color); stroke-width: 1.5; }
+.plan-diagram .arrow-head { fill: var(--bs-secondary-color); }
+.plan-changes { padding-left: 0; list-style: none; }
+.plan-changes .change-yes { color: var(--bs-success-text-emphasis); }
+.plan-changes .change-no { color: var(--bs-secondary-color); }
+
 /* Dashboard */
 .headline { font-size: 1.15rem; font-weight: 600; margin-bottom: .5rem; }
 .headline.problem { color: var(--bs-danger-text-emphasis); }
