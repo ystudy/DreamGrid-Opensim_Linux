@@ -259,7 +259,9 @@ public class RestConsoleClientTests
         var c = new RestConsoleClient(new HttpClient(h), Base, "dg", "pw");
 
         Assert.Empty(await c.RunAsync("a", TimeSpan.FromMilliseconds(50), CancellationToken.None));
-        _ = Task.Run(async () => { await Task.Delay(20, TestContext.Current.CancellationToken); lateGate.SetResult(); }, TestContext.Current.CancellationToken);
+        // The late answer arrives after "a" ended and before "b" is sent. A timer here raced the client's short
+        // late-output wait on a busy CI machine; releasing it now keeps the order without depending on timing.
+        lateGate.SetResult();
         var lines = await c.RunAsync("b", TimeSpan.FromMilliseconds(100), CancellationToken.None);
 
         Assert.Equal(new[] { "b output" }, lines);
