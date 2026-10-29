@@ -1,0 +1,31 @@
+@page "/advanced/join"
+@model DreamGrid.Launcher.Pages.Advanced.JoinModel
+@using DreamGrid.Launcher.Setup
+@{
+    ViewData["Title"] = "Grid Asset Server";
+}
+<nav aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="/advanced">Advanced Settings</a></li><li class="breadcrumb-item"><a href="/advanced/plan">Plan</a></li><li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li></ol></nav>
+<h1>Point at a different Grid Asset Server</h1>
+@if (Model.SavedNotes is { } notes)
+{
+    <partial name="_Saved" model="notes" />
+    return;
+}
+@if (Model.Found is { } found)
+{
+    <partial name="_JoinFound" model="new JoinFoundModel(found, Model.Address!)" />
+    return;
+}
+<p>This computer adds regions to the grid at <strong>@Model.Current</strong>. To use another grid's Grid Asset Server, type that computer's address: DreamGrid reads what it needs from it and shows you what it found before anything is saved.</p>
+@if (Model.Error is not null)
+{
+    <div class="error-box alert alert-danger">
+        <p>@Model.Error</p>
+    </div>
+}
+<form method="post">
+    <label class="form-label mt-3" for="Address">The Grid Asset Server's address</label>
+    <input class="form-control" id="Address" name="Address" value="@Model.Address" placeholder="192.168.1.5" autocomplete="off" autocapitalize="off" spellcheck="false" required>
+    <span class="hint form-text d-block">Its address on your network, like 192.168.1.5. Add a colon and the port only if its grid service doesn't use port 8002.</span>
+    <button type="submit" class="btn btn-primary mt-3">Look up this grid</button>
+</form>

@@ -125,6 +125,25 @@ public sealed class LegacyCommandApiTests
         Assert.Equal(["Stop robust"], _grid.Snapshot());
     }
 
+    [Fact]
+    public async Task A_region_servers_level_0_estate_owner_is_an_administrator_and_other_level_0_avatars_are_not()
+    {
+        var ownerId = Guid.NewGuid();
+        _robust.Add("Estate", "Owner", 0, "estatepw", ownerId).Add("Plain", "Person", 0, "plainpw");
+        _settings = _settings with
+        {
+            Plan = OwnerPlan.RegionServer,
+            Setup = new SetupState(OwnerCreated: true, Finished: true, Owner: new OwnerInfo("Estate", "Owner", ownerId)),
+        };
+
+        Assert.Equal("ACK", await Api().HandleAsync(Req("StopRobust", "Estate Owner", "estatepw"), Ct));
+        Assert.StartsWith("NAK You do not have permission to StopRobust", await Api().HandleAsync(Req("StopRobust", "Plain Person", "plainpw"), Ct));
+
+        // The same avatar is nobody special on a plan that is not a Region Server.
+        _settings = _settings with { Plan = OwnerPlan.Local };
+        Assert.StartsWith("NAK You do not have permission to StopRobust", await Api().HandleAsync(Req("StopRobust", "Estate Owner", "estatepw"), Ct));
+    }
+
     [Theory]
     [InlineData("God Owner", "wrong")]
     [InlineData("God", "godpw")]

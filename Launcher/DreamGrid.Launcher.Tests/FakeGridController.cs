@@ -400,9 +400,9 @@ internal sealed class FakeRobustAccounts : IRobustClient
     /// <summary>Simulates Robust not running: lookups and sign-in checks fail like a refused connection.</summary>
     public bool Down { get; set; }
 
-    public FakeRobustAccounts Add(string first, string last, int level, string password)
+    public FakeRobustAccounts Add(string first, string last, int level, string password, Guid? id = null)
     {
-        _accounts[(first, last)] = (new RobustAccount(Guid.NewGuid(), first, last, level, ""), password);
+        _accounts[(first, last)] = (new RobustAccount(id ?? Guid.NewGuid(), first, last, level, ""), password);
         return this;
     }
 

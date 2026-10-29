@@ -137,8 +137,8 @@ public static class PlanCatalog
     public static PlanInfo Get(OwnerPlan plan) => All.First(p => p.Plan == plan);
 
     // The change matrix (spec section 8). Only moves among Local, Simple Public and Grid Asset are
-    // allowed. Moving away from a Grid Asset Server will also require that no region servers are joined;
-    // that condition arrives in 6b.
+    // allowed. Moving away from a Grid Asset Server also requires that no region servers are joined; that live
+    // condition is checked by the Advanced Plan page, so this stays a pure matrix.
     /// <summary>Whether an install running <paramref name="from"/> may switch to <paramref name="to"/>, with a reason when it may not.</summary>
     public static (bool Allowed, string Reason) CanChange(OwnerPlan from, OwnerPlan to)
     {

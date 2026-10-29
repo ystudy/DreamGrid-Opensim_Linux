@@ -22,6 +22,9 @@ public sealed class IndexModel(IGridController grid, IOnlineUsers online, GridAc
     /// <summary>For the "Show details" box: the raw start failure and the last log lines of each failed component.</summary>
     public IReadOnlyList<(string Label, IReadOnlyList<string> Lines)> FailedLogs { get; private set; } = [];
 
+    /// <summary>False on a Region Server, whose grid service is the Grid Asset Server on another computer: there is nothing to restart.</summary>
+    public bool RunsRobust { get; private set; } = true;
+
     [TempData] public string? Notice { get; set; }
 
     /// <summary>The features area; empty (and not shown) while no module has a switch.</summary>
@@ -30,7 +33,8 @@ public sealed class IndexModel(IGridController grid, IOnlineUsers online, GridAc
     public async Task OnGetAsync()
     {
         var raw = grid.GetStatus();
-        Status = await StatusApi.BuildAsync(grid, online, withOnline: true, HttpContext.RequestAborted);
+        RunsRobust = raw.RunsRobust;
+        Status = await StatusApi.BuildAsync(grid, online, withOnline: true, HttpContext.RequestAborted, settings());
         var g = Status.Grid;
         var details = new List<(string Label, IReadOnlyList<string> Lines)>();
         // The raw start message may name paths: only this admin page shows it, never /api/status. A port conflict's

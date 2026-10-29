@@ -28,6 +28,10 @@
     }
     <p class="hint form-text">Each port is a number from @SettingsValidator.MinPort to @SettingsValidator.MaxPort, and no two can be the same.
         New regions take the next free ports from the two "first region" ports. Regions you already have keep theirs.</p>
+    @if (Model.HypergridLine is { } hypergridLine)
+    {
+        <p id="region-hypergrid" class="hint form-text mt-3">@hypergridLine</p>
+    }
     <button type="submit" class="btn btn-primary mt-3">Save</button>
 </form>
 

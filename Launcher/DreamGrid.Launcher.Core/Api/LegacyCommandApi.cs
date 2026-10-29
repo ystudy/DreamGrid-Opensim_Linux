@@ -25,7 +25,7 @@ public sealed class LegacyCommandApi(
     ILogger<LegacyCommandApi> log)
 {
     public const int MachineLevel = 1000;
-    private const int AdminLevel = 200;
+    private const int AdminLevel = AdminRule.AdminLevel;
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -71,7 +71,8 @@ public sealed class LegacyCommandApi(
                 return 0;
             }
             throttle.RecordSuccess(name.Key);
-            return account.UserLevel;
+            // A Region Server's estate owner is level 0 on the Grid Asset Server's grid but administers here.
+            return AdminRule.MayAdminister(settings(), account) ? Math.Max(account.UserLevel, AdminLevel) : account.UserLevel;
         }
         catch (Exception e) when (!ct.IsCancellationRequested)
         {

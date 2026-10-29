@@ -1,5 +1,6 @@
 using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Core.OpenSim;
+using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Security;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -7,12 +8,12 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 namespace DreamGrid.Launcher.Pages;
 
 /// <summary>
-/// Signs in with the avatar name and password. Only an avatar of level 200 or more gets in, and every
+/// Signs in with the avatar name and password. Only an administrator gets in (<see cref="AdminRule"/>: level 200 or more, or a Region Server's estate owner), and every
 /// failure shows the same message so the page does not reveal which names exist. The password is never logged.
 /// </summary>
-public sealed class LoginModel(IRobustClient robust, LoginThrottle throttle, ILogger<LoginModel> log) : PageModel
+public sealed class LoginModel(IRobustClient robust, Func<LauncherSettings> settings, LoginThrottle throttle, ILogger<LoginModel> log) : PageModel
 {
-    public const int AdminLevel = 200;
+    public const int AdminLevel = AdminRule.AdminLevel;
     private const string Generic = "Name or password is wrong, or this avatar is not an administrator.";
 
     [BindProperty] public string? Name { get; set; }
@@ -46,7 +47,7 @@ public sealed class LoginModel(IRobustClient robust, LoginThrottle throttle, ILo
         {
             account = await robust.GetAccountAsync(name.First, name.Last, ct);
             ok = account is not null && await robust.AuthenticateAsync(account.PrincipalId, password, ct)
-                && account.UserLevel >= AdminLevel;
+                && AdminRule.MayAdminister(settings(), account);
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException
             && !ct.IsCancellationRequested)
