@@ -12,7 +12,7 @@ namespace DreamGrid.Launcher.Pages.Setup;
 /// Step 3: the region's name and content. Posting starts the region in the background (one at a time) and shows its
 /// progress at /setup/region?working=1; a failure shows the message and a log excerpt, and the form again to retry.
 /// </summary>
-public sealed class RegionModel(Func<LauncherSettings> settings, LauncherPaths paths, SetupProgress progress, SetupRunner runner) : PageModel
+public sealed class RegionModel(Func<LauncherSettings> settings, LauncherPaths paths, SetupProgress progress, SetupRunner runner, IGridController grid) : PageModel
 {
     private const string WorkingUrl = "/setup/region?working=1";
 
@@ -26,6 +26,8 @@ public sealed class RegionModel(Func<LauncherSettings> settings, LauncherPaths p
     /// <summary>True when the region exists (also after a restart, when the progress is empty) or this run just made it.</summary>
     public bool Ready => !Progress.Running && (RegionCreated || (ShowProgress && Progress.Error is null && Progress.Stage == SetupProgress.Ready));
     private bool RegionCreated { get; set; }
+    /// <summary>True for a Grid Asset Server, whose owner may leave this computer without regions.</summary>
+    public bool CanSkip { get; private set; }
     public bool ShowForm => !Progress.Running && !Ready;
 
     public IActionResult OnGet(string? working)
@@ -58,6 +60,17 @@ public sealed class RegionModel(Func<LauncherSettings> settings, LauncherPaths p
         return Redirect(WorkingUrl);
     }
 
+    /// <summary>A Grid Asset Server may have no regions of its own; other plans always need one.</summary>
+    public IActionResult OnPostSkip()
+    {
+        if (Closed() is { } closed) return closed;
+        var s = settings();
+        if (s.Plan != OwnerPlan.GridAsset || progress.Running) return Redirect("/setup/region");
+        if (!s.Setup.RegionCreated)
+            grid.UpdateSettings(x => x with { Setup = x.Setup with { RegionSkipped = true } }, writeConfig: false);
+        return Redirect("/setup/connect");
+    }
+
     private IActionResult? Closed() => SetupSteps.CanOpen(settings(), "/setup/region") ? null : Redirect("/setup");
 
     private void Load()
@@ -65,5 +78,6 @@ public sealed class RegionModel(Func<LauncherSettings> settings, LauncherPaths p
         StarterAvailable = StarterContent.StarterOar(paths) is not null;
         Progress = progress.Snapshot();
         RegionCreated = settings().Setup.RegionCreated;
+        CanSkip = settings().Plan == OwnerPlan.GridAsset;
     }
 }

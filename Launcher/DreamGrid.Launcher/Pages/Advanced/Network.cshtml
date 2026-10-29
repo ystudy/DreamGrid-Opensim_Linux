@@ -6,6 +6,10 @@
 }
 <nav aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="/advanced">Advanced Settings</a></li><li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li></ol></nav>
 <h1>Network</h1>
+@if (TempData["PlanNote"] is string planNote)
+{
+    <div class="alert alert-warning" role="status">@planNote</div>
+}
 @if (Model.SavedNotes is { } notes)
 {
     <partial name="_Saved" model="notes" />

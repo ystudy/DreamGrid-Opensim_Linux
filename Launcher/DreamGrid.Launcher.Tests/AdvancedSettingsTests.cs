@@ -4,6 +4,7 @@ using AngleSharp.Html.Dom;
 using AngleSharp.Html.Parser;
 using DreamGrid.Launcher.Core.Config;
 using DreamGrid.Launcher.Core.Modules;
+using DreamGrid.Launcher.Core.Plans;
 using DreamGrid.Launcher.Core.Settings;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -70,6 +71,125 @@ public sealed class AdvancedSettingsTests : IAsyncLifetime
 
     private byte[] SettingsBytes() => File.ReadAllBytes(_f.Paths.SettingsFile);
 
+    private LauncherFactory PlanFactory(OwnerPlan plan, string? hostname, bool hypergrid = false) => new(s => s with
+    {
+        SetupToken = null,
+        Plan = plan,
+        Hostname = hostname,
+        Hypergrid = hypergrid,
+        Setup = s.Setup with { OwnerCreated = true, Finished = true },
+        Programs = TestSettings.ProgramFor(new RegionSettings("Welcome", "Welcome", Guid.NewGuid())), Regions = TestSettings.RegionsFor(new RegionSettings("Welcome", "Welcome", Guid.NewGuid())),
+    })
+    {
+        Before = TestAuth.Apply,
+    };
+
+    private static async Task<HttpResponseMessage> PostPlanAsync(HttpClient client, string handler, Dictionary<string, string> fields)
+    {
+        var token = Token(await client.GetStringAsync("/advanced/plan", Ct));
+        var form = new Dictionary<string, string>(fields) { ["__RequestVerificationToken"] = token };
+        return await client.PostAsync("/advanced/plan?handler=" + handler, new FormUrlEncodedContent(form), Ct);
+    }
+
+    [Fact]
+    public async Task Advanced_plan_page_lists_allowed_and_refused_changes()
+    {
+        await using var f = PlanFactory(OwnerPlan.SimplePublic, "8.8.8.8");
+        using var client = await SignedInAsync(f);
+
+        var doc = Parse(await client.GetStringAsync("/advanced/plan", Ct));
+
+        var buttons = doc.QuerySelectorAll("form button[name=To]").Select(b => b.GetAttribute("value")).ToList();
+        Assert.Equal(["local", "grid-asset"], buttons);
+        var refused = doc.QuerySelectorAll(".plan-refused li").Select(li => li.TextContent).ToList();
+        Assert.Equal(2, refused.Count);
+        Assert.Contains(refused, t => t.Contains('✘') && t.Contains("Region Server"));
+        Assert.Contains(refused, t => t.Contains('✘') && t.Contains("Connected Server"));
+        Assert.Contains("Simple Public Server", doc.QuerySelector("main")!.TextContent);
+    }
+
+    [Fact]
+    public async Task Changing_to_a_refused_plan_by_hand_saves_nothing()
+    {
+        await using var f = PlanFactory(OwnerPlan.SimplePublic, "8.8.8.8");
+        using var client = await SignedInAsync(f);
+
+        using var resp = await PostPlanAsync(client, "Change", new() { ["To"] = "region-server" });
+
+        Assert.Equal(OwnerPlan.SimplePublic, f.Store.LoadOrCreate().Plan);
+        Assert.Empty(f.Grid.UpdateWriteConfig);
+    }
+
+    [Fact]
+    public async Task Changing_local_to_simple_public_without_public_address_sends_to_network()
+    {
+        await using var f = PlanFactory(OwnerPlan.Local, null);
+        using var client = await SignedInAsync(f);
+
+        using var resp = await PostPlanAsync(client, "Change", new() { ["To"] = "simple-public" });
+
+        Assert.Equal("/advanced/network", resp.Headers.Location?.OriginalString);
+        Assert.Equal(OwnerPlan.SimplePublic, f.Store.LoadOrCreate().Plan);
+        var network = await client.GetStringAsync("/advanced/network", Ct);
+        Assert.Contains("Enter your public address to finish the change.", network);
+    }
+
+    [Fact]
+    public async Task Changing_to_local_turns_hypergrid_off_and_shows_the_restart_notice()
+    {
+        await using var f = PlanFactory(OwnerPlan.SimplePublic, "8.8.8.8", hypergrid: true);
+        using var client = await SignedInAsync(f);
+
+        using var resp = await PostPlanAsync(client, "Change", new() { ["To"] = "local" });
+        var html = await resp.Content.ReadAsStringAsync(Ct);
+
+        var s = f.Store.LoadOrCreate();
+        Assert.Equal(OwnerPlan.Local, s.Plan);
+        Assert.False(s.Hypergrid);
+        Assert.Equal([true], f.Grid.UpdateWriteConfig);
+        Assert.Contains("Restart your world to use the new settings", html);
+    }
+
+    [Fact]
+    public async Task Hypergrid_switch_refused_without_public_address()
+    {
+        await using var f = PlanFactory(OwnerPlan.GridAsset, null);
+        using var client = await SignedInAsync(f);
+
+        var page = await client.GetStringAsync("/advanced/plan", Ct);
+        Assert.Contains("Hypergrid needs a public address", page);
+        using var resp = await PostPlanAsync(client, "Hypergrid", new() { ["Hypergrid"] = "on" });
+        var html = await resp.Content.ReadAsStringAsync(Ct);
+
+        Assert.False(f.Store.LoadOrCreate().Hypergrid);
+        Assert.Empty(f.Grid.UpdateWriteConfig);
+        Assert.Contains("Hypergrid needs a public address", html);
+    }
+
+    [Fact]
+    public async Task Hypergrid_switch_saves_and_rewrites_config()
+    {
+        await using var f = PlanFactory(OwnerPlan.SimplePublic, "8.8.8.8");
+        using var client = await SignedInAsync(f);
+
+        using var resp = await PostPlanAsync(client, "Hypergrid", new() { ["Hypergrid"] = "on" });
+        var html = await resp.Content.ReadAsStringAsync(Ct);
+
+        Assert.True(f.Store.LoadOrCreate().Hypergrid);
+        Assert.Equal([true], f.Grid.UpdateWriteConfig);
+        Assert.Contains("Restart your world to use the new settings", html);
+    }
+
+    [Fact]
+    public async Task Hypergrid_switch_is_absent_for_local()
+    {
+        await using var f = PlanFactory(OwnerPlan.Local, null);
+        using var client = await SignedInAsync(f);
+
+        var doc = Parse(await client.GetStringAsync("/advanced/plan", Ct));
+        Assert.Null(doc.QuerySelector(".hypergrid-switch"));
+    }
+
     [Fact]
     public async Task Advanced_pages_need_the_admin_role()
     {
@@ -90,7 +210,7 @@ public sealed class AdvancedSettingsTests : IAsyncLifetime
 
         var links = doc.QuerySelectorAll("main a").Select(a => (a.TextContent.Trim(), a.GetAttribute("href"))).ToList();
         Assert.Equal(
-            [("Network", "/advanced/network"), ("Database", "/advanced/database"), ("Regions", "/advanced/regions"), ("Log level", "/advanced/module/loglevel"), ("Logs", "/logs")],
+            [("Plan", "/advanced/plan"), ("Network", "/advanced/network"), ("Database", "/advanced/database"), ("Regions", "/advanced/regions"), ("Log level", "/advanced/module/loglevel"), ("Logs", "/logs")],
             links);
     }
 

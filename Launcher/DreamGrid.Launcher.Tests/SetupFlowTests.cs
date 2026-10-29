@@ -507,6 +507,50 @@ public sealed class SetupFlowTests
         Assert.Equal(0, f.Grid.CreateOwnerCalls);
     }
 
+    private static LauncherFactory AfterOwnerWith(OwnerPlan plan) => new(s => s with
+    {
+        GridName = "Avalon",
+        SetupToken = null,
+        Plan = plan,
+        Setup = new SetupState(WorldNamed: true, OwnerCreated: true,
+            Owner: new OwnerInfo("Test", "Owner", Guid.NewGuid()), NetworkSet: true),
+    })
+    {
+        Before = TestAuth.Apply,
+    };
+
+    [Fact]
+    public async Task Grid_asset_region_step_can_be_skipped()
+    {
+        await using var f = AfterOwnerWith(OwnerPlan.GridAsset);
+        using var client = await SignedInClientAsync(f);
+
+        var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/region", Ct));
+        Assert.Contains("Skip: no regions on this computer", page.Body!.TextContent);
+        Assert.Contains("isn't advised", page.Body.TextContent);
+
+        using var skip = await PostFormAsync(client, "/setup/region?handler=Skip", new(), tokenFrom: "/setup/region");
+        Assert.Equal("/setup/connect", Location(skip));
+        Assert.True(f.Store.LoadOrCreate().Setup.RegionSkipped);
+        using var setup = await client.GetAsync("/setup", Ct);
+        Assert.Equal("/setup/connect", Location(setup));
+    }
+
+    [Theory]
+    [InlineData(OwnerPlan.Local)]
+    [InlineData(OwnerPlan.SimplePublic)]
+    public async Task Region_step_has_no_skip_for_other_plans(OwnerPlan plan)
+    {
+        await using var f = AfterOwnerWith(plan);
+        using var client = await SignedInClientAsync(f);
+
+        var html = await client.GetStringAsync("/setup/region", Ct);
+        Assert.DoesNotContain("Skip: no regions", html);
+
+        using var skip = await PostFormAsync(client, "/setup/region?handler=Skip", new(), tokenFrom: "/setup/region");
+        Assert.False(f.Store.LoadOrCreate().Setup.RegionSkipped);
+    }
+
     [Fact]
     public async Task Starter_option_hidden_without_starter_oar_shown_with_it()
     {
