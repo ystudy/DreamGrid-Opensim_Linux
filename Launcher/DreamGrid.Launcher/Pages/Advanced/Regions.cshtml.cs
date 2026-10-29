@@ -13,7 +13,7 @@ public sealed class RegionsModel(IGridController grid, Func<LauncherSettings> se
 {
     /// <summary>The engines offered, with the words the region Physics tab uses.</summary>
     public static readonly IReadOnlyList<(string Value, string Text)> PhysicsChoices =
-        [("ubODE", "ubODE"), ("BulletSim", "BulletSim"), ("BulletSimThreaded", "BulletSim in its own thread")];
+        [.. RegionSettingsRules.PhysicsEngines.Select(e => (e, SettingLabels.Physics(e)))];
 
     [BindProperty] public string? DefaultPhysics { get; set; }
 

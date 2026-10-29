@@ -59,7 +59,13 @@ public sealed class SettingsStore(string path)
     {
         if (s.SchemaVersion < 2) s = MigrateV1(s);
         // Schema 2 to 3: "ubODE" was the default then; now null means the grid default, which starts as ubODE.
-        var programs = s.Programs.Select(p => p.Physics == "ubODE" ? p with { Physics = null } : p).ToList();
+        // Schema 2's "BulletSim" ran with the prototype's UseSeparatePhysicsThread=true, which is "BulletSimThreaded" now.
+        var programs = s.Programs.Select(p => p.Physics switch
+        {
+            "ubODE" => p with { Physics = null },
+            "BulletSim" => p with { Physics = "BulletSimThreaded" },
+            _ => p,
+        }).ToList();
         return s with { SchemaVersion = LauncherSettings.CurrentSchema, Programs = programs };
     }
 

@@ -74,7 +74,30 @@ public sealed class SettingsModel(IGridController grid, OarJobs oarJobs, Func<Cp
     private RegionSettings _region = null!;
     private ProgramSettings _program = null!;
 
-    public string Error(string key) => ModelState.TryGetValue(key, out var e) && e.Errors.Count > 0 ? e.Errors[0].ErrorMessage : "";
+    /// <summary>The error keys each tab shows at a field. Any other error shows in the tab's general slot.</summary>
+    private static readonly Dictionary<string, string[]> TabFields = new()
+    {
+        ["basics"] = ["Name", "Size"],
+        ["options"] = [nameof(RegionOptions.MaxAgents), nameof(RegionOptions.MaxPrims), nameof(RegionOptions.MaxNonPhysicalSize), nameof(RegionOptions.MaxPhysicalSize)],
+        ["map"] = [nameof(ProgramOptions.Map)],
+        ["physics"] = ["Physics"],
+        ["scripts"] = [nameof(ProgramOptions.MinTimerInterval), nameof(ProgramOptions.FramesPerSecond)],
+        ["cpu"] = [nameof(ProgramOptions.Cores), nameof(ProgramOptions.Priority)],
+    };
+
+    /// <summary>
+    /// The error at <paramref name="key"/>. The general slot (key "") also shows an error whose field is not on this tab,
+    /// so a save that failed always says why.
+    /// </summary>
+    public string Error(string key)
+    {
+        if (First(key) is { } message) return message;
+        if (key != "") return "";
+        var fields = TabFields.GetValueOrDefault(Tab, []);
+        return ModelState.Where(e => e.Key != "" && !fields.Contains(e.Key)).Select(e => First(e.Key)).FirstOrDefault(m => m is not null) ?? "";
+    }
+
+    private string? First(string key) => ModelState.TryGetValue(key, out var e) && e.Errors.Count > 0 ? e.Errors[0].ErrorMessage : null;
 
     /// <summary>Why a priority can't be chosen here, or null.</summary>
     public string? Unavailable(CpuPriority p) => priorityUnavailable(p);
@@ -266,7 +289,10 @@ public sealed class SettingsModel(IGridController grid, OarJobs oarJobs, Func<Cp
                         opts = opts with { Cores = picked, Priority = Priority };
                         break;
                 }
-                AddErrors(RegionSettingsRules.Program(physics, opts, Cores));
+                // Only the CPU tab changes the cores. Saved cores this computer lacks (settings from another computer) must
+                // not block the other tabs: they are checked as the cores this computer has, and saved as they were.
+                var check = tab == "cpu" ? opts : opts with { Cores = RegionSettingsRules.UsableCores(opts.Cores, Cores) };
+                AddErrors(RegionSettingsRules.Program(physics, check, Cores));
                 if (!ModelState.IsValid) return Page();
 
                 try

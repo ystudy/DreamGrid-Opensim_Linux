@@ -271,6 +271,42 @@ public sealed class RegionSettingsPageTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Saved_cores_this_computer_lacks_do_not_block_other_tabs()
+    {
+        // Settings brought from a bigger computer: cores past this one's last.
+        var stale = new List<int> { Environment.ProcessorCount + 4, Environment.ProcessorCount + 5 };
+        _f.Grid.UpdateSettings(l => l with
+        {
+            Programs = [.. l.Programs.Select(p => p.Instance == "Sunset" ? p with { Options = new ProgramOptions(Cores: stale) } : p)],
+        });
+        using var client = await SignedInAsync();
+
+        using var response = await PostAsync(client, SunsetId, "map", ("Map", "Best"));
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        var saved = Assert.Single(_f.Grid.SavedProgramOptions);
+        Assert.Equal(MapQuality.Best, saved.Options.Map);
+        Assert.Equal(stale, saved.Options.Cores); // only the CPU tab changes them
+    }
+
+    [Fact]
+    public async Task An_error_for_a_field_on_another_tab_shows_on_this_one()
+    {
+        // A saved timer rate out of range belongs to the Scripts tab; saving the Map tab must still say why it failed.
+        _f.Grid.UpdateSettings(l => l with
+        {
+            Programs = [.. l.Programs.Select(p => p.Instance == "Sunset" ? p with { Options = new ProgramOptions(MinTimerInterval: 99) } : p)],
+        });
+        using var client = await SignedInAsync();
+
+        using var response = await PostAsync(client, SunsetId, "map", ("Map", "Best"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("0.05 to 10", (await ParseAsync(response)).QuerySelector("form .field-error")!.TextContent);
+        Assert.Empty(_f.Grid.SavedProgramOptions);
+    }
+
+    [Fact]
     public async Task Unavailable_priority_is_disabled_with_reason()
     {
         using var client = await SignedInAsync();

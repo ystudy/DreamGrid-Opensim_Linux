@@ -89,4 +89,14 @@ public sealed class CpuTuningTests : IDisposable
         var e = Assert.Throws<InvalidOperationException>(() => CpuTuning.Apply(p.Id, [0], CpuPriority.BelowNormal));
         Assert.Contains("This computer refused", e.Message);
     }
+
+    [Fact]
+    public void Refusal_names_the_cpu_settings_not_only_the_priority()
+    {
+        // No such process: the computer refuses whatever was asked, cores included.
+        var e = Assert.Throws<InvalidOperationException>(() => CpuTuning.Apply(int.MaxValue - 1, [0], CpuPriority.Normal));
+
+        Assert.StartsWith("This computer refused these CPU settings: ", e.Message);
+        Assert.Equal("This computer refused these CPU settings: Access is denied.", CpuTuning.Refused("Access is denied.").Message);
+    }
 }

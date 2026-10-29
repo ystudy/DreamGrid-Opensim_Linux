@@ -1,9 +1,10 @@
 @model DreamGrid.Launcher.Pages.Regions.SettingsModel
+@using DreamGrid.Launcher.Core.Settings
 @{
-    var defaultLabel = Model.DefaultPhysics == "BulletSimThreaded" ? "BulletSim in its own thread" : Model.DefaultPhysics;
     (string Value, string Text)[] choices =
     [
-        ("", "Grid default (" + defaultLabel + ")"), ("ubODE", "ubODE"), ("BulletSim", "BulletSim"), ("BulletSimThreaded", "BulletSim in its own thread"),
+        ("", "Grid default (" + SettingLabels.Physics(Model.DefaultPhysics) + ")"),
+        .. RegionSettingsRules.PhysicsEngines.Select(e => (e, SettingLabels.Physics(e))),
     ];
 }
 <form method="post" action="/regions/region/@Model.Id/settings/physics?handler=physics" asp-antiforgery="true">

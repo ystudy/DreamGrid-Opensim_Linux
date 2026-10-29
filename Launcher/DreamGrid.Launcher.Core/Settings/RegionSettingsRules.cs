@@ -11,7 +11,7 @@ public static class RegionSettingsRules
     /// <summary>The physics engines a program may use.</summary>
     public static readonly IReadOnlyList<string> PhysicsEngines = ["ubODE", "BulletSim", "BulletSimThreaded"];
 
-    private const string PriorityNeedsRoot = "On Linux only the root user can raise a program's priority.";
+    internal const string PriorityNeedsRoot = "On Linux only the root user can raise the priority of these regions.";
 
     private static string Range(int low, int high) =>
         $"Use a number from {low:N0} to {high:N0}, or leave it empty for OpenSim's default.";
@@ -56,7 +56,7 @@ public static class RegionSettingsRules
     /// <summary>Whether the program runs scripts: its own setting, or the grid default.</summary>
     public static bool EffectiveScripts(LauncherSettings s, ProgramSettings p) => p.Options?.Scripts ?? s.DefaultScripts;
 
-    /// <summary>One plain line for each program setting whose effective value differs, in tab order.</summary>
+    /// <summary>One plain line for each program setting whose effective value differs, in tab order, in the tabs' words.</summary>
     public static IReadOnlyList<string> Differences(LauncherSettings s, ProgramSettings from, ProgramSettings to)
     {
         var lines = new List<string>();
@@ -64,7 +64,7 @@ public static class RegionSettingsRules
         var b = to.Options ?? new ProgramOptions();
 
         if (EffectivePhysics(s, from) != EffectivePhysics(s, to))
-            lines.Add($"Physics will change from {EffectivePhysics(s, from)} to {EffectivePhysics(s, to)}.");
+            lines.Add($"Physics will change from {SettingLabels.Physics(EffectivePhysics(s, from))} to {SettingLabels.Physics(EffectivePhysics(s, to))}.");
         if (EffectiveScripts(s, from) != EffectiveScripts(s, to))
             lines.Add(EffectiveScripts(s, to) ? "Scripts will be turned on." : "Scripts will be turned off.");
         if (a.MinTimerInterval != b.MinTimerInterval)
@@ -72,7 +72,7 @@ public static class RegionSettingsRules
         if (a.FramesPerSecond != b.FramesPerSecond)
             lines.Add($"The frame rate will change from {a.FramesPerSecond?.ToString() ?? "OpenSim's default"} to {b.FramesPerSecond?.ToString() ?? "OpenSim's default"} per second.");
         if (a.Map != b.Map)
-            lines.Add($"The map will be drawn {b.Map} instead of {a.Map}.");
+            lines.Add($"The map will change from {SettingLabels.Map(a.Map)} to {SettingLabels.Map(b.Map)}.");
         if (a.AllowGods != b.AllowGods || a.OwnerIsGod != b.OwnerIsGod || a.ManagerIsGod != b.ManagerIsGod)
             lines.Add("God permissions will change.");
         var coresA = Normalize(a.Cores);
@@ -80,7 +80,7 @@ public static class RegionSettingsRules
         if (!coresA.SequenceEqual(coresB))
             lines.Add($"It will use {Describe(coresB)} instead of {Describe(coresA)}.");
         if (a.Priority != b.Priority)
-            lines.Add($"Its priority will change from {a.Priority} to {b.Priority}.");
+            lines.Add($"Its priority will change from {SettingLabels.Priority(a.Priority)} to {SettingLabels.Priority(b.Priority)}.");
         return lines;
     }
 

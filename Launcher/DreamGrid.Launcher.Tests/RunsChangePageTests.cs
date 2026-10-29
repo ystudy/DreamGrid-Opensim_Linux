@@ -158,8 +158,8 @@ public sealed class RunsChangePageTests : IAsyncLifetime
         Assert.Equal(
         [
             "Physics will change from ubODE to BulletSim.",
-            "The map will be drawn Simple instead of Good.",
-            "Its priority will change from AboveNormal to Normal.",
+            "The map will change from Good to Simple.",
+            "Its priority will change from Above normal to Normal.",
         ], lines);
         // Sunset runs ubODE like Sea: its note has no physics line.
         var sunset = page.QuerySelectorAll($"[data-group='{SunsetId}'] .group-note").Select(n => n.TextContent.Trim()).ToList();

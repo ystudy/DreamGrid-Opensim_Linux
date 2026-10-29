@@ -6,7 +6,7 @@
     <select class="form-select" id="Map" name="Map">
         @foreach (var q in Enum.GetValues<MapQuality>())
         {
-            <option value="@q" selected="@(q == Model.Map)">@(q == MapQuality.None ? "No map" : q.ToString())</option>
+            <option value="@q" selected="@(q == Model.Map)">@SettingLabels.Map(q)</option>
         }
     </select>
     <span class="field-error text-danger small d-block" data-error-for="Map">@Model.Error("Map")</span>

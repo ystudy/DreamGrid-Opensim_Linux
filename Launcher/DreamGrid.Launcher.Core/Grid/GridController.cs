@@ -259,14 +259,20 @@ public sealed partial class GridController(
     public async Task<bool> SaveProgramOptionsAsync(string instance, string? physics, ProgramOptions options, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(options);
-        if (RegionSettingsRules.Program(physics, options, Environment.ProcessorCount) is { Ok: false } invalid)
-            throw new ArgumentException(invalid.Errors.Values.First());
         await _ops.WaitAsync(ct);
         try
         {
             var s = LoadSettings();
-            var before = (s.Programs.FirstOrDefault(p => p.Instance == instance)
-                ?? throw new ArgumentException("There is no such group of regions.")).Options ?? new ProgramOptions();
+            var saved = s.Programs.FirstOrDefault(p => p.Instance == instance);
+            var before = saved?.Options ?? new ProgramOptions();
+            // Cores saved on another computer may not exist here. They block nothing while they stay as they were (only
+            // the cores this computer has are used); a change to the cores is checked in full.
+            var check = (options.Cores ?? []).SequenceEqual(before.Cores ?? [])
+                ? options with { Cores = RegionSettingsRules.UsableCores(options.Cores, Environment.ProcessorCount) }
+                : options;
+            if (RegionSettingsRules.Program(physics, check, Environment.ProcessorCount) is { Ok: false } invalid)
+                throw new ArgumentException(invalid.Errors.Values.First());
+            if (saved is null) throw new ArgumentException("There is no such group of regions.");
             UpdateSettings(l => l with
             {
                 Programs = l.Programs.Select(p => p.Instance == instance ? p with { Physics = physics, Options = options } : p).ToList(),
@@ -299,6 +305,12 @@ public sealed partial class GridController(
     /// Everything a program's start reads from the settings, other than ports and CPU: its effective physics and scripts,
     /// its other options, and each loadable region's name, size and options.
     /// </summary>
+    /// <remarks>
+    /// The key relies on the compiler-made record ToString of <see cref="ProgramOptions"/> and <see cref="RegionOptions"/>,
+    /// which prints each member's value. Their members must stay scalar: a list or other collection member prints as its
+    /// type name, so a change to it would silently stop marking a restart (Cores is a list, and is cleared here because
+    /// CPU settings apply without one). A new collection member needs its own explicit part in the key.
+    /// </remarks>
     private string StartKey(LauncherSettings s, ProgramSettings p)
     {
         var options = (p.Options ?? new ProgramOptions()) with { Scripts = null, Cores = null, Priority = CpuPriority.Normal };

@@ -377,6 +377,24 @@ public sealed class GridConfigWriterTests : IDisposable
         }
     }
 
+    [Fact]
+    public void Case_only_rename_leaves_one_region_file_in_the_new_case()
+    {
+        // The region was "home" before a rename to "Home": its old file is still there.
+        var dir = _paths.RegionDefinitionDir("Home");
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "home.ini"), "[home]\nRegionUUID = " + HomeId + "\n");
+
+        Write(TwoPrograms());
+
+        var active = Directory.EnumerateFiles(dir).Select(Path.GetFileName)
+            .Where(n => n!.EndsWith(".ini", StringComparison.Ordinal)
+                        && n.Equals("Home.ini", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        Assert.Equal(["Home.ini"], active);
+        Assert.Equal("8004", IniDocument.Load(RegionFile("Home", "Home")).Get("Home", "InternalPort"));
+    }
+
     // ---- region and program options (plan 4d) ----
 
     private static LauncherSettings WithOptions(ProgramOptions? po = null, string? physics = null, string? defaultPhysics = null,

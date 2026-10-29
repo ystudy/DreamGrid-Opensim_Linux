@@ -203,7 +203,7 @@ public class SettingsStoreTests : IDisposable
     }
 
     [Fact]
-    public void Schema2_physics_ubODE_becomes_grid_default()
+    public void Schema2_physics_ubODE_becomes_grid_default_and_BulletSim_keeps_its_own_thread()
     {
         var path = WriteV2("[{\"instance\":\"A\",\"httpPort\":8004,\"consolePort\":8011,\"physics\":\"ubODE\"},"
             + "{\"instance\":\"B\",\"httpPort\":8005,\"consolePort\":8012,\"physics\":\"BulletSim\"}]");
@@ -212,7 +212,8 @@ public class SettingsStoreTests : IDisposable
 
         Assert.Equal(3, s.SchemaVersion);
         Assert.Null(s.Programs[0].Physics);
-        Assert.Equal("BulletSim", s.Programs[1].Physics);
+        // Schema 2's BulletSim ran with the prototype's UseSeparatePhysicsThread=true: it keeps running that way.
+        Assert.Equal("BulletSimThreaded", s.Programs[1].Physics);
         Assert.Equal("ubODE", s.DefaultPhysics);
         Assert.True(s.DefaultScripts);
         var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
@@ -226,6 +227,23 @@ public class SettingsStoreTests : IDisposable
 
         Assert.Equal(3, s.SchemaVersion);
         Assert.Null(Assert.Single(s.Programs).Physics);
+    }
+
+    [Fact]
+    public void Schema3_explicit_ubODE_survives_a_reload()
+    {
+        var path = Path.Combine(NewDir(), "settings.json");
+        var store = new SettingsStore(path);
+        store.Save(store.LoadOrCreate() with
+        {
+            DefaultPhysics = "BulletSim",
+            Programs = [new ProgramSettings("A", 8004, 8011, "ubODE"), new ProgramSettings("B", 8005, 8012, "BulletSim")],
+        });
+
+        var loaded = new SettingsStore(path).LoadOrCreate();
+
+        Assert.Equal(3, loaded.SchemaVersion);
+        Assert.Equal(["ubODE", "BulletSim"], loaded.Programs.Select(p => p.Physics));
     }
 
     [Fact]
@@ -269,7 +287,7 @@ public class SettingsStoreTests : IDisposable
         var s = new SettingsStore(WriteV1(V1Region)).LoadOrCreate();
 
         Assert.Equal(3, s.SchemaVersion);
-        Assert.Equal([new ProgramSettings("Welcome", 8004, 8011, "BulletSim")], s.Programs);
+        Assert.Equal([new ProgramSettings("Welcome", 8004, 8011, "BulletSimThreaded")], s.Programs);
         Assert.Equal([new RegionSettings("Welcome", "Welcome", V1Uuid, 1000, 1000, "island", 1, 8004)], s.Regions);
         Assert.Null(s.LegacyRegion);
     }

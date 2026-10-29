@@ -2264,6 +2264,29 @@ public sealed class GridControllerWiringTests : IDisposable
     }
 
     [Fact]
+    public async Task Saved_cores_this_computer_lacks_do_not_block_other_settings()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var grid = NewGrid(TimeProvider.System, (_, _, _) => { });
+        HomeAndBeach(shared: false);
+        // Settings brought from a bigger computer: cores past this one's last.
+        int[] stale = [Environment.ProcessorCount + 4, Environment.ProcessorCount + 5];
+        var s = _store.LoadOrCreate();
+        _store.Save(s with { Programs = [.. s.Programs.Select(p => p.Instance == "Beach" ? p with { Options = new ProgramOptions(Cores: stale) } : p)] });
+
+        // The map changes; the cores are posted back unchanged.
+        await grid.SaveProgramOptionsAsync("Beach", null, new ProgramOptions(Map: MapQuality.Best, Cores: stale), ct);
+
+        var saved = Assert.Single(_store.LoadOrCreate().Programs, p => p.Instance == "Beach");
+        Assert.Equal(MapQuality.Best, saved.Options!.Map);
+        Assert.Equal(stale, saved.Options.Cores!);
+        // New cores this computer lacks are still refused.
+        var bad = await Assert.ThrowsAsync<ArgumentException>(() =>
+            grid.SaveProgramOptionsAsync("Beach", null, new ProgramOptions(Cores: [Environment.ProcessorCount + 6]), ct));
+        Assert.Contains("This computer has cores", bad.Message);
+    }
+
+    [Fact]
     public async Task Adopted_program_has_no_pending_restart()
     {
         var applied = new List<(int Pid, CpuPriority Priority)>();

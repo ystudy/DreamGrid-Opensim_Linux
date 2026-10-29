@@ -43,7 +43,7 @@ public static class CpuTuning
     }
 
     internal static InvalidOperationException Refused(string reason) =>
-        new($"This computer refused the priority: {reason.TrimEnd('.')}.");
+        new($"This computer refused these CPU settings: {reason.TrimEnd('.')}.");
 
     /// <summary>Every core the system has, from the system affinity mask (not the launcher's own, which may be narrower).</summary>
     private static long SystemMask()
@@ -203,7 +203,7 @@ public static class CpuTuning
             {
                 if ((mask[i / 8] & (1 << (i % 8))) != 0) cores.Add(i);
             }
-                        if (ParseNice(File.ReadAllText($"/proc/{pid}/stat")) is not { } nice) return null;
+            if (ParseNice(File.ReadAllText($"/proc/{pid}/stat")) is not { } nice) return null;
             return (cores, FromNice(nice));
         }
 

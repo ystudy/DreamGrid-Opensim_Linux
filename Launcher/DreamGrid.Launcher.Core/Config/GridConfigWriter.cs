@@ -110,8 +110,15 @@ public sealed class GridConfigWriter(LauncherPaths paths)
         os.Set("YEngine", "ScriptEnginesPath", Fwd(paths.ScriptEngines));
         Finish(os, "region", extra, Path.Combine(paths.RegionDir(instance), "OpenSim.ini"));
 
-        // 5. region definition files
+        // 5. region definition files. Every other region file goes off first, by its exact name: after a rename that
+        // only changes letter case ("home" to "Home") the old file must go off on Linux, and on Windows the new file
+        // must not be written into the old one, which would keep the old name.
         var dir = paths.RegionDefinitionDir(instance);
+        Directory.CreateDirectory(dir);
+        var keep = regions.Select(r => r.Name + ".ini").ToHashSet(StringComparer.Ordinal);
+        foreach (var file in Directory.EnumerateFiles(dir, "*.ini").ToList())
+            if (!keep.Contains(Path.GetFileName(file)))
+                File.Move(file, file + ".off", overwrite: true);
         foreach (var r in regions)
         {
             var def = IniDocument.Parse("");
@@ -130,11 +137,6 @@ public sealed class GridConfigWriter(LauncherPaths paths)
             if (ro.ClampSize) def.Set(r.Name, "ClampPrimSize", "True");
             Finish(def, "region", extra, Path.Combine(dir, r.Name + ".ini"), applyExtra: false);
         }
-        Directory.CreateDirectory(dir);
-        var keep = regions.Select(r => r.Name + ".ini").ToHashSet(StringComparer.OrdinalIgnoreCase);
-        foreach (var file in Directory.EnumerateFiles(dir, "*.ini"))
-            if (!keep.Contains(Path.GetFileName(file)))
-                File.Move(file, file + ".off", overwrite: true);
     }
 
     private static string Num(int v) => v.ToString(CultureInfo.InvariantCulture);

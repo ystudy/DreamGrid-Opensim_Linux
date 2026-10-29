@@ -41,20 +41,20 @@ public class RegionSettingsRulesTests
     public void Differences_lists_each_changed_setting_in_tab_order()
     {
         var from = Program(null, new ProgramOptions(MinTimerInterval: 0.5, FramesPerSecond: 11));
-        var to = Program("BulletSim", new ProgramOptions(false, 0.2, 20, MapQuality.Better, AllowGods: false, Cores: [0, 1, 2, 3], Priority: CpuPriority.High));
+        var to = Program("BulletSimThreaded", new ProgramOptions(false, 0.2, 20, MapQuality.None, AllowGods: false, Cores: [0, 1, 2, 3], Priority: CpuPriority.AboveNormal));
 
         var lines = RegionSettingsRules.Differences(Settings(), from, to);
 
         Assert.Equal(
         [
-            "Physics will change from ubODE to BulletSim.",
+            "Physics will change from ubODE to BulletSim in its own thread.",
             "Scripts will be turned off.",
             "The script timer rate will change from 0.5 to 0.2 seconds.",
             "The frame rate will change from 11 to 20 per second.",
-            "The map will be drawn Better instead of Simple.",
+            "The map will change from Simple to No map.",
             "God permissions will change.",
             "It will use cores 0–3 instead of every core.",
-            "Its priority will change from Normal to High.",
+            "Its priority will change from Normal to Above normal.",
         ], lines);
     }
 
@@ -78,7 +78,21 @@ public class RegionSettingsRulesTests
     public void High_priority_unavailable_on_linux_without_root()
     {
         Assert.SkipUnless(OperatingSystem.IsLinux() && !Environment.IsPrivilegedProcess, "Linux without root only");
-        Assert.Equal("On Linux only the root user can raise a program's priority.", RegionSettingsRules.PriorityUnavailable(CpuPriority.High));
+        Assert.Equal(RegionSettingsRules.PriorityNeedsRoot, RegionSettingsRules.PriorityUnavailable(CpuPriority.High));
         Assert.Null(RegionSettingsRules.PriorityUnavailable(CpuPriority.Normal));
+    }
+
+    [Fact]
+    public void Root_reason_never_says_program()
+    {
+        Assert.Equal("On Linux only the root user can raise the priority of these regions.", RegionSettingsRules.PriorityNeedsRoot);
+    }
+
+    [Fact]
+    public void Labels_are_the_words_the_tabs_show()
+    {
+        Assert.Equal(["ubODE", "BulletSim", "BulletSim in its own thread"], RegionSettingsRules.PhysicsEngines.Select(SettingLabels.Physics));
+        Assert.Equal(["No map", "Simple", "Good", "Better", "Best"], Enum.GetValues<MapQuality>().Select(SettingLabels.Map));
+        Assert.Equal(["Below normal", "Normal", "Above normal", "High", "Real time"], Enum.GetValues<CpuPriority>().Select(SettingLabels.Priority));
     }
 }
