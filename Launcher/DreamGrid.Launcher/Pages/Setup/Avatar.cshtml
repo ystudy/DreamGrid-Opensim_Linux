@@ -1,7 +1,8 @@
 @page "/setup/avatar"
 @model DreamGrid.Launcher.Pages.Setup.AvatarModel
 @{
-    ViewData["Title"] = "Create your avatar";
+    var title = Model.ByName ? "Your avatar" : "Create your avatar";
+    ViewData["Title"] = title;
 }
 @section Head {
     @if (Model.Creating)
@@ -11,12 +12,26 @@
     }
 }
 <partial name="_Checklist" />
-<h1>Create your avatar</h1>
-<p>This avatar owns your world and is the one you sign in to this website with. Names use letters and digits only, as Firestorm requires.</p>
+<h1>@title</h1>
+@if (Model.ByName)
+{
+    <p>Type the name of your avatar on @Model.GridName. It becomes the owner of the regions on this computer. No password is needed here.</p>
+}
+else
+{
+    <p>This avatar owns your world and is the one you sign in to this website with. Names use letters and digits only, as Firestorm requires.</p>
+}
 @if (Model.Creating)
 {
     <div class="progress-box alert alert-info">
-        <p>Creating your avatar… This page moves on by itself when it is done.</p>
+        @if (Model.ByName)
+        {
+            <p>Looking up your avatar… This page moves on by itself when it is done.</p>
+        }
+        else
+        {
+            <p>Creating your avatar… This page moves on by itself when it is done.</p>
+        }
     </div>
     return;
 }
@@ -43,15 +58,18 @@
             <span asp-validation-for="LastName" class="field-error text-danger small d-block"></span>
         </div>
     </div>
-    <label class="form-label mt-3" asp-for="Password">Password</label>
-    <input class="form-control" asp-for="Password" type="password" minlength="8" autocomplete="new-password" required>
-    <span class="hint form-text d-block">At least 8 characters, no spaces.</span>
-    <span asp-validation-for="Password" class="field-error text-danger small d-block"></span>
-    <label class="form-label mt-3" asp-for="Confirm">Type the password again</label>
-    <input class="form-control" asp-for="Confirm" type="password" autocomplete="new-password" required>
-    <span asp-validation-for="Confirm" class="field-error text-danger small d-block"></span>
-    <label class="form-label mt-3" asp-for="Email">E-mail (optional)</label>
-    <input class="form-control" asp-for="Email" type="email" autocomplete="email">
-    <span asp-validation-for="Email" class="field-error text-danger small d-block"></span>
-    <button type="submit" class="btn btn-primary mt-3">Create my avatar</button>
+    @if (!Model.ByName)
+    {
+        <label class="form-label mt-3" asp-for="Password">Password</label>
+        <input class="form-control" asp-for="Password" type="password" minlength="8" autocomplete="new-password" required>
+        <span class="hint form-text d-block">At least 8 characters, no spaces.</span>
+        <span asp-validation-for="Password" class="field-error text-danger small d-block"></span>
+        <label class="form-label mt-3" asp-for="Confirm">Type the password again</label>
+        <input class="form-control" asp-for="Confirm" type="password" autocomplete="new-password" required>
+        <span asp-validation-for="Confirm" class="field-error text-danger small d-block"></span>
+        <label class="form-label mt-3" asp-for="Email">E-mail (optional)</label>
+        <input class="form-control" asp-for="Email" type="email" autocomplete="email">
+        <span asp-validation-for="Email" class="field-error text-danger small d-block"></span>
+    }
+    <button type="submit" class="btn btn-primary mt-3">@(Model.ByName ? "Continue" : "Create my avatar")</button>
 </form>

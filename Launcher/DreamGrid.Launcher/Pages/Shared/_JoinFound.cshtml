@@ -1,0 +1,27 @@
+@model DreamGrid.Launcher.Setup.JoinFoundModel
+@using DreamGrid.Launcher.Setup
+@*
+    What a Grid Asset Server's join information says, with "Join this grid" and "Change the address". Shared by the
+    setup join step and Advanced settings. Model: JoinFoundModel (Found, Address). The buttons post the address only, to
+    the page's own Confirm and Change handlers; Confirm reads the join information again before saving.
+*@
+@{
+    var warning = JoinForm.VersionWarning(Model.Found);
+}
+<div class="join-found mt-3">
+    <p>DreamGrid found this grid at <strong>@Model.Address</strong>:</p>
+    <ul class="join-details">
+        <li>Grid: <strong>@Model.Found.GridName</strong></li>
+        <li>The Grid Asset Server's DreamGrid version: <strong>@Model.Found.Version</strong></li>
+        <li>Hypergrid: <strong>@(Model.Found.Hypergrid ? "on" : "off")</strong></li>
+    </ul>
+    @if (warning is not null)
+    {
+        <div class="version-warning alert alert-warning">@warning</div>
+    }
+    <form method="post">
+        <input type="hidden" name="Address" value="@Model.Address">
+        <button type="submit" class="btn btn-primary" asp-page-handler="Confirm">Join this grid</button>
+        <button type="submit" class="btn btn-outline-secondary" asp-page-handler="Change">Change the address</button>
+    </form>
+</div>

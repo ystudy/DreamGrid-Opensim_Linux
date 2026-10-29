@@ -347,11 +347,15 @@ internal sealed class FakeGridController : IGridController
     /// <summary>Thrown by <see cref="SetEstateOwnerAsync"/> when set.</summary>
     public Exception? EstateOwnerError { get; set; }
 
+    /// <summary>The account's own spelling of the name <see cref="SetEstateOwnerAsync"/> finds; the typed name when null.</summary>
+    public (string First, string Last)? EstateOwnerFound { get; set; }
+
     /// <summary>Like the controller: saves Setup.OwnerCreated and Setup.Owner through <see cref="UpdateSettings"/>.</summary>
     public Task<RobustAccount> SetEstateOwnerAsync(string first, string last, CancellationToken ct)
     {
         Record("SetEstateOwner " + first + " " + last);
         if (EstateOwnerError is { } e) throw e;
+        (first, last) = EstateOwnerFound ?? (first, last);
         var account = new RobustAccount(Guid.NewGuid(), first, last, 0, "");
         UpdateSettings(l => l with { Setup = l.Setup with { OwnerCreated = true, Owner = new OwnerInfo(first, last, account.PrincipalId) } });
         return Task.FromResult(account);

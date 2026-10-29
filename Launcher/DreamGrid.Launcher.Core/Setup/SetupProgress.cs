@@ -12,6 +12,8 @@ public sealed class SetupProgress : IProgress<string>
 {
     public const string PreparingDatabase = "Preparing the database";
     public const string StartingGrid = "Starting the grid service";
+    /// <summary>A Region Server's stand-in for <see cref="StartingGrid"/>: it uses the Grid Asset Server's grid service.</summary>
+    public const string ReachingGridAsset = "Reaching the Grid Asset Server";
     public const string CreatingRegion = "Creating your region";
     public const string LoadingContent = "Loading the region content";
     public const string WaitingForLogins = "Waiting for the region to accept logins";
@@ -21,6 +23,7 @@ public sealed class SetupProgress : IProgress<string>
     {
         [PreparingDatabase] = 10,
         [StartingGrid] = 25,
+        [ReachingGridAsset] = 25,
         [CreatingRegion] = 40,
         [LoadingContent] = 65,
         [WaitingForLogins] = 85,

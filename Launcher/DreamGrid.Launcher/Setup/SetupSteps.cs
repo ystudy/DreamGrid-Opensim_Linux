@@ -4,13 +4,18 @@ namespace DreamGrid.Launcher.Setup;
 
 /// <summary>
 /// The checklist steps for the install's plan (spec section 11); each one is done when its setting is saved. Setup
-/// starts with the plan, so before one is chosen the list is the one Local, Simple Public and Grid Asset share.
+/// starts with the plan, so before one is chosen the list is the one Local, Simple Public and Grid Asset share. A Region
+/// Server joins a Grid Asset Server instead of naming a world (the grid's name comes with the join) and names an avatar
+/// that already exists there.
 /// </summary>
 public static class SetupSteps
 {
     public const string PlanPath = "/setup/plan";
 
-    // Region Server and Connected Server get their own list when they become available (6b).
+    /// <summary>The path of the Region Server's join step.</summary>
+    public const string JoinPath = "/setup/join";
+
+    // Connected Server gets its own list when it becomes available.
     private static readonly IReadOnlyList<(string Title, string Path, Func<LauncherSettings, bool> Done)> Single =
     [
         ("Choose your plan", PlanPath, s => s.Plan is not null),
@@ -21,8 +26,19 @@ public static class SetupSteps
         ("Connect with Firestorm", "/setup/connect", s => s.Setup.Finished),
     ];
 
+    private static readonly IReadOnlyList<(string Title, string Path, Func<LauncherSettings, bool> Done)> RegionServer =
+    [
+        ("Choose your plan", PlanPath, s => s.Plan is not null),
+        ("Join the Grid Asset Server", JoinPath, s => s.Join is not null),
+        ("Your network", "/setup/network", s => s.Setup.NetworkSet),
+        ("Your avatar", "/setup/avatar", s => s.Setup.OwnerCreated),
+        ("Choose your first region", "/setup/region", s => s.Setup.RegionCreated),
+        ("Connect with Firestorm", "/setup/connect", s => s.Setup.Finished),
+    ];
+
     /// <summary>The steps for <paramref name="s"/>'s plan, in order.</summary>
-    public static IReadOnlyList<(string Title, string Path, Func<LauncherSettings, bool> Done)> For(LauncherSettings s) => Single;
+    public static IReadOnlyList<(string Title, string Path, Func<LauncherSettings, bool> Done)> For(LauncherSettings s) =>
+        s.Plan == OwnerPlan.RegionServer ? RegionServer : Single;
 
     /// <summary>True when every step before the one at <paramref name="path"/> is done (false for a path not in the list).</summary>
     public static bool CanOpen(LauncherSettings s, string path)

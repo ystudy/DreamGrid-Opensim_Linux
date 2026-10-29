@@ -46,6 +46,8 @@ public static class PlanCatalog
         "The website uses plain HTTP, so passwords cross the internet unencrypted until HTTPS exists.";
     private const string CgnatAdvice =
         "Some internet providers share one address between customers; if yours does, nobody outside can reach you.";
+    private const string PrivatePortAdvice =
+        "Every computer on your network can reach the Grid Asset Server's private port; anyone on your network can add regions to the grid.";
 
     // The two Grid Asset Server advisories that depend on the address; AdvisoriesFor picks by these prefixes.
     private const string LanOnlyPrefix = "With a network-only address";
@@ -82,6 +84,7 @@ public static class PlanCatalog
             [
                 "If this computer is off, every Region Server's regions stop working.",
                 "You can run regions here too, but it isn't advised: busy regions slow down logins, inventory and the map for everyone on the grid.",
+                PrivatePortAdvice,
                 "With a network-only address, only computers on this network can visit and there is no hypergrid. You can switch to a public address later.",
                 "With a public address: " + PublicAdvice + " " + HttpAdvice + " " + CgnatAdvice,
             ],
@@ -97,8 +100,9 @@ public static class PlanCatalog
                 "The Grid Asset Server must be set up first and running.",
                 "Both computers should run the same DreamGrid version.",
                 "Your router must forward this computer's region ports.",
+                PrivatePortAdvice,
             ],
-            false),
+            true),
         new(OwnerPlan.Connected, "connected-server", "🔗", "Connected Server", "Uses someone else's grid",
             "Runs regions on another grid such as OSgrid. That grid keeps the accounts.",
             "This computer runs regions only, joined to a grid run by someone else.",

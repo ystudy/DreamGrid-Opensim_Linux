@@ -283,6 +283,7 @@ public sealed class AccessTests
             "page setup-done",
             "page setup/avatar",
             "page setup/connect",
+            "page setup/join",
             "page setup/network",
             "page setup/plan",
             "page setup/plan/{id}",

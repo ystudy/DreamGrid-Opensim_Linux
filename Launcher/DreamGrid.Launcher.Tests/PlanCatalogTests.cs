@@ -49,9 +49,20 @@ public class PlanCatalogTests
     }
 
     [Fact]
-    public void Only_single_machine_plans_are_available_in_6a()
+    public void Every_plan_but_connected_server_is_available()
     {
-        Assert.Equal([true, true, true, false, false], PlanCatalog.All.Select(p => p.Available));
+        Assert.Equal([true, true, true, true, false], PlanCatalog.All.Select(p => p.Available));
+        Assert.True(PlanCatalog.Get(OwnerPlan.RegionServer).Available);
+    }
+
+    [Fact]
+    public void Region_server_and_grid_asset_advisories_name_the_open_private_port()
+    {
+        const string Sentence = "Every computer on your network can reach the Grid Asset Server's private port; anyone on your network can add regions to the grid.";
+        Assert.Contains(Sentence, PlanCatalog.Get(OwnerPlan.RegionServer).Advisories);
+        Assert.Contains(Sentence, PlanCatalog.Get(OwnerPlan.GridAsset).Advisories);
+        Assert.Contains(PlanCatalog.Get(OwnerPlan.RegionServer).Advisories, a => a.Contains("private port"));
+        Assert.Contains(PlanCatalog.Get(OwnerPlan.GridAsset).Advisories, a => a.Contains("private port"));
     }
 
     [Fact]
