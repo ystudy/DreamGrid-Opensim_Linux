@@ -43,9 +43,12 @@ public sealed class GridConfigWriterTests : IDisposable
 
     private static LauncherSettings Make(
         string physics = "ubODE", bool owner = false, string regionName = "Welcome Area",
-        List<IniOverride>? overrides = null) => new()
+        List<IniOverride>? overrides = null, OwnerPlan? plan = null, bool hypergrid = false,
+        string hostname = "192.168.1.50") => new()
     {
-        Hostname = "192.168.1.50",
+        Hostname = hostname,
+        Plan = plan,
+        Hypergrid = hypergrid,
         Db = new DatabaseSecrets("rootpw", "GENROBUSTPW", "GENOPENSIMPW"),
         Console = new ConsoleSecrets("conuser", "conpass32chars"),
         MachineId = "machine-1",
@@ -63,6 +66,43 @@ public sealed class GridConfigWriterTests : IDisposable
     private IniDocument Region() => IniDocument.Load(Path.Combine(_paths.RegionDir("Region1"), "OpenSim.ini"));
     private IniDocument Grid() => IniDocument.Load(Path.Combine(_paths.RuntimeOpenSim, "config-include", "GridCommon.ini"));
     private IniDocument Flotsam() => IniDocument.Load(Path.Combine(_paths.RuntimeOpenSim, "config-include", "FlotsamCache.ini"));
+
+    [Fact]
+    public void Hypergrid_off_by_default_uses_grid_architecture_and_closes_the_gatekeeper()
+    {
+        Write(Make());
+        AssertHypergrid(false);
+    }
+
+    [Fact]
+    public void Hypergrid_on_for_a_public_simple_server()
+    {
+        Write(Make(plan: OwnerPlan.SimplePublic, hypergrid: true, hostname: "203.0.113.7"));
+        AssertHypergrid(true);
+    }
+
+    [Fact]
+    public void Hypergrid_switch_ignored_on_a_lan_address()
+    {
+        Write(Make(plan: OwnerPlan.GridAsset, hypergrid: true, hostname: "192.168.1.50"));
+        AssertHypergrid(false);
+    }
+
+    [Fact]
+    public void Migrated_public_install_keeps_hypergrid_config()
+    {
+        Write(Make(plan: OwnerPlan.SimplePublic, hypergrid: true, hostname: "203.0.113.7"));
+        var proto = IniDocument.Load(Path.Combine(_paths.RuntimeOpenSim, "config-include", "Proto", "Robust", "OpenSim.ini"));
+        Assert.Equal(proto.Get("Architecture", "Include-Architecture"), Region().Get("Architecture", "Include-Architecture"));
+    }
+
+    private void AssertHypergrid(bool on)
+    {
+        var arch = Region().Get("Architecture", "Include-Architecture")!;
+        Assert.Contains(on ? "config-include/GridHypergrid.ini" : "config-include/Grid.ini", arch);
+        Assert.Equal(on ? "true" : "false", Robust().Get("GatekeeperService", "ForeignAgentsAllowed"));
+        Assert.Equal(on ? "true" : "false", Grid().Get("GridService", "AllowHypergridMapSearch"));
+    }
 
     [Fact]
     public void Robust_ini_has_private_db_port_and_generated_password()

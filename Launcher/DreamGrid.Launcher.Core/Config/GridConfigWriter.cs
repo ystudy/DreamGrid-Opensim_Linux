@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 using DreamGrid.Launcher.Core.Ini;
+using DreamGrid.Launcher.Core.Plans;
 using DreamGrid.Launcher.Core.Settings;
 
 namespace DreamGrid.Launcher.Core.Config;
@@ -18,6 +19,7 @@ public sealed class GridConfigWriter(LauncherPaths paths)
     {
         var host = HostAddress.Effective(s.Hostname);
         var rt = paths.RuntimeOpenSim;
+        var hypergrid = PlanCatalog.HypergridOn(s);
         var extra = s.Overrides.Concat(contributors.SelectMany(c => c.Contribute(s))).ToList();
 
         // 1. Robust.HG.ini
@@ -35,6 +37,7 @@ public sealed class GridConfigWriter(LauncherPaths paths)
         SetNetwork(robust, s, "ConsolePort", s.RobustConsolePort);
         SetFsAssetsDirectories(robust);
         SetSmartStartAndWifi(robust, s);
+        robust.Set("GatekeeperService", "ForeignAgentsAllowed", Bool(hypergrid));
         robust.Set("GridInfoService", "welcome", $"http://{host}:{s.WebPort}/welcome");
         robust.Set("GridInfoService", "gridname", s.GridName);
         Finish(robust, "robust", extra, Path.Combine(rt, "Robust.HG.ini"));
@@ -43,6 +46,7 @@ public sealed class GridConfigWriter(LauncherPaths paths)
         var common = LoadProto(Path.Combine(rt, "config-include", "Proto", "Robust", "GridCommon.ini"));
         common.Set("DatabaseService", "StorageProvider", "\"OpenSim.Data.MySQL.dll\"");
         common.Set("DatabaseService", "ConnectionString", $"\"{DbConn(s, "opensim", "opensimuser", s.Db.OpensimPassword)}\"");
+        common.Set("GridService", "AllowHypergridMapSearch", Bool(hypergrid));
         Finish(common, "region", extra, Path.Combine(rt, "config-include", "GridCommon.ini"), applyExtra: false);
 
         // 3. FlotsamCache.ini
@@ -51,7 +55,7 @@ public sealed class GridConfigWriter(LauncherPaths paths)
         Finish(flotsam, "region", extra, Path.Combine(rt, "config-include", "FlotsamCache.ini"), applyExtra: false);
 
         foreach (var program in s.Programs)
-            WriteProgram(s, program, RegionModel.Loadable(s, program.Instance, held ?? NoRegions).ToList(), host, extra);
+            WriteProgram(s, program, RegionModel.Loadable(s, program.Instance, held ?? NoRegions).ToList(), host, extra, hypergrid);
 
         // A deleted region whose program went keeps that folder; its region file goes off too.
         foreach (var r in s.Regions.Where(r => r.DeletedAt is not null && RegionModel.ProgramOf(s, r) is null))
@@ -67,13 +71,14 @@ public sealed class GridConfigWriter(LauncherPaths paths)
     /// The program's OpenSim.ini and one region file per loadable region. Any other region file in its Region folder
     /// becomes <c>.off</c>, so OpenSim never loads a region the launcher holds back (parked, stopped or deleted).
     /// </summary>
-    private void WriteProgram(LauncherSettings s, ProgramSettings program, List<RegionSettings> regions, string host, List<IniOverride> extra)
+    private void WriteProgram(LauncherSettings s, ProgramSettings program, List<RegionSettings> regions, string host, List<IniOverride> extra, bool hypergrid)
     {
         var rt = paths.RuntimeOpenSim;
         var instance = program.Instance;
 
         // 4. region OpenSim.ini
         var os = LoadProto(Path.Combine(rt, "config-include", "Proto", "Robust", "OpenSim.ini"));
+        os.Set("Architecture", "Include-Architecture", hypergrid ? "\"config-include/GridHypergrid.ini\"" : "\"config-include/Grid.ini\"");
         os.Set("Const", "BaseHostname", host);
         os.Set("Const", "BaseURL", $"http://{host}");
         os.Set("Const", "PublicPort", s.RobustPublicPort.ToString());
