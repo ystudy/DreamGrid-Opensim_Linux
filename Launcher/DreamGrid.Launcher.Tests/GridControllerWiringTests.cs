@@ -38,7 +38,7 @@ public sealed class GridControllerWiringTests : IDisposable
         new Core.Runtime.RuntimeStager(_paths).StageIfNeeded();
 
         _store = new SettingsStore(_paths.SettingsFile);
-        var p = FreePorts(9);
+        var p = _ports = FreePorts(9);
         (_secondPort, _secondConsole) = (p[7], p[8]);
         _store.Save(_store.LoadOrCreate() with
         {
@@ -93,6 +93,9 @@ public sealed class GridControllerWiringTests : IDisposable
     /// <summary>The second program's ports, free like every other port (a fixed offset from the first is often taken).</summary>
     private readonly int _secondPort, _secondConsole;
 
+    /// <summary>Every port the settings hold; a stand-in's own port must not be one of them, or starting reports a port conflict.</summary>
+    private readonly int[] _ports;
+
     private static int[] FreePorts(int count)
     {
         var ls = new List<TcpListener>();
@@ -105,6 +108,13 @@ public sealed class GridControllerWiringTests : IDisposable
         var ports = ls.Select(l => ((IPEndPoint)l.LocalEndpoint).Port).ToArray();
         foreach (var l in ls) l.Stop();
         return ports;
+    }
+
+    /// <summary>A free port for a stand-in to serve on, never one the settings already hold (a released port can be handed out again).</summary>
+    private int StandInPort()
+    {
+        while (true)
+            if (FreePorts(1)[0] is var port && !_ports.Contains(port)) return port;
     }
 
     [Fact]
@@ -423,7 +433,7 @@ public sealed class GridControllerWiringTests : IDisposable
         // A stand-in Robust whose command line names the staged Robust.dll, so the controller would adopt it.
         var psi = new ProcessStartInfo(FakeChildExe()) { UseShellExecute = false };
         psi.ArgumentList.Add("--serve");
-        psi.ArgumentList.Add(FreePorts(1)[0].ToString());
+        psi.ArgumentList.Add(StandInPort().ToString());
         psi.ArgumentList.Add(Path.Combine(_paths.RuntimeOpenSim, "Robust.dll"));
         using var fake = Process.Start(psi)!;
         try
@@ -461,7 +471,7 @@ public sealed class GridControllerWiringTests : IDisposable
         var s = _store.LoadOrCreate();
         var psi = new ProcessStartInfo(FakeChildExe()) { UseShellExecute = false };
         psi.ArgumentList.Add("--serve");
-        psi.ArgumentList.Add(FreePorts(1)[0].ToString());
+        psi.ArgumentList.Add(StandInPort().ToString());
         psi.ArgumentList.Add(Path.Combine(_paths.RuntimeOpenSim, "Robust.dll"));
         using var fake = Process.Start(psi)!;
         try
@@ -506,7 +516,7 @@ public sealed class GridControllerWiringTests : IDisposable
     {
         var psi = new ProcessStartInfo(FakeChildExe()) { UseShellExecute = false };
         psi.ArgumentList.Add("--serve");
-        psi.ArgumentList.Add(FreePorts(1)[0].ToString());
+        psi.ArgumentList.Add(StandInPort().ToString());
         psi.ArgumentList.Add(Path.Combine(_paths.RuntimeOpenSim, "OpenSim.dll"));
         return psi;
     }
