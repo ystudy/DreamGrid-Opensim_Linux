@@ -33,6 +33,24 @@ public class RobustClientTests
     }
 
     [Fact]
+    public async Task Region_server_asks_the_grid_asset_server()
+    {
+        var h = new StubHandler(r => (HttpStatusCode.OK, "<ServerResponse><result>null</result></ServerResponse>"));
+        var region = Defaults with
+        {
+            Plan = OwnerPlan.RegionServer,
+            Join = new JoinedGrid("192.168.1.5", 8002, 8003, "Avalon", "http://192.168.1.5:8002/", "7.1.0", false, 8004, 8006),
+        };
+        var local = Defaults with { Plan = OwnerPlan.Local };
+
+        await new RobustClient(new HttpClient(h), () => region).GetAccountAsync("Ann", "Lee", CancellationToken.None);
+        await new RobustClient(new HttpClient(h), () => local).GetAccountAsync("Ann", "Lee", CancellationToken.None);
+
+        Assert.Equal(["http://192.168.1.5:8003/accounts", $"http://127.0.0.1:{local.RobustPrivatePort}/accounts"],
+            h.Requests.Select(q => q.Uri.ToString()));
+    }
+
+    [Fact]
     public async Task Authenticate_sends_md5_hex_of_password()
     {
         var (c, h) = Make(r => (HttpStatusCode.OK, "<ServerResponse><Result>Success</Result><Token>tok-1</Token></ServerResponse>"));

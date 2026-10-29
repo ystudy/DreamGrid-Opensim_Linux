@@ -662,4 +662,89 @@ public sealed class GridConfigWriterTests : IDisposable
         Assert.Null(os.Get("YEngine", "MinTimerInterval"));
         Assert.Null(os.Get("AuthorizationService", "Region_Home"));
     }
+
+    private static LauncherSettings RegionServer(bool hypergrid) => Make(plan: OwnerPlan.RegionServer, owner: true, hostname: "192.168.1.20") with
+    {
+        Join = new JoinedGrid("192.168.1.5", 8002, 8003, "Avalon", "http://192.168.1.5:8002/", "7.1.0", hypergrid, 8004, 8006),
+        Setup = new SetupState(OwnerCreated: true, Owner: new OwnerInfo("Ann", "Lee", Guid.Parse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"))),
+    };
+
+    [Fact]
+    public void Region_server_points_regions_at_the_grid_asset_server()
+    {
+        Write(RegionServer(hypergrid: false));
+
+        var r = Region();
+        Assert.Equal("192.168.1.20", r.Get("Const", "BaseHostname"));
+        Assert.Equal("http://192.168.1.5", r.Get("Const", "BaseURL"));
+        Assert.Equal("http://192.168.1.5", r.Get("Const", "PrivURL"));
+        Assert.Equal("8002", r.Get("Const", "PublicPort"));
+        Assert.Equal("8003", r.Get("Const", "PrivatePort"));
+        Assert.Equal("config-include/Grid.ini", r.Get("Architecture", "Include-Architecture"));
+        Assert.Equal("Ann Lee", r.Get("Estates", "DefaultEstateOwnerName"));
+        Assert.True(string.IsNullOrWhiteSpace(r.Get("Estates", "DefaultEstateOwnerUUID")));
+        Assert.Equal("false", Grid().Get("GridService", "AllowHypergridMapSearch"));
+        Assert.Equal("192.168.1.20", IniDocument.Load(RegionFile("Region1", "Welcome Area")).Get("Welcome Area", "ExternalHostName"));
+    }
+
+    [Fact]
+    public void Region_server_with_hypergrid_on_follows_the_grid_asset_server()
+    {
+        var s = RegionServer(hypergrid: true);
+        Assert.False(s.Hypergrid);
+        Write(s);
+
+        Assert.Equal("config-include/GridHypergrid.ini", Region().Get("Architecture", "Include-Architecture"));
+        Assert.Equal("true", Grid().Get("GridService", "AllowHypergridMapSearch"));
+    }
+
+    [Fact]
+    public void Region_server_without_a_join_yet_writes_the_single_machine_endpoints()
+    {
+        Write(RegionServer(hypergrid: false) with { Join = null });
+
+        var r = Region();
+        Assert.Equal("http://127.0.0.1", r.Get("Const", "PrivURL"));
+        Assert.Equal("8002", r.Get("Const", "PublicPort"));
+    }
+
+    public static TheoryData<string, OwnerPlan, string, bool> SnapshotCases => new()
+    {
+        { "local", OwnerPlan.Local, "192.168.1.50", false },
+        { "simple-public", OwnerPlan.SimplePublic, "203.0.113.7", true },
+        { "grid-asset", OwnerPlan.GridAsset, "203.0.113.7", true },
+    };
+
+    /// <summary>
+    /// The INIs the single-machine plans wrote before the Region Server existed, captured from the writer then. Set
+    /// DG_CAPTURE_SNAPSHOTS=1 to rewrite them (only when a change to these INIs is intended).
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(SnapshotCases))]
+    public void Single_machine_plans_write_what_they_did_before(string name, OwnerPlan plan, string host, bool hypergrid)
+    {
+        Write(Make(plan: plan, hypergrid: hypergrid, hostname: host, owner: true));
+
+        var files = new Dictionary<string, string>
+        {
+            ["OpenSim.ini"] = Path.Combine(_paths.RegionDir("Region1"), "OpenSim.ini"),
+            ["GridCommon.ini"] = Path.Combine(_paths.RuntimeOpenSim, "config-include", "GridCommon.ini"),
+            ["Region.ini"] = RegionFile("Region1", "Welcome Area"),
+        };
+        var dir = Path.Combine(Path.GetDirectoryName(RepoBin())!, "Launcher", "DreamGrid.Launcher.Tests", "Snapshots");
+        foreach (var (file, path) in files)
+        {
+            var actual = Normalize(File.ReadAllText(path)).Replace(_root, "<ROOT>").Replace(Normalize(_root, true), "<ROOT>");
+            var snapshot = Path.Combine(dir, $"{name}.{file}");
+            if (Environment.GetEnvironmentVariable("DG_CAPTURE_SNAPSHOTS") == "1")
+            {
+                Directory.CreateDirectory(dir);
+                File.WriteAllText(snapshot, actual);
+            }
+            Assert.Equal(Normalize(File.ReadAllText(snapshot)), actual);
+        }
+    }
+
+    private static string Normalize(string text, bool slashes = false) =>
+        (slashes ? text.Replace(Path.DirectorySeparatorChar, (char)47) : text).ReplaceLineEndings(((char)10).ToString());
 }

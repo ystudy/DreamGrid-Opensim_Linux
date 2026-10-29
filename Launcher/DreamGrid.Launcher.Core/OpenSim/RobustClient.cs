@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Xml.Linq;
+using DreamGrid.Launcher.Core.Plans;
 using DreamGrid.Launcher.Core.Settings;
 
 namespace DreamGrid.Launcher.Core.OpenSim;
@@ -20,8 +21,8 @@ public interface IRobustClient
 /// </summary>
 public sealed class RobustClient(HttpClient http, Func<LauncherSettings> settings) : IRobustClient
 {
-    private Uri PrivateBase => new($"http://127.0.0.1:{settings().RobustPrivatePort}");
-    private Uri PublicBase => new($"http://127.0.0.1:{settings().RobustPublicPort}");
+    private Uri PrivateBase => GridEndpoints.PrivateBase(settings());
+    private Uri PublicBase => GridEndpoints.PublicBase(settings());
 
     public async Task<bool> IsReadyAsync(CancellationToken ct)
     {

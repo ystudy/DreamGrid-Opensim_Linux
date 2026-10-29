@@ -86,10 +86,11 @@ public sealed class GridConfigWriter(LauncherPaths paths)
         var os = LoadProto(Path.Combine(rt, "config-include", "Proto", "Robust", "OpenSim.ini"));
         os.Set("Architecture", "Include-Architecture", hypergrid ? "\"config-include/GridHypergrid.ini\"" : "\"config-include/Grid.ini\"");
         os.Set("Const", "BaseHostname", host);
-        os.Set("Const", "BaseURL", $"http://{host}");
-        os.Set("Const", "PublicPort", s.RobustPublicPort.ToString());
-        os.Set("Const", "PrivatePort", s.RobustPrivatePort.ToString());
-        os.Set("Const", "PrivURL", "http://127.0.0.1");
+        // On a Region Server BaseURL, PrivURL and the ports are the Grid Asset Server's; BaseHostname stays this computer.
+        os.Set("Const", "BaseURL", $"http://{GridEndpoints.ServiceHost(s)}");
+        os.Set("Const", "PublicPort", GridEndpoints.PublicPort(s).ToString());
+        os.Set("Const", "PrivatePort", GridEndpoints.PrivatePort(s).ToString());
+        os.Set("Const", "PrivURL", $"http://{GridEndpoints.PrivateHost(s)}");
         os.Set("Const", "http_listener_port", program.HttpPort.ToString());
         os.Set("Const", "RegionFolderName", instance);
         os.Set("Const", "DiagnosticsPort", s.WebPort.ToString());
@@ -107,7 +108,9 @@ public sealed class GridConfigWriter(LauncherPaths paths)
         {
             os.Set("Estates", "DefaultEstateName", $"{s.GridName} Estate");
             os.Set("Estates", "DefaultEstateOwnerName", $"{owner.FirstName} {owner.LastName}");
-            os.Set("Estates", "DefaultEstateOwnerUUID", owner.PrincipalId.ToString());
+            // The owner's id is the grid's to know; only a standalone region file carries it.
+            if (s.Plan == OwnerPlan.RegionServer) os.CommentOut("Estates", "DefaultEstateOwnerUUID");
+            else os.Set("Estates", "DefaultEstateOwnerUUID", owner.PrincipalId.ToString());
         }
         else
         {

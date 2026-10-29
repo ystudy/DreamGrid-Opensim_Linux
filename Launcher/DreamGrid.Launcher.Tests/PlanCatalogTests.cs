@@ -84,6 +84,27 @@ public class PlanCatalogTests
         Assert.False(PlanCatalog.HypergridOn(S(OwnerPlan.SimplePublic, "203.0.113.7", false)));
     }
 
+    [Theory]
+    [InlineData(OwnerPlan.Local, true)]
+    [InlineData(OwnerPlan.SimplePublic, true)]
+    [InlineData(OwnerPlan.GridAsset, true)]
+    [InlineData(OwnerPlan.RegionServer, false)]
+    [InlineData(OwnerPlan.Connected, false)]
+    [InlineData(null, true)]
+    public void RunsRobust(OwnerPlan? plan, bool expected) =>
+        Assert.Equal(expected, PlanCatalog.RunsRobust(S(plan, "192.168.1.20", false)));
+
+    [Fact]
+    public void HypergridOn_region_server_follows_join()
+    {
+        var s = S(OwnerPlan.RegionServer, "192.168.1.20", true);
+        var join = new JoinedGrid("192.168.1.5", 8002, 8003, "Avalon", "http://192.168.1.5:8002/", "7.1.0", true, 8004, 8006);
+
+        Assert.False(PlanCatalog.HypergridOn(s));
+        Assert.True(PlanCatalog.HypergridOn(s with { Join = join }));
+        Assert.False(PlanCatalog.HypergridOn((s with { Join = join with { Hypergrid = false } })));
+    }
+
     [Fact]
     public void Every_plan_has_advisories_and_runs()
     {

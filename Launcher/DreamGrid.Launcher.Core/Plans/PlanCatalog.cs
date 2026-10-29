@@ -172,6 +172,10 @@ public static class PlanCatalog
     public static bool HypergridAllowed(LauncherSettings s) =>
         s.Plan is OwnerPlan.SimplePublic or OwnerPlan.GridAsset && HostAddress.IsPublic(s.Hostname);
 
-    /// <summary>Whether hypergrid is actually on.</summary>
-    public static bool HypergridOn(LauncherSettings s) => s.Hypergrid && HypergridAllowed(s);
+    /// <summary>Whether this computer runs Robust: not a Region Server or a Connected Server, which use another computer's.</summary>
+    public static bool RunsRobust(LauncherSettings s) => s.Plan is not (OwnerPlan.RegionServer or OwnerPlan.Connected);
+
+    /// <summary>Whether hypergrid is actually on. A Region Server follows the grid it joined.</summary>
+    public static bool HypergridOn(LauncherSettings s) =>
+        s.Plan == OwnerPlan.RegionServer ? s.Join?.Hypergrid ?? false : s.Hypergrid && HypergridAllowed(s);
 }
