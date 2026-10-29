@@ -75,4 +75,39 @@ public sealed class RegionPlacementTests
     {
         Assert.True(RegionPlacement.Check(With(Home), 1000, 1000, 1, ignore: Home.Uuid).Ok);
     }
+
+    [Fact]
+    public void Check_counts_regions_on_other_computers()
+    {
+        IReadOnlyList<MapRegion> elsewhere = [new(Guid.NewGuid(), "Hub", 1000, 1000, 2)];
+        var s = With();
+
+        var overlap = RegionPlacement.Check(s, 1001, 1001, 1, elsewhere: elsewhere);
+        Assert.False(overlap.Ok);
+        Assert.Equal("Hub", overlap.OverlapsWith);
+
+        var next = RegionPlacement.Check(s, 1002, 1000, 1, elsewhere: elsewhere);
+        Assert.True(next.Ok);
+        Assert.Equal([new Neighbour("Hub", "east")], next.Neighbours);
+    }
+
+    [Fact]
+    public void Check_ignores_our_own_regions_on_the_map()
+    {
+        IReadOnlyList<MapRegion> elsewhere = [new(Home.Uuid, "Home", 1000, 1000, 1)];
+
+        var check = RegionPlacement.Check(With(Home), 1001, 1000, 1, elsewhere: elsewhere);
+
+        Assert.True(check.Ok);
+        Assert.Equal([new Neighbour("Home", "east")], check.Neighbours);
+    }
+
+    [Fact]
+    public void FirstFree_skips_used_squares()
+    {
+        IReadOnlyList<MapRegion> elsewhere = [new(Guid.NewGuid(), "Hub", 1000, 1000, 2)];
+
+        Assert.Equal((1002, 1000), RegionPlacement.FirstFree(With(), elsewhere));
+        Assert.Equal((1000, 1000), RegionPlacement.FirstFree(With(), []));
+    }
 }

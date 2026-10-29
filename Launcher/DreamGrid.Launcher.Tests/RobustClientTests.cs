@@ -1,4 +1,5 @@
 using System.Net;
+using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.OpenSim;
 using DreamGrid.Launcher.Core.Settings;
 using Xunit;
@@ -118,5 +119,35 @@ public class RobustClientTests
         Assert.Equal(HttpMethod.Get, req.Method);
         Assert.Equal("/get_grid_info", req.Uri.AbsolutePath);
         Assert.Equal(8002, req.Uri.Port);
+    }
+
+    [Fact]
+    public async Task GetMapRegionsAsync_reads_get_region_range()
+    {
+        var id = Guid.NewGuid();
+        var (c, h) = Make(r => (HttpStatusCode.OK,
+            "<?xml version=\"1.0\"?><ServerResponse><region0 type=\"List\"><uuid>" + id + "</uuid><locX>256000</locX><locY>256256</locY>" +
+            "<sizeX>512</sizeX><sizeY>512</sizeY><regionName>Hub</regionName></region0></ServerResponse>"));
+
+        var regions = await c.GetMapRegionsAsync(CancellationToken.None);
+
+        Assert.Equal([new MapRegion(id, "Hub", 1000, 1001, 2)], regions);
+        var req = Assert.Single(h.Requests);
+        Assert.Equal("/grid", req.Uri.AbsolutePath);
+        Assert.Equal("get_region_range", req.Form("METHOD"));
+        Assert.Equal("00000000-0000-0000-0000-000000000000", req.Form("SCOPEID"));
+        Assert.Equal("0", req.Form("XMIN"));
+        Assert.Equal("16776960", req.Form("YMAX"));
+    }
+
+    [Theory]
+    [InlineData("<ServerResponse>null</ServerResponse>")]
+    [InlineData("<ServerResponse><result>null</result></ServerResponse>")]
+    [InlineData("")]
+    public async Task GetMapRegionsAsync_is_empty_for_a_null_reply(string body)
+    {
+        var (c, _) = Make(r => (HttpStatusCode.OK, body));
+
+        Assert.Empty(await c.GetMapRegionsAsync(CancellationToken.None));
     }
 }

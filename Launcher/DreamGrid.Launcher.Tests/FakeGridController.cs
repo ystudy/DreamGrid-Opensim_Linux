@@ -371,6 +371,12 @@ internal sealed class FakeRobustAccounts : IRobustClient
 
     public Task<bool> AuthenticateAsync(Guid principal, string plainPassword, CancellationToken ct) =>
         Down ? throw new HttpRequestException("Connection refused") : Task.FromResult(_accounts.Values.Any(a => a.Account.PrincipalId == principal && a.Password == plainPassword));
+
+    /// <summary>The grid's map this fake reports.</summary>
+    public List<MapRegion> MapRegions { get; } = [];
+
+    public Task<IReadOnlyList<MapRegion>> GetMapRegionsAsync(CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<MapRegion>>(MapRegions.ToList());
 }
 
 /// <summary>Who's online without a database: returns <see cref="Result"/>.</summary>

@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Xml;
 using DreamGrid.Launcher.Core.Api;
 using DreamGrid.Launcher.Core.Config;
+using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.Modules;
 using DreamGrid.Launcher.Core.Processes;
 using DreamGrid.Launcher.Core.OpenSim;
@@ -342,6 +343,7 @@ public sealed class LegacyCommandApiTests
         public Task<bool> IsReadyAsync(CancellationToken ct) => Task.FromResult(true);
         public Task<RobustAccount?> GetAccountAsync(string first, string last, CancellationToken ct) => Task.FromException<RobustAccount?>(failure);
         public Task<bool> AuthenticateAsync(Guid principal, string plainPassword, CancellationToken ct) => Task.FromResult(true);
+        public Task<IReadOnlyList<MapRegion>> GetMapRegionsAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<MapRegion>>([]);
     }
 
     private sealed class PingModule : IFeatureModule
