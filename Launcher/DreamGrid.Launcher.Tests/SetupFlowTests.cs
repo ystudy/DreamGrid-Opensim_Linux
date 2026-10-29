@@ -536,6 +536,28 @@ public sealed class SetupFlowTests
         Assert.Equal("/setup/connect", Location(setup));
     }
 
+    [Fact]
+    public async Task Connect_step_after_skipping_the_region_says_visitors_have_nowhere_to_arrive()
+    {
+        await using var f = AfterOwnerWith(OwnerPlan.GridAsset);
+        using var client = await SignedInClientAsync(f);
+        (await PostFormAsync(client, "/setup/region?handler=Skip", new(), tokenFrom: "/setup/region")).Dispose();
+
+        var text = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/connect", Ct)).Body!.TextContent;
+
+        Assert.Contains("nowhere to arrive", text);
+        Assert.Contains("Region Server", text);
+    }
+
+    [Fact]
+    public async Task Connect_step_with_a_region_does_not_say_visitors_have_nowhere_to_arrive()
+    {
+        await using var f = AfterOwner(regionCreated: true);
+        using var client = await SignedInClientAsync(f);
+
+        Assert.DoesNotContain("nowhere to arrive", await client.GetStringAsync("/setup/connect", Ct));
+    }
+
     [Theory]
     [InlineData(OwnerPlan.Local)]
     [InlineData(OwnerPlan.SimplePublic)]
@@ -1203,6 +1225,36 @@ public sealed class SetupFlowTests
         Assert.Null(s.Hostname);
         Assert.False(s.Hypergrid);
         Assert.True(s.Setup.NetworkSet);
+    }
+
+    [Fact]
+    public async Task Network_step_for_local_keeps_a_custom_network_hostname()
+    {
+        await using var f = new LauncherFactory(s => s with { SetupToken = Token, Plan = OwnerPlan.Local, Hostname = "192.168.1.50" })
+        {
+            Before = TestAuth.Apply,
+        };
+        using var client = await SetupClientAsync(f);
+
+        using var resp = await PostFormAsync(client, "/setup/network", new());
+
+        Assert.Equal("/setup", Location(resp));
+        Assert.Equal("192.168.1.50", f.Store.LoadOrCreate().Hostname);
+    }
+
+    [Fact]
+    public async Task Network_step_for_local_drops_a_public_hostname()
+    {
+        await using var f = new LauncherFactory(s => s with { SetupToken = Token, Plan = OwnerPlan.Local, Hostname = "world.example.com" })
+        {
+            Before = TestAuth.Apply,
+        };
+        using var client = await SetupClientAsync(f);
+
+        using var resp = await PostFormAsync(client, "/setup/network", new());
+
+        Assert.Equal("/setup", Location(resp));
+        Assert.Null(f.Store.LoadOrCreate().Hostname);
     }
 
     [Fact]

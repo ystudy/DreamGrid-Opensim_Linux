@@ -20,6 +20,9 @@ public sealed class PlanModel(IGridController grid, Func<LauncherSettings> setti
 
     public PlanInfo Current { get; private set; } = PlanCatalog.Get(OwnerPlan.Local);
 
+    /// <summary>The current plan's advisories for the address it has now.</summary>
+    public IReadOnlyList<string> Advisories { get; private set; } = [];
+
     /// <summary>The other plans: where this plan may go, and where it may not (with the reason).</summary>
     public IReadOnlyList<(PlanInfo Plan, bool Allowed, string Reason)> Changes { get; private set; } = [];
 
@@ -56,9 +59,12 @@ public sealed class PlanModel(IGridController grid, Func<LauncherSettings> setti
             Plan = target.Plan,
             // Local has no hypergrid; the other plans keep the owner's choice (it only counts with a public address).
             Hypergrid = target.Plan != OwnerPlan.Local && x.Hypergrid,
+            // Local can't give out a public address; a custom network hostname stays.
+            Hostname = target.Plan == OwnerPlan.Local && HostAddress.IsPublic(x.Hostname) ? null : x.Hostname,
         }, writeConfig: true);
 
-        if (target.Plan != OwnerPlan.Local && !HostAddress.IsPublic(saved.Hostname))
+        // Only Simple Public Server needs a public address; a Grid Asset Server may stay on the network.
+        if (target.Plan == OwnerPlan.SimplePublic && !HostAddress.IsPublic(saved.Hostname))
         {
             TempData["PlanNote"] = FinishNote;
             return Redirect("/advanced/network");
@@ -93,6 +99,7 @@ public sealed class PlanModel(IGridController grid, Func<LauncherSettings> setti
     {
         var plan = s.Plan ?? OwnerPlan.Local;
         Current = PlanCatalog.Get(plan);
+        Advisories = PlanCatalog.AdvisoriesFor(Current, HostAddress.IsPublic(s.Hostname));
         Changes = PlanCatalog.All.Where(p => p.Plan != plan)
             .Select(p => { var (ok, why) = PlanCatalog.CanChange(plan, p.Plan); return (p, ok, why); })
             .ToList();

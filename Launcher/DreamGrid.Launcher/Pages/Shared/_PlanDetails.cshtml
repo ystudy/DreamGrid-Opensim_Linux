@@ -5,6 +5,8 @@
     var changes = PlanCatalog.All.Where(p => p.Plan != Model.Plan)
         .Select(p => (p.Title, Change: PlanCatalog.CanChange(Model.Plan, p.Plan))).ToList();
     var reasons = changes.Where(c => !c.Change.Allowed).Select(c => c.Change.Reason).Distinct().ToList();
+    // A page that knows the address passes just its advisories (ViewData "Advisories"); otherwise all are listed.
+    var advisories = ViewData["Advisories"] as IReadOnlyList<string> ?? Model.Advisories;
 }
 <div class="plan-details">
     <p class="lead">@Model.Summary</p>
@@ -40,7 +42,7 @@
 
     <h2>Before you go on</h2>
     <ul class="plan-advisories">
-        @foreach (var advisory in Model.Advisories)
+        @foreach (var advisory in advisories)
         {
             <li>@advisory</li>
         }

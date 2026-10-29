@@ -11,14 +11,11 @@ namespace DreamGrid.Launcher.Pages.Setup;
 
 /// <summary>
 /// The network step. Local keeps the detected network address and has no hypergrid. Simple Public Server needs a public
-/// address and offers the hypergrid switch. Grid Asset Server asks first whether visitors are on the network or the
+/// address and offers the hypergrid switch (a custom network hostname Local already has is kept). Grid Asset Server asks first whether visitors are on the network or the
 /// internet and then goes like Local or like Simple Public. The save goes through IGridController.UpdateSettings.
 /// </summary>
 public sealed class NetworkModel(IGridController grid, Func<LauncherSettings> settings) : PageModel
 {
-    private const string NotPublic =
-        "That's an address only computers on your network can reach. Enter your public IP address or your grid's name.";
-
     /// <summary>"lan" or "public" (Grid Asset Server only; Simple Public is always public, Local always lan).</summary>
     [BindProperty] public string? AddressKind { get; set; }
     [BindProperty] public string? PublicAddress { get; set; }
@@ -26,6 +23,9 @@ public sealed class NetworkModel(IGridController grid, Func<LauncherSettings> se
     public OwnerPlan Plan { get; private set; }
     public string DetectedAddress { get; } = HostAddress.Detect();
     public string? AddressError { get; private set; }
+
+    /// <summary>The network address the world will use: Local's kept custom hostname, otherwise the detected one.</summary>
+    public string NetworkAddress { get; private set; } = "";
 
     /// <summary>The ports to forward, in plain words, from the current settings.</summary>
     public string Ports { get; private set; } = "";
@@ -65,12 +65,14 @@ public sealed class NetworkModel(IGridController grid, Func<LauncherSettings> se
         };
         AddressKind = isPublic && Plan == OwnerPlan.GridAsset ? "public" : "lan";
 
-        string? hostname = null;
+        // A network-only Grid Asset Server uses the detected address; Local keeps a custom hostname when it is on the
+        // network (PlanCatalog.AddressError refuses a public one for Local).
+        string? hostname = KeptLocalHostname(s);
         if (isPublic)
         {
-            hostname = PublicAddress?.Trim();
-            AddressError = string.IsNullOrEmpty(hostname) ? NotPublic
-                : SettingsValidator.HostnameError(hostname) ?? (HostAddress.IsPublic(hostname) ? null : NotPublic);
+            hostname = PublicAddress?.Trim() is { Length: > 0 } typed ? typed : null;
+            // A public address is checked by Simple Public Server's rule, whichever plan asked for it.
+            AddressError = PlanCatalog.AddressError(OwnerPlan.SimplePublic, hostname);
             if (AddressError is not null)
             {
                 Fill(s, wantsHypergrid);
@@ -86,11 +88,17 @@ public sealed class NetworkModel(IGridController grid, Func<LauncherSettings> se
     private void Fill(LauncherSettings s, bool hypergridOn)
     {
         var info = PlanCatalog.Get(Plan);
+        NetworkAddress = KeptLocalHostname(s) ?? DetectedAddress;
         LanAdvisories = Plan == OwnerPlan.SimplePublic ? [] : PlanCatalog.AdvisoriesFor(info, publicAddress: false);
         PublicAdvisories = Plan == OwnerPlan.Local ? [] : PlanCatalog.AdvisoriesFor(info, publicAddress: true);
         Ports = string.Create(CultureInfo.InvariantCulture, $"{s.RobustPublicPort}, and {s.RegionPort} upward for regions");
         Switch = new HypergridSwitchModel(hypergridOn, true, null, s.RobustPublicPort, s.RegionPort);
     }
+
+    private string? KeptLocalHostname(LauncherSettings s) =>
+        Plan == OwnerPlan.Local && !string.IsNullOrEmpty(s.Hostname) && PlanCatalog.AddressError(OwnerPlan.Local, s.Hostname) is null
+            ? s.Hostname
+            : null;
 
     private static bool IsOn(string value) => value != "" && !value.Equals("false", StringComparison.OrdinalIgnoreCase);
 

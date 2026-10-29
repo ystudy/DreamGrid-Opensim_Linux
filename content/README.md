@@ -6,7 +6,7 @@ Setup starts by asking which kind of world you want. There are five plans:
 
 - **Local** – Just me & friends (LAN). A private world on this computer, for you and people on your own network.
 - **Grid Asset Server** – (LAN or WAN). Your world keeps its items on this computer and can skip regions, so more region computers can join it later.
-- **Region Server** – Needs a Grid Asset Server. A computer that runs regions for someone else's world.
+- **Region Server** – Needs a Grid Asset Server. Adds land (regions) to your own grid, whose Grid Asset Server is another computer on your network.
 - **Connected Server** – Uses someone else's grid. This computer joins an existing world as one of its servers.
 - **Simple Public Server** – (WAN). A world open to visitors from the internet.
 

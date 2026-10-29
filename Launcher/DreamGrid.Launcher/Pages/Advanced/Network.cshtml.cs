@@ -1,6 +1,7 @@
 using System.Globalization;
 using DreamGrid.Launcher.Core.Config;
 using DreamGrid.Launcher.Core.Grid;
+using DreamGrid.Launcher.Core.Plans;
 using DreamGrid.Launcher.Core.Settings;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -8,7 +9,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 namespace DreamGrid.Launcher.Pages.Advanced;
 
 /// <summary>
-/// The hostname and the seven ports. A save is validated first and goes through IGridController.UpdateSettings
+/// The hostname and the seven ports. The hostname must suit the plan (<see cref="PlanCatalog.AddressError"/>). A save is validated first and goes through IGridController.UpdateSettings
 /// (which also rewrites the INIs); nothing is saved while any field is wrong.
 /// </summary>
 public sealed class NetworkModel(IGridController grid, Func<LauncherSettings> settings) : PageModel
@@ -47,10 +48,9 @@ public sealed class NetworkModel(IGridController grid, Func<LauncherSettings> se
                 PortAllocator.Assigned(settings()));
             foreach (var (k, v) in result.Errors) errors[k] = v;
         }
-        else if (SettingsValidator.HostnameError(host) is { } hostError)
-        {
+        // The address must also suit the plan: Simple Public Server needs a public one, Local a network one.
+        if (!errors.ContainsKey("Hostname") && PlanCatalog.AddressError(settings().Plan, host) is { } hostError)
             errors["Hostname"] = hostError;
-        }
         if (errors.Count > 0)
         {
             Errors = errors;

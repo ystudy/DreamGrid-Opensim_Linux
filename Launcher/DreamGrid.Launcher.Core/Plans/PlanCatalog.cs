@@ -41,7 +41,7 @@ public sealed record PlanInfo(
 public static class PlanCatalog
 {
     private const string PublicAdvice =
-        "Your router must forward the ports viewers use (the grid's public port 8002 and the region ports).";
+        "Your router must forward the ports viewers use: the grid's public port and the region ports.";
     private const string HttpAdvice =
         "The website uses plain HTTP, so passwords cross the internet unencrypted until HTTPS exists.";
     private const string CgnatAdvice =
@@ -142,6 +142,30 @@ public static class PlanCatalog
         OwnerPlan[] single = [OwnerPlan.Local, OwnerPlan.SimplePublic, OwnerPlan.GridAsset];
         if (single.Contains(from) && single.Contains(to)) return (true, "");
         return (false, "Moving away from a plan that holds accounts and inventory, or to one that never had them, means starting a new install.");
+    }
+
+    /// <summary>The message when an address can't be reached from the internet but the plan needs that.</summary>
+    public const string NotPublic =
+        "That's an address only computers on your network can reach. Enter your public IP address or your grid's name.";
+
+    /// <summary>The message when a Local grid is given a public address.</summary>
+    public const string LocalIsNetworkOnly =
+        "A Local grid uses an address on your network. To give out a public address, change your plan to Simple Public Server or Grid Asset Server first.";
+
+    /// <summary>
+    /// Why <paramref name="hostname"/> can't be this plan's address, or null when it can. Simple Public Server needs a public
+    /// address (an empty one means the detected network address, so it is refused too); Local refuses a public one; every
+    /// plan refuses what <see cref="SettingsValidator.HostnameError"/> refuses.
+    /// </summary>
+    public static string? AddressError(OwnerPlan? plan, string? hostname)
+    {
+        if (SettingsValidator.HostnameError(hostname) is { } error) return error;
+        return plan switch
+        {
+            OwnerPlan.SimplePublic when !HostAddress.IsPublic(hostname) => NotPublic,
+            OwnerPlan.Local when HostAddress.IsPublic(hostname) => LocalIsNetworkOnly,
+            _ => null,
+        };
     }
 
     /// <summary>Whether the hypergrid switch applies: a switch-capable plan with a public address.</summary>

@@ -114,4 +114,52 @@ public class PlanCatalogTests
         Assert.Contains(pub, a => a.StartsWith("If this computer is off"));
         Assert.Equal(PlanCatalog.Get(OwnerPlan.Local).Advisories, PlanCatalog.AdvisoriesFor(PlanCatalog.Get(OwnerPlan.Local), true));
     }
+
+    private const string NotPublic =
+        "That's an address only computers on your network can reach. Enter your public IP address or your grid's name.";
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("192.168.1.20")]
+    [InlineData("localhost")]
+    public void Simple_public_needs_a_public_address(string? hostname) =>
+        Assert.Equal(NotPublic, PlanCatalog.AddressError(OwnerPlan.SimplePublic, hostname));
+
+    [Theory]
+    [InlineData("203.0.113.7")]
+    [InlineData("world.example.com")]
+    public void Local_refuses_a_public_address(string hostname)
+    {
+        var error = PlanCatalog.AddressError(OwnerPlan.Local, hostname);
+        Assert.NotNull(error);
+        Assert.Contains("Simple Public Server", error);
+    }
+
+    [Theory]
+    [InlineData(OwnerPlan.Local, null)]
+    [InlineData(OwnerPlan.Local, "192.168.1.20")]
+    [InlineData(OwnerPlan.SimplePublic, "203.0.113.7")]
+    [InlineData(OwnerPlan.SimplePublic, "world.example.com")]
+    [InlineData(OwnerPlan.GridAsset, null)]
+    [InlineData(OwnerPlan.GridAsset, "192.168.1.20")]
+    [InlineData(OwnerPlan.GridAsset, "203.0.113.7")]
+    [InlineData(OwnerPlan.RegionServer, "192.168.1.20")]
+    [InlineData(OwnerPlan.Connected, "203.0.113.7")]
+    [InlineData(null, "203.0.113.7")]
+    [InlineData(null, null)]
+    public void Address_accepted(OwnerPlan? plan, string? hostname) => Assert.Null(PlanCatalog.AddressError(plan, hostname));
+
+    [Theory]
+    [InlineData(OwnerPlan.GridAsset)]
+    [InlineData(null)]
+    public void Other_plans_refuse_what_the_hostname_check_refuses(OwnerPlan? plan) =>
+        Assert.Equal(SettingsValidator.HostnameError("my host"), PlanCatalog.AddressError(plan, "my host"));
+
+    [Fact]
+    public void Advisories_name_no_fixed_port()
+    {
+        foreach (var p in PlanCatalog.All)
+            Assert.DoesNotContain(p.Advisories, a => a.Contains("8002"));
+    }
 }

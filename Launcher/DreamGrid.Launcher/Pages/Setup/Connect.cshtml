@@ -16,6 +16,10 @@
     <li class="list-group-item">Pick @Model.GridName on the login screen</li>
     <li class="list-group-item">Log in as @Model.OwnerName</li>
 </ol>
+@if (Model.RegionSkipped)
+{
+    <p class="no-region-note">There are no regions yet, so visitors have nowhere to arrive until a region exists on this computer or on a Region Server.</p>
+}
 <form method="post">
     <button type="submit" class="btn btn-primary mt-3">I'm in!</button>
 </form>

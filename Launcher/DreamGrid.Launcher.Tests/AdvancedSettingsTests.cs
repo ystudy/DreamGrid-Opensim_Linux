@@ -191,6 +191,118 @@ public sealed class AdvancedSettingsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Changing_local_to_grid_asset_stays_on_the_plan_page()
+    {
+        await using var f = PlanFactory(OwnerPlan.Local, null);
+        using var client = await SignedInAsync(f);
+
+        using var resp = await PostPlanAsync(client, "Change", new() { ["To"] = "grid-asset" });
+        var html = await resp.Content.ReadAsStringAsync(Ct);
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        Assert.Null(resp.Headers.Location);
+        Assert.Equal(OwnerPlan.GridAsset, f.Store.LoadOrCreate().Plan);
+        Assert.Contains("Restart your world to use the new settings", html);
+    }
+
+    [Fact]
+    public async Task Changing_simple_public_to_local_clears_the_public_hostname()
+    {
+        await using var f = PlanFactory(OwnerPlan.SimplePublic, "world.example.com");
+        using var client = await SignedInAsync(f);
+
+        (await PostPlanAsync(client, "Change", new() { ["To"] = "local" })).Dispose();
+
+        var s = f.Store.LoadOrCreate();
+        Assert.Equal(OwnerPlan.Local, s.Plan);
+        Assert.Null(s.Hostname);
+    }
+
+    [Fact]
+    public async Task Changing_grid_asset_to_local_keeps_a_network_hostname()
+    {
+        await using var f = PlanFactory(OwnerPlan.GridAsset, "192.168.1.50");
+        using var client = await SignedInAsync(f);
+
+        (await PostPlanAsync(client, "Change", new() { ["To"] = "local" })).Dispose();
+
+        var s = f.Store.LoadOrCreate();
+        Assert.Equal(OwnerPlan.Local, s.Plan);
+        Assert.Equal("192.168.1.50", s.Hostname);
+    }
+
+    [Theory]
+    [InlineData(OwnerPlan.SimplePublic, "8.8.8.8", "192.168.1.50", "only computers on your network can reach")]
+    [InlineData(OwnerPlan.SimplePublic, "8.8.8.8", "", "only computers on your network can reach")]
+    [InlineData(OwnerPlan.Local, null, "world.example.com", "change your plan")]
+    public async Task Network_save_refuses_an_address_the_plan_cannot_use(OwnerPlan plan, string? hostname, string typed, string message)
+    {
+        await using var f = PlanFactory(plan, hostname);
+        using var client = await SignedInAsync(f);
+        var before = File.ReadAllBytes(f.Paths.SettingsFile);
+
+        using var resp = await PostNetworkAsync(client, new() { ["Hostname"] = typed });
+        var html = await resp.Content.ReadAsStringAsync(Ct);
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        Assert.Contains(message, Parse(html).QuerySelector("[data-error-for=Hostname]")!.TextContent);
+        Assert.Equal(before, File.ReadAllBytes(f.Paths.SettingsFile));
+        Assert.Empty(f.Grid.UpdateWriteConfig);
+    }
+
+    [Theory]
+    [InlineData(OwnerPlan.SimplePublic, "world.example.com")]
+    [InlineData(OwnerPlan.Local, "192.168.1.50")]
+    [InlineData(OwnerPlan.GridAsset, "192.168.1.50")]
+    [InlineData(OwnerPlan.GridAsset, "world.example.com")]
+    public async Task Network_save_accepts_an_address_the_plan_can_use(OwnerPlan plan, string typed)
+    {
+        await using var f = PlanFactory(plan, null);
+        using var client = await SignedInAsync(f);
+
+        (await PostNetworkAsync(client, new() { ["Hostname"] = typed })).Dispose();
+
+        Assert.Equal(typed, f.Store.LoadOrCreate().Hostname);
+    }
+
+    [Theory]
+    [InlineData(null, "only computers on this network can visit", "passwords cross the internet")]
+    [InlineData("8.8.8.8", "passwords cross the internet", "only computers on this network can visit")]
+    public async Task Grid_asset_plan_page_shows_the_advisories_for_its_address(string? hostname, string shown, string hidden)
+    {
+        await using var f = PlanFactory(OwnerPlan.GridAsset, hostname);
+        using var client = await SignedInAsync(f);
+
+        var advisories = Parse(await client.GetStringAsync("/advanced/plan", Ct)).QuerySelector(".plan-advisories")!.TextContent;
+
+        Assert.Contains(shown, advisories);
+        Assert.DoesNotContain(hidden, advisories);
+        Assert.DoesNotContain("With a public address", advisories);
+    }
+
+    [Fact]
+    public async Task Plan_page_advisories_name_the_configured_port()
+    {
+        await using var f = new LauncherFactory(s => s with
+        {
+            SetupToken = null,
+            Plan = OwnerPlan.SimplePublic,
+            Hostname = "8.8.8.8",
+            RobustPublicPort = 9102,
+            Setup = s.Setup with { OwnerCreated = true, Finished = true },
+        })
+        {
+            Before = TestAuth.Apply,
+        };
+        using var client = await SignedInAsync(f);
+
+        var advisories = Parse(await client.GetStringAsync("/advanced/plan", Ct)).QuerySelector(".plan-advisories")!.TextContent;
+
+        Assert.DoesNotContain("8002", advisories);
+        Assert.Contains("Your router must forward", advisories);
+    }
+
+    [Fact]
     public async Task Advanced_pages_need_the_admin_role()
     {
         using var client = _f.CreateClient(new() { AllowAutoRedirect = false });

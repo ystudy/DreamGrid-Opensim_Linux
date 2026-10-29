@@ -15,15 +15,19 @@ public static class HostAddress
 
     /// <summary>
     /// Whether a configured hostname is reachable from the internet: false for null or empty (the detected LAN address) and for
-    /// loopback, private, link-local and CGNAT addresses; true for any other IP and for any name.
+    /// loopback, unspecified, broadcast, private, link-local and CGNAT addresses and for "localhost" and names under it;
+    /// true for any other IP and for any other name.
     /// </summary>
     public static bool IsPublic(string? configured)
     {
         var host = configured?.Trim();
         if (string.IsNullOrEmpty(host)) return false;
-        if (!IPAddress.TryParse(host, out var ip)) return true;
+        if (!IPAddress.TryParse(host, out var ip))
+            return !(host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+                || host.EndsWith(".localhost", StringComparison.OrdinalIgnoreCase));
         if (ip.IsIPv4MappedToIPv6) ip = ip.MapToIPv4();
-        if (IPAddress.IsLoopback(ip)) return false;
+        if (IPAddress.IsLoopback(ip) || IPAddress.Any.Equals(ip) || IPAddress.IPv6Any.Equals(ip) || IPAddress.Broadcast.Equals(ip))
+            return false;
         if (ip.AddressFamily == AddressFamily.InterNetworkV6)
             return !(ip.IsIPv6LinkLocal || (ip.GetAddressBytes()[0] & 0xFE) == 0xFC); // fe80::/10, fc00::/7
         var b = ip.GetAddressBytes();

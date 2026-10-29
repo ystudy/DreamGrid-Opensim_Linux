@@ -343,8 +343,12 @@ public sealed partial class DashboardTests : IAsyncLifetime
         var html = await client.GetStringAsync("/", Ct);
 
         Assert.Contains("Coming soon", html);
-        foreach (var item in new[] { "Backups", "Visitors from the internet", "Hypergrid", "SmartStart", "Voice", "Birds", "Tides" })
+        foreach (var item in new[] { "Backups", "SmartStart", "Voice", "Birds", "Tides" })
             Assert.Contains(item, html);
+        // Both exist now (Simple Public Server, Grid Asset Server and the hypergrid switch).
+        var coming = new AngleSharp.Html.Parser.HtmlParser().ParseDocument(html).QuerySelectorAll(".coming-soon li").Select(li => li.TextContent.Trim()).ToList();
+        Assert.DoesNotContain("Visitors from the internet", coming);
+        Assert.DoesNotContain("Hypergrid", coming);
     }
 
     [Fact]

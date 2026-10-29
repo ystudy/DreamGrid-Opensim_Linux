@@ -13,12 +13,16 @@ public sealed class ConnectModel(IGridController grid, Func<LauncherSettings> se
     public string GridName { get; private set; } = "";
     public string OwnerName { get; private set; } = "";
 
+    /// <summary>True when the owner skipped the region step (Grid Asset Server only).</summary>
+    public bool RegionSkipped { get; private set; }
+
     public IActionResult OnGet()
     {
         if (Closed() is { } closed) return closed;
         var s = settings();
         LoginUri = grid.GetStatus().LoginUri;
         GridName = s.GridName;
+        RegionSkipped = s.Setup.RegionSkipped;
         OwnerName = s.Setup.Owner is { } o ? $"{o.FirstName} {o.LastName}" : "your avatar";
         return Page();
     }
