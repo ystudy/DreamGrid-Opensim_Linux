@@ -2,7 +2,7 @@
 @using DreamGrid.Launcher.Setup
 @*
     What a Grid Asset Server's join information says, with "Join this grid" and "Change the address". Shared by the
-    setup join step and Advanced settings. Model: JoinFoundModel (Found, Address). The buttons post the address only, to
+    setup join step and Advanced settings. Model: JoinFoundModel (Found, Address, Repoint: what moving regions keeps, on Advanced). The buttons post the address only, to
     the page's own Confirm and Change handlers; Confirm reads the join information again before saving.
 *@
 @{
@@ -18,6 +18,10 @@
     @if (warning is not null)
     {
         <div class="version-warning alert alert-warning">@warning</div>
+    }
+    @if (Model.Repoint)
+    {
+        <p class="join-repoint">Your regions keep their land, objects and estate. Things made on the old grid may lose their textures on the new one, because those are kept by the Grid Asset Server.</p>
     }
     <form method="post">
         <input type="hidden" name="Address" value="@Model.Address">

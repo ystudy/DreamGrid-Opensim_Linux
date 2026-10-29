@@ -17,7 +17,7 @@
 }
 @if (Model.Found is { } found)
 {
-    <partial name="_JoinFound" model="new JoinFoundModel(found, Model.Address!)" />
+    <partial name="_JoinFound" model="new JoinFoundModel(found, Model.Address!, Repoint: true)" />
     return;
 }
 <p>This computer adds regions to the grid at <strong>@Model.Current</strong>. To use another grid's Grid Asset Server, type that computer's address: DreamGrid reads what it needs from it and shows you what it found before anything is saved.</p>

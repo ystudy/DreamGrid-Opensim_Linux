@@ -46,4 +46,5 @@ public static class JoinForm
 /// <summary>What Pages/Shared/_JoinFound.cshtml shows: the join information read, and the address to read again on confirm.</summary>
 /// <param name="Found">The join information the first read gave.</param>
 /// <param name="Address">The address, as the owner would type it, posted back with "Join this grid" or "Change the address".</param>
-public sealed record JoinFoundModel(JoinedGrid Found, string Address);
+/// <param name="Repoint">True on Advanced settings, where a finished Region Server moves its regions to another grid.</param>
+public sealed record JoinFoundModel(JoinedGrid Found, string Address, bool Repoint = false);

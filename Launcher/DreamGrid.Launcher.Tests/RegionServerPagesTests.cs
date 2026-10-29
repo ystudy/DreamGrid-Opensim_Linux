@@ -59,7 +59,7 @@ public sealed class RegionServerPagesTests
 
     // ---- helpers ----
 
-    private static LauncherFactory Factory(OwnerPlan plan) => new(s => s with
+    private static LauncherFactory Factory(OwnerPlan plan, Func<LauncherSettings, LauncherSettings>? more = null) => new(s => (more ?? (x => x))(s with
     {
         SetupToken = null,
         GridName = "Avalon",
@@ -68,7 +68,7 @@ public sealed class RegionServerPagesTests
         Hypergrid = false,
         Setup = new SetupState(WorldNamed: true, OwnerCreated: true, RegionCreated: true, Finished: true,
             Owner: new OwnerInfo("Estate", "Owner", OwnerId)),
-    })
+    }))
     {
         Before = TestAuth.Apply,
     };
@@ -389,6 +389,86 @@ public sealed class RegionServerPagesTests
         Assert.Equal("192.168.1.5", s.Join!.Host);
         Assert.Equal("Avalon", s.GridName);
         Assert.Equal(OwnerId, s.Setup.Owner!.PrincipalId);
+    }
+
+    private static readonly Guid HomeId = Guid.Parse("40000000-0000-0000-0000-000000000001");
+
+    /// <summary>A Region Server with one region, Home, at 1000, 1000, whose first region port is <paramref name="regionPort"/>.</summary>
+    private static LauncherFactory WithHome(int regionPort = 9000) => Factory(OwnerPlan.RegionServer, s => s with
+    {
+        RegionPort = regionPort,
+        Regions = [new RegionSettings("Home", "Home", HomeId, UdpPort: regionPort)],
+    });
+
+    private static JoinedGrid Elsewhere(int portsFrom = 9100, int portsTo = 9110) =>
+        Avalon("Elsewhere") with { Host = "192.168.1.9", LoginUri = "http://192.168.1.9:8002/", RegionPortsFrom = portsFrom, RegionPortsTo = portsTo };
+
+    [Fact]
+    public async Task Join_page_confirm_is_refused_when_a_region_would_overlap_one_on_the_new_grid()
+    {
+        await using var f = WithHome();
+        f.Join.Result = Elsewhere();
+        f.Robust.MapRegions.Add(new MapRegion(HomeId, "Home", 1000, 1000, 1)); // ours: never in the way
+        f.Robust.MapRegions.Add(new MapRegion(Guid.NewGuid(), "Hub", 1000, 1000, 1));
+        using var client = await SignedInAsync(f);
+
+        using var resp = await PostAsync(client, "/advanced/join?handler=Confirm", new() { ["Address"] = "192.168.1.9" }, tokenFrom: "/advanced/join");
+
+        Assert.Contains("Your region Home would overlap Hub on Elsewhere. Move it first (Regions page), then try again.",
+            MainText(await resp.Content.ReadAsStringAsync(Ct)));
+        var s = f.Store.LoadOrCreate();
+        Assert.Equal("192.168.1.5", s.Join!.Host);
+        Assert.Equal("Avalon", s.GridName);
+        Assert.Equal(OwnerId, s.Setup.Owner!.PrincipalId);
+    }
+
+    [Fact]
+    public async Task Join_page_confirm_is_saved_when_no_region_overlaps()
+    {
+        await using var f = WithHome();
+        f.Join.Result = Elsewhere();
+        f.Robust.MapRegions.Add(new MapRegion(HomeId, "Home", 1000, 1000, 1));
+        f.Robust.MapRegions.Add(new MapRegion(Guid.NewGuid(), "Hub", 1001, 1000, 1));
+        using var client = await SignedInAsync(f);
+
+        using var resp = await PostAsync(client, "/advanced/join?handler=Confirm", new() { ["Address"] = "192.168.1.9" }, tokenFrom: "/advanced/join");
+
+        var text = MainText(await resp.Content.ReadAsStringAsync(Ct));
+        Assert.Contains("Saved.", text);
+        Assert.DoesNotContain("region ports overlap", text);
+        var s = f.Store.LoadOrCreate();
+        Assert.Equal("192.168.1.9", s.Join!.Host);
+        Assert.Equal("Elsewhere", s.GridName);
+    }
+
+    [Fact]
+    public async Task Join_page_confirm_warns_when_region_ports_overlap_the_new_grids()
+    {
+        await using var f = WithHome(regionPort: 8005);
+        f.Join.Result = Elsewhere(8004, 8006);
+        using var client = await SignedInAsync(f);
+
+        using var resp = await PostAsync(client, "/advanced/join?handler=Confirm", new() { ["Address"] = "192.168.1.9" }, tokenFrom: "/advanced/join");
+
+        var text = MainText(await resp.Content.ReadAsStringAsync(Ct));
+        Assert.Contains("Saved.", text);
+        Assert.Contains("This computer's region ports overlap the Grid Asset Server's (8004-8006). If both computers are behind one router, "
+            + "change this computer's first region port in Advanced → Network.", text);
+        Assert.Equal("192.168.1.9", f.Store.LoadOrCreate().Join!.Host);
+    }
+
+    [Fact]
+    public async Task Join_page_confirm_view_says_the_regions_keep_their_land()
+    {
+        await using var f = Factory(OwnerPlan.RegionServer);
+        f.Join.Result = Elsewhere();
+        using var client = await SignedInAsync(f);
+
+        using var resp = await PostAsync(client, "/advanced/join", new() { ["Address"] = "192.168.1.9" });
+
+        var text = MainText(await resp.Content.ReadAsStringAsync(Ct));
+        Assert.Contains("Your regions keep their land, objects and estate. Things made on the old grid may lose their textures on the new one, "
+            + "because those are kept by the Grid Asset Server.", text);
     }
 
     [Fact]
