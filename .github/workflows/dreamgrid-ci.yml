@@ -16,6 +16,43 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # gitleaks over the checked-out files and the commits this push or PR adds. Old history is not scanned: the Wifi
+  # secrets in it were revoked rather than rewritten (docs/superpowers/plans/2026-10-28-plan5-phase0-secrets.md).
+  secret-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GITLEAKS_VERSION: 8.30.1
+      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Install gitleaks
+        run: |
+          curl -fsSL -o gitleaks.tar.gz "https://github.com/gitleaks/gitleaks/releases/download/v$GITLEAKS_VERSION/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "$GITLEAKS_SHA256  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz -C "$RUNNER_TEMP" gitleaks
+          rm gitleaks.tar.gz
+
+      - name: Scan files
+        run: $RUNNER_TEMP/gitleaks dir . --config .gitleaks.toml --redact --no-banner
+
+      # A new branch has no "before" commit, so its range is everything not yet on V7.
+      - name: Scan new commits
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          if [ -n "$PR_BASE" ]; then range="$PR_BASE..HEAD"
+          elif [ -n "$PUSH_BEFORE" ] && [ "$PUSH_BEFORE" != 0000000000000000000000000000000000000000 ]; then range="$PUSH_BEFORE..HEAD"
+          else range="origin/V7..HEAD"
+          fi
+          echo "Scanning $range"
+          $RUNNER_TEMP/gitleaks git . --config .gitleaks.toml --redact --no-banner --log-opts="$range"
+
   windows:
     runs-on: windows-latest
     steps:

@@ -1,0 +1,13 @@
+# Single lines gitleaks flags that are not ours to rotate (see .gitleaks.toml for the rest).
+# An identifier, not a secret.
+OpenSim/Framework/ClientManager.cs:generic-api-key:46
+# An example in a comment.
+OpenSim/Services/FreeswitchService/FreeswitchService.cs:generic-api-key:138
+# Upstream's Gloebit sandbox app key and secret (GLBEnvironment = sandbox), as shipped by Outworldz.
+bin/Gloebit.ini:generic-api-key:32
+bin/Gloebit.ini:generic-api-key:33
+bin/config-include/Gloebit.ini:generic-api-key:32
+bin/config-include/Gloebit.ini:generic-api-key:33
+# Upstream's live Robust.HG.ini (identical on Outworldz V7). Not read by the v7 launcher, which writes its own from
+# Robust.HG.ini.proto. Whether this SMTP value is real is upstream's to check.
+bin/Robust.HG.ini:dreamgrid-ini-mail-or-admin-password:922

@@ -15,10 +15,13 @@ public sealed class RuntimeStagerTests : IDisposable
         var program = Path.Combine(_root, "program");
         Directory.CreateDirectory(Path.Combine(program, "addin-db-002"));
         Directory.CreateDirectory(Path.Combine(program, "config-include"));
+        Directory.CreateDirectory(Path.Combine(program, "config-addon-opensim"));
         File.WriteAllBytes(Path.Combine(program, "OpenSim.dll"), [1, 2, 3]);
         File.WriteAllBytes(Path.Combine(program, "Gloebit.dll"), [4]);
         File.WriteAllText(Path.Combine(program, "addin-db-002", "x"), "x");
         File.WriteAllText(Path.Combine(program, "config-include", "a.ini"), "[A]");
+        File.WriteAllText(Path.Combine(program, "config-addon-opensim", "Wifi.ini"), "[WifiService]");
+        File.WriteAllText(Path.Combine(program, "config-addon-opensim", "Wifi.ini.proto"), "[WifiService]");
         File.WriteAllText(Path.Combine(program, "x.log"), "log");
         _paths = new LauncherPaths(Path.Combine(_root, "data"), program, null);
     }
@@ -37,6 +40,8 @@ public sealed class RuntimeStagerTests : IDisposable
         Assert.True(File.Exists(Path.Combine(rt, "OpenSim.dll")));
         Assert.True(File.Exists(Path.Combine(rt, "config-include", "a.ini")));
         Assert.False(File.Exists(Path.Combine(rt, "Gloebit.dll")));
+        Assert.False(File.Exists(Path.Combine(rt, "config-addon-opensim", "Wifi.ini")));
+        Assert.True(File.Exists(Path.Combine(rt, "config-addon-opensim", "Wifi.ini.proto")));
         Assert.False(Directory.Exists(Path.Combine(rt, "addin-db-002")));
         Assert.False(File.Exists(Path.Combine(rt, "x.log")));
     }

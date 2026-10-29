@@ -8,7 +8,8 @@ public sealed class RuntimeStager(LauncherPaths paths)
     private static readonly string[] ExcludedDirectories =
         ["assetcache", "Regions", "ScriptEngines", "fsassets", "MeshCache", "j2kDecodeCache", "maptiles", "bakes"];
 
-    private static readonly string[] ExcludedFiles = ["Gloebit.dll"];
+    // Wifi.ini and Wifi.bak are a developer's live Wifi configs (passwords); only Wifi.ini.proto is staged.
+    private static readonly string[] ExcludedFiles = ["Gloebit.dll", "Wifi.ini", "Wifi.bak"];
 
     // The program's live OpenSim.ini; config-include/Proto/Robust/OpenSim.ini is the region prototype and is staged.
     private const string TopLevelOnlyExcluded = "OpenSim.ini";

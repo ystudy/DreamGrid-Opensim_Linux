@@ -12,9 +12,9 @@ Legend: **[S]** security requirement, **[X]** cross-platform note, **[?]** decis
 
 - [ ] **[S]** `bin/config-addon-robust/Wifi.ini`, `bin/config-addon-opensim/Wifi.ini` and `bin/Wifi.ini` are tracked in git with real secrets (a Gmail SMTP app password, the Wifi admin password, MySQL credentials).
   - [ ] Revoke the Gmail app password and change the admin password (the owner does this).
-  - [ ] Replace the values with placeholders and stop tracking the live files; keep only `.proto` files in git.
+  - [x] Replace the values with placeholders and stop tracking the live files; keep only `.proto` files in git. (Plan 5.)
   - Decided: git history is **not** rewritten. The old values stay in history, so revoking them is what protects the grid.
-- [ ] Add a secret scan (for example gitleaks) to CI so this can't happen again.
+- [x] Add a secret scan (for example gitleaks) to CI so this can't happen again. (Plan 5: `secret-scan` job.)
 
 ## Phase 1 — Foundations every later feature needs
 

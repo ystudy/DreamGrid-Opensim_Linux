@@ -64,7 +64,8 @@ finally { Pop-Location }
 # --- bin/ -------------------------------------------------------------------------------------------------------
 # Same folders and files RuntimeStager leaves out of the staged runtime copy (assetcache, addin-db-* ...).
 $excludedDirectories = @('assetcache', 'Regions', 'ScriptEngines', 'fsassets', 'MeshCache', 'j2kDecodeCache', 'maptiles', 'bakes')
-$excludedFiles = @('Gloebit.dll')
+# Wifi.ini and Wifi.bak are a developer's live Wifi configs (passwords); only Wifi.ini.proto ships.
+$excludedFiles = @('Gloebit.dll', 'Wifi.ini', 'Wifi.bak')
 $excludedExtensions = @('.pdb', '.log', '.pid', '.db')
 # Windows-only native binaries, dropped from the linux-x64 package (paths relative to bin/, '/'-separated):
 #   lib32/            32-bit Windows natives

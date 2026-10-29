@@ -1,0 +1,30 @@
+# gitleaks config for CI (dreamgrid-ci.yml, secret-scan). The default rules stay on; known non-secrets are allowed
+# here by what they are, and single upstream lines by fingerprint in .gitleaksignore.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Launcher tests' fake access token"
+regexes = ['''^tok-1234567890abcdefghijklmnopqrstuv$''']
+
+[[allowlists]]
+description = "Object and avatar UUIDs in the sample LSL scripts"
+condition = "AND"
+paths = ['''^bin/assets/.*\.lsl$''']
+regexes = ['''^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-zA-Z]{12}$''']
+
+# The default rules miss low-entropy values such as a Gmail app password. This rule covers the mail and admin
+# passwords Wifi and OpenSim keep in INI files (the leak this config exists for); the many database passwords in
+# OpenSim's INIs are upstream defaults that the launcher replaces, so they are not covered.
+[[rules]]
+id = "dreamgrid-ini-mail-or-admin-password"
+description = "An SMTP or admin password in an INI file"
+regex = '''(?im)^[ \t]*(?:smtp\w*password|adminpassword)[ \t]*=[ \t]*"?([^";\r\n]{4,}?)"?[ \t]*(?:;|\r?$)'''
+secretGroup = 1
+keywords = ["password"]
+path = '''(?i)\.ini(\.proto|\.example)?$'''
+
+[[rules.allowlists]]
+description = "Placeholders such as Password, SomePassword or your-…"
+regexes = ['''(?i)^[\w .-]*password[\w .-]*$''', '''(?i)^your\S*$''']

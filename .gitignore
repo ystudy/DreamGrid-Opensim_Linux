@@ -133,3 +133,7 @@ bin/System.Drawing.Common.dll
 /bin/OpenSim.ConsoleClient
 /bin/OpenSim.Tools.Configger
 /bin/Diva.Wifi.ProcessorTest
+
+# Live Wifi configs hold secrets; only Wifi.ini.proto is tracked
+bin/config-addon-opensim/Wifi.ini
+bin/config-addon-robust/Wifi.ini
