@@ -6,7 +6,11 @@ namespace DreamGrid.Launcher.Core.Grid;
 /// <summary>The public surface of <see cref="GridController"/>, so the host can use a test double.</summary>
 public interface IGridController
 {
-    /// <summary>Stages, writes the INIs, checks ports, then starts (or adopts) MariaDB, Robust and the region.</summary>
+    /// <summary>
+    /// Stages, writes the INIs, checks ports, then starts (or adopts) MariaDB, Robust and the region. A Region Server never
+    /// starts Robust: it reads the Grid Asset Server's join information again instead, and throws
+    /// <see cref="GridAssetUnreachableException"/> (starting no region) when that server doesn't answer.
+    /// </summary>
     Task StartAsync(CancellationToken ct);
 
     /// <summary>Stops region, Robust, then MariaDB.</summary>
@@ -19,6 +23,21 @@ public interface IGridController
     Task DetachAsync();
 
     Task<RobustAccount> CreateOwnerAsync(string first, string last, string password, string? email, CancellationToken ct);
+
+    /// <summary>
+    /// Makes the avatar called <paramref name="first"/> <paramref name="last"/> on the grid the estate owner, without a
+    /// password: the grid service looks the name up, and the account's own spelling is saved as the owner. Throws
+    /// <see cref="ArgumentException"/> in plain words when the grid has no such avatar, and
+    /// <see cref="GridAssetUnreachableException"/> on a Region Server whose Grid Asset Server doesn't answer.
+    /// </summary>
+    Task<RobustAccount> SetEstateOwnerAsync(string first, string last, CancellationToken ct);
+
+    /// <summary>
+    /// On a plan that runs Robust, how many regions on its map are not this computer's: the regions other computers joined
+    /// to this grid. 0 on a plan that doesn't run Robust. Throws <see cref="InvalidOperationException"/> when Robust
+    /// doesn't answer.
+    /// </summary>
+    Task<int> JoinedRegionCountAsync(CancellationToken ct);
 
     /// <summary>
     /// <paramref name="content"/> is "starter" or "island". <paramref name="progress"/> hears the plain-language stage
@@ -146,7 +165,11 @@ public interface IGridController
     /// <summary>The controller's cached settings (what the grid was configured from); the host reads these per request.</summary>
     LauncherSettings CurrentSettings();
 
-    /// <summary><paramref name="name"/> is "database" or "robust"; regions use <see cref="RegionPowerAsync"/>.</summary>
+    /// <summary>
+    /// <paramref name="name"/> is "database" or "robust"; regions use <see cref="RegionPowerAsync"/>. A Region Server refuses
+    /// "robust" with <see cref="InvalidOperationException"/>, as do <see cref="StartComponentAsync"/>,
+    /// <see cref="StopComponentAsync"/> and <see cref="CreateOwnerAsync"/>.
+    /// </summary>
     Task RestartComponentAsync(string name, CancellationToken ct);
 
     /// <summary>

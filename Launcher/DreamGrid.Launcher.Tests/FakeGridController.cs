@@ -1,5 +1,6 @@
 using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.OpenSim;
+using DreamGrid.Launcher.Core.Plans;
 using DreamGrid.Launcher.Core.Processes;
 using DreamGrid.Launcher.Core.Settings;
 
@@ -341,6 +342,47 @@ internal sealed class FakeGridController : IGridController
     {
         Record("Alert " + alert.Alert + " " + alert.Login);
         if (alert.Alert == "region_ready") _loginsEnabled = alert.Login == "enabled";
+    }
+
+    /// <summary>Thrown by <see cref="SetEstateOwnerAsync"/> when set.</summary>
+    public Exception? EstateOwnerError { get; set; }
+
+    /// <summary>Like the controller: saves Setup.OwnerCreated and Setup.Owner through <see cref="UpdateSettings"/>.</summary>
+    public Task<RobustAccount> SetEstateOwnerAsync(string first, string last, CancellationToken ct)
+    {
+        Record("SetEstateOwner " + first + " " + last);
+        if (EstateOwnerError is { } e) throw e;
+        var account = new RobustAccount(Guid.NewGuid(), first, last, 0, "");
+        UpdateSettings(l => l with { Setup = l.Setup with { OwnerCreated = true, Owner = new OwnerInfo(first, last, account.PrincipalId) } });
+        return Task.FromResult(account);
+    }
+
+    /// <summary>What <see cref="JoinedRegionCountAsync"/> returns; it throws <see cref="JoinedRegionError"/> instead when set.</summary>
+    public int JoinedRegions { get; set; }
+    public Exception? JoinedRegionError { get; set; }
+
+    public Task<int> JoinedRegionCountAsync(CancellationToken ct)
+    {
+        Record("JoinedRegionCount");
+        return JoinedRegionError is { } e ? Task.FromException<int>(e) : Task.FromResult(JoinedRegions);
+    }
+}
+
+/// <summary>A Grid Asset Server's join information without a network: <see cref="Result"/>, or <see cref="Error"/> thrown.</summary>
+internal sealed class FakeGridJoin : IGridJoinClient
+{
+    public JoinedGrid? Result { get; set; }
+    public Exception? Error { get; set; }
+
+    /// <summary>Every (host, port) read, in order.</summary>
+    public List<(string Host, int Port)> Reads { get; } = new();
+
+    public Task<JoinedGrid> ReadAsync(string host, int port, CancellationToken ct)
+    {
+        lock (Reads) Reads.Add((host, port));
+        if (Error is { } e) return Task.FromException<JoinedGrid>(e);
+        return Result is { } joined ? Task.FromResult(joined)
+            : Task.FromException<JoinedGrid>(new GridJoinException($"Nothing answered at {host}:{port}."));
     }
 }
 

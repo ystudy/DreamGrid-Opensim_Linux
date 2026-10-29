@@ -7,6 +7,7 @@ using DreamGrid.Launcher.Core.Database;
 using DreamGrid.Launcher.Core.Logs;
 using DreamGrid.Launcher.Core.Modules;
 using DreamGrid.Launcher.Core.OpenSim;
+using DreamGrid.Launcher.Core.Plans;
 using DreamGrid.Launcher.Core.Processes;
 using DreamGrid.Launcher.Core.Runtime;
 using DreamGrid.Launcher.Core.Settings;
@@ -18,7 +19,8 @@ namespace DreamGrid.Launcher.Core.Grid;
 /// <summary>
 /// Owns the grid: stages the runtime, writes the INIs, and starts (or adopts) MariaDB, Robust and the region programs
 /// in that order, each one healthy before the next. A program is one OpenSim process hosting one or more regions. Children outlive the launcher (spec 4.12): only
-/// <see cref="StopAllAsync"/>, <see cref="StopComponentAsync"/> and <see cref="RestartComponentAsync"/> stop them.
+/// <see cref="StopAllAsync"/>, <see cref="StopComponentAsync"/> and <see cref="RestartComponentAsync"/> stop them. A Region
+/// Server never starts Robust: it uses the Grid Asset Server's grid service, whose join information <paramref name="join"/> reads.
 /// </summary>
 public sealed partial class GridController(
     LauncherPaths paths,
@@ -26,6 +28,7 @@ public sealed partial class GridController(
     MariaDbBinaries mariaBin,
     IEnumerable<IFeatureModule> modules,
     IRobustClient robust,
+    IGridJoinClient join,
     IHttpClientFactory http,
     TimeProvider time,
     ILoggerFactory? loggers = null,
@@ -87,6 +90,12 @@ public sealed partial class GridController(
 
     /// <summary>Replaces how a program is launched for tests, whose OpenSim cannot start (null: OpenSim itself).</summary>
     internal Func<string, ProcessStartInfo>? ProgramStartForTests { get; init; }
+
+    /// <summary>
+    /// Replaces MariaDB for tests, whose MariaDB cannot start: the database starts from this spec, without MariaDB's set-up
+    /// and provisioning (null: MariaDB itself).
+    /// </summary>
+    internal Func<LauncherSettings, ProcessSpec>? DatabaseSpecForTests { get; init; }
 
     private bool DatabaseRunning => DatabaseRunningForTests?.Invoke() ?? _db?.Process.State == ProcessState.Running;
 
@@ -150,8 +159,8 @@ public sealed partial class GridController(
             ThrowIfBusy(RegionModel.Find(s, regionId)?.Instance);
             var running = _programs.Where(p => RegionPowerPlan.IsActive(p.Value.Process.State)).Select(p => p.Key).ToHashSet();
             var steps = RegionPowerPlan.For(s, _held, running, regionId, action, _loaded);
-            if ((steps.Start.Count > 0 || steps.Restart.Count > 0) && _robust!.Process.State != ProcessState.Running)
-                throw new InvalidOperationException("Robust is not running; start it first.");
+            if ((steps.Start.Count > 0 || steps.Restart.Count > 0) && !GridServiceUp())
+                throw GridServiceDown(s);
 
             var parked = RegionModel.Find(steps.Settings, regionId)!.Parked;
             _held = steps.Held;
@@ -638,7 +647,7 @@ public sealed partial class GridController(
                     }
                 }
             await StartDatabaseAsync(s, ct);
-            await StartComponentAsync(_robust!, ct);
+            s = await StartGridServiceAsync(s, ct);
             if (s.Setup.RegionCreated) await StartProgramsAsync(s, ct);
             _startFailure = adoptFailure;
         }
@@ -688,10 +697,11 @@ public sealed partial class GridController(
                     await StopAllCoreAsync(ct);
                     EnsureComponents(s); // stopped components pick up changed ports
                     await StartDatabaseAsync(s, ct);
-                    await StartComponentAsync(_robust!, ct);
+                    s = await StartGridServiceAsync(s, ct);
                     if (s.Setup.RegionCreated) await StartProgramsAsync(s, ct);
                     break;
                 case "robust":
+                    ThrowIfNoGridService(s);
                     await _robust!.Process.StopAsync(ct);
                     EnsureComponents(s);
                     await StartComponentAsync(_robust!, ct);
@@ -713,6 +723,7 @@ public sealed partial class GridController(
         try
         {
             var s = LoadSettings();
+            if (component == "robust") ThrowIfNoGridService(s);
             switch (component)
             {
                 case "robust" when _db!.Process.State != ProcessState.Running:
@@ -745,7 +756,7 @@ public sealed partial class GridController(
         _activity = GridActivity.Stopping;
         try
         {
-            LoadSettings();
+            var s = LoadSettings();
             switch (name.ToLowerInvariant())
             {
                 case "database":
@@ -753,6 +764,7 @@ public sealed partial class GridController(
                     await StopAllCoreAsync(ct);
                     break;
                 case "robust":
+                    ThrowIfNoGridService(s);
                     await _robust!.Process.StopAsync(ct);
                     break;
                 default:
@@ -794,7 +806,7 @@ public sealed partial class GridController(
         await _ops.WaitAsync(ct);
         try
         {
-            LoadSettings();
+            ThrowIfNoGridService(LoadSettings());
             var console = _robust!.Console!;
             var transcript = new List<string>();
 
@@ -844,6 +856,8 @@ public sealed partial class GridController(
             var s = LoadSettings();
             // A retry for the same name keeps the region's UUID.
             var uuid = RegionModel.FindByName(s, name) is { } old && old.Name == name ? old.Uuid : Guid.NewGuid();
+            // On a Region Server the grid's other computers hold squares too (one an earlier attempt registered isn't theirs).
+            var elsewhere = (await RegionsElsewhereAsync(s, ct))?.Where(m => m.Uuid != uuid).ToList();
             if (!s.Setup.RegionCreated)
             {
                 // What an earlier attempt left goes: its program stops unless the new region takes over its folder.
@@ -851,7 +865,8 @@ public sealed partial class GridController(
                     await StopProgramAsync(other, ct);
                 s = UpdateSettings(l => l with { Programs = [], Regions = [] });
             }
-            await AddCoreAsync(s, new NewRegion(name, 1000, 1000, 1, content, null), uuid, progress, ct, adoptLeftover: true);
+            var (x, y) = elsewhere is null ? (1000, 1000) : RegionPlacement.FirstFree(s, elsewhere);
+            await AddCoreAsync(s, new NewRegion(name, x, y, 1, content, null), uuid, progress, ct, adoptLeftover: true);
             UpdateSettings(l => l with { Setup = l.Setup with { RegionCreated = true } }, writeConfig: false);
         }
         finally { _activity = GridActivity.None; _ops.Release(); }
@@ -870,13 +885,13 @@ public sealed partial class GridController(
         {
             LauncherSettings s;
             lock (_configGate) s = ReloadSettings();
-            if (RegionRequestError(s, request) is { } error) throw new ArgumentException(error, nameof(request));
+            var elsewhere = await RegionsElsewhereAsync(s, ct);
+            if (RegionRequestError(s, request, elsewhere) is { } error) throw new ArgumentException(error, nameof(request));
             // Sharing restarts that program, which would cut off its OAR job.
             ThrowIfBusy(request.ShareWith);
             progress?.Report(SetupProgress.CreatingRegion);
             s = LoadSettings();
-            if (_robust!.Process.State != ProcessState.Running)
-                throw new InvalidOperationException("Robust is not running; start it first.");
+            if (!GridServiceUp()) throw GridServiceDown(s);
             return await AddCoreAsync(s, request, Guid.NewGuid(), progress, ct);
         }
         finally { _activity = GridActivity.None; _ops.Release(); }
@@ -887,12 +902,15 @@ public sealed partial class GridController(
 
     private static string NameTaken(string name) => $"There is already a region called {name}.";
 
-    /// <summary>Why a region can't be added as asked (in words the website shows as they are), or null.</summary>
-    private static string? RegionRequestError(LauncherSettings s, NewRegion r)
+    /// <summary>
+    /// Why a region can't be added as asked (in words the website shows as they are), or null. <paramref name="elsewhere"/>
+    /// is the grid's map when other computers' regions count (a Region Server).
+    /// </summary>
+    private static string? RegionRequestError(LauncherSettings s, NewRegion r, IReadOnlyList<MapRegion>? elsewhere = null)
     {
         if (RegionModel.FindByName(s, r.Name) is not null) return NameTaken(r.Name);
         if (r.Size is < 1 or > RegionPlacement.MaxSize) return SizeRule;
-        if (RegionPlacement.Check(s, r.X, r.Y, r.Size) is { Ok: false } check) return RegionAdvice.Placement(check);
+        if (RegionPlacement.Check(s, r.X, r.Y, r.Size, elsewhere: elsewhere) is { Ok: false } check) return RegionAdvice.Placement(check);
         if (r.ShareWith is { } share && s.Programs.All(p => p.Instance != share)) return "That group of regions no longer exists.";
         return null;
     }
@@ -1195,17 +1213,20 @@ public sealed partial class GridController(
                 _logins.Enabled(r.Uuid), r.X, r.Y, r.Size,
                 live.Where(o => o.Instance == r.Instance && o.Uuid != r.Uuid).Select(o => o.Name).ToList()))
             .ToList();
+        var runsRobust = PlanCatalog.RunsRobust(s);
         return new GridStatus(
             Describe("database", _db),
-            Describe("robust", _robust),
+            runsRobust ? Describe("robust", _robust) : DescribeGridAsset(s),
             s.Programs.Select(p => new ProgramStatus(p.Instance, processes[p.Instance],
                 live.Where(r => r.Instance == p.Instance).Select(r => r.Uuid).ToList())).ToList(),
             regions,
             GridStatus.ComputeLoginsEnabled(regions, held),
-            $"http://{_host}:{s.RobustPublicPort}",
+            GridEndpoints.LoginUri(s, _host),
             _startFailure,
             _activity,
-            _robustGridName is { } started && _robust?.Process.State == ProcessState.Running && started != s.GridName);
+            runsRobust && _robustGridName is { } started && _robust?.Process.State == ProcessState.Running && started != s.GridName,
+            runsRobust,
+            runsRobust ? null : s.Join?.Host);
     }
 
     /// <summary>The settings the controller last loaded (the file only on first use); never waits behind an operation.</summary>
@@ -1281,6 +1302,8 @@ public sealed partial class GridController(
 
         // The host owns and binds the web port before StartAsync (RegionReady posts its alerts there).
         var skip = new HashSet<int> { s.WebPort };
+        // Robust never binds its ports on a computer that uses another's grid service.
+        if (!PlanCatalog.RunsRobust(s)) skip.UnionWith([s.RobustPublicPort, s.RobustPrivatePort, s.RobustConsolePort]);
         foreach (var c in _programs.Values.Append(_db).Append(_robust))
             if (c is not null && WillAdopt(c)) skip.UnionWith(c.Ports);
         var toStart = s.Programs.Where(p => RegionModel.Loadable(s, p.Instance, _held).Any()).Select(p => p.Instance).ToHashSet();
@@ -1329,6 +1352,11 @@ public sealed partial class GridController(
     private async Task StartDatabaseAsync(LauncherSettings s, CancellationToken ct)
     {
         if (mariaBin.NotFoundMessage is { } missing) throw new MariaDbNotFoundException(missing);
+        if (DatabaseSpecForTests is not null)
+        {
+            await StartComponentAsync(_db!, ct);
+            return;
+        }
         if (!WillAdopt(_db!))
             await new MariaDbServer(mariaBin, paths, s).InitializeAsync(ct);
         await StartComponentAsync(_db!, ct);
@@ -1410,7 +1438,8 @@ public sealed partial class GridController(
     private async Task StopAllCoreAsync(CancellationToken ct)
     {
         await StopProgramsAsync(ct);
-        await _robust!.Process.StopAsync(ct);
+        // A computer that uses another's grid service stops only a Robust left running here (by an earlier plan).
+        if (PlanCatalog.RunsRobust(CurrentSettings()) || WillAdopt(_robust!)) await _robust!.Process.StopAsync(ct);
         await _db!.Process.StopAsync(ct); // graceful stop = MariaDB SHUTDOWN
     }
 
@@ -1601,7 +1630,7 @@ public sealed partial class GridController(
     private Component MakeDatabase(LauncherSettings s)
     {
         var server = new MariaDbServer(mariaBin, paths, s);
-        var spec = new ProcessSpec("MariaDB", server.StartInfo, Path.Combine(paths.Pids, "mariadb.pid"),
+        var spec = DatabaseSpecForTests?.Invoke(s) ?? new ProcessSpec("MariaDB", server.StartInfo, Path.Combine(paths.Pids, "mariadb.pid"),
             server.PingAsync, server.ShutdownAsync, TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(30),
             // Our datadir, not the server binary: a system mariadbd (Debian's) has the same image.
             "--datadir=" + paths.MariaDbData);
