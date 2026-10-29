@@ -36,7 +36,7 @@
                 <span class="group-label">@g.Label</span>
             </label>
             <span class="form-text d-block m-0">@Model.ShareText(g)</span>
-            @if (Model.Note?.Invoke(g) is { } note)
+            @foreach (var note in Model.Note?.Invoke(g) ?? [])
             {
                 <span class="form-text d-block m-0 group-note">@note</span>
             }

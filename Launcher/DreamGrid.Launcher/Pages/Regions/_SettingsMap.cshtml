@@ -1,0 +1,16 @@
+@model DreamGrid.Launcher.Pages.Regions.SettingsModel
+@using DreamGrid.Launcher.Core.Settings
+<form method="post" action="/regions/region/@Model.Id/settings/map?handler=map" asp-antiforgery="true">
+    <span class="field-error text-danger small d-block">@Model.Error("")</span>
+    <label class="form-label mt-3" for="Map">How the map is drawn</label>
+    <select class="form-select" id="Map" name="Map">
+        @foreach (var q in Enum.GetValues<MapQuality>())
+        {
+            <option value="@q" selected="@(q == Model.Map)">@SettingLabels.Map(q)</option>
+        }
+    </select>
+    <span class="field-error text-danger small d-block" data-error-for="Map">@Model.Error("Map")</span>
+    <p class="form-text">Better maps take longer to draw.</p>
+    <button type="submit" class="btn btn-primary mt-3">Save</button>
+    <a class="btn btn-outline-secondary mt-3" href="/regions/region/@Model.Id">Cancel</a>
+</form>

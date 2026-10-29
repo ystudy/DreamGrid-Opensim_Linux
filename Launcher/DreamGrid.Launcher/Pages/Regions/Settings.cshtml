@@ -1,0 +1,54 @@
+@page "/regions/region/{id:guid}/settings/{tab?}"
+@model DreamGrid.Launcher.Pages.Regions.SettingsModel
+@using DreamGrid.Launcher.Core.Grid
+@{
+    ViewData["Title"] = Model.Name + " settings";
+    var isProgramTab = Model.Tab is "map" or "physics" or "scripts" or "permissions" or "cpu";
+}
+<nav aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="/regions/region/@Model.Id">@Model.Name</a></li><li class="breadcrumb-item active" aria-current="page">Settings</li></ol></nav>
+<h1>@Model.Name settings</h1>
+
+@if (Model.Notice is not null)
+{
+    <p class="notice alert alert-info py-2" role="status">@Model.Notice</p>
+}
+
+<ul class="nav nav-tabs mb-3">
+    @foreach (var (key, label) in SettingsModel.Tabs)
+    {
+        <li class="nav-item"><a class="nav-link @(key == Model.Tab ? "active" : "")" aria-current="@(key == Model.Tab ? "page" : null)" href="/regions/region/@Model.Id/settings/@key">@label</a></li>
+    }
+</ul>
+
+@if (isProgramTab && Model.Sharing.Count > 1)
+{
+    <p class="share-note alert alert-secondary py-2">@RegionAdvice.Join(Model.Sharing) share this setting because they run together.</p>
+}
+
+@switch (Model.Tab)
+{
+    case "options":
+        <partial name="_SettingsOptions" model="Model" />
+        break;
+    case "map":
+        <partial name="_SettingsMap" model="Model" />
+        break;
+    case "physics":
+        <partial name="_SettingsPhysics" model="Model" />
+        break;
+    case "scripts":
+        <partial name="_SettingsScripts" model="Model" />
+        break;
+    case "permissions":
+        <partial name="_SettingsPermissions" model="Model" />
+        break;
+    case "access":
+        <partial name="_SettingsAccess" model="Model" />
+        break;
+    case "cpu":
+        <partial name="_SettingsCpu" model="Model" />
+        break;
+    default:
+        <partial name="_SettingsBasics" model="Model" />
+        break;
+}

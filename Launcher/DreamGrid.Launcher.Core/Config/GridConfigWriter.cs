@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text.RegularExpressions;
 using DreamGrid.Launcher.Core.Ini;
 using DreamGrid.Launcher.Core.Settings;
 
@@ -83,8 +85,11 @@ public sealed class GridConfigWriter(LauncherPaths paths)
         os.Set("Startup", "regionload_regionsdir", Fwd(paths.RegionDefinitionDir(instance)) + "/");
         os.Set("Startup", "PIDFile", Fwd(Path.Combine(paths.Pids, instance + ".pid")));
         os.Set("Startup", "ConsoleHistoryFile", Fwd(Path.Combine(paths.RegionDir(instance), "ConsoleHistory.txt")));
-        os.Set("Startup", "physics", program.Physics);
-        os.Set("Startup", "meshing", program.Physics == "BulletSim" ? "Meshmerizer" : "ubODEMeshmerizer");
+        var physics = RegionSettingsRules.EffectivePhysics(s, program);
+        os.Set("Startup", "physics", physics == "ubODE" ? "ubODE" : "BulletSim");
+        os.Set("Startup", "meshing", physics == "ubODE" ? "ubODEMeshmerizer" : "Meshmerizer");
+        if (physics != "ubODE") os.Set("BulletSim", "UseSeparatePhysicsThread", physics == "BulletSimThreaded" ? "true" : "false");
+        WriteProgramOptions(os, s, program, regions);
         // The region reads [Network] console_port (OpenSim.cs), unlike Robust's ConsolePort.
         SetNetwork(os, s, "console_port", program.ConsolePort);
         if (s.Setup.OwnerCreated && s.Setup.Owner is { } owner)
@@ -105,8 +110,15 @@ public sealed class GridConfigWriter(LauncherPaths paths)
         os.Set("YEngine", "ScriptEnginesPath", Fwd(paths.ScriptEngines));
         Finish(os, "region", extra, Path.Combine(paths.RegionDir(instance), "OpenSim.ini"));
 
-        // 5. region definition files
+        // 5. region definition files. Every other region file goes off first, by its exact name: after a rename that
+        // only changes letter case ("home" to "Home") the old file must go off on Linux, and on Windows the new file
+        // must not be written into the old one, which would keep the old name.
         var dir = paths.RegionDefinitionDir(instance);
+        Directory.CreateDirectory(dir);
+        var keep = regions.Select(r => r.Name + ".ini").ToHashSet(StringComparer.Ordinal);
+        foreach (var file in Directory.EnumerateFiles(dir, "*.ini").ToList())
+            if (!keep.Contains(Path.GetFileName(file)))
+                File.Move(file, file + ".off", overwrite: true);
         foreach (var r in regions)
         {
             var def = IniDocument.Parse("");
@@ -117,13 +129,48 @@ public sealed class GridConfigWriter(LauncherPaths paths)
             def.Set(r.Name, "ExternalHostName", host);
             def.Set(r.Name, "SizeX", (256 * r.Size).ToString());
             def.Set(r.Name, "SizeY", (256 * r.Size).ToString());
+            var ro = r.Options ?? new RegionOptions();
+            if (ro.MaxAgents is { } agents) def.Set(r.Name, "MaxAgents", Num(agents));
+            if (ro.MaxPrims is { } prims) def.Set(r.Name, "MaxPrims", Num(prims));
+            if (ro.MaxNonPhysicalSize is { } nonPhys) def.Set(r.Name, "NonPhysicalPrimMax", Num(nonPhys));
+            if (ro.MaxPhysicalSize is { } phys) def.Set(r.Name, "PhysicalPrimMax", Num(phys));
+            if (ro.ClampSize) def.Set(r.Name, "ClampPrimSize", "True");
             Finish(def, "region", extra, Path.Combine(dir, r.Name + ".ini"), applyExtra: false);
         }
-        Directory.CreateDirectory(dir);
-        var keep = regions.Select(r => r.Name + ".ini").ToHashSet(StringComparer.OrdinalIgnoreCase);
-        foreach (var file in Directory.EnumerateFiles(dir, "*.ini"))
-            if (!keep.Contains(Path.GetFileName(file)))
-                File.Move(file, file + ".off", overwrite: true);
+    }
+
+    private static string Num(int v) => v.ToString(CultureInfo.InvariantCulture);
+
+    private static string Bool(bool v) => v ? "true" : "false";
+
+    /// <summary>Scripts, timers, frame rate, map, permissions, access and Concierge for one program.</summary>
+    private static void WriteProgramOptions(IniDocument os, LauncherSettings s, ProgramSettings program, List<RegionSettings> regions)
+    {
+        var o = program.Options ?? new ProgramOptions();
+        os.Set("YEngine", "Enabled", Bool(RegionSettingsRules.EffectiveScripts(s, program)));
+        if (o.MinTimerInterval is { } timer) os.Set("YEngine", "MinTimerInterval", timer.ToString(CultureInfo.InvariantCulture));
+        if (o.FramesPerSecond is { } fps) os.Set("Startup", "FrameTime", (1.0 / fps).ToString("0.0000", CultureInfo.InvariantCulture));
+
+        // Every map key is written, so no prototype value leaks through.
+        var map = o.Map;
+        os.Set("Map", "GenerateMaptiles", Bool(map != MapQuality.None));
+        if (map != MapQuality.None)
+            os.Set("Map", "MapImageModule", map == MapQuality.Simple ? "\"MapImageModule\"" : "\"Warp3DImageModule\"");
+        os.Set("Map", "TextureOnMapTile", Bool(map >= MapQuality.Better));
+        os.Set("Map", "DrawPrimOnMapTile", Bool(map >= MapQuality.Better));
+        os.Set("Map", "TexturePrims", Bool(map >= MapQuality.Best));
+        os.Set("Map", "RenderMeshes", Bool(map >= MapQuality.Best));
+
+        os.Set("Permissions", "allow_grid_gods", Bool(o.AllowGods));
+        os.Set("Permissions", "region_owner_is_god", Bool(o.OwnerIsGod));
+        os.Set("Permissions", "region_manager_is_god", Bool(o.ManagerIsGod));
+
+        foreach (var r in regions.Where(r => r.Options?.KeepResidentsOut == true))
+            os.Set("AuthorizationService", "Region_" + r.Name.Replace(' ', '_'), "DisallowResidents");
+
+        var announced = regions.Where(r => r.Options?.AnnounceVisitors == true).Select(r => Regex.Escape(r.Name)).ToList();
+        os.Set("Concierge", "enabled", Bool(announced.Count > 0));
+        if (announced.Count > 0) os.Set("Concierge", "regions", $"\"^(?:{string.Join('|', announced)})$\"");
     }
 
     /// <summary>

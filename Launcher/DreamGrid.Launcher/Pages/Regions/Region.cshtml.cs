@@ -42,6 +42,9 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
     /// <summary>The other regions that share this region's program.</summary>
     public IReadOnlyList<string> RunsWith { get; private set; } = [];
 
+    /// <summary>The regions that restart to apply saved settings; empty unless the region runs and its program needs a restart.</summary>
+    public IReadOnlyList<string> PendingRestart { get; private set; } = [];
+
     /// <summary>The neighbours, each with the side of this region it lies on.</summary>
     public IReadOnlyList<Neighbour> Neighbours { get; private set; } = [];
     public IReadOnlyList<PowerItem> Menu { get; private set; } = [];
@@ -199,6 +202,8 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
         var people = await online.ListAsync(HttpContext.RequestAborted);
         Here = people.Available ? people.Avatars.Where(a => a.RegionId == id).Select(a => a.Name).ToList() : null;
         Menu = MenuFor(State);
+        if (State is RegionState.Running or RegionState.Starting && grid.NeedsRestart(r.Instance))
+            PendingRestart = Core.Settings.RegionModel.In(settings, r.Instance).Select(x => x.Name).ToList();
         (CanOar, NeedsContent) = (State == RegionState.Running, r.NeedsContent);
         BusyText = grid.BusyWith(r.Instance) ?? (oarJobs.For(id) is { Running: true } job ? job.Text : null);
         return true;

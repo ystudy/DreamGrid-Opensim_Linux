@@ -136,10 +136,35 @@ public sealed class RunsChangePageTests : IAsyncLifetime
 
         var page = await GetAsync(client, SeaId);
 
-        Assert.Contains("Physics will change from ubODE to BulletSim to match Home.",
+        Assert.Contains("Physics will change from ubODE to BulletSim.",
             page.QuerySelector($"[data-group='{HomeId}']")!.TextContent);
         Assert.DoesNotContain("Physics", page.QuerySelector($"[data-group='{SunsetId}']")!.TextContent);
         Assert.DoesNotContain("Physics", page.QuerySelector("[data-group=own]")!.TextContent);
+    }
+
+    [Fact]
+    public async Task Runs_page_lists_every_program_setting_that_changes()
+    {
+        // Sea runs ubODE, Map Good, AboveNormal; Home's group runs BulletSim, Simple, Normal: three lines, one each.
+        _f.Grid.UpdateSettings(l => l with
+        {
+            Programs = [.. l.Programs.Select(p => p.Instance == "Sea" ? p with { Options = new ProgramOptions(Map: MapQuality.Good, Priority: CpuPriority.AboveNormal) } : p)],
+        });
+        using var client = await SignedInAsync();
+
+        var page = await GetAsync(client, SeaId);
+
+        var lines = page.QuerySelectorAll($"[data-group='{HomeId}'] .group-note").Select(n => n.TextContent.Trim()).ToList();
+        Assert.Equal(
+        [
+            "Physics will change from ubODE to BulletSim.",
+            "The map will change from Good to Simple.",
+            "Its priority will change from Above normal to Normal.",
+        ], lines);
+        // Sunset runs ubODE like Sea: its note has no physics line.
+        var sunset = page.QuerySelectorAll($"[data-group='{SunsetId}'] .group-note").Select(n => n.TextContent.Trim()).ToList();
+        Assert.Equal(2, sunset.Count);
+        Assert.DoesNotContain(sunset, l => l.StartsWith("Physics", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -152,7 +177,7 @@ public sealed class RunsChangePageTests : IAsyncLifetime
         var page = await GetAsync(client, lostId);
 
         var text = page.QuerySelector($"[data-group='{HomeId}']")!.TextContent;
-        Assert.Contains("Physics will change from the grid default to BulletSim to match Home.", text);
+        Assert.Contains($"Physics will change from {_f.Grid.CurrentSettings().DefaultPhysics} to BulletSim.", text);
     }
 
     [Fact]

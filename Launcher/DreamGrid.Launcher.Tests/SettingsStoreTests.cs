@@ -188,13 +188,106 @@ public class SettingsStoreTests : IDisposable
     private const string V1Region =
         "{\"instance\":\"Welcome\",\"name\":\"Welcome\",\"uuid\":\"6f1c1b8e-2f1a-4c55-9d3e-0a7b2c4d5e6f\",\"x\":1000,\"y\":1000,\"physics\":\"BulletSim\",\"content\":\"island\"}";
 
+    private string WriteV2(string programsJson, string? regionsJson = null)
+    {
+        var path = Path.Combine(NewDir(), "settings.json");
+        new SettingsStore(path).LoadOrCreate();
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+        node["schemaVersion"] = 2;
+        node["programs"] = System.Text.Json.Nodes.JsonNode.Parse(programsJson);
+        node["regions"] = System.Text.Json.Nodes.JsonNode.Parse(regionsJson ?? "[]");
+        node.Remove("defaultPhysics");
+        node.Remove("defaultScripts");
+        File.WriteAllText(path, node.ToJsonString());
+        return path;
+    }
+
+    [Fact]
+    public void Schema2_physics_ubODE_becomes_grid_default_and_BulletSim_keeps_its_own_thread()
+    {
+        var path = WriteV2("[{\"instance\":\"A\",\"httpPort\":8004,\"consolePort\":8011,\"physics\":\"ubODE\"},"
+            + "{\"instance\":\"B\",\"httpPort\":8005,\"consolePort\":8012,\"physics\":\"BulletSim\"}]");
+
+        var s = new SettingsStore(path).LoadOrCreate();
+
+        Assert.Equal(3, s.SchemaVersion);
+        Assert.Null(s.Programs[0].Physics);
+        // Schema 2's BulletSim ran with the prototype's UseSeparatePhysicsThread=true: it keeps running that way.
+        Assert.Equal("BulletSimThreaded", s.Programs[1].Physics);
+        Assert.Equal("ubODE", s.DefaultPhysics);
+        Assert.True(s.DefaultScripts);
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+        Assert.Equal(3, (int)node["schemaVersion"]!);
+    }
+
+    [Fact]
+    public void Schema1_file_migrates_through_to_3()
+    {
+        var s = new SettingsStore(WriteV1(V1Region.Replace("BulletSim", "ubODE"))).LoadOrCreate();
+
+        Assert.Equal(3, s.SchemaVersion);
+        Assert.Null(Assert.Single(s.Programs).Physics);
+    }
+
+    [Fact]
+    public void Schema3_explicit_ubODE_survives_a_reload()
+    {
+        var path = Path.Combine(NewDir(), "settings.json");
+        var store = new SettingsStore(path);
+        store.Save(store.LoadOrCreate() with
+        {
+            DefaultPhysics = "BulletSim",
+            Programs = [new ProgramSettings("A", 8004, 8011, "ubODE"), new ProgramSettings("B", 8005, 8012, "BulletSim")],
+        });
+
+        var loaded = new SettingsStore(path).LoadOrCreate();
+
+        Assert.Equal(3, loaded.SchemaVersion);
+        Assert.Equal(["ubODE", "BulletSim"], loaded.Programs.Select(p => p.Physics));
+    }
+
+    [Fact]
+    public void Missing_options_read_as_defaults()
+    {
+        var path = WriteV2("[{\"instance\":\"A\",\"httpPort\":8004,\"consolePort\":8011}]",
+            "[{\"instance\":\"A\",\"name\":\"A\",\"uuid\":\"6f1c1b8e-2f1a-4c55-9d3e-0a7b2c4d5e6f\"}]");
+
+        var s = new SettingsStore(path).LoadOrCreate();
+
+        Assert.Null(s.Programs[0].Options);
+        Assert.Null(s.Regions[0].Options);
+        Assert.True(RegionSettingsRules.Options(s.Regions[0].Options ?? new RegionOptions()).Ok);
+        Assert.True(RegionSettingsRules.Program(null, s.Programs[0].Options ?? new ProgramOptions(), 8).Ok);
+    }
+
+    [Fact]
+    public void Options_round_trip()
+    {
+        var path = Path.Combine(NewDir(), "settings.json");
+        var store = new SettingsStore(path);
+        var s = store.LoadOrCreate() with
+        {
+            DefaultPhysics = "BulletSim",
+            Programs = [new ProgramSettings("A", 8004, 8011, "BulletSimThreaded", new ProgramOptions(false, 0.5, 20, MapQuality.Best, Cores: [0, 2], Priority: CpuPriority.High))],
+            Regions = [new RegionSettings("A", "A", Guid.NewGuid(), UdpPort: 8004, Options: new RegionOptions(MaxAgents: 10, ClampSize: true))],
+        };
+        store.Save(s);
+
+        var loaded = new SettingsStore(path).LoadOrCreate();
+
+        Assert.Equal("BulletSim", loaded.DefaultPhysics);
+        Assert.Equal(s.Programs[0].Options!.Cores, loaded.Programs[0].Options!.Cores);
+        Assert.Equal(s.Programs[0].Options! with { Cores = null }, loaded.Programs[0].Options! with { Cores = null });
+        Assert.Equal(s.Regions[0].Options, loaded.Regions[0].Options);
+    }
+
     [Fact]
     public void Migrates_v1_single_region()
     {
         var s = new SettingsStore(WriteV1(V1Region)).LoadOrCreate();
 
-        Assert.Equal(2, s.SchemaVersion);
-        Assert.Equal([new ProgramSettings("Welcome", 8004, 8011, "BulletSim")], s.Programs);
+        Assert.Equal(3, s.SchemaVersion);
+        Assert.Equal([new ProgramSettings("Welcome", 8004, 8011, "BulletSimThreaded")], s.Programs);
         Assert.Equal([new RegionSettings("Welcome", "Welcome", V1Uuid, 1000, 1000, "island", 1, 8004)], s.Regions);
         Assert.Null(s.LegacyRegion);
     }
@@ -206,7 +299,7 @@ public class SettingsStoreTests : IDisposable
         new SettingsStore(path).LoadOrCreate();
 
         var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
-        Assert.Equal(2, (int)node["schemaVersion"]!);
+        Assert.Equal(3, (int)node["schemaVersion"]!);
         Assert.True(node.ContainsKey("programs"));
         Assert.False(node.ContainsKey("region"));
     }
@@ -216,7 +309,7 @@ public class SettingsStoreTests : IDisposable
     {
         var s = new SettingsStore(WriteV1(null)).LoadOrCreate();
 
-        Assert.Equal(2, s.SchemaVersion);
+        Assert.Equal(3, s.SchemaVersion);
         Assert.Empty(s.Programs);
         Assert.Empty(s.Regions);
     }
@@ -262,7 +355,7 @@ public class SettingsStoreTests : IDisposable
 
         var loaded = new SettingsStore(path).LoadOrCreate();
 
-        Assert.Equal(2, loaded.SchemaVersion);
+        Assert.Equal(3, loaded.SchemaVersion);
         Assert.Empty(loaded.CustomTypes);
         Assert.False(loaded.Regions[0].NeedsContent);
     }

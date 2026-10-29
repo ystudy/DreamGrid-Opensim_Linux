@@ -376,4 +376,209 @@ public sealed class GridConfigWriterTests : IDisposable
             Assert.True(File.Exists(RegionFile("Home", "Home")));
         }
     }
+
+    [Fact]
+    public void Case_only_rename_leaves_one_region_file_in_the_new_case()
+    {
+        // The region was "home" before a rename to "Home": its old file is still there.
+        var dir = _paths.RegionDefinitionDir("Home");
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "home.ini"), "[home]\nRegionUUID = " + HomeId + "\n");
+
+        Write(TwoPrograms());
+
+        var active = Directory.EnumerateFiles(dir).Select(Path.GetFileName)
+            .Where(n => n!.EndsWith(".ini", StringComparison.Ordinal)
+                        && n.Equals("Home.ini", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        Assert.Equal(["Home.ini"], active);
+        Assert.Equal("8004", IniDocument.Load(RegionFile("Home", "Home")).Get("Home", "InternalPort"));
+    }
+
+    // ---- region and program options (plan 4d) ----
+
+    private static LauncherSettings WithOptions(ProgramOptions? po = null, string? physics = null, string? defaultPhysics = null,
+        params (string Name, RegionOptions Opt)[] regions)
+    {
+        var list = regions.Length == 0 ? [("Home", new RegionOptions())] : regions;
+        return Make() with
+        {
+            DefaultPhysics = defaultPhysics ?? "ubODE",
+            Programs = [new ProgramSettings("Home", 8004, 8011, physics, po)],
+            Regions = list.Select((r, i) => new RegionSettings("Home", r.Name, Guid.NewGuid(), 1000 + i, 1000,
+                UdpPort: 8004 + i, Options: r.Opt)).ToList(),
+        };
+    }
+
+    [Fact]
+    public void Region_file_gets_only_the_options_that_are_set()
+    {
+        Write(WithOptions(regions: [("Home", new RegionOptions(MaxAgents: 20, MaxPrims: 5000, MaxNonPhysicalSize: 128, MaxPhysicalSize: 64, ClampSize: true)),
+                                    ("Beach", new RegionOptions(MaxAgents: 5))]));
+
+        var home = IniDocument.Load(RegionFile("Home", "Home"));
+        Assert.Equal("20", home.Get("Home", "MaxAgents"));
+        Assert.Equal("5000", home.Get("Home", "MaxPrims"));
+        Assert.Equal("128", home.Get("Home", "NonPhysicalPrimMax"));
+        Assert.Equal("64", home.Get("Home", "PhysicalPrimMax"));
+        Assert.Equal("True", home.Get("Home", "ClampPrimSize"));
+
+        var beach = IniDocument.Load(RegionFile("Home", "Beach"));
+        Assert.Equal("5", beach.Get("Beach", "MaxAgents"));
+        foreach (var k in new[] { "MaxPrims", "NonPhysicalPrimMax", "PhysicalPrimMax", "ClampPrimSize" })
+            Assert.Null(beach.Get("Beach", k));
+    }
+
+    [Theory]
+    [InlineData("ubODE", null, "ubODE", "ubODEMeshmerizer", null)]
+    [InlineData("BulletSim", null, "BulletSim", "Meshmerizer", "false")]
+    [InlineData("BulletSimThreaded", null, "BulletSim", "Meshmerizer", "true")]
+    [InlineData(null, "BulletSimThreaded", "BulletSim", "Meshmerizer", "true")]
+    public void Physics_rows_match_the_table(string? own, string? def, string physics, string meshing, string? separate)
+    {
+        Write(WithOptions(physics: own, defaultPhysics: def));
+
+        var os = ProgramIni("Home");
+        Assert.Equal(physics, os.Get("Startup", "physics"));
+        Assert.Equal(meshing, os.Get("Startup", "meshing"));
+        if (separate is not null) Assert.Equal(separate, os.Get("BulletSim", "UseSeparatePhysicsThread"));
+    }
+
+    [Fact]
+    public void Scripts_off_disables_yengine()
+    {
+        Write(WithOptions(new ProgramOptions(Scripts: false)));
+        Assert.Equal("false", ProgramIni("Home").Get("YEngine", "Enabled"));
+
+        Write(WithOptions(new ProgramOptions(Scripts: true)));
+        Assert.Equal("true", ProgramIni("Home").Get("YEngine", "Enabled"));
+
+        Write(WithOptions() with { DefaultScripts = false });
+        Assert.Equal("false", ProgramIni("Home").Get("YEngine", "Enabled"));
+    }
+
+    [Fact]
+    public void Frame_rate_writes_frame_time()
+    {
+        Write(WithOptions(new ProgramOptions(MinTimerInterval: 0.2, FramesPerSecond: 20)));
+        var os = ProgramIni("Home");
+        Assert.Equal("0.2", os.Get("YEngine", "MinTimerInterval"));
+        Assert.Equal("0.0500", os.Get("Startup", "FrameTime"));
+    }
+
+    [Fact]
+    public void Numbers_use_the_invariant_culture()
+    {
+        var old = System.Globalization.CultureInfo.CurrentCulture;
+        System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo("de-DE");
+        try
+        {
+            Write(WithOptions(new ProgramOptions(MinTimerInterval: 0.25, FramesPerSecond: 40)));
+            Assert.Equal("0.0250", ProgramIni("Home").Get("Startup", "FrameTime"));
+            Assert.Equal("0.25", ProgramIni("Home").Get("YEngine", "MinTimerInterval"));
+        }
+        finally { System.Globalization.CultureInfo.CurrentCulture = old; }
+    }
+
+    [Theory]
+    [InlineData(MapQuality.None)]
+    [InlineData(MapQuality.Simple)]
+    [InlineData(MapQuality.Good)]
+    [InlineData(MapQuality.Better)]
+    [InlineData(MapQuality.Best)]
+    public void Map_levels_write_every_map_key(MapQuality q)
+    {
+        Write(WithOptions(new ProgramOptions(Map: q)));
+
+        var os = ProgramIni("Home");
+        Assert.Equal(q != MapQuality.None ? "true" : "false", os.Get("Map", "GenerateMaptiles"));
+        if (q != MapQuality.None)
+            Assert.Equal(q == MapQuality.Simple ? "MapImageModule" : "Warp3DImageModule", os.Get("Map", "MapImageModule"));
+        Assert.Equal(q >= MapQuality.Better ? "true" : "false", os.Get("Map", "TextureOnMapTile"));
+        Assert.Equal(q >= MapQuality.Better ? "true" : "false", os.Get("Map", "DrawPrimOnMapTile"));
+        Assert.Equal(q == MapQuality.Best ? "true" : "false", os.Get("Map", "TexturePrims"));
+        Assert.Equal(q == MapQuality.Best ? "true" : "false", os.Get("Map", "RenderMeshes"));
+    }
+
+    [Fact]
+    public void Permissions_are_written()
+    {
+        Write(WithOptions(new ProgramOptions(AllowGods: false, OwnerIsGod: false, ManagerIsGod: true)));
+
+        var os = ProgramIni("Home");
+        Assert.Equal("false", os.Get("Permissions", "allow_grid_gods"));
+        Assert.Equal("false", os.Get("Permissions", "region_owner_is_god"));
+        Assert.Equal("true", os.Get("Permissions", "region_manager_is_god"));
+    }
+
+    [Fact]
+    public void Access_keys_use_underscored_names()
+    {
+        Write(WithOptions(regions: [("My Place", new RegionOptions(KeepResidentsOut: true)), ("Open", new RegionOptions())]));
+
+        var os = ProgramIni("Home");
+        Assert.Equal("DisallowResidents", os.Get("AuthorizationService", "Region_My_Place"));
+        Assert.Null(os.Get("AuthorizationService", "Region_Open"));
+    }
+
+    [Fact]
+    public void Concierge_regex_escapes_names()
+    {
+        Write(WithOptions(regions: [("Joe's (Beach)", new RegionOptions(AnnounceVisitors: true)),
+                                    ("Home", new RegionOptions(AnnounceVisitors: true)),
+                                    ("Quiet", new RegionOptions())]));
+
+        var os = ProgramIni("Home");
+        Assert.Equal("true", os.Get("Concierge", "enabled"));
+        var value = os.Get("Concierge", "regions")!;
+        Assert.Equal("^(?:Joe's\\ \\(Beach\\)|Home)$", value);
+        // On disk the value stays quoted with its backslashes as written.
+        Assert.Contains("regions = \"^(?:Joe's\\ \\(Beach\\)|Home)$\"",
+            File.ReadAllText(Path.Combine(_paths.RegionDir("Home"), "OpenSim.ini")).Replace("regions=", "regions = "));
+        var re = new System.Text.RegularExpressions.Regex(value,System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        Assert.Matches(re, "Joe's (Beach)");
+        Assert.Matches(re, "Home");
+        Assert.DoesNotMatch(re, "Homestead");
+        Assert.DoesNotMatch(re, "Quiet");
+    }
+
+    [Fact]
+    public void Concierge_is_off_when_nobody_announces()
+    {
+        Write(WithOptions());
+        Assert.Equal("false", ProgramIni("Home").Get("Concierge", "enabled"));
+    }
+
+    [Fact]
+    public void Programs_get_only_their_own_regions_access_keys()
+    {
+        var s = TwoPrograms() with
+        {
+            Regions =
+            [
+                new RegionSettings("Home", "Home", HomeId, 1000, 1000, UdpPort: 8004, Options: new RegionOptions(KeepResidentsOut: true)),
+                new RegionSettings("Isle", "Isle", Guid.NewGuid(), 1010, 1010, UdpPort: 8006, Options: new RegionOptions(AnnounceVisitors: true)),
+            ],
+        };
+        Write(s);
+
+        Assert.Equal("DisallowResidents", ProgramIni("Home").Get("AuthorizationService", "Region_Home"));
+        Assert.Null(ProgramIni("Isle").Get("AuthorizationService", "Region_Home"));
+        Assert.Null(ProgramIni("Home").Get("AuthorizationService", "Region_Isle"));
+        Assert.Equal("false", ProgramIni("Home").Get("Concierge", "enabled"));
+        Assert.Equal("true", ProgramIni("Isle").Get("Concierge", "enabled"));
+    }
+
+    [Fact]
+    public void Default_options_write_the_same_region_files_as_before()
+    {
+        Write(WithOptions());
+
+        var keys = IniDocument.Load(RegionFile("Home", "Home")).ActiveEntries().Select(e => e.Key).ToList();
+        Assert.Equal(["RegionUUID", "Location", "InternalAddress", "InternalPort", "ExternalHostName", "SizeX", "SizeY"], keys);
+        var os = ProgramIni("Home");
+        Assert.Equal("0.091", os.Get("Startup", "FrameTime"));
+        Assert.Null(os.Get("YEngine", "MinTimerInterval"));
+        Assert.Null(os.Get("AuthorizationService", "Region_Home"));
+    }
 }

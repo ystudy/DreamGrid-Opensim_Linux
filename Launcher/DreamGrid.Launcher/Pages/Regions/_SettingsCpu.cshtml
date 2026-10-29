@@ -1,0 +1,41 @@
+@model DreamGrid.Launcher.Pages.Regions.SettingsModel
+@using DreamGrid.Launcher.Core.Settings
+<form method="post" action="/regions/region/@Model.Id/settings/cpu?handler=cpu" asp-antiforgery="true">
+    <span class="field-error text-danger small d-block">@Model.Error("")</span>
+    <fieldset class="mt-3">
+        <legend class="fs-6 fw-semibold">Cores it may use</legend>
+        @for (var i = 0; i < Model.Cores; i++)
+        {
+            <div class="form-check form-check-inline">
+                <input class="form-check-input" type="checkbox" id="Core-@i" name="Cores" value="@i" checked="@Model.PickedCores.Contains(i)">
+                <label class="form-check-label" for="Core-@i">Core @i</label>
+            </div>
+        }
+        <span class="form-text d-block">Tick none to let it use every core.</span>
+        <span class="field-error text-danger small d-block" data-error-for="Cores">@Model.Error("Cores")</span>
+    </fieldset>
+    <fieldset class="mt-3">
+        <legend class="fs-6 fw-semibold">Priority</legend>
+        @foreach (var p in Enum.GetValues<CpuPriority>())
+        {
+            var text = SettingLabels.Priority(p);
+            var why = Model.Unavailable(p);
+            <div class="form-check">
+                <input class="form-check-input" type="radio" name="Priority" id="Priority-@p" value="@p" checked="@(Model.Priority == p)" disabled="@(why is not null)">
+                <label class="form-check-label" for="Priority-@p">@text</label>
+                @if (why is not null)
+                {
+                    <span class="form-text d-block priority-reason">@why</span>
+                }
+                @if (p is CpuPriority.High or CpuPriority.RealTime)
+                {
+                    <span class="form-text d-block priority-warning">This can make the whole computer slow to respond while these regions are busy.</span>
+                }
+            </div>
+        }
+        <span class="field-error text-danger small d-block" data-error-for="Priority">@Model.Error("Priority")</span>
+    </fieldset>
+    <p class="form-text">Cores and priority apply at once while it runs.</p>
+    <button type="submit" class="btn btn-primary mt-3">Save</button>
+    <a class="btn btn-outline-secondary mt-3" href="/regions/region/@Model.Id">Cancel</a>
+</form>

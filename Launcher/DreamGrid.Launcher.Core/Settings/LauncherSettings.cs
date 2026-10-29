@@ -16,17 +16,51 @@ public sealed record SetupState(
     bool Finished = false,
     OwnerInfo? Owner = null);
 
+/// <summary>How a map tile is drawn; "None" turns map tiles off.</summary>
+public enum MapQuality { None, Simple, Good, Better, Best }
+
+/// <summary>The operating system's priority for a program's process.</summary>
+public enum CpuPriority { BelowNormal, Normal, AboveNormal, High, RealTime }
+
+/// <summary>
+/// Per-region limits. A null number means OpenSim's own default and its key is not written.
+/// </summary>
+public sealed record RegionOptions(
+    int? MaxAgents = null,
+    int? MaxPrims = null,
+    int? MaxNonPhysicalSize = null,
+    int? MaxPhysicalSize = null,
+    bool ClampSize = false,
+    bool KeepResidentsOut = false,
+    bool AnnounceVisitors = false);
+
+/// <summary>
+/// Per-program options. <see cref="Scripts"/> null means the grid default; <see cref="Cores"/> null or empty means every core.
+/// </summary>
+public sealed record ProgramOptions(
+    bool? Scripts = null,
+    double? MinTimerInterval = null,
+    int? FramesPerSecond = null,
+    MapQuality Map = MapQuality.Simple,
+    bool AllowGods = true,
+    bool OwnerIsGod = true,
+    bool ManagerIsGod = false,
+    IReadOnlyList<int>? Cores = null,
+    CpuPriority Priority = CpuPriority.Normal);
+
 /// <summary>
 /// One OpenSim program (instance) hosting one or more regions, in <c>Regions/&lt;Instance&gt;/</c>.
-/// <see cref="Physics"/> is read once per program by OpenSim, so every region in it shares it.
+/// <see cref="Physics"/> is read once per program by OpenSim, so every region in it shares it. It is null (the grid
+/// default), "ubODE", "BulletSim" or "BulletSimThreaded". A missing <see cref="Options"/> reads as <c>new ProgramOptions()</c>.
 /// </summary>
-public sealed record ProgramSettings(string Instance, int HttpPort, int ConsolePort, string Physics = "ubODE");
+public sealed record ProgramSettings(string Instance, int HttpPort, int ConsolePort, string? Physics = null, ProgramOptions? Options = null);
 
 /// <summary>
 /// One region. <see cref="Instance"/> names its program; <see cref="Size"/> is squares per side (256 m each);
 /// <see cref="X"/> and <see cref="Y"/> are its south-west square on the map. A parked region stays off until unparked;
 /// a deleted one (<see cref="DeletedAt"/> set) keeps its database rows and its map spot until erased.
 /// <see cref="NeedsContent"/> marks a region whose <see cref="Content"/> has not been loaded yet.
+/// A missing <see cref="Options"/> reads as <c>new RegionOptions()</c>.
 /// </summary>
 public sealed record RegionSettings(
     string Instance,
@@ -39,7 +73,8 @@ public sealed record RegionSettings(
     int UdpPort = 0,
     bool Parked = false,
     DateTimeOffset? DeletedAt = null,
-    bool NeedsContent = false);
+    bool NeedsContent = false,
+    RegionOptions? Options = null);
 
 /// <summary>A region type made from a file in the OAR library; <see cref="Id"/> is "c-" and 8 lowercase hex characters.</summary>
 public sealed record CustomRegionType(string Id, string Name, string File);
@@ -53,7 +88,7 @@ public sealed record IniOverride(string Target, string Section, string Key, stri
 
 public sealed record LauncherSettings
 {
-    public const int CurrentSchema = 2;
+    public const int CurrentSchema = 3;
 
     public int SchemaVersion { get; init; } = CurrentSchema;
     public string GridName { get; init; } = "My World";
@@ -74,6 +109,11 @@ public sealed record LauncherSettings
     public required ConsoleSecrets Console { get; init; }
     public required string MachineId { get; init; }
     public string? SetupToken { get; init; }
+
+    /// <summary>The physics engine a program without its own uses: "ubODE", "BulletSim" or "BulletSimThreaded".</summary>
+    public string DefaultPhysics { get; init; } = "ubODE";
+    /// <summary>Whether a program without its own setting runs scripts.</summary>
+    public bool DefaultScripts { get; init; } = true;
 
     public SetupState Setup { get; init; } = new();
     public List<ProgramSettings> Programs { get; init; } = new();

@@ -29,7 +29,8 @@ public sealed partial class GridController(
     IHttpClientFactory http,
     TimeProvider time,
     ILoggerFactory? loggers = null,
-    Func<LauncherSettings, IRegionStore>? regionStores = null) : IGridController
+    Func<LauncherSettings, IRegionStore>? regionStores = null,
+    Action<int, IReadOnlyList<int>, CpuPriority>? cpu = null) : IGridController
 {
     private static readonly TimeSpan ConsoleSettle = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan LoginWait = TimeSpan.FromSeconds(300);
@@ -72,9 +73,20 @@ public sealed partial class GridController(
     private readonly ConcurrentDictionary<string, string> _jobs = new();
     // A region's rows in the database (Delete, Delete forever, the space a deleted region holds).
     private readonly Func<LauncherSettings, IRegionStore> _regionStores = regionStores ?? (s => new RegionStore(s));
+    // Sets a running program's cores and priority (CpuTuning.Apply; tests see the calls instead).
+    private readonly Action<int, IReadOnlyList<int>, CpuPriority> _cpu = cpu ?? CpuTuning.Apply;
+    // What each running program was started (or adopted) from: its StartKey. Written under _ops, read by NeedsRestart.
+    private readonly ConcurrentDictionary<string, string> _startedWith = new();
+    // The PID whose start each program's key and CPU settings were last handled for, so a process is handled once.
+    private readonly ConcurrentDictionary<string, int> _handledPid = new();
+    // Programs a controller start (under _ops) is bringing up: it handles them itself once they run.
+    private readonly ConcurrentDictionary<string, byte> _starting = new();
 
     /// <summary>Replaces the database's state for tests, whose MariaDB cannot start.</summary>
     internal Func<bool>? DatabaseRunningForTests { get; init; }
+
+    /// <summary>Replaces how a program is launched for tests, whose OpenSim cannot start (null: OpenSim itself).</summary>
+    internal Func<string, ProcessStartInfo>? ProgramStartForTests { get; init; }
 
     private bool DatabaseRunning => DatabaseRunningForTests?.Invoke() ?? _db?.Process.State == ProcessState.Running;
 
@@ -190,6 +202,165 @@ public sealed partial class GridController(
         finally { _activity = GridActivity.None; _ops.Release(); }
     }
 
+    public async Task RenameRegionAsync(Guid regionId, string name, CancellationToken ct)
+    {
+        if (!IsValidRegionName(name)) throw new ArgumentException(NameRule);
+        await _ops.WaitAsync(ct);
+        try
+        {
+            var s = LoadSettings();
+            var region = LiveRegion(s, regionId);
+            ThrowIfBusy(region.Instance);
+            // A running program keeps the scene under its old name until it restarts.
+            if (HasLoaded(s, _programs.GetValueOrDefault(region.Instance), regionId))
+                throw new InvalidOperationException($"Stop {region.Name} first; a region is renamed while it is offline.");
+            // Its own name, in other letter case, is not taken.
+            if (RegionModel.FindByName(s, name) is { } other && other.Uuid != regionId) throw new ArgumentException(NameTaken(name));
+            if (name == region.Name) return;
+
+            // The writer turns the old region file off; the region registers under its new name at its next start.
+            UpdateSettings(l => l with { Regions = l.Regions.Select(r => r.Uuid == regionId ? r with { Name = name } : r).ToList() });
+        }
+        finally { _ops.Release(); }
+    }
+
+    public async Task ResizeRegionAsync(Guid regionId, int size, CancellationToken ct)
+    {
+        if (size is < 1 or > RegionPlacement.MaxSize) throw new ArgumentException(SizeRule);
+        await _ops.WaitAsync(ct);
+        try
+        {
+            var s = LoadSettings();
+            var region = LiveRegion(s, regionId);
+            ThrowIfBusy(region.Instance);
+            if (!RegionPlacement.OnMap(region.X, region.Y, size)) throw new ArgumentException("That spot is off the map.");
+            if (RegionPlacement.Check(s, region.X, region.Y, size, ignore: regionId) is { Ok: false } taken)
+                throw new ArgumentException(RegionAdvice.Placement(taken));
+
+            // Nothing restarts (Ruling E): the new size applies at the program's next start.
+            UpdateSettings(l => l with { Regions = l.Regions.Select(r => r.Uuid == regionId ? r with { Size = size } : r).ToList() });
+        }
+        finally { _ops.Release(); }
+    }
+
+    public async Task SaveRegionOptionsAsync(Guid regionId, RegionOptions options, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        if (RegionSettingsRules.Options(options) is { Ok: false } invalid) throw new ArgumentException(invalid.Errors.Values.First());
+        await _ops.WaitAsync(ct);
+        try
+        {
+            LiveRegion(LoadSettings(), regionId);
+            UpdateSettings(l => l with { Regions = l.Regions.Select(r => r.Uuid == regionId ? r with { Options = options } : r).ToList() });
+        }
+        finally { _ops.Release(); }
+    }
+
+    public async Task<bool> SaveProgramOptionsAsync(string instance, string? physics, ProgramOptions options, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        await _ops.WaitAsync(ct);
+        try
+        {
+            var s = LoadSettings();
+            var saved = s.Programs.FirstOrDefault(p => p.Instance == instance);
+            var before = saved?.Options ?? new ProgramOptions();
+            // Cores saved on another computer may not exist here. They block nothing while they stay as they were (only
+            // the cores this computer has are used); a change to the cores is checked in full.
+            var check = (options.Cores ?? []).SequenceEqual(before.Cores ?? [])
+                ? options with { Cores = RegionSettingsRules.UsableCores(options.Cores, Environment.ProcessorCount) }
+                : options;
+            if (RegionSettingsRules.Program(physics, check, Environment.ProcessorCount) is { Ok: false } invalid)
+                throw new ArgumentException(invalid.Errors.Values.First());
+            if (saved is null) throw new ArgumentException("There is no such group of regions.");
+            UpdateSettings(l => l with
+            {
+                Programs = l.Programs.Select(p => p.Instance == instance ? p with { Physics = physics, Options = options } : p).ToList(),
+            });
+
+            // The operating system changes a running process's cores and priority at once; the rest waits for a restart.
+            var cores = RegionSettingsRules.UsableCores(options.Cores, Environment.ProcessorCount);
+            var changed = options.Priority != before.Priority
+                || !cores.Order().SequenceEqual(RegionSettingsRules.UsableCores(before.Cores, Environment.ProcessorCount).Order());
+            if (!changed || _programs.GetValueOrDefault(instance) is not { Process.State: ProcessState.Running } program
+                || program.Process.Pid is not { } pid)
+                return false;
+            _cpu(pid, cores, options.Priority);
+            return true;
+        }
+        finally { _ops.Release(); }
+    }
+
+    /// <summary>Reads only cached state, so it never waits behind an operation.</summary>
+    public bool NeedsRestart(string instance)
+    {
+        if (_programs.GetValueOrDefault(instance) is not { Process.State: ProcessState.Running }
+            || !_startedWith.TryGetValue(instance, out var started))
+            return false;
+        var s = CurrentSettings();
+        return s.Programs.FirstOrDefault(p => p.Instance == instance) is { } program && StartKey(s, program) != started;
+    }
+
+    /// <summary>
+    /// Everything a program's start reads from the settings, other than ports and CPU: its effective physics and scripts,
+    /// its other options, and each loadable region's name, size and options.
+    /// </summary>
+    /// <remarks>
+    /// The key relies on the compiler-made record ToString of <see cref="ProgramOptions"/> and <see cref="RegionOptions"/>,
+    /// which prints each member's value. Their members must stay scalar: a list or other collection member prints as its
+    /// type name, so a change to it would silently stop marking a restart (Cores is a list, and is cleared here because
+    /// CPU settings apply without one). A new collection member needs its own explicit part in the key.
+    /// </remarks>
+    private string StartKey(LauncherSettings s, ProgramSettings p)
+    {
+        var options = (p.Options ?? new ProgramOptions()) with { Scripts = null, Cores = null, Priority = CpuPriority.Normal };
+        var regions = RegionModel.Loadable(s, p.Instance, _held).Select(r => $"{r.Name}|{r.Size}|{r.Options ?? new RegionOptions()}");
+        return string.Join('\n',
+            [RegionSettingsRules.EffectivePhysics(s, p), RegionSettingsRules.EffectiveScripts(s, p).ToString(), options.ToString(), .. regions]);
+    }
+
+    /// <summary>
+    /// Once a program has just started, restarted or been adopted, from <paramref name="s"/>: records what it started from, and
+    /// applies its cores and priority unless they are the defaults. A failure there is logged; the program keeps running.
+    /// </summary>
+    private void ProgramUp(LauncherSettings s, string instance, int? pid)
+    {
+        if (pid is { } handled) _handledPid[instance] = handled;
+        if (s.Programs.FirstOrDefault(p => p.Instance == instance) is not { } settings) return;
+        _startedWith[instance] = StartKey(s, settings);
+
+        var options = settings.Options ?? new ProgramOptions();
+        var cores = RegionSettingsRules.UsableCores(options.Cores, Environment.ProcessorCount);
+        if ((cores.Count == 0 && options.Priority == CpuPriority.Normal) || pid is not { } target) return;
+        try { _cpu(target, cores, options.Priority); }
+        catch (Exception e)
+        {
+            _log?.LogWarning(e, "The cores and priority of {Program} could not be set: {Reason}", instance, e.Message);
+        }
+    }
+
+    /// <summary>
+    /// A program's process reached Running on its own: the monitor restarted it after a crash. The new process read the
+    /// region files as they are now (its spec names only the folder, ports and console), so it is keyed from the current
+    /// settings and gets its CPU settings again. Runs off the process's event thread and never takes the operation lock: a
+    /// controller start holds it while it waits for Running, and handles its own start (<see cref="_starting"/>).
+    /// </summary>
+    private void OnProgramRunning(string instance, ManagedProcess process)
+    {
+        if (_starting.ContainsKey(instance) || _programs.GetValueOrDefault(instance)?.Process != process) return;
+        if (process.Pid is not { } pid || (_handledPid.TryGetValue(instance, out var handled) && handled == pid)) return;
+        _log?.LogInformation("{Program} came back after a crash; its CPU settings are applied again.", instance);
+        ProgramUp(CurrentSettings(), instance, pid);
+    }
+
+    /// <summary>The region, which must exist and not be deleted.</summary>
+    private static RegionSettings LiveRegion(LauncherSettings s, Guid regionId)
+    {
+        var region = RegionModel.Find(s, regionId) ?? throw new InvalidOperationException("There is no such region.");
+        if (region.DeletedAt is not null) throw new InvalidOperationException("That region has been deleted.");
+        return region;
+    }
+
     public async Task ChangeRunsWithAsync(Guid regionId, string? shareWith, CancellationToken ct)
     {
         await _ops.WaitAsync(ct);
@@ -220,7 +391,7 @@ public sealed partial class GridController(
                     var httpPort = PortAllocator.Next(l, l.RegionPort);
                     var consolePort = PortAllocator.Next(l, l.RegionConsolePort, new HashSet<int> { httpPort });
                     var program = new ProgramSettings(to, httpPort, consolePort);
-                    programs.Add(RegionModel.ProgramOf(l, region) is { } old ? program with { Physics = old.Physics } : program);
+                    programs.Add(RegionModel.ProgramOf(l, region) is { } old ? program with { Physics = old.Physics, Options = old.Options } : program);
                 }
                 var regions = l.Regions.Select(r => r.Uuid == regionId ? r with { Instance = to } : r).ToList();
                 // A program left with no regions goes; one with only parked regions stays for them.
@@ -661,7 +832,7 @@ public sealed partial class GridController(
     public async Task CreateRegionAsync(string name, string content, CancellationToken ct, IProgress<string>? progress = null)
     {
         if (!IsValidRegionName(name))
-            throw new ArgumentException("A region name is 2-32 letters, digits, spaces, '-', '_' or '\\'' with no leading or trailing space.", nameof(name));
+            throw new ArgumentException(NameRule, nameof(name));
         if (!IsContent(content))
             throw new ArgumentException(ContentError, nameof(content));
 
@@ -689,7 +860,7 @@ public sealed partial class GridController(
     public async Task<RegionSettings> AddRegionAsync(NewRegion request, CancellationToken ct, IProgress<string>? progress = null)
     {
         if (!IsValidRegionName(request.Name))
-            throw new ArgumentException("A region name is 2-32 letters, digits, spaces, '-', '_' or '\\'' with no leading or trailing space.", nameof(request));
+            throw new ArgumentException(NameRule, nameof(request));
         if (!IsContent(request.Content))
             throw new ArgumentException(ContentError, nameof(request));
 
@@ -711,11 +882,16 @@ public sealed partial class GridController(
         finally { _activity = GridActivity.None; _ops.Release(); }
     }
 
+    private const string NameRule = "A region name is 2-32 letters, digits, spaces, '-', '_' or '\\'' with no leading or trailing space.";
+    private const string SizeRule = "A region is 1 to 16 squares on each side.";
+
+    private static string NameTaken(string name) => $"There is already a region called {name}.";
+
     /// <summary>Why a region can't be added as asked (in words the website shows as they are), or null.</summary>
     private static string? RegionRequestError(LauncherSettings s, NewRegion r)
     {
-        if (RegionModel.FindByName(s, r.Name) is not null) return $"There is already a region called {r.Name}.";
-        if (r.Size is < 1 or > RegionPlacement.MaxSize) return "A region is 1 to 16 squares on each side.";
+        if (RegionModel.FindByName(s, r.Name) is not null) return NameTaken(r.Name);
+        if (r.Size is < 1 or > RegionPlacement.MaxSize) return SizeRule;
         if (RegionPlacement.Check(s, r.X, r.Y, r.Size) is { Ok: false } check) return RegionAdvice.Placement(check);
         if (r.ShareWith is { } share && s.Programs.All(p => p.Instance != share)) return "That group of regions no longer exists.";
         return null;
@@ -1192,7 +1368,13 @@ public sealed partial class GridController(
         if (!running)
         {
             if (!adopted) _logins.Clear(regions.Select(r => r.Uuid));
-            await StartComponentAsync(program, ct);
+            _starting[instance] = 0;
+            try
+            {
+                await StartComponentAsync(program, ct);
+                ProgramUp(s, instance, program.Process.Pid);
+            }
+            finally { _starting.TryRemove(instance, out _); }
         }
         if (!adopted)
         {
@@ -1444,13 +1626,25 @@ public sealed partial class GridController(
         var dll = Path.Combine(paths.RuntimeOpenSim, "OpenSim.dll");
         var loadable = RegionModel.Loadable(s, p.Instance, _held).ToList();
         // Same PID file the program writes itself ([Startup] PIDFile).
-        var spec = new ProcessSpec("Region " + (loadable.FirstOrDefault()?.Name ?? p.Instance),
-            () => Dotnet(dll, "-inidirectory=" + paths.RegionDir(p.Instance), "-console=rest",
-                $"-logconfig=dreamgrid-region-{p.Instance}.log4net.xml"),
-            Path.Combine(paths.Pids, p.Instance + ".pid"), console.IsUpAsync, ct => console.SendAsync("quit", ct),
+        var instance = p.Instance;
+        var spec = new ProcessSpec("Region " + (loadable.FirstOrDefault()?.Name ?? instance),
+            () => ProgramStartForTests?.Invoke(instance) ?? Dotnet(dll, "-inidirectory=" + paths.RegionDir(instance), "-console=rest",
+                $"-logconfig=dreamgrid-region-{instance}.log4net.xml"),
+            Path.Combine(paths.Pids, instance + ".pid"), console.IsUpAsync, ct => console.SendAsync("quit", ct),
             TimeSpan.FromSeconds(300), TimeSpan.FromSeconds(60), dll);
-        return new Component("program-" + p.Instance, new ManagedProcess(spec, new RestartPolicy(), time), spec,
-            [p.HttpPort, p.ConsolePort, .. loadable.Select(r => r.UdpPort)], console, p.Instance) { Key = ProgramKey(s, p) };
+        var process = new ManagedProcess(spec, new RestartPolicy(), time);
+        // A crash restart by the monitor brings the program back without the controller.
+        process.StateChanged += state =>
+        {
+            if (state != ProcessState.Running) return;
+            _ = Task.Run(() =>
+            {
+                try { OnProgramRunning(instance, process); }
+                catch (Exception e) { _log?.LogWarning(e, "{Program} came back, but its settings could not be checked.", instance); }
+            });
+        };
+        return new Component("program-" + instance, process, spec,
+            [p.HttpPort, p.ConsolePort, .. loadable.Select(r => r.UdpPort)], console, instance) { Key = ProgramKey(s, p) };
     }
 
     private RestConsoleClient MakeConsole(LauncherSettings s, int port) =>

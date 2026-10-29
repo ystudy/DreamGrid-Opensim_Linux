@@ -52,10 +52,24 @@ public sealed class SettingsStore(string path)
     }
 
     /// <summary>
-    /// Schema 1 to 2: the single region becomes one program and one region with the same folder, ports and UUID, so a
+    /// Migrates to the current schema in one load. Schema 1 to 2: the single region becomes one program and one region with the same folder, ports and UUID, so a
     /// running region is adopted with no change to its config.
     /// </summary>
     private static LauncherSettings Migrate(LauncherSettings s)
+    {
+        if (s.SchemaVersion < 2) s = MigrateV1(s);
+        // Schema 2 to 3: "ubODE" was the default then; now null means the grid default, which starts as ubODE.
+        // Schema 2's "BulletSim" ran with the prototype's UseSeparatePhysicsThread=true, which is "BulletSimThreaded" now.
+        var programs = s.Programs.Select(p => p.Physics switch
+        {
+            "ubODE" => p with { Physics = null },
+            "BulletSim" => p with { Physics = "BulletSimThreaded" },
+            _ => p,
+        }).ToList();
+        return s with { SchemaVersion = LauncherSettings.CurrentSchema, Programs = programs };
+    }
+
+    private static LauncherSettings MigrateV1(LauncherSettings s)
     {
         var programs = new List<ProgramSettings>();
         var regions = new List<RegionSettings>();
@@ -64,7 +78,7 @@ public sealed class SettingsStore(string path)
             programs.Add(new ProgramSettings(r.Instance, s.RegionPort, s.RegionConsolePort, r.Physics));
             regions.Add(new RegionSettings(r.Instance, r.Name, r.Uuid, r.X, r.Y, r.Content, 1, s.RegionPort));
         }
-        return s with { SchemaVersion = LauncherSettings.CurrentSchema, Programs = programs, Regions = regions, LegacyRegion = null };
+        return s with { SchemaVersion = 2, Programs = programs, Regions = regions, LegacyRegion = null };
     }
 
     public void Save(LauncherSettings s)

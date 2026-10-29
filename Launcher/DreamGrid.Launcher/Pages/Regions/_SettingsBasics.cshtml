@@ -1,0 +1,55 @@
+@model DreamGrid.Launcher.Pages.Regions.SettingsModel
+@using DreamGrid.Launcher.Core.Grid
+<form method="post" action="/regions/region/@Model.Id/settings/basics?handler=rename" asp-antiforgery="true">
+    <label class="form-label mt-3" for="Name">Name</label>
+    <input class="form-control" id="Name" name="Name" value="@Model.NameText" disabled="@Model.Loaded" autocomplete="off">
+    <span class="field-error text-danger small d-block" data-error-for="Name">@Model.Error("Name")</span>
+    @if (Model.Loaded)
+    {
+        <p class="form-text">Stop @Model.Name first to rename it.</p>
+    }
+    else
+    {
+        <button type="submit" class="btn btn-primary mt-2">Rename</button>
+    }
+</form>
+
+<form method="post" action="/regions/region/@Model.Id/settings/basics?handler=resize" asp-antiforgery="true">
+    <label class="form-label mt-3" for="Size">Size</label>
+    <select class="form-select" id="Size" name="Size">
+        @for (var n = 1; n <= RegionPlacement.MaxSize; n++)
+        {
+            <option value="@n" selected="@(n == Model.SizeChoice)">@n×@n</option>
+        }
+    </select>
+    <span class="field-error text-danger small d-block" data-error-for="Size">@Model.Error("Size")</span>
+    @if (RegionAdvice.SizeRisk(Model.SizeChoice) is { } risk)
+    {
+        <p class="form-text size-risk">@risk</p>
+    }
+    @if (Model.Shrinking)
+    {
+        <input type="hidden" name="confirmed" value="true">
+        <div class="alert alert-warning mt-2" role="alert">
+            <p class="mb-2">Land and objects outside the new edge are lost.</p>
+            <button type="submit" name="saveFirst" value="true" class="btn btn-primary btn-sm" disabled="@(!Model.CanOar)">Save as OAR first, then shrink</button>
+            <button type="submit" class="btn btn-danger btn-sm">Shrink without saving</button>
+            <a class="btn btn-outline-secondary btn-sm" href="/regions/region/@Model.Id/settings/basics">Cancel</a>
+            @if (!Model.CanOar)
+            {
+                <p class="form-text mb-0">Start the region to save it first; an OAR needs it running.</p>
+            }
+        </div>
+    }
+    else
+    {
+        <button type="submit" class="btn btn-primary mt-2">Save size</button>
+    }
+</form>
+
+<dl class="region-facts mt-3">
+    <dt>Map spot</dt>
+    <dd>@Model.X, @Model.Y <a href="/regions/region/@Model.Id/move">Move…</a></dd>
+    <dt>Region UUID</dt>
+    <dd><code>@Model.Id</code></dd>
+</dl>

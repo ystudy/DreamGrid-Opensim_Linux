@@ -1,0 +1,26 @@
+@model DreamGrid.Launcher.Pages.Regions.SettingsModel
+@{
+    (string Value, string Text)[] choices = [("default", "Grid default (" + (Model.DefaultScripts ? "On" : "Off") + ")"), ("on", "On"), ("off", "Off")];
+}
+<form method="post" action="/regions/region/@Model.Id/settings/scripts?handler=scripts" asp-antiforgery="true">
+    <span class="field-error text-danger small d-block">@Model.Error("")</span>
+    <fieldset class="mt-3">
+        <legend class="fs-6 fw-semibold">Scripts</legend>
+        @foreach (var (value, text) in choices)
+        {
+            <div class="form-check">
+                <input class="form-check-input" type="radio" name="Scripts" id="Scripts-@value" value="@value" checked="@(Model.Scripts == value)">
+                <label class="form-check-label" for="Scripts-@value">@text</label>
+            </div>
+        }
+    </fieldset>
+    <label class="form-label mt-3" for="Timer">Script timer rate, in seconds</label>
+    <input class="form-control" id="Timer" name="Timer" value="@Model.Timer" placeholder="OpenSim's default" inputmode="decimal" autocomplete="off">
+    <span class="field-error text-danger small d-block" data-error-for="Timer">@Model.Error("MinTimerInterval")</span>
+    <label class="form-label mt-3" for="Fps">Frame rate, per second</label>
+    <input class="form-control" id="Fps" name="Fps" value="@Model.Fps" placeholder="OpenSim's default" inputmode="numeric" autocomplete="off">
+    <span class="field-error text-danger small d-block" data-error-for="Fps">@Model.Error("FramesPerSecond")</span>
+    <p class="form-text">Leave a box empty to use OpenSim's own default.</p>
+    <button type="submit" class="btn btn-primary mt-3">Save</button>
+    <a class="btn btn-outline-secondary mt-3" href="/regions/region/@Model.Id">Cancel</a>
+</form>

@@ -195,6 +195,75 @@ internal sealed class FakeGridController : IGridController
         await OnChangeRunsWith(regionId, shareWith, ct);
     }
 
+    /// <summary>
+    /// Runs inside the rename, resize and save-options calls with the recorded call text, before anything is saved (blocking
+    /// probes, thrown exceptions).
+    /// </summary>
+    public Func<string, CancellationToken, Task> OnRegionSettings { get; set; } = (_, _) => Task.CompletedTask;
+
+    /// <summary>What <see cref="SaveProgramOptionsAsync"/> returns: whether the cores and priority were applied at once.</summary>
+    public bool CpuAppliedNow { get; set; }
+
+    /// <summary>The programs <see cref="NeedsRestart"/> answers true for.</summary>
+    public HashSet<string> PendingRestart { get; } = new();
+
+    /// <summary>Every region options request, in order.</summary>
+    public List<(Guid Region, RegionOptions Options)> SavedRegionOptions { get; } = new();
+
+    /// <summary>Every program options request, in order.</summary>
+    public List<(string Instance, string? Physics, ProgramOptions Options)> SavedProgramOptions { get; } = new();
+
+    /// <summary>Records "RenameRegion &lt;id&gt; &lt;name&gt;"; like the controller, saves the name when a settings source is set.</summary>
+    public async Task RenameRegionAsync(Guid regionId, string name, CancellationToken ct)
+    {
+        var call = $"RenameRegion {regionId} {name}";
+        Record(call);
+        await OnRegionSettings(call, ct);
+        if (SettingsSource is not null)
+            UpdateSettings(l => l with { Regions = l.Regions.Select(r => r.Uuid == regionId ? r with { Name = name } : r).ToList() });
+    }
+
+    /// <summary>Records "ResizeRegion &lt;id&gt; &lt;size&gt;"; like the controller, saves the size when a settings source is set.</summary>
+    public async Task ResizeRegionAsync(Guid regionId, int size, CancellationToken ct)
+    {
+        var call = $"ResizeRegion {regionId} {size}";
+        Record(call);
+        await OnRegionSettings(call, ct);
+        if (SettingsSource is not null)
+            UpdateSettings(l => l with { Regions = l.Regions.Select(r => r.Uuid == regionId ? r with { Size = size } : r).ToList() });
+    }
+
+    /// <summary>Records "SaveRegionOptions &lt;id&gt;"; like the controller, saves the options when a settings source is set.</summary>
+    public async Task SaveRegionOptionsAsync(Guid regionId, RegionOptions options, CancellationToken ct)
+    {
+        var call = $"SaveRegionOptions {regionId}";
+        Record(call);
+        lock (SavedRegionOptions) SavedRegionOptions.Add((regionId, options));
+        await OnRegionSettings(call, ct);
+        if (SettingsSource is not null)
+            UpdateSettings(l => l with { Regions = l.Regions.Select(r => r.Uuid == regionId ? r with { Options = options } : r).ToList() });
+    }
+
+    /// <summary>
+    /// Records "SaveProgramOptions &lt;instance&gt;"; like the controller, saves physics and options when a settings source is
+    /// set, and returns <see cref="CpuAppliedNow"/>.
+    /// </summary>
+    public async Task<bool> SaveProgramOptionsAsync(string instance, string? physics, ProgramOptions options, CancellationToken ct)
+    {
+        var call = $"SaveProgramOptions {instance}";
+        Record(call);
+        lock (SavedProgramOptions) SavedProgramOptions.Add((instance, physics, options));
+        await OnRegionSettings(call, ct);
+        if (SettingsSource is not null)
+            UpdateSettings(l => l with
+            {
+                Programs = l.Programs.Select(p => p.Instance == instance ? p with { Physics = physics, Options = options } : p).ToList(),
+            });
+        return CpuAppliedNow;
+    }
+
+    public bool NeedsRestart(string instance) { lock (PendingRestart) return PendingRestart.Contains(instance); }
+
     /// <summary>Runs inside the delete, restore and erase calls (blocking probes, thrown exceptions).</summary>
     public Func<string, Guid, CancellationToken, Task> OnDeleted { get; set; } = (_, _, _) => Task.CompletedTask;
 

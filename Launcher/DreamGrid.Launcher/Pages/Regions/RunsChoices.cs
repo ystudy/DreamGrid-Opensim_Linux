@@ -27,7 +27,7 @@ public sealed record GroupChoice(string Value, string Instance, IReadOnlyList<st
 /// <summary>
 /// The "How it runs" choices the add form and the change page share (<c>_RunsChoices.cshtml</c>): "Runs on its own" when
 /// <see cref="Own"/> is set, then each group. A choice whose <see cref="Restarts"/> names regions gets an "I understand ...
-/// will restart" box (posted as <c>Confirm</c> with the choice's value); <see cref="Note"/> adds a line under a group.
+/// will restart" box (posted as <c>Confirm</c> with the choice's value); <see cref="Note"/> adds one line each under a group.
 /// </summary>
 public sealed record RunsChoices(
     string? Chosen,
@@ -36,7 +36,7 @@ public sealed record RunsChoices(
     Func<GroupChoice, string> ShareText,
     Func<string, IReadOnlyList<string>> Restarts,
     IReadOnlyCollection<string> Confirmed,
-    Func<GroupChoice, string?>? Note = null)
+    Func<GroupChoice, IReadOnlyList<string>>? Note = null)
 {
     /// <summary>The posted value of "Runs on its own".</summary>
     public const string OwnValue = "own";

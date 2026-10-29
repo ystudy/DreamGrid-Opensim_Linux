@@ -59,6 +59,45 @@ public interface IGridController
     Task ChangeRunsWithAsync(Guid regionId, string? shareWith, CancellationToken ct);
 
     /// <summary>
+    /// Renames a region that no running program has loaded, saving only its name: its old region file goes off, and it
+    /// registers under the new name at its next start. Throws <see cref="ArgumentException"/> for a name that breaks the name
+    /// rules or that another region (live or deleted, in any letter case) holds; a change of its own name's letter case is
+    /// allowed. Throws <see cref="InvalidOperationException"/> for a missing or deleted region, while it is loaded ("Stop
+    /// &lt;Name&gt; first; a region is renamed while it is offline.") and while its program runs an OAR job.
+    /// </summary>
+    Task RenameRegionAsync(Guid regionId, string name, CancellationToken ct);
+
+    /// <summary>
+    /// Saves a region's size (1 to <see cref="RegionPlacement.MaxSize"/> squares on each side); nothing restarts, so it applies at
+    /// its program's next start. Throws <see cref="ArgumentException"/> in plain words for a size out of range or an area that
+    /// is off the map or taken, and <see cref="InvalidOperationException"/> for a missing or deleted region and while its
+    /// program runs an OAR job.
+    /// </summary>
+    Task ResizeRegionAsync(Guid regionId, int size, CancellationToken ct);
+
+    /// <summary>
+    /// Saves a region's limits and access options; they apply at its program's next start. Throws
+    /// <see cref="ArgumentException"/> carrying the first validation error, and <see cref="InvalidOperationException"/> for a
+    /// missing or deleted region.
+    /// </summary>
+    Task SaveRegionOptionsAsync(Guid regionId, RegionOptions options, CancellationToken ct);
+
+    /// <summary>
+    /// Saves a program's physics (null: the grid default) and options. When its cores or priority changed and it runs, the
+    /// operating system applies them at once and this returns true; everything else applies at its next start, and it
+    /// returns false. Throws <see cref="ArgumentException"/> carrying the first validation error or for an unknown program,
+    /// and <see cref="InvalidOperationException"/> in plain words when the cores or priority could not be applied (they stay
+    /// saved).
+    /// </summary>
+    Task<bool> SaveProgramOptionsAsync(string instance, string? physics, ProgramOptions options, CancellationToken ct);
+
+    /// <summary>
+    /// True while the program runs and was started (or adopted) from other settings than the current ones: its physics,
+    /// scripts or other options, or a loadable region's name, size or options. Cores and priority apply at once and never count.
+    /// </summary>
+    bool NeedsRestart(string instance);
+
+    /// <summary>
     /// Moves a region to Recently deleted at once, even a broken one: it keeps its database rows, name, spot, ports and
     /// folder name. Its program then stops when no loadable region is left in it (and is removed once it has no live
     /// regions), or restarts without the region when it had loaded it; a failed or stopped program is left alone. The

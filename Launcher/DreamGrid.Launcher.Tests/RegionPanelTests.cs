@@ -98,7 +98,9 @@ public sealed class RegionPanelTests : IAsyncLifetime
         // Beach is at 1001 and Sunset Shore touches its east edge, so Beach lies to the west.
         Assert.Contains("Next to Beach (west)", text);
         Assert.Contains("Runs on its own", text);
-        Assert.Contains("Region settings are coming next.", text);
+        Assert.DoesNotContain("coming next", text);
+        Assert.Equal($"/regions/region/{SunsetId}/settings", doc.QuerySelector("a[href$='/settings']")!.GetAttribute("href"));
+        Assert.Null(doc.QuerySelector(".pending-restart"));
         Assert.Equal($"/regions/region/{SunsetId}/move", doc.QuerySelector("a[href$='/move']")!.GetAttribute("href"));
         Assert.Equal($"/regions/region/{SunsetId}/runs", doc.QuerySelector("a[href$='/runs']")!.GetAttribute("href"));
     }
@@ -395,6 +397,29 @@ public sealed class RegionPanelTests : IAsyncLifetime
         using var response = await client.GetAsync($"/regions/region/{deleted}", Ct);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Panel_shows_restart_now_when_settings_are_pending()
+    {
+        _f.Grid.PendingRestart.Add("Home");
+
+        var doc = await PageAsync(BeachId);
+
+        var box = doc.QuerySelector(".pending-restart")!;
+        Assert.Contains("Some settings apply when Home and Beach restart.", box.TextContent);
+        Assert.Equal($"/regions/region/{BeachId}?handler=power", box.GetAttribute("action"));
+        Assert.Equal("Restart", box.QuerySelector("input[name=action]")!.GetAttribute("value"));
+        Assert.Equal("Restart now", box.QuerySelector("button")!.TextContent.Trim());
+        Assert.Null((await PageAsync(SunsetId)).QuerySelector(".pending-restart")); // another program
+    }
+
+    [Fact]
+    public async Task Panel_hides_restart_now_while_the_region_is_stopped()
+    {
+        _f.Grid.PendingRestart.Add("Isle"); // parked
+
+        Assert.Null((await PageAsync(IsleId)).QuerySelector(".pending-restart"));
     }
 
     [Fact]

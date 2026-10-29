@@ -1,0 +1,45 @@
+@page "/advanced/regions"
+@model DreamGrid.Launcher.Pages.Advanced.RegionsModel
+@{
+    ViewData["Title"] = "Regions";
+}
+<nav aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="/advanced">Advanced Settings</a></li><li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li></ol></nav>
+<h1>Regions</h1>
+<p class="text-body-secondary">What a region uses when you have not chosen for it on its own settings page.</p>
+@if (Model.SavedMessage is { } message)
+{
+    <div class="ok-box alert alert-success" role="status">
+        <p><strong>@message</strong></p>
+        @if (Model.ShowRestart)
+        {
+            <form method="post" action="/dashboard?handler=run" asp-antiforgery="true">
+                <button type="submit" name="gridAction" value="restart">Restart your world</button>
+            </form>
+        }
+    </div>
+}
+<form id="regions" method="post" asp-antiforgery="true">
+    <fieldset class="mt-3">
+        <legend class="fs-6 fw-semibold">Physics engine</legend>
+        @foreach (var (value, text) in RegionsModel.PhysicsChoices)
+        {
+            <div class="form-check">
+                <input class="form-check-input" type="radio" name="DefaultPhysics" id="DefaultPhysics-@value" value="@value" checked="@(Model.DefaultPhysics == value)">
+                <label class="form-check-label" for="DefaultPhysics-@value">@text</label>
+            </div>
+        }
+    </fieldset>
+    <fieldset class="mt-3">
+        <legend class="fs-6 fw-semibold">Scripts</legend>
+        <div class="form-check">
+            <input class="form-check-input" type="radio" name="DefaultScripts" id="DefaultScripts-on" value="true" checked="@(Model.DefaultScripts == "true")">
+            <label class="form-check-label" for="DefaultScripts-on">On</label>
+        </div>
+        <div class="form-check">
+            <input class="form-check-input" type="radio" name="DefaultScripts" id="DefaultScripts-off" value="false" checked="@(Model.DefaultScripts == "false")">
+            <label class="form-check-label" for="DefaultScripts-off">Off</label>
+        </div>
+    </fieldset>
+    <p class="hint form-text">A region that has its own physics engine or script setting keeps it. A change applies when the regions that use these restart.</p>
+    <button type="submit" class="btn btn-primary mt-3">Save</button>
+</form>

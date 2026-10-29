@@ -98,6 +98,15 @@
         <dd>@(Model.RunsWith.Count == 0 ? "Runs on its own" : "Runs with " + string.Join(", ", Model.RunsWith))</dd>
     </dl>
 
+    @if (Model.PendingRestart.Count > 0)
+    {
+        <form method="post" action="/regions/region/@Model.Id?handler=power" asp-antiforgery="true" class="pending-restart alert alert-warning py-2">
+            <span>Some settings apply when @RegionAdvice.Join(Model.PendingRestart) @(Model.PendingRestart.Count == 1 ? "restarts" : "restart").</span>
+            <input type="hidden" name="action" value="Restart">
+            <button type="submit" class="btn btn-warning btn-sm ms-2">Restart now</button>
+        </form>
+    }
+
     <form method="post" action="/regions/region/@Model.Id?handler=power" asp-antiforgery="true" class="mb-3">
         <details class="power-menu">
             <summary class="btn btn-primary">&#x23FB; Power</summary>
@@ -159,5 +168,5 @@
             <button type="submit" class="btn btn-link p-0 text-danger">Delete…</button>
         </form>
     </div>
-    <p class="form-text mb-0">Region settings are coming next.</p>
+    <p class="mb-0"><a class="region-settings-link" href="/regions/region/@Model.Id/settings">Settings…</a></p>
 </div>
