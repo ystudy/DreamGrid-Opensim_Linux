@@ -220,6 +220,23 @@ public sealed class SetupFlowTests
     }
 
     [Fact]
+    public async Task Unavailable_plan_page_has_a_disabled_choose_button()
+    {
+        await using var f = Unplanned();
+        using var client = await SetupClientAsync(f);
+
+        var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/plan/region-server", Ct));
+
+        var button = page.QuerySelectorAll("main button").Single(b => b.TextContent.Trim() == "Choose this plan");
+        Assert.True(button.HasAttribute("disabled"));
+        Assert.Contains("Coming in a later DreamGrid update.", page.Body!.TextContent);
+        Assert.Null(page.QuerySelector("form[action*='handler=Choose']"));
+
+        var cards = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/plan", Ct));
+        Assert.Equal("Coming in a later DreamGrid update.", cards.QuerySelector(".plan-card[data-plan=region-server] .plan-later")?.TextContent.Trim());
+    }
+
+    [Fact]
     public async Task Every_plan_page_has_a_diagram_with_this_computer_highlighted()
     {
         await using var f = Unplanned();
