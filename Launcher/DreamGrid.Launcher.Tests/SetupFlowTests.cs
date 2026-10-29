@@ -528,6 +528,7 @@ public sealed class SetupFlowTests
         var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/region", Ct));
         Assert.Contains("Skip: no regions on this computer", page.Body!.TextContent);
         Assert.Contains("isn't advised", page.Body.TextContent);
+        Assert.NotNull(page.QuerySelector("main > form input[name=RegionName]")); // the create form, not Skip's, is main's own
 
         using var skip = await PostFormAsync(client, "/setup/region?handler=Skip", new(), tokenFrom: "/setup/region");
         Assert.Equal("/setup/connect", Location(skip));

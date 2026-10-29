@@ -121,8 +121,8 @@ public sealed partial class LauncherEndToEndTests
             });
             Assert.Equal("/setup/region", page.Path);
 
-            // Create the region (not Skip) and wait until it is ready (logins enabled).
-            page = await web.SubmitAsync(page, new() { ["RegionName"] = "Welcome", ["Content"] = "island" });
+            // Create the region (not Skip, whose form comes first on this plan) and wait until it is ready (logins enabled).
+            page = await web.SubmitAsync(page, new() { ["RegionName"] = "Welcome", ["Content"] = "island" }, "main > form");
             Assert.Equal("/setup/region?working=1", page.PathAndQuery);
             await WaitForAsync(launcher, () => RegionReadyAsync(web), "/api/setup/progress to reach \"Ready\"", () => "last progress: " + _lastProgress);
 
