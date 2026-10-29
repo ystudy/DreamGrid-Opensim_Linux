@@ -256,9 +256,12 @@ public sealed class RegionServerPagesTests
         await using var f = Factory(OwnerPlan.RegionServer);
         using var client = await SignedInAsync(f);
 
-        (await PostAsync(client, "/advanced/plan?handler=Hypergrid", new() { ["Hypergrid"] = "true" }, tokenFrom: "/advanced/plan")).Dispose();
+        using var resp = await PostAsync(client, "/advanced/plan?handler=Hypergrid", new() { ["Hypergrid"] = "true" }, tokenFrom: "/advanced/plan");
+        var text = MainText(await resp.Content.ReadAsStringAsync(Ct));
 
         Assert.False(f.Store.LoadOrCreate().Hypergrid);
+        Assert.DoesNotContain("needs a public address", text);
+        Assert.Contains("Hypergrid is off for this grid; the Grid Asset Server decides.", text);
     }
 
     // ---- Advanced: network ----
@@ -352,5 +355,54 @@ public sealed class RegionServerPagesTests
         using var get = await client.GetAsync("/advanced/join", Ct);
         Assert.Equal(HttpStatusCode.Redirect, get.StatusCode);
         Assert.Equal("/advanced", get.Headers.Location?.OriginalString);
+    }
+
+    [Fact]
+    public async Task Join_page_confirm_moves_the_estate_owner_to_the_new_grids_account()
+    {
+        await using var f = Factory(OwnerPlan.RegionServer);
+        f.Join.Result = Avalon("Elsewhere") with { Host = "192.168.1.9", LoginUri = "http://192.168.1.9:8002/" };
+        using var client = await SignedInAsync(f);
+
+        (await PostAsync(client, "/advanced/join?handler=Confirm", new() { ["Address"] = "192.168.1.9" }, tokenFrom: "/advanced/join")).Dispose();
+
+        var s = f.Store.LoadOrCreate();
+        Assert.Equal("192.168.1.9", s.Join!.Host);
+        Assert.Contains("SetEstateOwner Estate Owner", f.Grid.Snapshot());
+        Assert.NotEqual(OwnerId, s.Setup.Owner!.PrincipalId);
+    }
+
+    [Fact]
+    public async Task Join_page_confirm_puts_the_old_join_back_when_the_owner_is_not_on_the_new_grid()
+    {
+        await using var f = Factory(OwnerPlan.RegionServer);
+        f.Join.Result = Avalon("Elsewhere") with { Host = "192.168.1.9", LoginUri = "http://192.168.1.9:8002/" };
+        f.Grid.EstateOwnerError = new ArgumentException("There's no avatar called Estate Owner on Elsewhere.");
+        using var client = await SignedInAsync(f);
+
+        using var resp = await PostAsync(client, "/advanced/join?handler=Confirm", new() { ["Address"] = "192.168.1.9" }, tokenFrom: "/advanced/join");
+        var html = await resp.Content.ReadAsStringAsync(Ct);
+
+        Assert.Contains("There's no avatar called Estate Owner on Elsewhere. Create your avatar on that grid first, then try again.", MainText(html));
+        Assert.Contains(new HtmlParser().ParseDocument(html).QuerySelectorAll("button"), b => b.TextContent.Trim() == "Join this grid");
+        var s = f.Store.LoadOrCreate();
+        Assert.Equal("192.168.1.5", s.Join!.Host);
+        Assert.Equal("Avalon", s.GridName);
+        Assert.Equal(OwnerId, s.Setup.Owner!.PrincipalId);
+    }
+
+    [Fact]
+    public async Task Region_server_dashboard_shows_no_robust_log_for_a_failed_grid_asset_server()
+    {
+        await using var f = Factory(OwnerPlan.RegionServer);
+        f.Grid.Status = RegionServerStatus(ProcessState.Failed);
+        Directory.CreateDirectory(f.Paths.Logs);
+        File.WriteAllText(Path.Combine(f.Paths.Logs, "robust.log"), "2026-10-25 [ERROR] STALE-ROBUST-LINE\n");
+        using var client = await SignedInAsync(f);
+
+        var html = await client.GetStringAsync("/", Ct);
+
+        Assert.DoesNotContain("STALE-ROBUST-LINE", html);
+        Assert.Contains("The Grid Asset Server isn&#x27;t answering.", html);
     }
 }

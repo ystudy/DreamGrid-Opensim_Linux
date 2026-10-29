@@ -11,6 +11,10 @@
     <partial name="_Saved" model="notes" />
     return;
 }
+@if (Model.Found is not null && Model.Error is not null)
+{
+    <div class="error-box alert alert-danger"><p>@Model.Error</p></div>
+}
 @if (Model.Found is { } found)
 {
     <partial name="_JoinFound" model="new JoinFoundModel(found, Model.Address!)" />

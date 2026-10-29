@@ -42,7 +42,8 @@ public sealed class IndexModel(IGridController grid, IOnlineUsers online, GridAc
         if (StatusApi.ShowsStartFailure(raw) && raw.StartFailure!.ConflictPort is null)
             details.Add(("Why the last start failed", [raw.StartFailure!.Message]));
         details.AddRange(new[] { g.Database, g.Robust }
-            .Where(c => c.State == nameof(Core.Processes.ProcessState.Failed))
+            // A Region Server has no Robust log for the Grid Asset Server row: it runs on another computer.
+            .Where(c => c.State == nameof(Core.Processes.ProcessState.Failed) && (raw.RunsRobust || c.Name != "robust"))
             .Select(c => (c.Label + ": the last lines it wrote", LastLines(c.Name)))
             .Where(f => f.Item2.Count > 0));
         // A failed region: its program's log (regions sharing a program share it).

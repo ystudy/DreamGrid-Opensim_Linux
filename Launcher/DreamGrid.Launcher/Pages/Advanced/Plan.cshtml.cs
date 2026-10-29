@@ -94,7 +94,8 @@ public sealed class PlanModel(IGridController grid, Func<LauncherSettings> setti
         var s = settings();
         if (!Offered(s) || !PlanCatalog.HypergridAllowed(s))
         {
-            Problem = NeedsPublicAddress;
+            // A Region Server has no switch: the page's own sentence (HypergridLine) says who decides.
+            Problem = s.Plan == OwnerPlan.RegionServer ? null : NeedsPublicAddress;
             Fill(s);
             return Page();
         }

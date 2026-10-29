@@ -56,7 +56,25 @@ public sealed class JoinModel(IGridController grid, Func<LauncherSettings> setti
             return Page();
         }
 
+        // The estate owner's account id belongs to the old grid: save the new join, then look the owner up on the
+        // new grid (which saves the new id). If that fails the old join is put back.
+        var before = settings();
         grid.UpdateSettings(s => JoinForm.Apply(s, read), writeConfig: true);
+        if (before.Setup.Owner is { } owner)
+        {
+            try
+            {
+                await grid.SetEstateOwnerAsync(owner.FirstName, owner.LastName, HttpContext.RequestAborted);
+            }
+            catch (Exception e) when (e is ArgumentException or GridAssetUnreachableException)
+            {
+                grid.UpdateSettings(s => s with { Join = before.Join, GridName = before.GridName }, writeConfig: true);
+                Error = e is ArgumentException ? e.Message + " Create your avatar on that grid first, then try again." : e.Message;
+                Found = read;
+                Address = JoinForm.AddressOf(read);
+                return Page();
+            }
+        }
         Current = JoinForm.AddressOf(read);
         SavedNotes = [];
         return Page();
