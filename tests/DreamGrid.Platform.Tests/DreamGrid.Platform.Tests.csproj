@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../OpenSim/Framework/OpenSim.Framework.csproj" />
+    <ProjectReference Include="../../OpenSim/Framework/Console/OpenSim.Framework.Console.csproj" />
     <ProjectReference Include="..\DreamGrid.Smoke\DreamGrid.Smoke.csproj" />
   </ItemGroup>
 

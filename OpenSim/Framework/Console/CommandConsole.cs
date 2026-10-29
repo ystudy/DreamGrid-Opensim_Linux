@@ -88,7 +88,8 @@ namespace OpenSim.Framework.Console
               or type help <item>' where <item> is one of the following:";
 
         /// <value>
-        /// Commands organized by keyword in a tree
+        /// Commands organized by keyword in a tree. Every read and write locks it: the remote console reads it
+        /// (GetXml) from an HTTP thread while services are still adding their commands.
         /// </value>
         private Dictionary<string, object> tree =
                 new Dictionary<string, object>();
@@ -105,33 +106,36 @@ namespace OpenSim.Framework.Console
         /// <returns></returns>
         public List<string> GetHelp(string[] cmd)
         {
-            List<string> help = new List<string>();
-            List<string> helpParts = new List<string>(cmd);
-
-            // Remove initial help keyword
-            helpParts.RemoveAt(0);
-
-            help.Add(""); // Will become a newline.
-
-            // General help
-            if (helpParts.Count == 0)
+            lock (tree)
             {
-                help.Add(GeneralHelpText);
-                help.Add(ItemHelpText);
-                help.AddRange(CollectModulesHelp(tree));
-            }
-            else if (helpParts.Count == 1 && helpParts[0] == "all")
-            {
-                help.AddRange(CollectAllCommandsHelp());
-            }
-            else
-            {
-                help.AddRange(CollectHelp(helpParts));
-            }
+                List<string> help = new List<string>();
+                List<string> helpParts = new List<string>(cmd);
 
-            help.Add(""); // Will become a newline.
+                // Remove initial help keyword
+                helpParts.RemoveAt(0);
 
-            return help;
+                help.Add(""); // Will become a newline.
+
+                // General help
+                if (helpParts.Count == 0)
+                {
+                    help.Add(GeneralHelpText);
+                    help.Add(ItemHelpText);
+                    help.AddRange(CollectModulesHelp(tree));
+                }
+                else if (helpParts.Count == 1 && helpParts[0] == "all")
+                {
+                    help.AddRange(CollectAllCommandsHelp());
+                }
+                else
+                {
+                    help.AddRange(CollectHelp(helpParts));
+                }
+
+                help.Add(""); // Will become a newline.
+
+                return help;
+            }
         }
 
         /// <summary>
@@ -297,180 +301,189 @@ namespace OpenSim.Framework.Console
                 string help, string longhelp, string descriptivehelp,
                 CommandDelegate fn)
         {
-            string[] parts = Parser.Parse(command);
-
-            Dictionary<string, Object> current = tree;
-
-            foreach (string part in parts)
+            lock (tree)
             {
-                if (current.ContainsKey(part))
+                string[] parts = Parser.Parse(command);
+
+                Dictionary<string, Object> current = tree;
+
+                foreach (string part in parts)
                 {
-                    if (current[part] is Dictionary<string, Object>)
-                        current = (Dictionary<string, Object>)current[part];
+                    if (current.ContainsKey(part))
+                    {
+                        if (current[part] is Dictionary<string, Object>)
+                            current = (Dictionary<string, Object>)current[part];
+                        else
+                            return;
+                    }
                     else
-                        return;
+                    {
+                        current[part] = new Dictionary<string, Object>();
+                        current = (Dictionary<string, Object>)current[part];
+                    }
                 }
-                else
+
+                CommandInfo info;
+
+                if (current.ContainsKey(String.Empty))
                 {
-                    current[part] = new Dictionary<string, Object>();
-                    current = (Dictionary<string, Object>)current[part];
+                    info = (CommandInfo)current[String.Empty];
+                    if (!info.shared && !info.fn.Contains(fn))
+                        info.fn.Add(fn);
+
+                    return;
                 }
-            }
 
-            CommandInfo info;
+                info = new CommandInfo();
+                info.module = module;
+                info.shared = shared;
+                info.help_text = help;
+                info.long_help = longhelp;
+                info.descriptive_help = descriptivehelp;
+                info.fn = new List<CommandDelegate>();
+                info.fn.Add(fn);
+                current[String.Empty] = info;
 
-            if (current.ContainsKey(String.Empty))
-            {
-                info = (CommandInfo)current[String.Empty];
-                if (!info.shared && !info.fn.Contains(fn))
-                    info.fn.Add(fn);
-
-                return;
-            }
-
-            info = new CommandInfo();
-            info.module = module;
-            info.shared = shared;
-            info.help_text = help;
-            info.long_help = longhelp;
-            info.descriptive_help = descriptivehelp;
-            info.fn = new List<CommandDelegate>();
-            info.fn.Add(fn);
-            current[String.Empty] = info;
-
-            // Now add command to modules dictionary
-            lock (m_modulesCommands)
-            {
-                List<CommandInfo> commands;
-                if (m_modulesCommands.ContainsKey(module))
+                // Now add command to modules dictionary
+                lock (m_modulesCommands)
                 {
-                    commands = m_modulesCommands[module];
-                }
-                else
-                {
-                    commands = new List<CommandInfo>();
-                    m_modulesCommands[module] = commands;
-                }
+                    List<CommandInfo> commands;
+                    if (m_modulesCommands.ContainsKey(module))
+                    {
+                        commands = m_modulesCommands[module];
+                    }
+                    else
+                    {
+                        commands = new List<CommandInfo>();
+                        m_modulesCommands[module] = commands;
+                    }
 
-//                m_log.DebugFormat("[COMMAND CONSOLE]: Adding to category {0} command {1}", module, command);
-                commands.Add(info);
+    //                m_log.DebugFormat("[COMMAND CONSOLE]: Adding to category {0} command {1}", module, command);
+                    commands.Add(info);
+                }
             }
         }
 
         public string[] FindNextOption(string[] cmd, bool term)
         {
-            Dictionary<string, object> current = tree;
-
-            int remaining = cmd.Length;
-
-            foreach (string s in cmd)
+            lock (tree)
             {
-                remaining--;
+                Dictionary<string, object> current = tree;
 
-                List<string> found = new List<string>();
+                int remaining = cmd.Length;
 
-                foreach (string opt in current.Keys)
+                foreach (string s in cmd)
                 {
-                    if (remaining > 0 && opt == s)
+                    remaining--;
+
+                    List<string> found = new List<string>();
+
+                    foreach (string opt in current.Keys)
                     {
-                        found.Clear();
-                        found.Add(opt);
-                        break;
+                        if (remaining > 0 && opt == s)
+                        {
+                            found.Clear();
+                            found.Add(opt);
+                            break;
+                        }
+                        if (opt.StartsWith(s))
+                        {
+                            found.Add(opt);
+                        }
                     }
-                    if (opt.StartsWith(s))
+
+                    if (found.Count == 1 && (remaining != 0 || term))
                     {
-                        found.Add(opt);
+                        current = (Dictionary<string, object>)current[found[0]];
                     }
-                }
-
-                if (found.Count == 1 && (remaining != 0 || term))
-                {
-                    current = (Dictionary<string, object>)current[found[0]];
-                }
-                else if (found.Count > 0)
-                {
-                    return found.ToArray();
-                }
-                else
-                {
-                    break;
-//                    return new string[] {"<cr>"};
-                }
-            }
-
-            if (current.Count > 1)
-            {
-                List<string> choices = new List<string>();
-
-                bool addcr = false;
-                foreach (string s in current.Keys)
-                {
-                    if (s.Length == 0)
+                    else if (found.Count > 0)
                     {
-                        CommandInfo ci = (CommandInfo)current[String.Empty];
-                        if (ci.fn.Count != 0)
-                            addcr = true;
+                        return found.ToArray();
                     }
                     else
-                        choices.Add(s);
+                    {
+                        break;
+    //                    return new string[] {"<cr>"};
+                    }
                 }
-                if (addcr)
-                    choices.Add("<cr>");
-                return choices.ToArray();
+
+                if (current.Count > 1)
+                {
+                    List<string> choices = new List<string>();
+
+                    bool addcr = false;
+                    foreach (string s in current.Keys)
+                    {
+                        if (s.Length == 0)
+                        {
+                            CommandInfo ci = (CommandInfo)current[String.Empty];
+                            if (ci.fn.Count != 0)
+                                addcr = true;
+                        }
+                        else
+                            choices.Add(s);
+                    }
+                    if (addcr)
+                        choices.Add("<cr>");
+                    return choices.ToArray();
+                }
+
+                if (current.ContainsKey(String.Empty))
+                    return new string[] { "Command help: "+((CommandInfo)current[String.Empty]).help_text};
+
+                return new string[] { new List<string>(current.Keys)[0] };
             }
-
-            if (current.ContainsKey(String.Empty))
-                return new string[] { "Command help: "+((CommandInfo)current[String.Empty]).help_text};
-
-            return new string[] { new List<string>(current.Keys)[0] };
         }
 
         private CommandInfo ResolveCommand(string[] cmd, out string[] result)
         {
-            result = cmd;
-            int index = -1;
-
-            Dictionary<string, object> current = tree;
-
-            foreach (string s in cmd)
+            lock (tree)
             {
-                index++;
+                result = cmd;
+                int index = -1;
 
-                List<string> found = new List<string>();
+                Dictionary<string, object> current = tree;
 
-                foreach (string opt in current.Keys)
+                foreach (string s in cmd)
                 {
-                    if (opt == s)
+                    index++;
+
+                    List<string> found = new List<string>();
+
+                    foreach (string opt in current.Keys)
                     {
-                        found.Clear();
-                        found.Add(opt);
+                        if (opt == s)
+                        {
+                            found.Clear();
+                            found.Add(opt);
+                            break;
+                        }
+                        if (opt.StartsWith(s))
+                        {
+                            found.Add(opt);
+                        }
+                    }
+
+                    if (found.Count == 1)
+                    {
+                        result[index] = found[0];
+                        current = (Dictionary<string, object>)current[found[0]];
+                    }
+                    else if (found.Count > 0)
+                    {
+                        return null;
+                    }
+                    else
+                    {
                         break;
                     }
-                    if (opt.StartsWith(s))
-                    {
-                        found.Add(opt);
-                    }
                 }
 
-                if (found.Count == 1)
-                {
-                    result[index] = found[0];
-                    current = (Dictionary<string, object>)current[found[0]];
-                }
-                else if (found.Count > 0)
-                {
-                    return null;
-                }
-                else
-                {
-                    break;
-                }
+                if (current.ContainsKey(String.Empty))
+                    return (CommandInfo)current[String.Empty];
+
+                return null;
             }
-
-            if (current.ContainsKey(String.Empty))
-                return (CommandInfo)current[String.Empty];
-
-            return null;
         }
 
         public bool HasCommand(string command)
@@ -503,29 +516,32 @@ namespace OpenSim.Framework.Console
 
         public XmlElement GetXml(XmlDocument doc)
         {
-            CommandInfo help = (CommandInfo)((Dictionary<string, object>)tree["help"])[String.Empty];
-            ((Dictionary<string, object>)tree["help"]).Remove(string.Empty);
-            if (((Dictionary<string, object>)tree["help"]).Count == 0)
-                tree.Remove("help");
+            lock (tree)
+            {
+                CommandInfo help = (CommandInfo)((Dictionary<string, object>)tree["help"])[String.Empty];
+                ((Dictionary<string, object>)tree["help"]).Remove(string.Empty);
+                if (((Dictionary<string, object>)tree["help"]).Count == 0)
+                    tree.Remove("help");
 
-            CommandInfo quit = (CommandInfo)((Dictionary<string, object>)tree["quit"])[String.Empty];
-            ((Dictionary<string, object>)tree["quit"]).Remove(string.Empty);
-            if (((Dictionary<string, object>)tree["quit"]).Count == 0)
-                tree.Remove("quit");
+                CommandInfo quit = (CommandInfo)((Dictionary<string, object>)tree["quit"])[String.Empty];
+                ((Dictionary<string, object>)tree["quit"]).Remove(string.Empty);
+                if (((Dictionary<string, object>)tree["quit"]).Count == 0)
+                    tree.Remove("quit");
 
-            XmlElement root = doc.CreateElement("", "HelpTree", "");
+                XmlElement root = doc.CreateElement("", "HelpTree", "");
 
-            ProcessTreeLevel(tree, root, doc);
+                ProcessTreeLevel(tree, root, doc);
 
-            if (!tree.ContainsKey("help"))
-                tree["help"] = (object) new Dictionary<string, object>();
-            ((Dictionary<string, object>)tree["help"])[String.Empty] = help;
+                if (!tree.ContainsKey("help"))
+                    tree["help"] = (object) new Dictionary<string, object>();
+                ((Dictionary<string, object>)tree["help"])[String.Empty] = help;
 
-            if (!tree.ContainsKey("quit"))
-                tree["quit"] = (object) new Dictionary<string, object>();
-            ((Dictionary<string, object>)tree["quit"])[String.Empty] = quit;
+                if (!tree.ContainsKey("quit"))
+                    tree["quit"] = (object) new Dictionary<string, object>();
+                ((Dictionary<string, object>)tree["quit"])[String.Empty] = quit;
 
-            return root;
+                return root;
+            }
         }
 
         private void ProcessTreeLevel(Dictionary<string, object> level, XmlElement xml, XmlDocument doc)
@@ -576,27 +592,30 @@ namespace OpenSim.Framework.Console
 
         public void FromXml(XmlElement root, CommandDelegate fn)
         {
-            CommandInfo help = (CommandInfo)((Dictionary<string, object>)tree["help"])[String.Empty];
-            ((Dictionary<string, object>)tree["help"]).Remove(string.Empty);
-            if (((Dictionary<string, object>)tree["help"]).Count == 0)
-                tree.Remove("help");
+            lock (tree)
+            {
+                CommandInfo help = (CommandInfo)((Dictionary<string, object>)tree["help"])[String.Empty];
+                ((Dictionary<string, object>)tree["help"]).Remove(string.Empty);
+                if (((Dictionary<string, object>)tree["help"]).Count == 0)
+                    tree.Remove("help");
 
-            CommandInfo quit = (CommandInfo)((Dictionary<string, object>)tree["quit"])[String.Empty];
-            ((Dictionary<string, object>)tree["quit"]).Remove(string.Empty);
-            if (((Dictionary<string, object>)tree["quit"]).Count == 0)
-                tree.Remove("quit");
+                CommandInfo quit = (CommandInfo)((Dictionary<string, object>)tree["quit"])[String.Empty];
+                ((Dictionary<string, object>)tree["quit"]).Remove(string.Empty);
+                if (((Dictionary<string, object>)tree["quit"]).Count == 0)
+                    tree.Remove("quit");
 
-            tree.Clear();
+                tree.Clear();
 
-            ReadTreeLevel(tree, root, fn);
+                ReadTreeLevel(tree, root, fn);
 
-            if (!tree.ContainsKey("help"))
-                tree["help"] = (object) new Dictionary<string, object>();
-            ((Dictionary<string, object>)tree["help"])[String.Empty] = help;
+                if (!tree.ContainsKey("help"))
+                    tree["help"] = (object) new Dictionary<string, object>();
+                ((Dictionary<string, object>)tree["help"])[String.Empty] = help;
 
-            if (!tree.ContainsKey("quit"))
-                tree["quit"] = (object) new Dictionary<string, object>();
-            ((Dictionary<string, object>)tree["quit"])[String.Empty] = quit;
+                if (!tree.ContainsKey("quit"))
+                    tree["quit"] = (object) new Dictionary<string, object>();
+                ((Dictionary<string, object>)tree["quit"])[String.Empty] = quit;
+            }
         }
 
         private void ReadTreeLevel(Dictionary<string, object> level, XmlNode node, CommandDelegate fn)
