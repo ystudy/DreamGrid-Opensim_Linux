@@ -31,7 +31,7 @@ public sealed class LoginModel(IRobustClient robust, Func<LauncherSettings> sett
         // The throttle key is the normalised "First Last" (shared with the port-8001 API), so extra spaces cannot
         // give one account several lock states.
         var name = AvatarName.Parse(Name);
-        if (throttle.IsLocked(name.Key))
+        if (throttle.IsLocked(name.Key, HttpContext.Connection.RemoteIpAddress))
         {
             Error = "Too many attempts. Try again in a few minutes.";
             return Page();
@@ -65,7 +65,7 @@ public sealed class LoginModel(IRobustClient robust, Func<LauncherSettings> sett
 
     private IActionResult Fail(AvatarName name)
     {
-        throttle.RecordFailure(name.Key);
+        throttle.RecordFailure(name.Key, HttpContext.Connection.RemoteIpAddress);
         // Only the cleaned first name: the rest could be a password typed into the wrong field.
         log.LogInformation("Sign-in: a sign-in for first name {First} was refused", name.ForLog);
         Error = Generic;

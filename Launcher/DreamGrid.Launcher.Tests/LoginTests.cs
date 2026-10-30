@@ -1,6 +1,8 @@
 using System.Net;
 using AngleSharp.Html.Parser;
 using DreamGrid.Launcher.Core.Settings;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Xunit;
 
 namespace DreamGrid.Launcher.Tests;
@@ -12,7 +14,7 @@ public sealed class LoginTests
     private const string Wrong = "Name or password is wrong, or this avatar is not an administrator.";
     private const string Locked = "Too many attempts. Try again in a few minutes.";
 
-    private static LauncherFactory Factory()
+    private static LauncherFactory Factory(Action<IApplicationBuilder>? before = null)
     {
         var f = new LauncherFactory(s => s with
         {
@@ -20,7 +22,10 @@ public sealed class LoginTests
             SetupToken = null,
             Setup = new SetupState(WorldNamed: true, OwnerCreated: true, RegionCreated: true, Finished: true,
                 Owner: new OwnerInfo("Test", "Owner", Guid.NewGuid())),
-        });
+        })
+        {
+            Before = before,
+        };
         f.Robust.Add("Test", "Owner", 200, "pass-word1").Add("Plain", "Person", 0, "pass-word1");
         return f;
     }
@@ -112,6 +117,45 @@ public sealed class LoginTests
         Assert.Equal(HttpStatusCode.OK, r.StatusCode);
         Assert.Equal(Locked, await ErrorAsync(r));
         Assert.Equal(lookups, f.Robust.Lookups);
+    }
+
+    [Fact]
+    public async Task Ip_lock_refuses_correct_password()
+    {
+        var remote = IPAddress.Parse("10.1.2.3");
+        await using var f = Factory(app => app.Use((ctx, next) =>
+        {
+            ctx.Connection.RemoteIpAddress = remote;
+            return next(ctx);
+        }));
+        var client = Client(f);
+        for (var i = 0; i < 20; i++)
+            Assert.Equal(Wrong, await ErrorAsync(await LoginAsync(client, $"Guess{i} Person", "bad-password")));
+        var lookups = f.Robust.Lookups;
+
+        var r = await LoginAsync(client, "Test Owner", "pass-word1");
+
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        Assert.Equal(Locked, await ErrorAsync(r));
+        Assert.Equal(lookups, f.Robust.Lookups);
+    }
+
+    [Fact]
+    public async Task Ip_lock_does_not_reach_other_addresses()
+    {
+        var remote = IPAddress.Parse("10.1.2.3");
+        await using var f = Factory(app => app.Use((ctx, next) =>
+        {
+            ctx.Connection.RemoteIpAddress = ctx.Request.Headers.ContainsKey("X-Test-Far") ? IPAddress.Parse("10.9.9.9") : remote;
+            return next(ctx);
+        }));
+        var client = Client(f);
+        for (var i = 0; i < 20; i++)
+            await LoginAsync(client, $"Guess{i} Person", "bad-password");
+
+        var far = Client(f);
+        far.DefaultRequestHeaders.Add("X-Test-Far", "1");
+        Assert.Equal(HttpStatusCode.Redirect, (await LoginAsync(far, "Test Owner", "pass-word1")).StatusCode);
     }
 
     [Fact]

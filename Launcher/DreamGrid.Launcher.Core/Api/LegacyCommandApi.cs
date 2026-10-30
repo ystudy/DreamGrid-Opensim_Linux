@@ -1,3 +1,4 @@
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -14,7 +15,7 @@ namespace DreamGrid.Launcher.Core.Api;
 /// The port-8001 command API (spec 5, <c>API.txt</c>): <c>RegionStatus</c> and <c>regionlist</c> need no password,
 /// every process command needs level 200; module commands are appended. Replies are "ACK", data, or "NAK reason".
 /// <paramref name="settings"/> is read per request, so a changed MachineId or region is seen at once. Avatar password
-/// checks share the website's <see cref="LoginThrottle"/>: a locked name is refused without asking Robust.
+/// checks share the website's <see cref="LoginThrottle"/>: a locked name or caller address is refused without asking Robust.
 /// </summary>
 public sealed class LegacyCommandApi(
     IGridController grid,
@@ -32,13 +33,13 @@ public sealed class LegacyCommandApi(
 
     private readonly Dictionary<string, LegacyCommand> _commands = BuildCommands(grid, settings, modules);
 
-    public async Task<string> HandleAsync(LegacyRequest r, CancellationToken ct)
+    public async Task<string> HandleAsync(LegacyRequest r, IPAddress? caller, CancellationToken ct)
     {
         if (!_commands.TryGetValue(r.Command, out var command))
             return $"NAK Unknown command {r.Command}";
 
         var needed = command.MinLevel == AdminLevel ? settings().Security.AdminLevel : command.MinLevel;
-        if (needed > 0 && await LevelAsync(r, ct) < needed)
+        if (needed > 0 && await LevelAsync(r, caller, ct) < needed)
             return $"NAK You do not have permission to {command.Name}";
 
         try
@@ -52,14 +53,14 @@ public sealed class LegacyCommandApi(
     }
 
     /// <summary>1000 for the MachineId; else the level of the avatar ("First Last") whose password matches; else 0.</summary>
-    private async Task<int> LevelAsync(LegacyRequest r, CancellationToken ct)
+    private async Task<int> LevelAsync(LegacyRequest r, IPAddress? caller, CancellationToken ct)
     {
         if (string.IsNullOrEmpty(r.Password)) return 0;
         if (FixedEquals(r.Password, settings().MachineId)) return MachineLevel;
 
         var name = AvatarName.Parse(r.Avatar);
         if (!name.IsComplete) return 0;
-        if (throttle.IsLocked(name.Key))
+        if (throttle.IsLocked(name.Key, caller))
         {
             log.LogInformation("Avatar check for first name {First} refused: too many failed attempts.", name.ForLog);
             return 0;
@@ -69,7 +70,7 @@ public sealed class LegacyCommandApi(
             var account = await robust.GetAccountAsync(name.First, name.Last, ct);
             if (account is null || !await robust.AuthenticateAsync(account.PrincipalId, r.Password, ct))
             {
-                throttle.RecordFailure(name.Key);
+                throttle.RecordFailure(name.Key, caller);
                 return 0;
             }
             throttle.RecordSuccess(name.Key);

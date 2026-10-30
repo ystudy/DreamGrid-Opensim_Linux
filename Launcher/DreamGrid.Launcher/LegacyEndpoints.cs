@@ -68,7 +68,7 @@ public static class LegacyEndpoints
         if (request.Raw.ContainsKey("command"))
         {
             // Not RequestAborted: a caller that goes away must not leave a component half-stopped.
-            var reply = await api.HandleAsync(request, lifetime.ApplicationStopping);
+            var reply = await api.HandleAsync(request, ctx.Connection.RemoteIpAddress, lifetime.ApplicationStopping);
             // Never the password, avatar or MachineId: the command and how it ended only.
             log.LogInformation("Command {Command}: {Result}", Clean(request.Command), Outcome(reply));
             return Text(ctx, reply);

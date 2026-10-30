@@ -72,6 +72,7 @@ try
     }
     LauncherPaths.CreateOwnerOnly(paths.Data);
     LauncherPaths.CreateOwnerOnly(paths.DataProtectionKeys);
+    LauncherPaths.CreateOwnerOnly(paths.Security);
 }
 catch (Exception e) when (e is ArgumentException or SettingsCorruptException or IOException or UnauthorizedAccessException)
 {
@@ -134,7 +135,8 @@ builder.Services.AddGrid(paths, store);
 // Robust's map tiles, fetched on the browser's behalf (the browser never reaches Robust's port).
 builder.Services.AddHttpClient(RegionsApi.RobustMapClient, c => c.Timeout = TimeSpan.FromSeconds(5));
 builder.Services.AddSingleton<LogReader>();
-builder.Services.AddSingleton<LoginThrottle>();
+builder.Services.AddSingleton(sp => new LoginThrottle(sp.GetRequiredService<TimeProvider>(),
+    Path.Combine(paths.Security, "throttle.json"), sp.GetRequiredService<ILogger<LoginThrottle>>()));
 builder.Services.AddSingleton<LegacyCommandApi>();
 builder.Services.AddSingleton<IOnlineUsers>(sp => new OnlineUsers(sp.GetRequiredService<Func<LauncherSettings>>(),
     sp.GetRequiredService<ILogger<OnlineUsers>>()));
