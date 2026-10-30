@@ -17,6 +17,7 @@ namespace DreamGrid.Launcher.Core.Api;
 /// every process command needs level 200; module commands are appended. Replies are "ACK", data, or "NAK reason".
 /// <paramref name="settings"/> is read per request, so a changed MachineId or region is seen at once. Avatar password
 /// checks share the website's <see cref="LoginThrottle"/>: a locked name or caller address is refused without asking Robust.
+/// An avatar password alone is never enough for someone with two-factor on (or for staff when the owner requires it): they use the MachineId.
 /// </summary>
 public sealed class LegacyCommandApi(
     IGridController grid,
@@ -25,6 +26,7 @@ public sealed class LegacyCommandApi(
     IEnumerable<IFeatureModule> modules,
     LoginThrottle throttle,
     AuditLog audit,
+    ITwoFactorStatus twoFactor,
     ILogger<LegacyCommandApi> log)
 {
     public const int MachineLevel = 1000;
@@ -89,11 +91,27 @@ public sealed class LegacyCommandApi(
                 throttle.RecordFailure(name.Key, caller);
                 return Nobody;
             }
-            throttle.RecordSuccess(name.Key);
+            throttle.RecordSuccess(name.Key); // the password was right, so whatever follows is not a failure
+
+            // An avatar password is one factor. Anyone with two-factor on (or whose store cannot be read: fail closed) uses the
+            // MachineId, and so does staff when the owner requires two-factor of them. The owner is never refused by the switch.
+            var role = AdminRule.RoleOf(settings(), account);
+            var state = twoFactor.StateOf(account.PrincipalId);
+            if (state != TwoFactorState.Off)
+            {
+                log.LogInformation("Avatar check for first name {First} refused: two-factor sign-in is on; use the MachineId.", name.ForLog);
+                return Nobody;
+            }
+            if (settings().Security.RequireTwoFactorForStaff && role is StaffRole.Admin or StaffRole.Supervisor)
+            {
+                log.LogInformation("Avatar check for first name {First} refused: two-factor sign-in is required for staff; use the MachineId.", name.ForLog);
+                return Nobody;
+            }
+
             // A Region Server's or Connected Server's estate owner is level 0 on the other grid but administers here; on a
             // Connected Server a higher level on that grid counts for nothing.
             return new Caller(AdminRule.EffectiveLevel(settings(), account), $"{account.FirstName} {account.LastName}",
-                account.PrincipalId, AdminRule.RoleOf(settings(), account).AuditName());
+                account.PrincipalId, role.AuditName());
         }
         catch (Exception e) when (!ct.IsCancellationRequested)
         {

@@ -167,6 +167,37 @@ public sealed class LegacyEndpointsTests : IAsyncLifetime
         Assert.False(factory.Grid.GetStatus().LoginsEnabled);
     }
 
+    [Theory]
+    [InlineData("203.0.113.5", HttpStatusCode.NotFound, false)]
+    [InlineData("10.2.3.4", HttpStatusCode.OK, true)]
+    public async Task Command_api_obeys_allow_list(string caller, HttpStatusCode expected, bool ran)
+    {
+        await using var factory = new LauncherFactory(s => s with
+        {
+            Security = s.Security with { AdminNetworks = ["10.0.0.0/8"] },
+        })
+        {
+            Before = app => app.Use((ctx, next) =>
+            {
+                ctx.Connection.RemoteIpAddress = IPAddress.Parse(caller);
+                return next(ctx);
+            }),
+        };
+        var machineId = factory.Store.LoadOrCreate().MachineId;
+        using var form = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["COMMAND"] = "StopMysql",
+            ["Password"] = machineId,
+        });
+
+        using var resp = await factory.CreateClient().PostAsync("/", form, Ct);
+
+        // Outside the list even the right MachineId runs nothing, and the reply says nothing.
+        Assert.Equal(expected, resp.StatusCode);
+        Assert.Equal(ran, factory.Grid.Snapshot().Contains("Stop database"));
+        if (!ran) Assert.Equal("", await resp.Content.ReadAsStringAsync(Ct));
+    }
+
     [Fact]
     public async Task Welcome_page_names_the_grid()
     {

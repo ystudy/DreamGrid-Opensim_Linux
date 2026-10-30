@@ -38,6 +38,7 @@ public sealed class LegacyCommandApiTests : IDisposable
     private readonly LoginThrottle _throttle;
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "dg-cmd-" + Guid.NewGuid().ToString("N"));
     private readonly AuditLog _audit;
+    private readonly FakeTwoFactor _twoFactor = new();
 
     public LegacyCommandApiTests()
     {
@@ -112,7 +113,7 @@ public sealed class LegacyCommandApiTests : IDisposable
     private LegacyCommandApi Api(params IFeatureModule[] modules) => Api(_robust, modules);
 
     private LegacyCommandApi Api(IRobustClient robust, params IFeatureModule[] modules) =>
-        new(_grid, robust, () => _settings, modules, _throttle, _audit,
+        new(_grid, robust, () => _settings, modules, _throttle, _audit, _twoFactor,
             LoggerFactory.Create(b => b.AddProvider(new CapturingLoggerProvider(_logs))).CreateLogger<LegacyCommandApi>());
 
     private static LegacyRequest Req(string command, string? avatar = null, string? password = null,
@@ -489,6 +490,138 @@ public sealed class LegacyCommandApiTests : IDisposable
             new("Ping", 0, (_, _) => Task.FromResult("pong")),
             new("Secret", 200, (_, _) => Task.FromResult("ok")),
         ];
+    }
+
+    // ---- two-factor and the required-for-staff switch (plan 7a) ----
+
+    private sealed class FakeTwoFactor : ITwoFactorStatus
+    {
+        private readonly Dictionary<Guid, TwoFactorState> _states = new();
+        public void Set(Guid principal, TwoFactorState state) => _states[principal] = state;
+        public TwoFactorState StateOf(Guid principal) => _states.GetValueOrDefault(principal, TwoFactorState.Off);
+    }
+
+    /// <summary>A command a supervisor (level 100) may run.</summary>
+    private sealed class PeekModule : IFeatureModule
+    {
+        public string Id => "peek";
+        public string Title => "Peek";
+        public IReadOnlyDictionary<string, string> Defaults { get; } = new Dictionary<string, string>();
+        public IEnumerable<IniOverride> Contribute(LauncherSettings s) => [];
+        public IEnumerable<LegacyCommand> Commands => [new("Peek", 100, (_, _) => Task.FromResult("seen"))];
+    }
+
+    private static readonly Guid GodId = Guid.Parse("0a000000-0000-0000-0000-000000000001");
+    private static readonly Guid DivaId = Guid.Parse("0a000000-0000-0000-0000-000000000002");
+    private static readonly Guid BossId = Guid.Parse("0a000000-0000-0000-0000-000000000003");
+
+    private void KnownIds()
+    {
+        _robust.Add("God", "Owner", 200, "godpw", GodId).Add("Diva", "Admin", 100, "divapw", DivaId)
+            .Add("Boss", "Person", 0, "bosspw", BossId);
+        _settings = _settings with
+        {
+            Setup = new SetupState(OwnerCreated: true, Finished: true, Owner: new OwnerInfo("Boss", "Person", BossId)),
+        };
+    }
+
+    private void RequireTwoFactor() =>
+        _settings = _settings with { Security = _settings.Security with { RequireTwoFactorForStaff = true } };
+
+    [Theory]
+    [InlineData(TwoFactorState.On)]
+    [InlineData(TwoFactorState.Unknown)]
+    public async Task Avatar_with_two_factor_refused_by_password(TwoFactorState state)
+    {
+        KnownIds();
+        _twoFactor.Set(GodId, state);
+        var api = Api();
+
+        // Refused as level 0, but the password was right, so it is never counted as a failure.
+        for (var i = 0; i < LoginThrottle.NameMaxFailures + 1; i++)
+            Assert.StartsWith("NAK You do not have permission to StopRobust", await api.HandleAsync(Req("StopRobust", "God Owner", "godpw"), null, Ct));
+
+        Assert.Empty(_grid.Snapshot());
+        Assert.False(_throttle.IsLocked("God Owner", null));
+        Assert.Empty(AuditEntries());
+        // The MachineId still works.
+        Assert.Equal("ACK", await api.HandleAsync(Req("StopRobust", password: MachineId), null, Ct));
+    }
+
+    [Fact]
+    public async Task A_refusal_for_two_factor_is_logged_by_first_name_only_and_never_the_password()
+    {
+        KnownIds();
+        _twoFactor.Set(GodId, TwoFactorState.On);
+
+        await Api().HandleAsync(Req("StopRobust", "God Owner", "godpw"), null, Ct);
+
+        var line = Assert.Single(_logs, l => l.Level == LogLevel.Information);
+        Assert.Contains("God", line.Message);
+        Assert.Contains("two-factor", line.Message);
+        Assert.Contains("MachineId", line.Message);
+        Assert.DoesNotContain("Owner", line.Message);
+        Assert.DoesNotContain("godpw", line.Message);
+        Assert.DoesNotContain(MachineId, line.Message);
+    }
+
+    [Fact]
+    public async Task The_owner_with_two_factor_on_is_refused_by_password_too()
+    {
+        KnownIds();
+        _twoFactor.Set(BossId, TwoFactorState.On);
+
+        Assert.StartsWith("NAK You do not have permission to StopRobust", await Api().HandleAsync(Req("StopRobust", "Boss Person", "bosspw"), null, Ct));
+        Assert.Empty(_grid.Snapshot());
+    }
+
+    [Fact]
+    public async Task Required_switch_refuses_admin_password()
+    {
+        KnownIds();
+        RequireTwoFactor(); // God has no two-factor
+
+        Assert.StartsWith("NAK You do not have permission to StopRobust", await Api().HandleAsync(Req("StopRobust", "God Owner", "godpw"), null, Ct));
+        Assert.Empty(_grid.Snapshot());
+        Assert.False(_throttle.IsLocked("God Owner", null));
+        Assert.Contains(_logs, l => l.Level == LogLevel.Information && l.Message.Contains("God") && l.Message.Contains("two-factor"));
+
+        // With the switch off the same password works.
+        _settings = _settings with { Security = _settings.Security with { RequireTwoFactorForStaff = false } };
+        Assert.Equal("ACK", await Api().HandleAsync(Req("StopRobust", "God Owner", "godpw"), null, Ct));
+    }
+
+    [Fact]
+    public async Task Required_switch_refuses_supervisor_password()
+    {
+        KnownIds();
+        var api = Api(new PeekModule());
+        Assert.Equal("seen", await api.HandleAsync(Req("Peek", "Diva Admin", "divapw"), null, Ct));
+
+        RequireTwoFactor();
+
+        Assert.StartsWith("NAK You do not have permission to Peek", await api.HandleAsync(Req("Peek", "Diva Admin", "divapw"), null, Ct));
+    }
+
+    [Fact]
+    public async Task Owner_without_two_factor_still_allowed_when_switch_on()
+    {
+        KnownIds();
+        RequireTwoFactor();
+
+        Assert.Equal("ACK", await Api().HandleAsync(Req("StopRobust", "Boss Person", "bosspw"), null, Ct));
+        Assert.Equal(["Stop robust"], _grid.Snapshot());
+    }
+
+    [Fact]
+    public async Task MachineId_unaffected()
+    {
+        KnownIds();
+        RequireTwoFactor();
+        foreach (var id in new[] { GodId, DivaId, BossId }) _twoFactor.Set(id, TwoFactorState.Unknown);
+
+        Assert.Equal("ACK", await Api().HandleAsync(Req("StopMysql", password: MachineId), null, Ct));
+        Assert.Equal(0, _robust.Lookups);
     }
 
     // ---- many regions (plan 4a) ----
