@@ -55,7 +55,7 @@ reset-two-factor
 
 It turns two-factor off for the owner. It finds the data folder itself (`%ProgramData%\DreamGrid` on Windows, `/var/lib/dreamgrid` on Debian); add `--data <folder>` if the grid keeps its data elsewhere. It works whether the grid is running or stopped.
 
-If `twofactor.json` is damaged, two-factor cannot be checked, so the launcher fails closed. While it is damaged, nobody can sign in, the owner included. Run this on the grid computer; it needs no sign-in. With two-factor required for staff on, admins and supervisors who are already signed in are sent to the Two-factor page until it is fixed; with the switch off, people who are already signed in are not affected:
+If `twofactor.json` is damaged, two-factor cannot be checked, so the launcher fails closed. While it is damaged, nobody can sign in, the owner included. Run this on the grid computer; it needs no sign-in. With two-factor required for staff on, admins and supervisors who are already signed in are sent to the Two-factor page until it is fixed; with the switch off, people who are already signed in are not affected, except someone who signed in while it was on and hasn't set up two-factor yet: they keep being sent to the Two-factor page until they set it up or sign out:
 
 ```
 reset-two-factor --all-damaged
@@ -71,7 +71,7 @@ Do not put a reverse proxy on the same computer in front of DreamGrid. Such a pr
 
 ## Audit log
 
-`audit.log` in the logs folder (`<data>/state/logs`) has one line of JSON for each thing staff did on the website, and for each sign-in. It records the time, who, their role, the address, the action, what it was done to, and how it ended. Staff sign-ins, refused sign-ins, role and suspension changes, two-factor changes, session endings, every change request a signed-in staff member makes, and every port-8001 command that ran and needed a level are in it. It never holds a password, a two-factor code, a backup code, a secret, the MachineId or a token. A refused sign-in names only the first name (the rest could be a password typed into the name field), except for a staff member whose password was right but whose two-factor file can't be read, or who typed a wrong two-factor code (at sign-in or on the Two-factor page): those are written with the full name. The file rolls by size like the other logs. The owner and admins read it on the Logs page: choose the "audit" source.
+`audit.log` in the logs folder (`<data>/state/logs`) has one line of JSON for each thing staff did on the website or the port-8001 API, and for each sign-in attempt that is checked (attempts refused by the throttle are not logged). It records the time, who, their role, the address, the action, what it was done to, and how it ended. Staff sign-ins, refused sign-ins, role and suspension changes, two-factor changes, session endings, every change request a signed-in staff member makes, and every port-8001 command that ran and needed a level are in it. It never holds a password, a two-factor code, a backup code, a secret, the MachineId or a token. A refused sign-in names only the first name, or "(an incomplete name)" when no last name was typed (the rest could be a password typed into the name field), except for a staff member whose password was right but whose two-factor file can't be read, or who typed a wrong two-factor code (at sign-in or on the Two-factor page): those are written with the full name. The file rolls by size like the other logs. The owner and admins read it on the Logs page: choose the "audit" source.
 
 ## Browser security headers
 

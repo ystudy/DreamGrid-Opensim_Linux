@@ -6,7 +6,7 @@ namespace DreamGrid.Launcher.Core.Logs;
 /// One thing a person with a role did (or tried to do) on this computer's website or port-8001 API.
 /// Never a password, code, secret, MachineId or token: the caller passes names, not what was typed.
 /// </summary>
-/// <param name="Actor">The avatar's name ("First Last"), the first name only for a refused sign-in (the rest could be a password typed into the name field), except a staff member whose password was right but whose two-factor file can't be read or who typed a wrong two-factor code (the full name), or the word MachineId.</param>
+/// <param name="Actor">The avatar's name ("First Last"), the first name only for a refused sign-in, or "(an incomplete name)" when no last name was typed (the rest could be a password typed into the name field), except a staff member whose password was right but whose two-factor file can't be read or who typed a wrong two-factor code (the full name), or the word MachineId.</param>
 /// <param name="ActorId">The avatar's principal id, when there is one.</param>
 /// <param name="Role">owner, admin, supervisor, or machine.</param>
 /// <param name="Action">One of the names the plan lists: sign-in, request, command and so on.</param>
