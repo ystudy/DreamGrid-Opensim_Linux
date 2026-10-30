@@ -47,12 +47,13 @@ public sealed class LoginModel(IRobustClient robust, Func<LauncherSettings> sett
         RobustAccount? account;
         try
         {
-            account = await robust.GetAccountAsync(name.First, name.Last, ct);
+            // The strict lookup: an unusable reply is the service failing, never a wrong password counted by the throttle.
+            account = await robust.FindAccountAsync(name.First, name.Last, ct);
             if (account is not null && await robust.AuthenticateAsync(account.PrincipalId, password, ct))
                 role = AdminRule.RoleOf(settings(), account);
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException
-            && !ct.IsCancellationRequested)
+            or InvalidDataException && !ct.IsCancellationRequested)
         {
             log.LogWarning("Sign-in: the account service did not answer: {Message}", e.Message);
             Error = "Your world's sign-in service isn't running yet. Start your world, then try again.";

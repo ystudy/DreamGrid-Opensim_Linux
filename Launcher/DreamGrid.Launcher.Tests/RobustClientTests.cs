@@ -234,4 +234,71 @@ public class RobustClientTests
         Assert.Equal("1023", req.Form("XMAX"));
         Assert.Equal("5375", req.Form("YMAX"));
     }
+
+    private static string AccountReply(string principal = Pid, string? level = "<UserLevel>200</UserLevel>") =>
+        "<?xml version=\"1.0\"?><ServerResponse><result type=\"List\"><FirstName>Test</FirstName><LastName>Owner</LastName>" +
+        "<Email></Email><PrincipalID>" + principal + "</PrincipalID>" + level + "</result></ServerResponse>";
+
+    [Fact]
+    public async Task FindAccount_parses_an_account()
+    {
+        var (c, h) = Make(r => (HttpStatusCode.OK, AccountReply()));
+
+        var a = await c.FindAccountAsync("Test", "Owner", CancellationToken.None);
+
+        Assert.Equal(new RobustAccount(Guid.Parse(Pid), "Test", "Owner", 200, ""), a);
+        var req = Assert.Single(h.Requests);
+        Assert.Equal("/accounts", req.Uri.AbsolutePath);
+        Assert.Equal("getaccount", req.Form("METHOD"));
+    }
+
+    [Fact]
+    public async Task FindAccount_returns_null_only_for_no_such_account()
+    {
+        var (c, _) = Make(r => (HttpStatusCode.OK, "<?xml version=\"1.0\"?><ServerResponse><result>null</result></ServerResponse>"));
+
+        Assert.Null(await c.FindAccountAsync("Nobody", "Here", CancellationToken.None));
+    }
+
+    [Theory]
+    [InlineData("<ServerResponse><Result>Failure</Result><Message>Database error</Message></ServerResponse>")] // Robust's error envelope
+    [InlineData("<html><body>Bad gateway</body>")] // not XML (a proxy page)
+    [InlineData("")] // empty body
+    [InlineData("<ServerResponse></ServerResponse>")] // no result
+    [InlineData("<ServerResponse><result></result></ServerResponse>")] // an empty result
+    [InlineData("<ServerResponse><result>Failure</result></ServerResponse>")] // a result that is neither null nor an account
+    public async Task FindAccount_throws_on_a_reply_that_is_not_an_answer(string body)
+    {
+        var (c, _) = Make(r => (HttpStatusCode.OK, body));
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => c.FindAccountAsync("Test", "Owner", CancellationToken.None));
+    }
+
+    [Theory]
+    [InlineData("not-a-guid", "<UserLevel>200</UserLevel>")]
+    [InlineData(Pid, null)] // no UserLevel
+    [InlineData(Pid, "<UserLevel></UserLevel>")]
+    [InlineData(Pid, "<UserLevel>lots</UserLevel>")]
+    public async Task FindAccount_throws_on_an_unreadable_account(string principal, string? level)
+    {
+        var (c, _) = Make(r => (HttpStatusCode.OK, AccountReply(principal, level)));
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => c.FindAccountAsync("Test", "Owner", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task FindAccount_reads_a_negative_level()
+    {
+        var (c, _) = Make(r => (HttpStatusCode.OK, AccountReply(level: "<UserLevel>-1</UserLevel>")));
+
+        Assert.Equal(-1, (await c.FindAccountAsync("Test", "Owner", CancellationToken.None))!.UserLevel);
+    }
+
+    [Fact]
+    public async Task GetAccount_still_reads_an_unusable_reply_as_no_account()
+    {
+        var (c, _) = Make(r => (HttpStatusCode.OK, "<ServerResponse><Result>Failure</Result></ServerResponse>"));
+
+        Assert.Null(await c.GetAccountAsync("Test", "Owner", CancellationToken.None));
+    }
 }

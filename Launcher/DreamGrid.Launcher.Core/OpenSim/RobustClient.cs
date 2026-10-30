@@ -13,6 +13,13 @@ public interface IRobustClient
 {
     Task<bool> IsReadyAsync(CancellationToken ct);
     Task<RobustAccount?> GetAccountAsync(string first, string last, CancellationToken ct);
+
+    /// <summary>
+    /// The strict lookup for sign-in decisions: null only when Robust answered "no such account" (<c>&lt;result&gt;null&lt;/result&gt;</c>);
+    /// any other unusable reply (not XML, an error envelope, no result, a PrincipalID or UserLevel that doesn't parse) throws
+    /// <see cref="InvalidDataException"/>, so a Robust failure can never be read as "this person has no role".
+    /// </summary>
+    Task<RobustAccount?> FindAccountAsync(string first, string last, CancellationToken ct);
     Task<bool> AuthenticateAsync(Guid principal, string plainPassword, CancellationToken ct);
 
     /// <summary>Every region on the grid's map (all computers), from the grid service. Empty when there are none.</summary>
@@ -63,6 +70,30 @@ public sealed class RobustClient(HttpClient http, Func<LauncherSettings> setting
         return new RobustAccount(id, Field("FirstName"), Field("LastName"), level, Field("Email"));
     }
 
+    public async Task<RobustAccount?> FindAccountAsync(string first, string last, CancellationToken ct)
+    {
+        XElement? root;
+        try
+        {
+            root = await PostAsync(GridServiceKind.Accounts, "/accounts", ct, strict: true,
+                ("METHOD", "getaccount"), ("FirstName", first), ("LastName", last));
+        }
+        catch (System.Xml.XmlException)
+        {
+            throw new InvalidDataException("The account service's reply is not XML.");
+        }
+        var result = root?.Element("result") ?? throw new InvalidDataException("The account service's reply has no result.");
+        if (!result.HasElements)
+            return result.Value.Trim() == "null" ? null : throw new InvalidDataException("The account service's result is not an account.");
+
+        string Field(string name) => result.Element(name)?.Value.Trim() ?? "";
+        if (!Guid.TryParse(Field("PrincipalID"), out var id))
+            throw new InvalidDataException("The account service's reply has no readable PrincipalID.");
+        if (!int.TryParse(Field("UserLevel"), System.Globalization.NumberStyles.AllowLeadingSign, System.Globalization.CultureInfo.InvariantCulture, out var level))
+            throw new InvalidDataException("The account service's reply has no readable UserLevel.");
+        return new RobustAccount(id, Field("FirstName"), Field("LastName"), level, Field("Email"));
+    }
+
     public async Task<bool> AuthenticateAsync(Guid principal, string plainPassword, CancellationToken ct)
     {
         var md5 = Convert.ToHexStringLower(MD5.HashData(Encoding.UTF8.GetBytes(plainPassword)));
@@ -100,12 +131,16 @@ public sealed class RobustClient(HttpClient http, Func<LauncherSettings> setting
         return regions;
     }
 
-    private async Task<XElement?> PostAsync(GridServiceKind service, string path, CancellationToken ct, params (string Key, string Value)[] fields)
+    private Task<XElement?> PostAsync(GridServiceKind service, string path, CancellationToken ct, params (string Key, string Value)[] fields) =>
+        PostAsync(service, path, ct, strict: false, fields);
+
+    /// <summary>The reply's root element; a reply that isn't XML is null, or (<paramref name="strict"/>) an XmlException.</summary>
+    private async Task<XElement?> PostAsync(GridServiceKind service, string path, CancellationToken ct, bool strict, params (string Key, string Value)[] fields)
     {
         using var content = new FormUrlEncodedContent(fields.Select(f => new KeyValuePair<string, string>(f.Key, f.Value)));
         using var resp = await http.PostAsync(new Uri(GridEndpoints.ServiceBase(settings(), service), path), content, ct);
         resp.EnsureSuccessStatusCode();
         try { return XDocument.Parse(await resp.Content.ReadAsStringAsync(ct)).Root; }
-        catch (System.Xml.XmlException) { return null; }
+        catch (System.Xml.XmlException) when (!strict) { return null; }
     }
 }

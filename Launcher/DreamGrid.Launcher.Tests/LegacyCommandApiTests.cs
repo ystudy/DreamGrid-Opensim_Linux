@@ -469,6 +469,8 @@ public sealed class LegacyCommandApiTests : IDisposable
     private sealed class ThrowingRobust(Exception failure) : IRobustClient
     {
         public Task<bool> IsReadyAsync(CancellationToken ct) => Task.FromResult(true);
+        public Task<RobustAccount?> FindAccountAsync(string first, string last, CancellationToken ct) => GetAccountAsync(first, last, ct);
+
         public Task<RobustAccount?> GetAccountAsync(string first, string last, CancellationToken ct) => Task.FromException<RobustAccount?>(failure);
         public Task<bool> AuthenticateAsync(Guid principal, string plainPassword, CancellationToken ct) => Task.FromResult(true);
         public Task<IReadOnlyList<MapRegion>> GetMapRegionsAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<MapRegion>>([]);

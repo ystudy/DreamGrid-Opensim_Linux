@@ -161,6 +161,8 @@ public abstract class OtherGridControllerRig : IAsyncLifetime
 
         public Exception? AccountError { get; set; }
 
+        public Task<RobustAccount?> FindAccountAsync(string first, string last, CancellationToken ct) => GetAccountAsync(first, last, ct);
+
         public Task<RobustAccount?> GetAccountAsync(string first, string last, CancellationToken ct) =>
             AccountError is { } e ? Task.FromException<RobustAccount?>(e) : Task.FromResult(Accounts.FirstOrDefault(a => string.Equals(a.FirstName, first, StringComparison.OrdinalIgnoreCase)
                 && string.Equals(a.LastName, last, StringComparison.OrdinalIgnoreCase)));

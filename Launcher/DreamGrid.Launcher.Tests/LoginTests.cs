@@ -188,6 +188,22 @@ public sealed class LoginTests
     }
 
     [Fact]
+    public async Task Unusable_account_reply_is_a_service_failure_not_a_wrong_password()
+    {
+        await using var f = Factory();
+        f.Robust.FailureReply = true;
+        var client = Client(f);
+        for (var i = 0; i < 6; i++)
+        {
+            var r = await LoginAsync(client, "Test Owner", "pass-word1");
+            Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+            Assert.Equal("Your world's sign-in service isn't running yet. Start your world, then try again.", await ErrorAsync(r));
+        }
+        f.Robust.FailureReply = false;
+        Assert.Equal(HttpStatusCode.Redirect, (await LoginAsync(client, "Test Owner", "pass-word1")).StatusCode);
+    }
+
+    [Fact]
     public async Task Password_is_never_logged()
     {
         await using var f = Factory();

@@ -446,11 +446,34 @@ internal sealed class FakeRobustAccounts : IRobustClient
 
     public Task<bool> IsReadyAsync(CancellationToken ct) => Task.FromResult(true);
 
+    /// <summary>
+    /// Simulates Robust answering with something that isn't an account (an error envelope, a proxy page): the strict lookup
+    /// throws, the lenient one reads it as no account, as <see cref="RobustClient"/> does.
+    /// </summary>
+    public bool FailureReply { get; set; }
+
+    public FakeRobustAccounts Remove(string first, string last)
+    {
+        _accounts.Remove((first, last));
+        return this;
+    }
+
     public Task<RobustAccount?> GetAccountAsync(string first, string last, CancellationToken ct)
     {
         Lookups++;
         if (Down) throw new HttpRequestException("Connection refused");
+        if (FailureReply) return Task.FromResult<RobustAccount?>(null);
         return Task.FromResult(_accounts.TryGetValue((first, last), out var a) ? a.Account : null);
+    }
+
+    public Task<RobustAccount?> FindAccountAsync(string first, string last, CancellationToken ct)
+    {
+        if (FailureReply)
+        {
+            Lookups++;
+            throw new InvalidDataException("The account service's reply has no result.");
+        }
+        return GetAccountAsync(first, last, ct);
     }
 
     public Task<bool> AuthenticateAsync(Guid principal, string plainPassword, CancellationToken ct) =>

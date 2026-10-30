@@ -13,9 +13,10 @@ namespace DreamGrid.Launcher.Security;
 /// Checks the staff cookie on every request (the cookie scheme's <c>OnValidatePrincipal</c>). A cookie without a session id
 /// and stamp, or whose session was ended or whose stamp is old (signed out everywhere), is refused and removed. Every
 /// <see cref="RecheckEvery"/> the account is read again from Robust: a lower role than the cookie's ends all the person's
-/// sessions (audited as <c>session-ended</c>, "role changed"); the same or a higher role renews the check time. When Robust
-/// doesn't answer nothing changes and the check is tried again a minute later: a Robust failure is never a demotion. The
-/// owner named in setup keeps the owner role whatever Robust says, so is never read again.
+/// sessions (audited as <c>session-ended</c>, "role changed"); the same or a higher role renews the check time. Only Robust's
+/// "no such account" reply (<see cref="IRobustClient.FindAccountAsync"/>) means the account is gone. When Robust doesn't
+/// answer, or answers with anything unusable, nothing changes and the check is tried again a minute later: a Robust failure
+/// is never a demotion. The owner named in setup keeps the owner role whatever Robust says, so is never read again.
 /// </summary>
 public sealed class StaffPrincipalValidator(StaffSessions sessions, IRobustClient robust, Func<LauncherSettings> settings,
     AuditLog audit, TimeProvider time, ILogger<StaffPrincipalValidator> log)
@@ -39,7 +40,7 @@ public sealed class StaffPrincipalValidator(StaffSessions sessions, IRobustClien
         }
 
         var now = time.GetUtcNow();
-        if (now - claims.Checked >= RecheckEvery
+        if (IsDue(claims.Checked, now)
             && !(_failedAt.TryGetValue(claims.Principal, out var failed) && now - failed < RetryAfterFailure))
         {
             var role = await CurrentRoleAsync(user.Identity?.Name, claims.Principal, c.HttpContext.RequestAborted);
@@ -67,7 +68,14 @@ public sealed class StaffPrincipalValidator(StaffSessions sessions, IRobustClien
         sessions.Touch(claims.Principal, claims.SessionId);
     }
 
-    /// <summary>The account's role now, or null when Robust didn't answer. An account that is gone has no role.</summary>
+    /// <summary>Whether the level is due to be read again: 5 minutes after the last check, or at once when the check time is
+    /// in the future (the clock was set back).</summary>
+    public static bool IsDue(DateTimeOffset checkedAt, DateTimeOffset now) => now - checkedAt >= RecheckEvery || checkedAt > now;
+
+    /// <summary>
+    /// The account's role now, or null when Robust didn't answer usefully (whatever the failure). An account that is gone has
+    /// no role. Only the request's own abort is let through.
+    /// </summary>
     private async Task<StaffRole?> CurrentRoleAsync(string? name, Guid principal, CancellationToken aborted)
     {
         var s = settings();
@@ -78,10 +86,10 @@ public sealed class StaffPrincipalValidator(StaffSessions sessions, IRobustClien
         cts.CancelAfter(RobustTimeout);
         try
         {
-            var account = await robust.GetAccountAsync(parsed.First, parsed.Last, cts.Token);
+            var account = await robust.FindAccountAsync(parsed.First, parsed.Last, cts.Token);
             return account is null || account.PrincipalId != principal ? StaffRole.None : AdminRule.RoleOf(s, account);
         }
-        catch (Exception e) when (e is HttpRequestException or OperationCanceledException or IOException or InvalidOperationException)
+        catch (Exception e) when (!(e is OperationCanceledException && aborted.IsCancellationRequested))
         {
             log.LogDebug("Staff level check: the account service did not answer: {Message}", e.Message);
             return null;

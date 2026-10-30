@@ -2476,6 +2476,8 @@ public sealed class GridControllerWiringTests : IDisposable
         public Func<DateTimeOffset> Clock { get; set; } = () => DateTimeOffset.UtcNow;
         public List<DateTimeOffset> Calls { get; } = new();
 
+        public Task<RobustAccount?> FindAccountAsync(string first, string last, CancellationToken ct) => GetAccountAsync(first, last, ct);
+
         public async Task<RobustAccount?> GetAccountAsync(string first, string last, CancellationToken ct)
         {
             Entered.TrySetResult();

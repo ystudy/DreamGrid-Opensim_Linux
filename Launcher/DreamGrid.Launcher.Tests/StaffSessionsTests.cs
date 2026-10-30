@@ -1,4 +1,6 @@
+using System.Collections.Concurrent;
 using DreamGrid.Launcher.Security;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
 using Xunit;
 
@@ -84,9 +86,14 @@ public sealed class StaffSessionsTests : IDisposable
     public void Damaged_file_reads_as_empty()
     {
         File.WriteAllText(StateFile, "{\"people\": [not json");
+        var logs = new ConcurrentQueue<(LogLevel Level, string Category, string Message)>();
+        using var factory = LoggerFactory.Create(b => b.AddProvider(new CapturingLoggerProvider(logs)));
 
-        var sessions = New();
+        var sessions = new StaffSessions(StateFile, _time, factory.CreateLogger<StaffSessions>());
 
+        var warning = Assert.Single(logs, l => l.Level == LogLevel.Warning);
+        Assert.Contains("could not be read", warning.Message);
+        Assert.DoesNotContain("not json", warning.Message); // the file's content is never quoted
         Assert.Empty(sessions.List(Ann));
         var s = sessions.Start(Ann, null, null);
         Assert.True(sessions.IsValid(Ann, s.Id, sessions.StampOf(Ann)));

@@ -244,11 +244,60 @@ public sealed class StaffAccessTests
 
         f.Time.Advance(TimeSpan.FromMinutes(5));
         await AssertOkAsync(client);
-        f.Time.Advance(TimeSpan.FromMinutes(5));
+        var lookups = f.Robust.Lookups;
+
+        // After a failure the level is asked again only a minute later, not on every request.
+        f.Time.Advance(TimeSpan.FromSeconds(30));
         await AssertOkAsync(client);
+        Assert.Equal(lookups, f.Robust.Lookups);
+        f.Time.Advance(TimeSpan.FromSeconds(30));
+        await AssertOkAsync(client);
+        Assert.Equal(lookups + 1, f.Robust.Lookups);
 
         Assert.DoesNotContain(Audit(f), e => e.GetProperty("action").GetString() == "session-ended");
         Assert.Single(f.Services.GetRequiredService<StaffSessions>().List(TestAuth.AdminId));
+    }
+
+    [Fact]
+    public async Task Recheck_keeps_session_when_robust_sends_a_failure_reply()
+    {
+        await using var f = Factory();
+        var client = await SignedInAsync(f);
+        f.Robust.FailureReply = true;
+        var lookups = f.Robust.Lookups;
+
+        f.Time.Advance(TimeSpan.FromMinutes(5));
+        await AssertOkAsync(client);
+
+        Assert.Equal(lookups + 1, f.Robust.Lookups); // it was asked
+        Assert.DoesNotContain(Audit(f), e => e.GetProperty("action").GetString() == "session-ended");
+        Assert.Single(f.Services.GetRequiredService<StaffSessions>().List(TestAuth.AdminId));
+    }
+
+    [Fact]
+    public async Task Recheck_ends_the_sessions_of_a_deleted_account()
+    {
+        await using var f = Factory();
+        var client = await SignedInAsync(f);
+        f.Robust.Remove("Test", "Admin");
+
+        f.Time.Advance(TimeSpan.FromMinutes(5));
+        await AssertSentToLoginAsync(client);
+
+        var entry = Assert.Single(Audit(f), e => e.GetProperty("action").GetString() == "session-ended");
+        Assert.Equal("role changed", entry.GetProperty("target").GetString());
+        Assert.Empty(f.Services.GetRequiredService<StaffSessions>().List(TestAuth.AdminId));
+    }
+
+    [Fact]
+    public void Recheck_is_due_after_five_minutes_or_when_the_check_time_is_in_the_future()
+    {
+        var now = new DateTimeOffset(2026, 10, 30, 12, 0, 0, TimeSpan.Zero);
+
+        Assert.False(StaffPrincipalValidator.IsDue(now, now));
+        Assert.False(StaffPrincipalValidator.IsDue(now - TimeSpan.FromSeconds(299), now));
+        Assert.True(StaffPrincipalValidator.IsDue(now - TimeSpan.FromMinutes(5), now));
+        Assert.True(StaffPrincipalValidator.IsDue(now + TimeSpan.FromSeconds(1), now)); // the clock was set back
     }
 
     [Fact]
