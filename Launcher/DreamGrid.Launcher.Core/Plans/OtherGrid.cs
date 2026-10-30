@@ -45,6 +45,10 @@ public sealed record OtherGridInfo(string GridName, string LoginUri, string? Gat
 
 public static class OtherGridInfoParser
 {
+    /// <summary>The message for <paramref name="address"/> answering, but not with grid information.</summary>
+    internal static string NotAGrid(Uri address) =>
+        $"{address} answered, but it didn't answer like a grid. Check that it is the grid's login address, not its website.";
+
     /// <summary>
     /// Reads the get_grid_info answer <paramref name="gridInfoXml"/> from <paramref name="address"/>. Throws
     /// <see cref="GridJoinException"/> when it is not grid information.
@@ -61,14 +65,21 @@ public static class OtherGridInfoParser
             info = null;
         }
         if (info is null || info.Name.LocalName != "gridinfo")
-            throw new GridJoinException($"{address} answered, but it didn't answer like a grid. Check that it is the grid's login address, not its website.");
+            throw new GridJoinException(NotAGrid(address));
 
         string? Get(string key) => info.Element(key)?.Value.Trim() is { Length: > 0 } v ? v : null;
 
+        var login = Get("login") ?? address.ToString();
+        // Robust publishes a gatekeeper whenever one is configured, even with hypergrid off, so a DreamGrid's own
+        // dreamgrid_hypergrid decides when it is there; otherwise a published gatekeeper means hypergrid is on.
+        var gatekeeper = Get("gatekeeper");
+        if (bool.TryParse(Get(GridInfoKeys.Hypergrid), out var hypergrid))
+            gatekeeper = hypergrid ? gatekeeper ?? login : null;
+
         return new OtherGridInfo(
             Get("gridname") ?? address.Host,
-            Get("login") ?? address.ToString(),
-            Get("gatekeeper"),
+            login,
+            gatekeeper,
             Get(GridInfoKeys.Plan) == PlanCatalog.Get(OwnerPlan.GridAsset).Id);
     }
 }
@@ -92,6 +103,9 @@ public sealed class OtherGridClient(HttpClient http) : IOtherGridClient
         try
         {
             using var response = await http.GetAsync(new Uri(address, "get_grid_info"), ct);
+            // A 4xx is something that isn't a grid answering (a website, a wrong path); a 5xx or no reply is no answer.
+            if ((int)response.StatusCode is >= 400 and < 500)
+                throw new GridJoinException(OtherGridInfoParser.NotAGrid(address));
             response.EnsureSuccessStatusCode();
             xml = await response.Content.ReadAsStringAsync(ct);
         }

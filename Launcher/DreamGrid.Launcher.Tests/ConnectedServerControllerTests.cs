@@ -145,6 +145,16 @@ public sealed class ConnectedServerControllerTests : OtherGridControllerRig
     }
 
     [Fact]
+    public void Unreachable_messages_promise_no_automatic_start()
+    {
+        // Nothing starts the regions when the other grid answers again: the owner presses Start.
+        Assert.Equal("Elsewhere isn't answering at http://10.0.0.9:8002/. Check this computer's internet connection; once it answers, press Start.",
+            OtherGridUnreachableException.MessageFor("Elsewhere", "http://10.0.0.9:8002/"));
+        Assert.Equal("The Grid Asset Server at 192.168.1.5:8002 isn't answering. Check that computer is on and running DreamGrid; once it answers, press Start.",
+            GridAssetUnreachableException.MessageFor("192.168.1.5", 8002));
+    }
+
+    [Fact]
     public async Task Estate_owner_on_the_other_grid()
     {
         var ct = TestContext.Current.CancellationToken;

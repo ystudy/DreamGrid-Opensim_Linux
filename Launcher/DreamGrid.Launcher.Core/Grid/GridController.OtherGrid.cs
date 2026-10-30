@@ -18,7 +18,7 @@ public sealed class GridAssetUnreachableException(string host, int port, Excepti
 {
     /// <summary>The message for the Grid Asset Server at <paramref name="host"/>:<paramref name="port"/>.</summary>
     public static string MessageFor(string host, int port) =>
-        $"The Grid Asset Server at {host}:{port} isn't answering. Your regions will start once it does: check that computer is on and running DreamGrid, then press Start.";
+        $"The Grid Asset Server at {host}:{port} isn't answering. Check that computer is on and running DreamGrid; once it answers, press Start.";
 }
 
 /// <summary>The other grid a Connected Server's regions are on doesn't answer; the message names the grid and its address.</summary>
@@ -27,7 +27,7 @@ public sealed class OtherGridUnreachableException(string gridName, string addres
 {
     /// <summary>The message for the grid called <paramref name="gridName"/> at <paramref name="address"/>.</summary>
     public static string MessageFor(string gridName, string address) =>
-        $"{gridName} isn't answering at {address}. Your regions will start once it does: check this computer's internet connection, then press Start.";
+        $"{gridName} isn't answering at {address}. Check this computer's internet connection; once it answers, press Start.";
 }
 
 // The controller on a plan that uses another computer's grid service (a Region Server or a Connected Server): Robust never

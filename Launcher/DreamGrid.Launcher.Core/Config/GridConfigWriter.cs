@@ -14,7 +14,10 @@ public sealed class GridConfigWriter(LauncherPaths paths)
     // What a preset grid's own OpenSim.ini decides for the regions: these whole sections, and these single keys.
     private static readonly string[] PresetSections = ["Groups", "UserProfiles", "XBakes", "Search"];
     private static readonly (string Section, string Key)[] PresetKeys =
-        [("Messaging", "OfflineMessageURL"), ("Messaging", "MuteListURL"), ("SimulatorFeatures", "MapTileURL")];
+        [
+            ("Messaging", "OfflineMessageURL"), ("Messaging", "MuteListModule"), ("Messaging", "MuteListURL"),
+            ("SimulatorFeatures", "MapTileURL"), ("ClientStack.LindenCaps", "Cap_GetTexture"),
+        ];
 
     // The keys in GridCommon.ini that name the grid's gatekeeper and home address.
     private static readonly (string Section, string Key)[] GatekeeperKeys =

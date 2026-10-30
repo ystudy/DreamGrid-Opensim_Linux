@@ -38,12 +38,10 @@ progress { width: 100%; height: 1.25rem; accent-color: var(--bs-primary); }
 .plan-pick input[type=radio] { position: absolute; opacity: 0; pointer-events: none; }
 .plan-card:has(input:checked) { border-color: var(--bs-primary); background: var(--bs-primary-bg-subtle); outline: 2px solid var(--bs-primary); }
 .plan-card:has(input:focus-visible) { box-shadow: 0 0 0 .25rem rgba(var(--bs-primary-rgb), .25); }
-.plan-card.unavailable { opacity: .7; }
-.plan-card.unavailable .plan-pick { cursor: not-allowed; }
 .plan-info-link { position: absolute; top: .4rem; right: .6rem; z-index: 1; padding: .1rem .3rem; font-size: 1.25rem; line-height: 1; text-decoration: none; }
 .plan-icon { font-size: 1.75rem; line-height: 1.2; }
 .plan-title { font-weight: 600; }
-.plan-subtitle, .plan-card .plan-runs, .plan-later { color: var(--bs-secondary-color); font-size: .875rem; }
+.plan-subtitle, .plan-card .plan-runs { color: var(--bs-secondary-color); font-size: .875rem; }
 
 /* A plan's layout diagram: inline SVG coloured from the theme, this computer highlighted. */
 .plan-diagram { display: block; width: 100%; max-width: 42rem; height: auto; }

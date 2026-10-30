@@ -71,12 +71,14 @@ public sealed class SetupRunner(
     /// </summary>
     public async Task EnsureGridAsync(IProgress<string>? stages, CancellationToken ct)
     {
-        if (!PlanCatalog.RunsRobust(settings()))
+        var current = settings();
+        if (!PlanCatalog.RunsRobust(current))
         {
-            var current = grid.GetStatus();
-            var databaseUp = current.Database.State == ProcessState.Running;
-            if (databaseUp && current.Robust.State == ProcessState.Running) return;
-            stages?.Report(databaseUp ? SetupProgress.ReachingGridAsset : SetupProgress.PreparingDatabase);
+            var gridStatus = grid.GetStatus();
+            var databaseUp = gridStatus.Database.State == ProcessState.Running;
+            if (databaseUp && gridStatus.Robust.State == ProcessState.Running) return;
+            var reaching = current.Plan == OwnerPlan.Connected ? SetupProgress.ReachingOtherGrid : SetupProgress.ReachingGridAsset;
+            stages?.Report(databaseUp ? reaching : SetupProgress.PreparingDatabase);
             await grid.StartAsync(ct);
             return;
         }
@@ -167,7 +169,10 @@ public sealed class SetupRunner(
             var excerpt = Excerpt();
             // A grid service on another computer that doesn't answer or isn't one this computer can use, and a refusal with a
             // reason for the owner (no free place on the other grid's map), are said as is: the owner can act on them.
-            var headline = e is GridUnreachableException or GridJoinException or ArgumentException ? e.Message : PortConflictText(e);
+            // Only a plain ArgumentException carries such a reason; its subclasses (a null argument, a value out of range) are bugs.
+            var headline = e is GridUnreachableException or GridJoinException ? e.Message
+                : e.GetType() == typeof(ArgumentException) ? OwnerText((ArgumentException)e)
+                : PortConflictText(e);
             progress.Fail(headline ?? $"Your region could not be set up.{where} Check the details, then try again.",
                 excerpt is null ? e.Message : e.Message + "\n\n" + excerpt);
         }
@@ -177,6 +182,13 @@ public sealed class SetupRunner(
             if (progress.Running)
                 progress.Fail("Your region could not be set up. Try again.", null);
         }
+    }
+
+    /// <summary>The message of <paramref name="e"/> without the " (Parameter '...')" the framework adds when it names a parameter.</summary>
+    internal static string OwnerText(ArgumentException e)
+    {
+        var suffix = e.ParamName is { } name ? $" (Parameter '{name}')" : null;
+        return suffix is not null && e.Message.EndsWith(suffix, StringComparison.Ordinal) ? e.Message[..^suffix.Length] : e.Message;
     }
 
     /// <summary>

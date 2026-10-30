@@ -47,6 +47,38 @@ public sealed class OtherGridTests
         Assert.Null(info.GatekeeperUri);
     }
 
+    // Robust publishes a gatekeeper whenever [Hypergrid] GatekeeperURI is set, which every DreamGrid Robust does.
+    private const string DreamGridReply =
+        "<gridinfo><login>http://grid.example.org:8002/</login><gridname>Elsewhere</gridname>" +
+        "<gatekeeper>http://grid.example.org:8002/</gatekeeper><dreamgrid_hypergrid>{0}</dreamgrid_hypergrid></gridinfo>";
+
+    [Fact]
+    public void Parse_follows_dreamgrid_hypergrid_off_over_a_published_gatekeeper()
+    {
+        var info = OtherGridInfoParser.Parse(Address, string.Format(DreamGridReply, "false"));
+        Assert.Null(info.GatekeeperUri);
+    }
+
+    [Fact]
+    public void Parse_follows_dreamgrid_hypergrid_on()
+    {
+        var info = OtherGridInfoParser.Parse(Address, string.Format(DreamGridReply, "true"));
+        Assert.Equal("http://grid.example.org:8002/", info.GatekeeperUri);
+
+        var noGatekeeper = OtherGridInfoParser.Parse(Address,
+            "<gridinfo><login>http://grid.example.org:8002/</login><dreamgrid_hypergrid>true</dreamgrid_hypergrid></gridinfo>");
+        Assert.Equal("http://grid.example.org:8002/", noGatekeeper.GatekeeperUri);
+    }
+
+    [Fact]
+    public void Parse_without_dreamgrid_keys_follows_the_gatekeeper()
+    {
+        Assert.Equal("http://hg.example.org/", OtherGridInfoParser.Parse(Address,
+            "<gridinfo><gridname>Other</gridname><gatekeeper>http://hg.example.org/</gatekeeper></gridinfo>").GatekeeperUri);
+        Assert.Equal("http://hg.example.org/", OtherGridInfoParser.Parse(Address,
+            "<gridinfo><gatekeeper>http://hg.example.org/</gatekeeper><dreamgrid_hypergrid>maybe</dreamgrid_hypergrid></gridinfo>").GatekeeperUri);
+    }
+
     [Fact]
     public void Parse_falls_back_to_the_host_and_the_address()
     {
@@ -113,6 +145,30 @@ public sealed class OtherGridTests
     public async Task ReadAsync_marks_nothing_answering_as_no_answer()
     {
         using var http = new HttpClient(new Answer(_ => throw new HttpRequestException("Connection refused")));
+
+        var e = await Assert.ThrowsAsync<GridJoinException>(() =>
+            new OtherGridClient(http).ReadAsync(Address, TestContext.Current.CancellationToken));
+
+        Assert.True(e.NoAnswer);
+        Assert.Contains("Nothing answered at http://login.osgrid.org/", e.Message);
+    }
+
+    [Fact]
+    public async Task ReadAsync_calls_a_404_not_a_grid()
+    {
+        using var http = new HttpClient(new Answer(_ => new HttpResponseMessage(System.Net.HttpStatusCode.NotFound) { Content = new StringContent("<html/>") }));
+
+        var e = await Assert.ThrowsAsync<GridJoinException>(() =>
+            new OtherGridClient(http).ReadAsync(Address, TestContext.Current.CancellationToken));
+
+        Assert.False(e.NoAnswer);
+        Assert.Equal("http://login.osgrid.org/ answered, but it didn't answer like a grid. Check that it is the grid's login address, not its website.", e.Message);
+    }
+
+    [Fact]
+    public async Task ReadAsync_calls_a_503_no_answer()
+    {
+        using var http = new HttpClient(new Answer(_ => new HttpResponseMessage(System.Net.HttpStatusCode.ServiceUnavailable)));
 
         var e = await Assert.ThrowsAsync<GridJoinException>(() =>
             new OtherGridClient(http).ReadAsync(Address, TestContext.Current.CancellationToken));

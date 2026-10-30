@@ -821,6 +821,10 @@ public sealed class GridConfigWriterTests : IDisposable
         Assert.Equal("http://services.osgrid.org", r.Get("UserProfiles", "ProfileServiceURL"));
         Assert.Equal("http://xbakes.osgrid.org", r.Get("XBakes", "URL"));
         Assert.Equal("http://services.osgrid.org", r.Get("Messaging", "OfflineMessageURL"));
+        Assert.Equal("MuteListModule", r.Get("Messaging", "MuteListModule"));
+        Assert.Equal("http://services.osgrid.org", r.Get("Messaging", "MuteListURL"));
+        // Textures are served by the region itself, as OSgrid's own OpenSim.ini says, not by OSgrid's login address.
+        Assert.Equal("localhost", r.Get("ClientStack.LindenCaps", "Cap_GetTexture"));
         Assert.Equal("http://maptiles.osgrid.org:80", r.Get("SimulatorFeatures", "MapTileURL"));
         Assert.Equal("http://search.osgrid.org/v2/query.php", r.Get("Search", "SearchURL"));
     }

@@ -1807,6 +1807,29 @@ public sealed class SetupFlowTests
         Assert.Equal(new Uri("http://grid.example.org:8003/"), f.OtherGrid.ServicesChecks.Single());
     }
 
+    [Theory]
+    [InlineData("false", "Hypergrid: off")]
+    [InlineData("true", "Hypergrid: on")]
+    public async Task Another_dreamgrid_says_hypergrid_as_its_own_switch_says(string dreamgridHypergrid, string expected)
+    {
+        await using var f = ConnectedServer();
+        // A DreamGrid's Robust publishes a gatekeeper even with hypergrid off; its own switch decides.
+        f.OtherGrid.Result = OtherGridInfoParser.Parse(new Uri("http://grid.example.org:8002/"),
+            "<gridinfo><login>http://grid.example.org:8002/</login><gridname>Elsewhere</gridname>" +
+            "<gatekeeper>http://grid.example.org:8002/</gatekeeper>" +
+            $"<dreamgrid_hypergrid>{dreamgridHypergrid}</dreamgrid_hypergrid></gridinfo>");
+        using var client = await SetupClientAsync(f);
+
+        var form = new Dictionary<string, string> { ["Grid"] = "other", ["LoginAddress"] = "grid.example.org", ["ServicesAddress"] = "grid.example.org" };
+        using var first = await PostFormAsync(client, "/setup/other-grid", form);
+        var text = new HtmlParser().ParseDocument(await first.Content.ReadAsStringAsync(Ct)).Body!.TextContent;
+        Assert.Contains(expected, text);
+
+        using var confirm = await PostFormAsync(client, "/setup/other-grid?handler=Confirm", form, tokenFrom: "/setup/other-grid");
+        Assert.Equal("/setup", Location(confirm));
+        Assert.Equal(dreamgridHypergrid == "true", PlanCatalog.HypergridOn(f.Store.LoadOrCreate()));
+    }
+
     [Fact]
     public async Task Another_grid_page_names_its_two_addresses()
     {
@@ -2020,5 +2043,82 @@ public sealed class SetupFlowTests
 
         var done = await WaitForProgressAsync(client, p => !p.GetProperty("running").GetBoolean());
         Assert.Equal(Message, Str(done, "error"));
+    }
+
+    /// <summary>A Connected Server on OSgrid at its region step, signed in, after the host's own start at launch.</summary>
+    private static async Task<(LauncherFactory F, HttpClient Client)> ConnectedAtRegionAsync()
+    {
+        var f = ConnectedServer(s => s with
+        {
+            Connected = Osgrid(),
+            GridName = "OSGrid",
+            SetupToken = null,
+            Setup = new SetupState(WorldNamed: true, OwnerCreated: true, Owner: new OwnerInfo("Ann", "Lee", Guid.NewGuid()), NetworkSet: true),
+        });
+        var client = await SignedInClientAsync(f);
+        await f.Grid.Started.Task.WaitAsync(TimeSpan.FromSeconds(5), Ct);
+        return (f, client);
+    }
+
+    [Fact]
+    public async Task Region_step_headlines_an_owner_reason_without_the_parameter_name()
+    {
+        var (f, client) = await ConnectedAtRegionAsync();
+        await using var factory = f;
+        using var http = client;
+        const string Message = "A region name can't be longer than 32 characters.";
+        f.Grid.OnCreateRegion = (_, _) => throw new ArgumentException(Message, "name");
+
+        (await PostFormAsync(client, "/setup/region", new() { ["RegionName"] = "Welcome", ["Content"] = "island" })).Dispose();
+
+        var done = await WaitForProgressAsync(client, p => !p.GetProperty("running").GetBoolean());
+        Assert.Equal(Message, Str(done, "error"));
+        Assert.DoesNotContain("(Parameter", Str(done, "error"));
+    }
+
+    [Fact]
+    public async Task Region_step_does_not_headline_a_null_argument()
+    {
+        var (f, client) = await ConnectedAtRegionAsync();
+        await using var factory = f;
+        using var http = client;
+        f.Grid.OnCreateRegion = (_, _) => throw new ArgumentNullException("content", "A bug, not a reason for the owner.");
+
+        (await PostFormAsync(client, "/setup/region", new() { ["RegionName"] = "Welcome", ["Content"] = "island" })).Dispose();
+
+        var done = await WaitForProgressAsync(client, p => !p.GetProperty("running").GetBoolean());
+        var error = Str(done, "error")!;
+        Assert.StartsWith("Your region could not be set up.", error);
+        Assert.DoesNotContain("A bug", error);
+    }
+
+    [Theory]
+    [InlineData(true, "Reaching the other grid")]
+    [InlineData(false, "Reaching the Grid Asset Server")]
+    public async Task Region_step_names_whose_grid_it_is_reaching(bool connected, string stage)
+    {
+        LauncherFactory f;
+        HttpClient client;
+        if (connected)
+            (f, client) = await ConnectedAtRegionAsync();
+        else
+        {
+            f = RegionServerAtRegion();
+            client = await SignedInClientAsync(f);
+            await f.Grid.Started.Task.WaitAsync(TimeSpan.FromSeconds(5), Ct);
+        }
+        await using var factory = f;
+        using var http = client;
+        var running = new ComponentStatus("database", ProcessState.Running, null, null, null, null);
+        f.Grid.Status = new GridStatus(running, running with { Name = "robust", State = ProcessState.Failed }, [], [], false, "http://127.0.0.1:8002/");
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        f.Grid.OnStart = ct => release.Task.WaitAsync(ct);
+
+        (await PostFormAsync(client, "/setup/region", new() { ["RegionName"] = "Welcome", ["Content"] = "island" })).Dispose();
+
+        var reaching = await WaitForProgressAsync(client, p => Str(p, "stage") == stage);
+        Assert.True(reaching.GetProperty("running").GetBoolean());
+        release.SetResult();
+        await WaitForProgressAsync(client, p => !p.GetProperty("running").GetBoolean());
     }
 }

@@ -100,10 +100,15 @@ public sealed class ConnectedServerPagesTests
 
         using var ok = await PostAsync(client, "/login", new() { ["Name"] = "Estate Owner", ["Password"] = "pass-word1" });
         Assert.Equal(HttpStatusCode.Redirect, ok.StatusCode);
+        Assert.Contains(ok.Headers.GetValues("Set-Cookie"), c => c.StartsWith("dg-auth=", StringComparison.Ordinal));
 
         var other = f.CreateClient(new() { AllowAutoRedirect = false });
         using var refused = await PostAsync(other, "/login", new() { ["Name"] = "Some Admin", ["Password"] = "pass-word1" });
         Assert.Equal(HttpStatusCode.OK, refused.StatusCode);
+        var page = new HtmlParser().ParseDocument(await refused.Content.ReadAsStringAsync(Ct));
+        Assert.Contains("Name or password is wrong, or this avatar is not an administrator.", page.Body!.TextContent);
+        Assert.DoesNotContain(refused.Headers.TryGetValues("Set-Cookie", out var cookies) ? cookies : [],
+            c => c.StartsWith("dg-auth=", StringComparison.Ordinal));
     }
 
     // ---- status and dashboard ----
