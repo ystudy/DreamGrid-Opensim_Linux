@@ -243,6 +243,74 @@ public sealed class GridControllerWiringTests : IDisposable
         Assert.Equal(["set user level Gail Guest -1"], _http.Commands(_store.LoadOrCreate().RobustConsolePort));
     }
 
+    /// <summary>The console accepts commands, then fails every read after one: <paramref name="failure"/> is "expired" (404) or "500".</summary>
+    private void ReadsFailAfterACommand(string failure)
+    {
+        var sent = false;
+        _http.Override = r =>
+        {
+            if (r.Uri.AbsolutePath == "/SessionCommand/") { sent = true; return null; }
+            if (!sent || !r.Uri.AbsolutePath.StartsWith("/ReadResponses/", StringComparison.Ordinal)) return null;
+            return (failure == "expired" ? HttpStatusCode.NotFound : HttpStatusCode.InternalServerError, "");
+        };
+    }
+
+    [Theory]
+    [InlineData("expired")]
+    [InlineData("500")]
+    public async Task SetUserLevel_whose_output_is_lost_after_the_command_was_accepted_is_not_confirmed(string failure)
+    {
+        ReadsFailAfterACommand(failure);
+
+        await Assert.ThrowsAsync<LevelNotConfirmedException>(() => _grid.SetUserLevelAsync("Gail", "Guest", -1, TestContext.Current.CancellationToken));
+
+        Assert.Equal(["set user level Gail Guest -1"], _http.Commands(_store.LoadOrCreate().RobustConsolePort));
+    }
+
+    [Fact]
+    public async Task SetUserLevel_whose_command_post_fails_was_not_sent()
+    {
+        _http.Override = r => r.Uri.AbsolutePath == "/SessionCommand/" ? (HttpStatusCode.InternalServerError, "") : null;
+
+        var e = await Record.ExceptionAsync(() => _grid.SetUserLevelAsync("Gail", "Guest", -1, TestContext.Current.CancellationToken));
+
+        Assert.IsType<HttpRequestException>(e);
+    }
+
+    [Fact]
+    public async Task A_suspension_whose_console_output_is_lost_takes_the_unconfirmed_path()
+    {
+        // The whole way from the staff action to the console: Robust accepted the command, then the read failed.
+        ReadsFailAfterACommand("expired");
+        var ct = TestContext.Current.CancellationToken;
+        var security = Path.Combine(_root, "security");
+        Directory.CreateDirectory(security);
+        var suspended = new DreamGrid.Launcher.Security.SuspendedStore(Path.Combine(security, "suspended.json"));
+        var sessions = new DreamGrid.Launcher.Security.StaffSessions(Path.Combine(security, "sessions.json"), TimeProvider.System);
+        var auditFile = Path.Combine(_root, "audit.log");
+        var target = new RobustAccount(Guid.NewGuid(), "Gail", "Guest", 150, "");
+        sessions.Start(target.PrincipalId, null, null);
+        var owner = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(
+            [new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Name, "Test Owner"),
+             .. DreamGrid.Launcher.Security.StaffSignIn.RoleClaims(Core.Security.StaffRole.Owner)
+                 .Select(r => new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Role, r))],
+            DreamGrid.Launcher.Security.AuthSchemes.Admin));
+
+        DreamGrid.Launcher.Security.ChangeOutcome outcome;
+        using (var audit = new Core.Logs.AuditLog(auditFile, TimeProvider.System))
+        {
+            var actions = new DreamGrid.Launcher.Security.StaffActions(_grid, () => _store.LoadOrCreate(), suspended, sessions, audit,
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<DreamGrid.Launcher.Security.StaffActions>.Instance);
+            outcome = await actions.ApplyAsync(owner, null, target, Core.Security.StaffChange.Suspend, ct);
+        }
+
+        Assert.False(outcome.Done);
+        Assert.Equal(DreamGrid.Launcher.Security.StaffActions.Unconfirmed, outcome.Message);
+        Assert.Equal(150, suspended.PreviousLevel(target.PrincipalId)); // kept
+        Assert.Empty(sessions.List(target.PrincipalId));                // signed out
+        Assert.Contains("\"unconfirmed\"", File.ReadAllText(auditFile));
+    }
+
     [Theory]
     [InlineData("Ga il", "Guest")]
     [InlineData("Gail", "")]

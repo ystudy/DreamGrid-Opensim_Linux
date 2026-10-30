@@ -12,6 +12,13 @@ public sealed record ConsoleOutput(string Text, bool IsPrompt);
 public sealed class ConsoleAuthException(string message) : Exception(message);
 
 /// <summary>
+/// The console accepted the command (its POST got a success reply), then collecting the output failed: the session expired, a
+/// read failed, or Robust stopped answering. The command may have run. An <see cref="HttpRequestException"/>, so callers that
+/// treat any console failure alike keep working; a caller that must not assume "nothing happened" catches this first.
+/// </summary>
+public sealed class ConsoleCommandSentException(string message, Exception? inner = null) : HttpRequestException(message, inner);
+
+/// <summary>
 /// Client for OpenSim's REST console (RemoteConsole.cs): form-encoded POSTs to
 /// /StartSession/, /SessionCommand/ and /ReadResponses/&lt;id&gt;/. One session is cached and reused.
 /// </summary>
@@ -27,8 +34,9 @@ public sealed class ConsoleAuthException(string message) : Exception(message);
 /// credentials; a 401 on read or send is treated as expiry too. A dropped session whose read handler is
 /// still registered answers an empty reply, which cannot be told apart from "no output". A call that sees
 /// expiry before or at the POST reopens the session and sends the command once more (a 404 on /SessionCommand/ is
-/// answered before any input is queued, so the command did not run); a second expiry throws. Expiry on a read after
-/// the POST was accepted throws and never resends, as the command may already have run.</item>
+/// answered before any input is queued, so the command did not run); a second expiry throws. Any failure on a read after
+/// the POST was accepted (expiry, an error reply, a lost connection, an HttpClient timeout) throws
+/// <see cref="ConsoleCommandSentException"/> and never resends, as the command may already have run.</item>
 /// <item>/ReadResponses/ is a long poll: with no pending lines the server holds the request for ~25 s, and it
 /// advances the session's "last line seen" marker when it builds the reply. A read the client cancelled could
 /// therefore swallow lines, so reads are never cancelled. The client only stops waiting: the read stays
@@ -127,12 +135,14 @@ public sealed class RestConsoleClient(HttpClient http, Uri baseUri, string user,
                 }
                 catch (SessionExpiredException) when (attempt == 0) { _sessionId = null; }
             }
-            // The server accepted the command: never resend it. A read-side expiry loses only the output.
+            // The server accepted the command: never resend it. A failure from here on loses only the output, and says so
+            // (ConsoleCommandSentException), since the command may have run. Only the caller's own cancellation stays one.
             try { return await CollectAsync(settle, ct); }
-            catch (SessionExpiredException)
+            catch (Exception e) when (e is HttpRequestException || e is OperationCanceledException && !ct.IsCancellationRequested)
             {
-                throw new SessionExpiredException(
-                    $"REST console session expired while waiting for the output of '{Verb(command)}'; the command was sent, its output was lost.");
+                var what = e is SessionExpiredException ? "session expired" : "stopped answering";
+                throw new ConsoleCommandSentException(
+                    $"REST console {what} while waiting for the output of '{Verb(command)}'; the command was sent, its output was lost.", e);
             }
         }
         finally { _gate.Release(); }

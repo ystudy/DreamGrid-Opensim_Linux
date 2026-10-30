@@ -845,7 +845,15 @@ public sealed partial class GridController(
         {
             ThrowIfNoGridService(LoadSettings());
             var transcript = new List<string>();
-            transcript.AddRange(await _robust!.Console!.RunAsync($"set user level {first} {last} {level}", ConsoleSettle, ct));
+            try
+            {
+                transcript.AddRange(await _robust!.Console!.RunAsync($"set user level {first} {last} {level}", ConsoleSettle, ct));
+            }
+            catch (ConsoleCommandSentException e)
+            {
+                // Robust accepted the command, then its output was lost: it may have run.
+                throw new LevelNotConfirmedException(e.Message, e);
+            }
             // From here the command was sent: a failure only means it isn't confirmed (Robust may still have made the change).
             // Robust runs console commands on its own thread: the level shows only after the console output has settled.
             RobustAccount? account;
