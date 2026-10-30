@@ -210,14 +210,14 @@ public class SettingsStoreTests : IDisposable
 
         var s = new SettingsStore(path).LoadOrCreate();
 
-        Assert.Equal(4, s.SchemaVersion);
+        Assert.Equal(5, s.SchemaVersion);
         Assert.Null(s.Programs[0].Physics);
         // Schema 2's BulletSim ran with the prototype's UseSeparatePhysicsThread=true: it keeps running that way.
         Assert.Equal("BulletSimThreaded", s.Programs[1].Physics);
         Assert.Equal("ubODE", s.DefaultPhysics);
         Assert.True(s.DefaultScripts);
         var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
-        Assert.Equal(4, (int)node["schemaVersion"]!);
+        Assert.Equal(5, (int)node["schemaVersion"]!);
     }
 
     [Fact]
@@ -225,7 +225,7 @@ public class SettingsStoreTests : IDisposable
     {
         var s = new SettingsStore(WriteV1(V1Region.Replace("BulletSim", "ubODE"))).LoadOrCreate();
 
-        Assert.Equal(4, s.SchemaVersion);
+        Assert.Equal(5, s.SchemaVersion);
         Assert.Null(Assert.Single(s.Programs).Physics);
     }
 
@@ -242,7 +242,7 @@ public class SettingsStoreTests : IDisposable
 
         var loaded = new SettingsStore(path).LoadOrCreate();
 
-        Assert.Equal(4, loaded.SchemaVersion);
+        Assert.Equal(5, loaded.SchemaVersion);
         Assert.Equal(["ubODE", "BulletSim"], loaded.Programs.Select(p => p.Physics));
     }
 
@@ -286,7 +286,7 @@ public class SettingsStoreTests : IDisposable
     {
         var s = new SettingsStore(WriteV1(V1Region)).LoadOrCreate();
 
-        Assert.Equal(4, s.SchemaVersion);
+        Assert.Equal(5, s.SchemaVersion);
         Assert.Equal([new ProgramSettings("Welcome", 8004, 8011, "BulletSimThreaded")], s.Programs);
         Assert.Equal([new RegionSettings("Welcome", "Welcome", V1Uuid, 1000, 1000, "island", 1, 8004)], s.Regions);
         Assert.Null(s.LegacyRegion);
@@ -299,7 +299,7 @@ public class SettingsStoreTests : IDisposable
         new SettingsStore(path).LoadOrCreate();
 
         var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
-        Assert.Equal(4, (int)node["schemaVersion"]!);
+        Assert.Equal(5, (int)node["schemaVersion"]!);
         Assert.True(node.ContainsKey("programs"));
         Assert.False(node.ContainsKey("region"));
     }
@@ -309,7 +309,7 @@ public class SettingsStoreTests : IDisposable
     {
         var s = new SettingsStore(WriteV1(null)).LoadOrCreate();
 
-        Assert.Equal(4, s.SchemaVersion);
+        Assert.Equal(5, s.SchemaVersion);
         Assert.Empty(s.Programs);
         Assert.Empty(s.Regions);
     }
@@ -355,7 +355,7 @@ public class SettingsStoreTests : IDisposable
 
         var loaded = new SettingsStore(path).LoadOrCreate();
 
-        Assert.Equal(4, loaded.SchemaVersion);
+        Assert.Equal(5, loaded.SchemaVersion);
         Assert.Empty(loaded.CustomTypes);
         Assert.False(loaded.Regions[0].NeedsContent);
     }
@@ -400,7 +400,7 @@ public class SettingsStoreTests : IDisposable
 
         Assert.Equal(OwnerPlan.SimplePublic, s.Plan);
         Assert.True(s.Hypergrid);
-        Assert.Equal(4, s.SchemaVersion);
+        Assert.Equal(5, s.SchemaVersion);
     }
 
     [Theory]
@@ -412,6 +412,25 @@ public class SettingsStoreTests : IDisposable
 
         Assert.Equal(OwnerPlan.Local, s.Plan);
         Assert.False(s.Hypergrid);
+    }
+
+    [Fact]
+    public void Schema4_file_loads_with_default_security()
+    {
+        var path = Path.Combine(NewDir(), "settings.json");
+        new SettingsStore(path).LoadOrCreate();
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+        node["schemaVersion"] = 4;
+        node.Remove("security");
+        File.WriteAllText(path, node.ToJsonString());
+
+        var s = new SettingsStore(path).LoadOrCreate();
+
+        Assert.Equal(100, s.Security.SupervisorLevel);
+        Assert.Equal(200, s.Security.AdminLevel);
+        Assert.False(s.Security.RequireTwoFactorForStaff);
+        Assert.Null(s.Security.AdminNetworks);
+        Assert.Equal(5, s.SchemaVersion);
     }
 
     [Fact]

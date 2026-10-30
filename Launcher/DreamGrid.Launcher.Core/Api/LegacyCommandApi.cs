@@ -25,7 +25,8 @@ public sealed class LegacyCommandApi(
     ILogger<LegacyCommandApi> log)
 {
     public const int MachineLevel = 1000;
-    private const int AdminLevel = AdminRule.AdminLevel;
+    /// <summary>A built-in command's <see cref="LegacyCommand.MinLevel"/> meaning "the admin level in settings" (200 unless changed).</summary>
+    private const int AdminLevel = 200;
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -36,7 +37,8 @@ public sealed class LegacyCommandApi(
         if (!_commands.TryGetValue(r.Command, out var command))
             return $"NAK Unknown command {r.Command}";
 
-        if (command.MinLevel > 0 && await LevelAsync(r, ct) < command.MinLevel)
+        var needed = command.MinLevel == AdminLevel ? settings().Security.AdminLevel : command.MinLevel;
+        if (needed > 0 && await LevelAsync(r, ct) < needed)
             return $"NAK You do not have permission to {command.Name}";
 
         try

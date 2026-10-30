@@ -104,9 +104,19 @@ public sealed record JoinedGrid(
 public sealed record ConnectedGrid(
     string? Preset, string GridName, string Address, string LoginUri, string ServicesUri, string? GatekeeperUri);
 
+/// <summary>
+/// Sign-in security. An avatar at <see cref="SupervisorLevel"/> or more is a supervisor, at <see cref="AdminLevel"/> or more an
+/// administrator. <see cref="AdminNetworks"/> (CIDR ranges) null or empty means any address may reach the staff pages.
+/// </summary>
+public sealed record SecuritySettings(
+    int SupervisorLevel = 100,
+    int AdminLevel = 200,
+    bool RequireTwoFactorForStaff = false,
+    IReadOnlyList<string>? AdminNetworks = null);
+
 public sealed record LauncherSettings
 {
-    public const int CurrentSchema = 4;
+    public const int CurrentSchema = 5;
 
     public int SchemaVersion { get; init; } = CurrentSchema;
     public string GridName { get; init; } = "My World";
@@ -145,6 +155,8 @@ public sealed record LauncherSettings
     public bool DefaultScripts { get; init; } = true;
 
     public SetupState Setup { get; init; } = new();
+    /// <summary>Sign-in security; a missing value reads as the defaults.</summary>
+    public SecuritySettings Security { get; init; } = new();
     public List<ProgramSettings> Programs { get; init; } = new();
     public List<RegionSettings> Regions { get; init; } = new();
     /// <summary>Region types made from library files, in the order they were added; a missing list reads as empty.</summary>

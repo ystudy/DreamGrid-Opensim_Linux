@@ -49,6 +49,19 @@ public static partial class SettingsValidator
         return new ValidationResult(errors);
     }
 
+    /// <summary>The supervisor level at least 1, the admin level above it and at most 255 (OpenSim's god level range).</summary>
+    public static ValidationResult Security(SecuritySettings security)
+    {
+        var errors = new Dictionary<string, string>();
+        if (security.SupervisorLevel < 1)
+            errors["SupervisorLevel"] = "Use a supervisor level of 1 or more.";
+        if (security.AdminLevel > 255)
+            errors["AdminLevel"] = "Use an admin level of 255 or less.";
+        else if (security.AdminLevel <= security.SupervisorLevel)
+            errors["AdminLevel"] = "The admin level must be higher than the supervisor level.";
+        return new ValidationResult(errors);
+    }
+
     /// <summary>Null when <paramref name="hostname"/> is empty (automatic), a DNS name or an IPv4 address.</summary>
     public static string? HostnameError(string? hostname)
     {

@@ -8,6 +8,17 @@ public sealed class SettingsValidatorTests
     private static Core.Modules.ValidationResult Valid(string? hostname = null, int web = 8001, int region = 8004, int mariaDb = 3307) =>
         SettingsValidator.Network(hostname, web, 8002, 8003, region, mariaDb, 8010, 8011);
 
+    [Theory]
+    [InlineData(100, 200, true)]
+    [InlineData(1, 2, true)]
+    [InlineData(100, 255, true)]
+    [InlineData(0, 200, false)]
+    [InlineData(100, 100, false)]
+    [InlineData(150, 100, false)]
+    [InlineData(100, 256, false)]
+    public void Security_levels_are_checked(int supervisor, int admin, bool ok) =>
+        Assert.Equal(ok, SettingsValidator.Security(new SecuritySettings(supervisor, admin)).Ok);
+
     [Fact]
     public void Validator_accepts_the_defaults()
     {

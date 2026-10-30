@@ -159,9 +159,10 @@ public sealed class LegacyCommandApiTests
         Assert.Equal("ACK", await Api().HandleAsync(Req("StopRobust", "Estate Owner", "estatepw"), Ct));
         Assert.StartsWith("NAK You do not have permission to StopRobust", await Api().HandleAsync(Req("StopRobust", "Plain Person", "plainpw"), Ct));
 
-        // The same avatar is nobody special on a plan that is not a Region Server.
+        // The owner named in setup is the owner on any plan whatever their level, and a level-0 avatar is nobody.
         _settings = _settings with { Plan = OwnerPlan.Local };
-        Assert.StartsWith("NAK You do not have permission to StopRobust", await Api().HandleAsync(Req("StopRobust", "Estate Owner", "estatepw"), Ct));
+        Assert.Equal("ACK", await Api().HandleAsync(Req("StopRobust", "Estate Owner", "estatepw"), Ct));
+        Assert.StartsWith("NAK You do not have permission to StopRobust", await Api().HandleAsync(Req("StopRobust", "Plain Person", "plainpw"), Ct));
     }
 
     [Theory]

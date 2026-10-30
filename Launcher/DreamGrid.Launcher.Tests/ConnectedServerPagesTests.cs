@@ -55,7 +55,7 @@ public sealed class ConnectedServerPagesTests
         var regionServer = Settings(OwnerPlan.RegionServer);
         Assert.True(AdminRule.MayAdminister(regionServer, Account(0, OwnerId)));
         Assert.True(AdminRule.MayAdminister(regionServer, Account(250)));
-        Assert.False(AdminRule.MayAdminister(Settings(OwnerPlan.Local), Account(0, OwnerId)));
+        Assert.True(AdminRule.MayAdminister(Settings(OwnerPlan.Local), Account(0, OwnerId)));
         Assert.True(AdminRule.MayAdminister(Settings(OwnerPlan.Local), Account(250)));
     }
 

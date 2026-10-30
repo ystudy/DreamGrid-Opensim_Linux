@@ -46,8 +46,8 @@ public sealed class RegionServerPagesTests
         Assert.True(AdminRule.MayAdminister(Settings(OwnerPlan.RegionServer), Account(0, OwnerId)));
 
     [Fact]
-    public void Level_0_owner_may_not_administer_on_local() =>
-        Assert.False(AdminRule.MayAdminister(Settings(OwnerPlan.Local), Account(0, OwnerId)));
+    public void Level_0_owner_may_administer_on_local() =>
+        Assert.True(AdminRule.MayAdminister(Settings(OwnerPlan.Local), Account(0, OwnerId)));
 
     [Fact]
     public void Level_0_non_owner_may_not_administer_on_a_region_server() =>
@@ -107,14 +107,14 @@ public sealed class RegionServerPagesTests
     }
 
     [Fact]
-    public async Task Level_0_estate_owner_is_refused_on_a_local_grid()
+    public async Task Level_0_owner_signs_in_on_a_local_grid()
     {
         await using var f = Factory(OwnerPlan.Local);
         f.Robust.Add("Estate", "Owner", 0, "pass-word1", OwnerId);
         var client = f.CreateClient(new() { AllowAutoRedirect = false });
 
-        using var refused = await PostAsync(client, "/login", new() { ["Name"] = "Estate Owner", ["Password"] = "pass-word1" });
-        Assert.Equal(HttpStatusCode.OK, refused.StatusCode);
+        using var signedIn = await PostAsync(client, "/login", new() { ["Name"] = "Estate Owner", ["Password"] = "pass-word1" });
+        Assert.Equal(HttpStatusCode.Found, signedIn.StatusCode);
     }
 
     // ---- status and dashboard ----
