@@ -43,7 +43,7 @@ public sealed class RegionsPageTests : IAsyncLifetime
     {
         var doc = await PageAsync();
 
-        Assert.Equal(["Home", "Regions", "Advanced", "Logs", "Sessions"],
+        Assert.Equal(["Home", "Regions", "Advanced", "Logs", "Sessions", "Two-factor"],
             doc.QuerySelectorAll("header nav a").Select(a => a.TextContent.Trim()));
     }
 

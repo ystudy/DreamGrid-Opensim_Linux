@@ -134,7 +134,7 @@ builder.Services.AddRazorPages(o =>
             m.EndpointMetadata.Add(new AuthorizeAttribute(AuthSchemes.AdminPolicy));
     });
     o.Conventions.AuthorizeFolder("/Profile", AuthSchemes.StaffPolicy);
-    foreach (var open in new[] { "/Login", "/Logout", "/Welcome", "/Waiting", "/SetupDone", "/Setup" })
+    foreach (var open in new[] { "/Login", "/Login/Code", "/Logout", "/Welcome", "/Waiting", "/SetupDone", "/Setup" })
         o.Conventions.AllowAnonymousToPage(open);
     o.Conventions.AllowAnonymousToFolder("/Setup");
     // The dashboard's forms post here: a POST to "/" belongs to the port-8001 contract (LegacyRootPolicy).
@@ -179,6 +179,8 @@ var app = builder.Build();
 app.UseStaticFiles();
 app.UseAuthentication();
 app.UseMiddleware<AuditMiddleware>();
+// Someone signed in only to set up two-factor reaches nothing else (before SetupGate, which can send "/" onwards).
+app.UseMiddleware<TwoFactorGate>();
 app.UseMiddleware<SetupGate>();
 app.UseAuthorization();
 LegacyEndpoints.Map(app);

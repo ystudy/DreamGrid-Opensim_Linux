@@ -213,6 +213,55 @@ public sealed class TwoFactorStoreTests : IDisposable
     }
 
     [Fact]
+    public void New_backup_codes_replace_all_and_need_an_app_code()
+    {
+        var (store, secret, old) = Enrolled(Ann);
+        Assert.Null(store.RegenerateBackupCodes(Ann, old[0])); // a backup code is not enough
+        Assert.True(store.VerifyCode(Ann, old[0], out _)); // and was not used up by trying
+        var wrong = CodeNow(secret, 1) == "123456" ? "654321" : "123456";
+        Assert.Null(store.RegenerateBackupCodes(Ann, wrong));
+        Assert.Null(store.RegenerateBackupCodes(Bob, CodeNow(secret, 1))); // no two-factor
+
+        var fresh = store.RegenerateBackupCodes(Ann, CodeNow(secret, 1));
+
+        Assert.NotNull(fresh);
+        Assert.Equal(BackupCodes.Count, fresh.Count);
+        Assert.False(store.VerifyCode(Ann, old[1], out _)); // every old one is gone
+        Assert.True(store.VerifyCode(Ann, fresh[0], out var usedBackup));
+        Assert.True(usedBackup);
+        Assert.False(store.VerifyCode(Ann, CodeNow(secret, 1), out _)); // the step it used is spent
+        Assert.Null(store.RegenerateBackupCodes(Ann, CodeNow(secret, 1)));
+        Assert.Equal(TwoFactorState.On, New().StateOf(Ann));
+    }
+
+    [Fact]
+    public void New_backup_codes_on_a_damaged_file_throw()
+    {
+        var (store, secret, _) = Enrolled(Ann);
+        File.WriteAllText(StateFile, "{ this is not json");
+        Assert.Throws<InvalidOperationException>(() => store.RegenerateBackupCodes(Ann, CodeNow(secret, 1)));
+        Assert.Equal("{ this is not json", File.ReadAllText(StateFile));
+    }
+
+    [Fact]
+    public void Confirm_needs_the_secret_this_browser_was_shown()
+    {
+        var store = New();
+        var (shown, _) = store.BeginEnrol(Ann, "Ann", "DreamGrid");
+        Assert.True(store.IsPending(Ann, shown));
+        // Setup started again elsewhere: the secret shown here is no longer the one waiting.
+        var (other, _) = store.BeginEnrol(Ann, "Ann", "DreamGrid");
+        Assert.False(store.IsPending(Ann, shown));
+        Assert.True(store.IsPending(Ann, other));
+        Assert.False(store.IsPending(Bob, other));
+
+        Assert.Null(store.ConfirmEnrol(Ann, CodeNow(other), shown));
+        Assert.Equal(TwoFactorState.Off, store.StateOf(Ann));
+        Assert.NotNull(store.ConfirmEnrol(Ann, CodeNow(other), other));
+        Assert.False(store.IsPending(Ann, other)); // confirmed: nothing waits
+    }
+
+    [Fact]
     public void A_different_data_protection_key_cannot_verify()
     {
         var (_, secret, backup) = Enrolled(Ann);

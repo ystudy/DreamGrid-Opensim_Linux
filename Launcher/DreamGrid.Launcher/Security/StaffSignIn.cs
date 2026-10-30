@@ -27,8 +27,11 @@ public static class StaffSignIn
 
     public static readonly TimeSpan Expiry = TimeSpan.FromHours(8); // sliding, set on the cookie scheme
 
-    /// <summary>Starts a session for <paramref name="account"/> and issues the cookie for <paramref name="role"/>.</summary>
-    public static async Task SignInAsync(HttpContext ctx, RobustAccount account, StaffRole role, bool mustEnrolTwoFactor = false)
+    /// <summary>
+    /// Starts a session for <paramref name="account"/> and issues the cookie for <paramref name="role"/>. Returns the cookie's
+    /// principal, for a page rendered in the same request (<c>HttpContext.User</c> is not changed here).
+    /// </summary>
+    public static async Task<ClaimsPrincipal> SignInAsync(HttpContext ctx, RobustAccount account, StaffRole role, bool mustEnrolTwoFactor = false)
     {
         if (role == StaffRole.None) throw new ArgumentOutOfRangeException(nameof(role), "Only staff can sign in here.");
         var services = ctx.RequestServices;
@@ -49,7 +52,9 @@ public static class StaffSignIn
             new(CheckedClaim, UnixSeconds(now)),
         ];
         if (mustEnrolTwoFactor) claims.Add(new Claim(EnrolClaim, "1"));
-        await ctx.SignInAsync(AuthSchemes.Admin, new ClaimsPrincipal(new ClaimsIdentity(claims, AuthSchemes.Admin)));
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, AuthSchemes.Admin));
+        await ctx.SignInAsync(AuthSchemes.Admin, principal);
+        return principal;
     }
 
     /// <summary>Where a person lands after signing in: a supervisor has no dashboard (the People page arrives later).</summary>

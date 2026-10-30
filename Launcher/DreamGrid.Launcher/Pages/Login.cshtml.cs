@@ -13,10 +13,19 @@ namespace DreamGrid.Launcher.Pages;
 /// (100 unless changed), or the owner named in setup; on a Region Server only the admin level and the owner; on a Connected
 /// Server only the owner), and every failure shows the same message so the page does not reveal which names exist. A
 /// supervisor lands on their own page; everyone else on the return URL or the dashboard. The password is never logged.
+/// Two-factor (<see cref="TwoFactorStore"/>): someone who has it on is sent to <c>/login/code</c> with a pending cookie
+/// (<see cref="TwoFactorPending"/>) instead of being signed in, and the name's throttle failures are kept until the code is
+/// right, so the password step cannot be used to reset the count between code guesses. When the two-factor file can't be
+/// read nobody is let in on the password alone. While the owner requires two-factor for staff, an admin or supervisor without
+/// it is signed in only to set it up (<see cref="TwoFactorGate"/>); the switch never applies to the owner.
 /// </summary>
-public sealed class LoginModel(IRobustClient robust, Func<LauncherSettings> settings, LoginThrottle throttle, AuditLog audit, ILogger<LoginModel> log) : PageModel
+public sealed class LoginModel(IRobustClient robust, Func<LauncherSettings> settings, LoginThrottle throttle, AuditLog audit,
+    ITwoFactorStatus twoFactor, ILogger<LoginModel> log) : PageModel
 {
     private const string Generic = "Name or password is wrong, or this avatar is not an administrator.";
+
+    /// <summary>Shown when the two-factor file can't be read (the page puts the verb in a code element).</summary>
+    public bool TwoFactorUnknown { get; private set; }
 
     [BindProperty] public string? Name { get; set; }
     [BindProperty] public string? Password { get; set; }
@@ -62,13 +71,32 @@ public sealed class LoginModel(IRobustClient robust, Func<LauncherSettings> sett
 
         if (role == StaffRole.None) return Fail(name);
 
+        var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
+        switch (twoFactor.StateOf(account!.PrincipalId))
+        {
+            case TwoFactorState.Unknown:
+                log.LogWarning("Sign-in: two-factor for first name {First} can't be checked: the two-factor file can't be read", name.ForLog);
+                audit.Write(new AuditEntry($"{account.FirstName} {account.LastName}", account.PrincipalId, role.AuditName(), ip,
+                    "sign-in-refused", "two-factor can't be checked", "refused"));
+                TwoFactorUnknown = true;
+                return Page();
+            case TwoFactorState.On:
+                TwoFactorPending.Issue(HttpContext, account, role, Url.IsLocalUrl(ReturnUrl) ? ReturnUrl : null);
+                return LocalRedirect("/login/code");
+        }
+
+        var mustEnrol = settings().Security.RequireTwoFactorForStaff && role is StaffRole.Admin or StaffRole.Supervisor;
         throttle.RecordSuccess(name.Key);
-        await StaffSignIn.SignInAsync(HttpContext, account!, role);
-        audit.Write(new AuditEntry($"{account!.FirstName} {account.LastName}", account.PrincipalId, role.AuditName(),
-            HttpContext.Connection.RemoteIpAddress?.ToString(), "sign-in", null, "ok"));
-        if (role == StaffRole.Supervisor) return LocalRedirect(StaffSignIn.Home(role));
-        return LocalRedirect(Url.IsLocalUrl(ReturnUrl) ? ReturnUrl! : StaffSignIn.Home(role));
+        await StaffSignIn.SignInAsync(HttpContext, account, role, mustEnrol);
+        audit.Write(new AuditEntry($"{account.FirstName} {account.LastName}", account.PrincipalId, role.AuditName(), ip,
+            "sign-in", null, "ok"));
+        if (mustEnrol) return LocalRedirect(TwoFactorGate.EnrolPath);
+        return LocalRedirect(Landing(role, ReturnUrl, Url));
     }
+
+    /// <summary>Where a person lands once signed in: a supervisor on their own page, everyone else on a local return URL or home.</summary>
+    internal static string Landing(StaffRole role, string? returnUrl, IUrlHelper url) =>
+        role != StaffRole.Supervisor && url.IsLocalUrl(returnUrl) ? returnUrl! : StaffSignIn.Home(role);
 
     private IActionResult Fail(AvatarName name)
     {

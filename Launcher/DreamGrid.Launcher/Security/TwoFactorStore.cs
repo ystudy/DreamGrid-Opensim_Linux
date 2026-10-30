@@ -68,17 +68,33 @@ public sealed class TwoFactorStore(string file, IDataProtectionProvider dp, Time
     }
 
     /// <summary>
-    /// Switches two-factor on if <paramref name="code"/> is right for the pending secret, and returns the ten backup codes (shown
-    /// once). Returns null, changing nothing, if there is no pending secret or the code is wrong.
+    /// Whether <paramref name="shown"/> is the secret waiting to be confirmed for the person: false once setup was started again
+    /// elsewhere (another browser), confirmed, or when the file is damaged.
     /// </summary>
-    public IReadOnlyList<string>? ConfirmEnrol(Guid principal, string code)
+    public bool IsPending(Guid principal, byte[] shown)
+    {
+        lock (_gate)
+        {
+            if (!TryRead(out var state)) return false;
+            return state.TryGetValue(principal, out var e) && e.Pending is { Length: > 0 } pending
+                && Unprotect(pending) is { } secret && CryptographicOperations.FixedTimeEquals(secret, shown);
+        }
+    }
+
+    /// <summary>
+    /// Switches two-factor on if <paramref name="code"/> is right for the pending secret, and returns the ten backup codes (shown
+    /// once). Returns null, changing nothing, if there is no pending secret, the code is wrong, or <paramref name="shown"/> is
+    /// given and is not the pending secret (setup was started again in another browser, whose secret this one never showed).
+    /// </summary>
+    public IReadOnlyList<string>? ConfirmEnrol(Guid principal, string code, byte[]? shown = null)
     {
         lock (_gate)
         {
             var state = ReadForWrite();
             if (!state.TryGetValue(principal, out var e) || e.Pending is not { Length: > 0 } pending) return null;
             var secret = Unprotect(pending);
-            if (secret is null || !Totp.Verify(secret, code, time.GetUtcNow(), null, out var step)) return null;
+            if (secret is null || shown is not null && !CryptographicOperations.FixedTimeEquals(secret, shown)) return null;
+            if (!Totp.Verify(secret, code, time.GetUtcNow(), null, out var step)) return null;
 
             var backup = BackupCodes.New();
             state[principal] = new Entry(e.PendingName ?? e.Name, pending, null, null, step, [.. backup.Select(BackupCodes.Hash)]);
@@ -130,6 +146,27 @@ public sealed class TwoFactorStore(string file, IDataProtectionProvider dp, Time
             {
                 return false;
             }
+        }
+    }
+
+    /// <summary>
+    /// Replaces all the person's backup codes with ten new ones (shown once) if <paramref name="code"/> is a current authenticator
+    /// code (a backup code is not accepted; its step is then used up). Returns null, changing nothing, for anyone without
+    /// two-factor or a wrong code. Throws if the file is damaged (<see cref="InvalidOperationException"/>) or cannot be saved.
+    /// </summary>
+    public IReadOnlyList<string>? RegenerateBackupCodes(Guid principal, string code)
+    {
+        lock (_gate)
+        {
+            var state = ReadForWrite();
+            if (!state.TryGetValue(principal, out var e) || e.Secret is not { Length: > 0 } protectedSecret) return null;
+            var secret = Unprotect(protectedSecret);
+            if (secret is null || !Totp.Verify(secret, code, time.GetUtcNow(), e.LastStep, out var step)) return null;
+
+            var backup = BackupCodes.New();
+            state[principal] = e with { LastStep = step, Backup = [.. backup.Select(BackupCodes.Hash)] };
+            Save(state);
+            return backup;
         }
     }
 

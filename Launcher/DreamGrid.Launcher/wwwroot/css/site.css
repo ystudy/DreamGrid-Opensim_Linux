@@ -112,3 +112,10 @@ progress { width: 100%; height: 1.25rem; accent-color: var(--bs-primary); }
 
 /* Sessions page: a browser is described by its long user-agent text. */
 .session-browser { font-size: .8rem; color: var(--bs-secondary-color); }
+/* The sign-in steps' card. */
+.sign-in-card { max-width: 26rem; }
+/* The two-factor setup QR code: SVG sized by its viewBox, kept on white so phones can read it in the dark theme too. */
+.two-factor-qr { width: 14rem; max-width: 100%; background: #fff; }
+.two-factor-qr svg { display: block; width: 100%; height: auto; }
+.backup-codes { columns: 2; font-family: var(--bs-font-monospace); }
+.code-input { max-width: 14rem; }

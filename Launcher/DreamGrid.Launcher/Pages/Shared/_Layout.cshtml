@@ -5,6 +5,7 @@
     var version = DreamGrid.Launcher.CommandLine.Version();
     var gridName = Settings().GridName;
     var path = Context.Request.Path.Value ?? "/";
+    var enrolOnly = User.HasClaim(c => c.Type == DreamGrid.Launcher.Security.StaffSignIn.EnrolClaim);
     string Active(string prefix) => (prefix == "/" ? path == "/" : path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) ? " active" : "";
 }
 <!DOCTYPE html>
@@ -33,14 +34,23 @@
         @if (User.Identity?.IsAuthenticated == true)
         {
             <nav class="navbar-nav flex-wrap align-items-center">
-                @if (User.IsInRole(DreamGrid.Launcher.Security.AuthSchemes.AdminRole))
+                @* Someone signed in only to set up two-factor can reach nothing else (TwoFactorGate). *@
+                @if (enrolOnly)
                 {
-                    <a class="nav-link@(Active("/"))" href="/">Home</a>
-                    <a class="nav-link@(Active("/regions"))" href="/regions">Regions</a>
-                    <a class="nav-link@(Active("/advanced"))" href="/advanced">Advanced</a>
-                    <a class="nav-link@(Active("/logs"))" href="/logs">Logs</a>
+                    <a class="nav-link@(Active("/profile/two-factor"))" href="/profile/two-factor">Two-factor</a>
                 }
-                <a class="nav-link@(Active("/profile/sessions"))" href="/profile/sessions">Sessions</a>
+                else
+                {
+                    if (User.IsInRole(DreamGrid.Launcher.Security.AuthSchemes.AdminRole))
+                    {
+                        <a class="nav-link@(Active("/"))" href="/">Home</a>
+                        <a class="nav-link@(Active("/regions"))" href="/regions">Regions</a>
+                        <a class="nav-link@(Active("/advanced"))" href="/advanced">Advanced</a>
+                        <a class="nav-link@(Active("/logs"))" href="/logs">Logs</a>
+                    }
+                    <a class="nav-link@(Active("/profile/sessions"))" href="/profile/sessions">Sessions</a>
+                    <a class="nav-link@(Active("/profile/two-factor"))" href="/profile/two-factor">Two-factor</a>
+                }
                 <form method="post" action="/logout" asp-antiforgery="true" class="signout"><button type="submit" class="btn btn-link nav-link">Sign out</button></form>
             </nav>
         }
