@@ -2,6 +2,7 @@ using System.Net;
 using System.Text.Json;
 using AngleSharp.Html.Parser;
 using DreamGrid.Launcher.Core;
+using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Security;
@@ -228,6 +229,122 @@ public sealed class StaffPagesTests
         Assert.Contains("Your world's sign-in service isn't running yet. Start your world, then try again.", MainText(await r.Content.ReadAsStringAsync(Ct)));
         Assert.Empty(Audit(f, "level-changed"));
         Assert.Equal(50, LevelOf(f, "Gail", "Guest"));
+    }
+
+    private const string Unconfirmed = "The change was sent but your world didn't confirm it. Check the person's level, then try again if needed.";
+
+    [Fact]
+    public async Task A_suspension_sent_but_not_confirmed_keeps_the_old_level_ends_sessions_and_is_audited_as_unconfirmed()
+    {
+        await using var f = Factory();
+        var admin = await SignedInAsync(f, "admin");
+        var supervisor = await SignedInAsync(f, "supervisor");
+        var sessions = f.Services.GetRequiredService<StaffSessions>();
+        // Robust takes the level, but too late for the wait.
+        f.Grid.SetUserLevelError = new LevelNotConfirmedException("Robust did not give Test Supervisor level -1 within 15 s.");
+
+        using (var r = await PostAsync(admin, "/people?handler=Suspend", new() { ["name"] = "Test Supervisor" }))
+            Assert.Contains(Unconfirmed, MainText(await r.Content.ReadAsStringAsync(Ct)));
+
+        Assert.Equal(-1, LevelOf(f, "Test", "Supervisor"));
+        Assert.Empty(sessions.List(TestAuth.SupervisorId)); // rights may be gone: signed out as if it were confirmed
+        using (var after = await supervisor.GetAsync("/people", Ct)) Assert.NotEqual(HttpStatusCode.OK, after.StatusCode);
+        Assert.Equal("unconfirmed", Assert.Single(Audit(f, "suspended")).GetProperty("result").GetString());
+
+        // The level before the suspension is still remembered.
+        f.Grid.SetUserLevelError = null;
+        using (var unsuspend = await PostAsync(admin, "/people?handler=Unsuspend", new() { ["name"] = "Test Supervisor" }))
+            Assert.Contains("Test Supervisor is not suspended any more.", MainText(await unsuspend.Content.ReadAsStringAsync(Ct)));
+        Assert.Equal(100, LevelOf(f, "Test", "Supervisor"));
+    }
+
+    [Fact]
+    public async Task An_unsuspension_sent_but_not_confirmed_keeps_the_remembered_level()
+    {
+        await using var f = Factory();
+        var owner = await SignedInAsync(f, "owner");
+        using (await PostAsync(owner, "/people?handler=Suspend", new() { ["name"] = "Gail Guest" })) { }
+        f.Grid.SetUserLevelError = new LevelNotConfirmedException("not confirmed");
+        f.Grid.OnSetUserLevel = (_, _, _) => null; // this time Robust didn't take it at all
+
+        using (var r = await PostAsync(owner, "/people?handler=Unsuspend", new() { ["name"] = "Gail Guest" }))
+            Assert.Contains(Unconfirmed, MainText(await r.Content.ReadAsStringAsync(Ct)));
+        Assert.Equal("unconfirmed", Assert.Single(Audit(f, "unsuspended")).GetProperty("result").GetString());
+
+        Assert.Equal(50, f.Services.GetRequiredService<SuspendedStore>().PreviousLevel(GuestId));
+    }
+
+    [Fact]
+    public async Task Making_an_admin_a_guest_sent_but_not_confirmed_ends_their_sessions()
+    {
+        await using var f = Factory();
+        var owner = await SignedInAsync(f, "owner");
+        await SignedInAsync(f, "admin");
+        var sessions = f.Services.GetRequiredService<StaffSessions>();
+        f.Grid.SetUserLevelError = new LevelNotConfirmedException("not confirmed");
+
+        using (var r = await PostAsync(owner, "/staff?handler=Change", new() { ["name"] = "Test Admin", ["change"] = "MakeGuest" }))
+            Assert.Contains(Unconfirmed, MainText(await r.Content.ReadAsStringAsync(Ct)));
+
+        Assert.Empty(sessions.List(TestAuth.AdminId));
+        var entry = Assert.Single(Audit(f, "level-changed"));
+        Assert.Equal("unconfirmed", entry.GetProperty("result").GetString());
+        Assert.Contains("200 -> 0", entry.GetProperty("target").GetString());
+    }
+
+    [Fact]
+    public async Task A_promotion_sent_but_not_confirmed_signs_nobody_out()
+    {
+        await using var f = Factory();
+        var owner = await SignedInAsync(f, "owner");
+        await SignedInAsync(f, "supervisor");
+        var sessions = f.Services.GetRequiredService<StaffSessions>();
+        f.Grid.SetUserLevelError = new LevelNotConfirmedException("not confirmed");
+
+        using (var r = await PostAsync(owner, "/staff?handler=Change", new() { ["name"] = "Test Supervisor", ["change"] = "MakeAdmin" }))
+            Assert.Contains(Unconfirmed, MainText(await r.Content.ReadAsStringAsync(Ct)));
+
+        Assert.NotEmpty(sessions.List(TestAuth.SupervisorId));
+        Assert.Equal("unconfirmed", Assert.Single(Audit(f, "level-changed")).GetProperty("result").GetString());
+    }
+
+    [Fact]
+    public async Task A_promotion_says_the_rights_come_at_the_next_sign_in()
+    {
+        await using var f = Factory();
+        var owner = await SignedInAsync(f, "owner");
+
+        using var r = await PostAsync(owner, "/staff?handler=Change", new() { ["name"] = "Gail Guest", ["change"] = "MakeSupervisor" });
+
+        Assert.Contains("Gail Guest is now a supervisor. They get the new rights the next time they sign in.", MainText(await r.Content.ReadAsStringAsync(Ct)));
+        using var admin = await PostAsync(owner, "/staff?handler=Change", new() { ["name"] = "Gail Guest", ["change"] = "MakeAdmin" });
+        Assert.Contains("Gail Guest is now an admin. They get the new rights the next time they sign in.", MainText(await admin.Content.ReadAsStringAsync(Ct)));
+        // Rights taken away are gone at once: no such sentence.
+        using var down = await PostAsync(owner, "/staff?handler=Change", new() { ["name"] = "Gail Guest", ["change"] = "MakeSupervisor" });
+        var text = MainText(await down.Content.ReadAsStringAsync(Ct));
+        Assert.Contains("Gail Guest is now a supervisor.", text);
+        Assert.DoesNotContain("next time they sign in", text);
+    }
+
+    [Fact]
+    public async Task Unsuspend_is_refused_when_the_suspended_list_cannot_be_read()
+    {
+        await using var f = Factory();
+        var owner = await SignedInAsync(f, "owner");
+        using (await PostAsync(owner, "/people?handler=Suspend", new() { ["name"] = "Gail Guest" })) { }
+        // Something in the way of the file: it can't be read.
+        var file = Path.Combine(f.Paths.Security, "suspended.json");
+        File.Delete(file);
+        Directory.CreateDirectory(file);
+
+        var page = await owner.GetStringAsync("/people?name=Gail+Guest", Ct);
+        Assert.Contains("The list of suspended people couldn't be read", MainText(page));
+        using var r = await PostAsync(owner, "/people?handler=Unsuspend", new() { ["name"] = "Gail Guest" });
+
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        Assert.Contains("The list of suspended people couldn't be read, so nothing was changed.", MainText(await r.Content.ReadAsStringAsync(Ct)));
+        Assert.Equal(-1, LevelOf(f, "Gail", "Guest")); // never given level 0 for want of the remembered one
+        Assert.Equal(["SetUserLevel Gail Guest -1"], SetLevelCalls(f));
     }
 
     [Theory]

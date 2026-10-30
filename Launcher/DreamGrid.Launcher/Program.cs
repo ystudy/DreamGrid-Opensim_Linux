@@ -161,7 +161,7 @@ builder.Services.AddSingleton(sp => new StaffSessions(Path.Combine(paths.Securit
 builder.Services.AddSingleton(sp => new TwoFactorStore(Path.Combine(paths.Security, "twofactor.json"),
     sp.GetRequiredService<IDataProtectionProvider>(), sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<TwoFactorStore>>()));
 builder.Services.AddSingleton<ITwoFactorStatus>(sp => sp.GetRequiredService<TwoFactorStore>());
-builder.Services.AddSingleton(sp => new SuspendedStore(Path.Combine(paths.Security, "suspended.json")));
+builder.Services.AddSingleton(sp => new SuspendedStore(Path.Combine(paths.Security, "suspended.json"), sp.GetRequiredService<ILogger<SuspendedStore>>()));
 builder.Services.AddSingleton<IStaffDirectory>(sp => new StaffDirectory(sp.GetRequiredService<Func<LauncherSettings>>()));
 builder.Services.AddSingleton<StaffActions>();
 builder.Services.AddSingleton<StaffPrincipalValidator>();

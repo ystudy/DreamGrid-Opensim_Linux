@@ -99,11 +99,21 @@ public sealed class IndexModel(IRobustClient robust, StaffActions actions, ILogg
 
     private void Show(RobustAccount account)
     {
-        var view = actions.RoleOf(account);
         var suspended = account.UserLevel < 0;
-        Found = new Person(account, view.Current, suspended,
-            CanSuspend: !suspended && actions.Refusal(User, account, StaffChange.Suspend) is null,
-            CanUnsuspend: suspended && actions.Refusal(User, account, StaffChange.Unsuspend) is null);
+        try
+        {
+            var view = actions.RoleOf(account);
+            Found = new Person(account, view.Current, suspended,
+                CanSuspend: !suspended && actions.Refusal(User, account, StaffChange.Suspend) is null,
+                CanUnsuspend: suspended && actions.Refusal(User, account, StaffChange.Unsuspend) is null);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // Who may unsuspend depends on the level they get back, which can't be read: shown, but no buttons.
+            log.LogWarning("People: the suspended list could not be read ({Error}).", e.GetType().Name);
+            Found = new Person(account, StaffRole.None, suspended, CanSuspend: false, CanUnsuspend: false);
+            Error ??= "The list of suspended people couldn't be read, so this person can't be changed here now.";
+        }
         Name = Found.FullName;
     }
 }

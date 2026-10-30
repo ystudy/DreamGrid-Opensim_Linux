@@ -1,4 +1,6 @@
+using System.Collections.Concurrent;
 using DreamGrid.Launcher.Security;
+using Microsoft.Extensions.Logging;
 using Xunit;
 
 namespace DreamGrid.Launcher.Tests;
@@ -45,16 +47,42 @@ public sealed class SuspendedStoreTests : IDisposable
     }
 
     [Fact]
-    public void A_damaged_file_remembers_nothing_and_is_replaced_on_the_next_write()
+    public void A_damaged_file_remembers_nothing_and_is_moved_aside_before_the_next_write()
     {
         Directory.CreateDirectory(Path.GetDirectoryName(File_)!);
         File.WriteAllText(File_, "{ not json");
+        var logs = new ConcurrentQueue<(LogLevel Level, string Category, string Message)>();
+        var log = LoggerFactory.Create(b => b.AddProvider(new CapturingLoggerProvider(logs))).CreateLogger<SuspendedStore>();
         var a = Guid.NewGuid();
-        var store = new SuspendedStore(File_);
+        var store = new SuspendedStore(File_, log);
 
         Assert.Null(store.PreviousLevel(a));
         store.Remember(a, 70);
 
         Assert.Equal(70, new SuspendedStore(File_).PreviousLevel(a));
+        var aside = Assert.Single(Directory.GetFiles(Path.GetDirectoryName(File_)!, "suspended.json.damaged-*"));
+        Assert.Equal("{ not json", File.ReadAllText(aside));
+        Assert.Contains(logs, l => l.Level == LogLevel.Warning && l.Message.Contains("suspended.json"));
+    }
+
+    [Fact]
+    public void A_file_that_cannot_be_read_throws_and_is_never_written_over()
+    {
+        // Something in the way of the file (here a folder) is an error to report, not an empty list: the next write would
+        // otherwise forget every remembered level.
+        Directory.CreateDirectory(File_);
+        var a = Guid.NewGuid();
+        var store = new SuspendedStore(File_);
+
+        Assert.True(Record.Exception(() => store.PreviousLevel(a)) is IOException or UnauthorizedAccessException);
+        Assert.True(Record.Exception(() => store.Remember(a, 70)) is IOException or UnauthorizedAccessException);
+        Assert.True(Record.Exception(() => store.Forget(a)) is IOException or UnauthorizedAccessException);
+        Assert.True(Directory.Exists(File_));
+    }
+
+    [Fact]
+    public void A_missing_folder_remembers_nothing()
+    {
+        Assert.Null(new SuspendedStore(Path.Combine(_dir, "nowhere", "suspended.json")).PreviousLevel(Guid.NewGuid()));
     }
 }

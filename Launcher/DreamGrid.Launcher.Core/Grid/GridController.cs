@@ -846,10 +846,20 @@ public sealed partial class GridController(
             ThrowIfNoGridService(LoadSettings());
             var transcript = new List<string>();
             transcript.AddRange(await _robust!.Console!.RunAsync($"set user level {first} {last} {level}", ConsoleSettle, ct));
+            // From here the command was sent: a failure only means it isn't confirmed (Robust may still have made the change).
             // Robust runs console commands on its own thread: the level shows only after the console output has settled.
-            var account = await WaitForAccountAsync(first, last, a => a.UserLevel == level, ct);
+            RobustAccount? account;
+            try
+            {
+                account = await WaitForAccountAsync(first, last, a => a.UserLevel == level, ct);
+            }
+            catch (Exception e) when (e is HttpRequestException or TaskCanceledException or TimeoutException && !ct.IsCancellationRequested)
+            {
+                throw new LevelNotConfirmedException(
+                    $"Robust stopped answering while {first} {last}'s new level {level} was being checked. Console: {string.Join(" | ", transcript)}", e);
+            }
             if (account is null || account.UserLevel != level)
-                throw new InvalidOperationException(
+                throw new LevelNotConfirmedException(
                     $"Robust did not give {first} {last} level {level} within {AccountWait.TotalSeconds:0} s. Console: {string.Join(" | ", transcript)}");
             return account;
         }

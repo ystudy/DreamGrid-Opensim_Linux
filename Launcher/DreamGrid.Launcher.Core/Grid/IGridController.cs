@@ -28,9 +28,10 @@ public interface IGridController
     /// <summary>
     /// Gives the avatar called <paramref name="first"/> <paramref name="last"/> the user <paramref name="level"/> (Robust's console
     /// <c>set user level</c>; −1 is a suspension) and waits until the account shows it. Throws <see cref="ArgumentException"/> for a
-    /// name the console would split, and <see cref="InvalidOperationException"/> (with the console transcript) when this computer
-    /// runs no grid service or the account does not show the level in time; <see cref="HttpRequestException"/> when the console
-    /// can't be reached (Robust isn't running).
+    /// name the console would split, <see cref="InvalidOperationException"/> when this computer runs no grid service, and
+    /// <see cref="HttpRequestException"/> when the console can't be reached (Robust isn't running): then nothing was sent. Once the
+    /// command was sent, an account that doesn't show the level in time (or Robust failing while it is checked) throws
+    /// <see cref="LevelNotConfirmedException"/> with the console transcript: the change may have been made.
     /// </summary>
     Task<RobustAccount> SetUserLevelAsync(string first, string last, int level, CancellationToken ct);
 

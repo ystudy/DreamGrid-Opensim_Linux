@@ -362,7 +362,10 @@ internal sealed class FakeGridController : IGridController
         return Task.FromResult(account);
     }
 
-    /// <summary>Thrown by <see cref="SetUserLevelAsync"/> when set.</summary>
+    /// <summary>
+    /// Thrown by <see cref="SetUserLevelAsync"/> when set. A <see cref="LevelNotConfirmedException"/> is thrown after
+    /// <see cref="OnSetUserLevel"/> has run: the command was sent (Robust may have taken it), only the confirmation is missing.
+    /// </summary>
     public Exception? SetUserLevelError { get; set; }
 
     /// <summary>What <see cref="SetUserLevelAsync"/> does besides recording (the host's fake Robust takes the new level here).</summary>
@@ -371,6 +374,11 @@ internal sealed class FakeGridController : IGridController
     public Task<RobustAccount> SetUserLevelAsync(string first, string last, int level, CancellationToken ct)
     {
         Record($"SetUserLevel {first} {last} {level}");
+        if (SetUserLevelError is LevelNotConfirmedException sent)
+        {
+            OnSetUserLevel?.Invoke(first, last, level);
+            return Task.FromException<RobustAccount>(sent);
+        }
         if (SetUserLevelError is { } e) return Task.FromException<RobustAccount>(e);
         return Task.FromResult(OnSetUserLevel?.Invoke(first, last, level) ?? new RobustAccount(Guid.NewGuid(), first, last, level, ""));
     }

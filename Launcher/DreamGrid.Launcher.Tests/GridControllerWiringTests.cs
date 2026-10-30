@@ -268,7 +268,8 @@ public sealed class GridControllerWiringTests : IDisposable
             await Task.Delay(10, ct);
         }
 
-        var e = await Assert.ThrowsAsync<InvalidOperationException>(() => change);
+        // The command went out: "sent but not confirmed", told apart from a console that couldn't be reached.
+        var e = await Assert.ThrowsAsync<LevelNotConfirmedException>(() => change);
         Assert.Contains("Gail Guest", e.Message);
         Assert.Contains("100", e.Message);
         Assert.Contains("Console:", e.Message);

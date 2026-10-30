@@ -27,16 +27,26 @@ public readonly record struct RoleView(StaffRole Current, StaffRole Restored, bo
 /// person's sessions when they lose rights (suspended, made a guest, or an admin made a supervisor), remembers the level a
 /// suspended person had (<see cref="SuspendedStore"/>) and audits the result: <c>level-changed</c>, <c>suspended</c> or
 /// <c>unsuspended</c>; a refused change is audited with the result <c>refused</c>, and one that could not be made (Robust not
-/// running) is not audited as done.
+/// running, or the suspended list can't be read) is not audited. A change that was sent but that Robust didn't confirm may have
+/// been made: the remembered level is kept, the person is signed out if the change takes rights away, and it is audited with
+/// the result <c>unconfirmed</c>.
 /// </summary>
 public sealed class StaffActions(IGridController grid, Func<LauncherSettings> settings, SuspendedStore suspended, StaffSessions sessions,
     AuditLog audit, ILogger<StaffActions> log)
 {
     public const string RobustDown = "Your world's sign-in service isn't running yet. Start your world, then try again.";
 
+    /// <summary>What a change says when Robust took the command but didn't show the new level in time.</summary>
+    public const string Unconfirmed = "The change was sent but your world didn't confirm it. Check the person's level, then try again if needed.";
+
+    /// <summary>What a change says when the remembered levels can't be read: nothing is changed, so nobody is given level 0 for want of theirs.</summary>
+    public const string SuspendedUnreadable = "The list of suspended people couldn't be read, so nothing was changed.";
+
     /// <summary>
     /// The roles to judge a change to <paramref name="account"/> by. A suspended person's level is -1, which reads as a guest, so
-    /// they are also judged by the level they get back: a supervisor can't hand an admin their rights again.
+    /// they are also judged by the level they get back: a supervisor can't hand an admin their rights again. For a suspended person
+    /// this reads the suspended list, so it throws <see cref="IOException"/> or <see cref="UnauthorizedAccessException"/> when
+    /// that can't be read.
     /// </summary>
     public RoleView RoleOf(RobustAccount account)
     {
@@ -61,23 +71,37 @@ public sealed class StaffActions(IGridController grid, Func<LauncherSettings> se
         var name = $"{target.FirstName} {target.LastName}";
         var shown = LogText.Clean(name, 64);
         var action = ActionOf(change);
-        if (Refusal(actor, target, change) is { } refusal)
-        {
-            Write(actor, ip, action, shown, "refused");
-            return new ChangeOutcome(false, refusal);
-        }
-
         var s = settings();
-        var view = RoleOf(target);
-        var from = target.UserLevel;
-        var to = change switch
+        RoleView view;
+        int to;
+        try
         {
-            StaffChange.MakeSupervisor => s.Security.SupervisorLevel,
-            StaffChange.MakeAdmin => s.Security.AdminLevel,
-            StaffChange.MakeGuest => 0,
-            StaffChange.Suspend => -1,
-            _ => Math.Max(0, suspended.PreviousLevel(target.PrincipalId) ?? 0),
-        };
+            if (Refusal(actor, target, change) is { } refusal)
+            {
+                Write(actor, ip, action, shown, "refused");
+                return new ChangeOutcome(false, refusal);
+            }
+            view = RoleOf(target);
+            to = change switch
+            {
+                StaffChange.MakeSupervisor => s.Security.SupervisorLevel,
+                StaffChange.MakeAdmin => s.Security.AdminLevel,
+                StaffChange.MakeGuest => 0,
+                StaffChange.Suspend => -1,
+                _ => Math.Max(0, suspended.PreviousLevel(target.PrincipalId) ?? 0),
+            };
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            log.LogWarning("Staff: the suspended list could not be read ({Error}); no level was changed.", e.GetType().Name);
+            return new ChangeOutcome(false, SuspendedUnreadable);
+        }
+        var from = target.UserLevel;
+        var detail = change is StaffChange.Suspend or StaffChange.Unsuspend ? shown : $"{shown}: {from} -> {to}";
+        // Rights lost take effect at once, not at the next five-minute check.
+        var losesRights = change is StaffChange.Suspend or StaffChange.MakeGuest
+            || change == StaffChange.MakeSupervisor && view.Current == StaffRole.Admin;
+        var gainsRights = change == StaffChange.MakeAdmin || change == StaffChange.MakeSupervisor && view.Current == StaffRole.None;
         if (change == StaffChange.Suspend && from < 0) return new ChangeOutcome(false, $"{name} is already suspended.");
         if (change == StaffChange.Unsuspend && from >= 0) return new ChangeOutcome(false, $"{name} is not suspended.");
         if (change is StaffChange.MakeSupervisor or StaffChange.MakeAdmin or StaffChange.MakeGuest && from == to)
@@ -92,6 +116,15 @@ public sealed class StaffActions(IGridController grid, Func<LauncherSettings> se
                 remembered = true;
             }
             await grid.SetUserLevelAsync(target.FirstName, target.LastName, to, ct);
+        }
+        catch (LevelNotConfirmedException e)
+        {
+            // Sent, so it may have been made: the remembered level stays (forgetting it could lose it for good), rights that may
+            // be gone are taken at once, and the audit says so.
+            log.LogWarning("Staff: a level change was sent but not confirmed: {Message}", LogText.Clean(e.Message, 300));
+            if (losesRights) sessions.EndAll(target.PrincipalId);
+            Write(actor, ip, action, detail, "unconfirmed");
+            return new ChangeOutcome(false, Unconfirmed);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
@@ -111,14 +144,12 @@ public sealed class StaffActions(IGridController grid, Func<LauncherSettings> se
             return new ChangeOutcome(false, $"{shown}'s level can't be changed here.");
         }
 
-        // Rights lost take effect at once, not at the next five-minute check.
-        if (change is StaffChange.Suspend or StaffChange.MakeGuest
-            || change == StaffChange.MakeSupervisor && view.Current == StaffRole.Admin)
-            sessions.EndAll(target.PrincipalId);
+        if (losesRights) sessions.EndAll(target.PrincipalId);
         if (change == StaffChange.Unsuspend) Forget(target.PrincipalId);
 
-        Write(actor, ip, action, change is StaffChange.Suspend or StaffChange.Unsuspend ? shown : $"{shown}: {from} -> {to}", "ok");
-        return new ChangeOutcome(true, Done(change, name));
+        Write(actor, ip, action, detail, "ok");
+        // The recheck while signed in never raises the role a person signed in with: new rights come with their next sign-in.
+        return new ChangeOutcome(true, Done(change, name) + (gainsRights ? " They get the new rights the next time they sign in." : ""));
     }
 
     private void Forget(Guid principal)
