@@ -151,6 +151,9 @@ builder.Services.AddSingleton(sp => new LoginThrottle(sp.GetRequiredService<Time
     Path.Combine(paths.Security, "throttle.json"), sp.GetRequiredService<ILogger<LoginThrottle>>()));
 builder.Services.AddSingleton(sp => new StaffSessions(Path.Combine(paths.Security, "sessions.json"),
     sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<StaffSessions>>()));
+builder.Services.AddSingleton(sp => new TwoFactorStore(Path.Combine(paths.Security, "twofactor.json"),
+    sp.GetRequiredService<IDataProtectionProvider>(), sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<TwoFactorStore>>()));
+builder.Services.AddSingleton<ITwoFactorStatus>(sp => sp.GetRequiredService<TwoFactorStore>());
 builder.Services.AddSingleton<StaffPrincipalValidator>();
 builder.Services.AddSingleton<LegacyCommandApi>();
 builder.Services.AddSingleton<IOnlineUsers>(sp => new OnlineUsers(sp.GetRequiredService<Func<LauncherSettings>>(),
