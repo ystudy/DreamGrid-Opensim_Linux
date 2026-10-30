@@ -11,7 +11,7 @@
         <noscript><meta http-equiv="refresh" content="3"></noscript>
     }
 }
-<partial name="_Checklist" model="3" />
+<partial name="_Checklist" />
 <h1>Choose your first region</h1>
 
 @if (p.Running)
@@ -43,6 +43,15 @@ else if (Model.ShowProgress && p.Error is not null)
 
 @if (Model.ShowForm)
 {
+    @if (Model.CanSkip)
+    {
+        <div class="skip-region alert alert-secondary">
+            <p>A Grid Asset Server doesn't need regions of its own. Other computers can add them. You can run regions here too, but it isn't advised: busy regions slow down logins, inventory and the map for everyone on the grid.</p>
+            <form method="post" asp-page-handler="Skip">
+                <button type="submit" class="btn btn-outline-primary">Skip: no regions on this computer</button>
+            </form>
+        </div>
+    }
     <form method="post">
         <label class="form-label mt-3" asp-for="RegionName">Region name</label>
         <input class="form-control" asp-for="RegionName" maxlength="32" autocomplete="off" required>

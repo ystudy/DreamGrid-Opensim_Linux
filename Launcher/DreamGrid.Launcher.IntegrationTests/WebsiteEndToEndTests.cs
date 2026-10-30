@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using DreamGrid.Launcher.Core;
+using DreamGrid.Launcher.Core.Ini;
 using DreamGrid.Launcher.Core.Settings;
 using Xunit;
 using static DreamGrid.Launcher.IntegrationTests.GridTestSupport;
@@ -34,11 +35,18 @@ public sealed partial class LauncherEndToEndTests
             await WaitForAsync(launcher, () => Task.FromResult((link = SetupLink(paths)) != ""), "the setup link in launcher.log");
             Assert.StartsWith($"http://127.0.0.1:{s.WebPort}/setup?token=", link);
 
-            // 2. The link sets the setup cookie and lands on the first step.
+            // 2. The link sets the setup cookie and lands on the plan cards.
             var page = await web.FollowAsync(link);
+            Assert.Equal("/setup/plan", page.Path);
+
+            // 3. The Local plan from its own page, then the network step.
+            page = await web.FollowAsync("/setup/plan/local");
+            page = await web.SubmitAsync(page, new());
+            Assert.Equal("/setup/network", page.Path);
+            page = await web.SubmitAsync(page, new());
             Assert.Equal("/setup/world", page.Path);
 
-            // 3. Step 1: the world's name.
+            // The world's name.
             page = await web.SubmitAsync(page, new() { ["GridName"] = "Avalon" });
             Assert.Equal("/setup/avatar", page.Path);
 
@@ -77,6 +85,52 @@ public sealed partial class LauncherEndToEndTests
             // 9. The setup link is spent.
             page = await web.FollowAsync(link);
             Assert.Equal("/setup-done", page.Path);
+        });
+    }
+
+    [Fact]
+    public async Task Grid_asset_lan_setup_with_hypergrid_off_boots_a_region()
+    {
+        var paths = RequirePaths(_root);
+        var store = new SettingsStore(paths.SettingsFile);
+        var s = SeedSettings(store);
+
+        await RunWithCleanupAsync(paths, store, async () =>
+        {
+            var launcher = StartLauncher(paths);
+            await WaitForAsync(launcher, async () => await GetAsync(s, "?type=Booted") == "ACK", "GET /?type=Booted == ACK");
+            using var web = new WebSession(s.WebPort);
+
+            string link = "";
+            await WaitForAsync(launcher, () => Task.FromResult((link = SetupLink(paths)) != ""), "the setup link in launcher.log");
+            var page = await web.FollowAsync(link);
+            Assert.Equal("/setup/plan", page.Path);
+
+            // The Grid Asset plan, with a LAN address (a made-up public address would become the services' BaseURL,
+            // and the region could not reach Robust on a test machine) and the hypergrid switch left off.
+            page = await web.FollowAsync("/setup/plan/grid-asset");
+            page = await web.SubmitAsync(page, new());
+            Assert.Equal("/setup/network", page.Path);
+            page = await web.SubmitAsync(page, new() { ["AddressKind"] = "lan" });
+            Assert.Equal("/setup/world", page.Path);
+            page = await web.SubmitAsync(page, new() { ["GridName"] = "Avalon" });
+            Assert.Equal("/setup/avatar", page.Path);
+            page = await web.SubmitAsync(page, new()
+            {
+                ["FirstName"] = "Test", ["LastName"] = "Owner", ["Password"] = Password, ["Confirm"] = Password,
+            });
+            Assert.Equal("/setup/region", page.Path);
+
+            // Create the region (not Skip, whose form comes first on this plan) and wait until it is ready (logins enabled).
+            page = await web.SubmitAsync(page, new() { ["RegionName"] = "Welcome", ["Content"] = "island" }, "main > form");
+            Assert.Equal("/setup/region?working=1", page.PathAndQuery);
+            await WaitForAsync(launcher, () => RegionReadyAsync(web), "/api/setup/progress to reach \"Ready\"", () => "last progress: " + _lastProgress);
+
+            var settings = store.LoadOrCreate();
+            Assert.False(settings.Hypergrid);
+            var region = RegionModel.FindByName(settings, "Welcome")!;
+            var ini = IniDocument.Load(Path.Combine(paths.RegionDir(region.Instance), "OpenSim.ini"));
+            Assert.Equal("config-include/Grid.ini", ini.Get("Architecture", "Include-Architecture"));
         });
     }
 

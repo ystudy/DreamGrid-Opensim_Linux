@@ -1,0 +1,47 @@
+@page "/advanced/plan"
+@model DreamGrid.Launcher.Pages.Advanced.PlanModel
+@{
+    ViewData["Title"] = "Plan";
+}
+<nav aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="/advanced">Advanced Settings</a></li><li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li></ol></nav>
+<h1>Your plan: @Model.Current.Icon @Model.Current.Title</h1>
+@if (Model.SavedNotes is { } notes)
+{
+    <partial name="_Saved" model="notes" />
+}
+@if (Model.Problem is { } problem)
+{
+    <div class="error-box alert alert-danger" role="alert">@problem</div>
+}
+<partial name="_PlanDetails" model="Model.Current" view-data='new Microsoft.AspNetCore.Mvc.ViewFeatures.ViewDataDictionary(ViewData) { ["Advisories"] = Model.Advisories }' />
+
+@if (Model.Switch is { } sw)
+{
+    <h2 class="mt-4">Hypergrid</h2>
+    <form id="hypergrid" method="post" asp-page-handler="Hypergrid">
+        <partial name="_HypergridSwitch" model="sw" />
+        @if (sw.Allowed)
+        {
+            <button type="submit" class="btn btn-primary mt-3">Save</button>
+        }
+    </form>
+}
+
+<h2 class="mt-4">Change plan</h2>
+<ul class="plan-allowed list-unstyled">
+    @foreach (var c in Model.Changes.Where(c => c.Allowed))
+    {
+        <li class="mb-2">
+            <form method="post" asp-page-handler="Change" class="d-inline">
+                <button type="submit" name="To" value="@c.Plan.Id" class="btn btn-outline-primary">Change to @c.Plan.Title</button>
+            </form>
+            <span class="hint form-text">@c.Plan.Summary</span>
+        </li>
+    }
+</ul>
+<ul class="plan-refused list-unstyled">
+    @foreach (var c in Model.Changes.Where(c => !c.Allowed))
+    {
+        <li class="mb-2">✘ <strong>@c.Plan.Title</strong>: <span class="hint form-text d-inline">@c.Reason</span></li>
+    }
+</ul>

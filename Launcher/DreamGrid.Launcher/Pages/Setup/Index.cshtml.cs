@@ -16,10 +16,10 @@ public sealed class IndexModel(IGridController grid, Func<LauncherSettings> sett
 {
     [BindProperty] public string? Port { get; set; }
 
-    /// <summary>The current checklist step (1-4), for the page shown when a port change is refused.</summary>
-    public int Step { get; private set; }
+    /// <summary>The current checklist step's path, for the page shown when a port change is refused.</summary>
+    public string Step { get; private set; } = "";
 
-    public IActionResult OnGet() => Redirect(SetupSteps.FirstUnfinished(settings().Setup));
+    public IActionResult OnGet() => Redirect(SetupSteps.FirstUnfinished(settings()));
 
     /// <summary>
     /// Moves the port the last start failed on (its setting is found by value; the web port is the site being served,
@@ -28,7 +28,7 @@ public sealed class IndexModel(IGridController grid, Func<LauncherSettings> sett
     public IActionResult OnPostPort()
     {
         var current = settings();
-        var next = SetupSteps.FirstUnfinished(current.Setup);
+        var next = SetupSteps.FirstUnfinished(current);
         var status = grid.GetStatus();
         var taken = StatusApi.ShowsStartFailure(status) ? status.StartFailure!.ConflictPort : null;
         var key = taken is { } t
@@ -42,7 +42,7 @@ public sealed class IndexModel(IGridController grid, Func<LauncherSettings> sett
         {
             ViewData["PortError"] = error;
             ViewData["PortValue"] = Port;
-            Step = Array.FindIndex([.. SetupSteps.All], s => s.Path == next) + 1;
+            Step = next;
             return Page();
         }
 

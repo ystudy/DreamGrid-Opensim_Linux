@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using DreamGrid.Launcher.Core.Config;
 
 namespace DreamGrid.Launcher.Core.Settings;
 
@@ -66,7 +67,15 @@ public sealed class SettingsStore(string path)
             "BulletSim" => p with { Physics = "BulletSimThreaded" },
             _ => p,
         }).ToList();
-        return s with { SchemaVersion = LauncherSettings.CurrentSchema, Programs = programs };
+        s = s with { Programs = programs };
+        // Schema 3 to 4: a finished install gets the plan its address implies, with hypergrid on only for a public one.
+        // An unfinished setup keeps both at their defaults and chooses at first use.
+        if (s.SchemaVersion < 4 && s.Setup.Finished)
+        {
+            var plan = HostAddress.IsPublic(s.Hostname) ? OwnerPlan.SimplePublic : OwnerPlan.Local;
+            s = s with { Plan = plan, Hypergrid = plan == OwnerPlan.SimplePublic };
+        }
+        return s with { SchemaVersion = LauncherSettings.CurrentSchema };
     }
 
     private static LauncherSettings MigrateV1(LauncherSettings s)

@@ -14,7 +14,9 @@ public sealed record SetupState(
     bool OwnerCreated = false,
     bool RegionCreated = false,
     bool Finished = false,
-    OwnerInfo? Owner = null);
+    OwnerInfo? Owner = null,
+    bool NetworkSet = false,
+    bool RegionSkipped = false);
 
 /// <summary>How a map tile is drawn; "None" turns map tiles off.</summary>
 public enum MapQuality { None, Simple, Good, Better, Best }
@@ -88,12 +90,17 @@ public sealed record IniOverride(string Target, string Section, string Key, stri
 
 public sealed record LauncherSettings
 {
-    public const int CurrentSchema = 3;
+    public const int CurrentSchema = 4;
 
     public int SchemaVersion { get; init; } = CurrentSchema;
     public string GridName { get; init; } = "My World";
     /// <summary>Null means the detected LAN IP.</summary>
     public string? Hostname { get; init; }
+
+    /// <summary>The owner plan chosen at first use; null until one is chosen.</summary>
+    public OwnerPlan? Plan { get; init; }
+    /// <summary>Whether avatars may travel to and from other grids.</summary>
+    public bool Hypergrid { get; init; }
 
     public int WebPort { get; init; } = 8001;
     public int RobustPublicPort { get; init; } = 8002;

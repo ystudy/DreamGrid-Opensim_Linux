@@ -79,8 +79,8 @@ public sealed partial class AvatarModel(
 
     private IActionResult? Closed()
     {
-        var s = settings().Setup;
-        return s.OwnerCreated || !SetupSteps.CanOpen(s, 2) ? Redirect("/setup") : null;
+        var s = settings();
+        return s.Setup.OwnerCreated || !SetupSteps.CanOpen(s, "/setup/avatar") ? Redirect("/setup") : null;
     }
 
     private void Validate()

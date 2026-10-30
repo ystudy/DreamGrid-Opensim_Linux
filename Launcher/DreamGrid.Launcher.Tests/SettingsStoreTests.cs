@@ -210,22 +210,22 @@ public class SettingsStoreTests : IDisposable
 
         var s = new SettingsStore(path).LoadOrCreate();
 
-        Assert.Equal(3, s.SchemaVersion);
+        Assert.Equal(4, s.SchemaVersion);
         Assert.Null(s.Programs[0].Physics);
         // Schema 2's BulletSim ran with the prototype's UseSeparatePhysicsThread=true: it keeps running that way.
         Assert.Equal("BulletSimThreaded", s.Programs[1].Physics);
         Assert.Equal("ubODE", s.DefaultPhysics);
         Assert.True(s.DefaultScripts);
         var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
-        Assert.Equal(3, (int)node["schemaVersion"]!);
+        Assert.Equal(4, (int)node["schemaVersion"]!);
     }
 
     [Fact]
-    public void Schema1_file_migrates_through_to_3()
+    public void Schema1_file_migrates_through_to_4()
     {
         var s = new SettingsStore(WriteV1(V1Region.Replace("BulletSim", "ubODE"))).LoadOrCreate();
 
-        Assert.Equal(3, s.SchemaVersion);
+        Assert.Equal(4, s.SchemaVersion);
         Assert.Null(Assert.Single(s.Programs).Physics);
     }
 
@@ -242,7 +242,7 @@ public class SettingsStoreTests : IDisposable
 
         var loaded = new SettingsStore(path).LoadOrCreate();
 
-        Assert.Equal(3, loaded.SchemaVersion);
+        Assert.Equal(4, loaded.SchemaVersion);
         Assert.Equal(["ubODE", "BulletSim"], loaded.Programs.Select(p => p.Physics));
     }
 
@@ -286,7 +286,7 @@ public class SettingsStoreTests : IDisposable
     {
         var s = new SettingsStore(WriteV1(V1Region)).LoadOrCreate();
 
-        Assert.Equal(3, s.SchemaVersion);
+        Assert.Equal(4, s.SchemaVersion);
         Assert.Equal([new ProgramSettings("Welcome", 8004, 8011, "BulletSimThreaded")], s.Programs);
         Assert.Equal([new RegionSettings("Welcome", "Welcome", V1Uuid, 1000, 1000, "island", 1, 8004)], s.Regions);
         Assert.Null(s.LegacyRegion);
@@ -299,7 +299,7 @@ public class SettingsStoreTests : IDisposable
         new SettingsStore(path).LoadOrCreate();
 
         var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
-        Assert.Equal(3, (int)node["schemaVersion"]!);
+        Assert.Equal(4, (int)node["schemaVersion"]!);
         Assert.True(node.ContainsKey("programs"));
         Assert.False(node.ContainsKey("region"));
     }
@@ -309,7 +309,7 @@ public class SettingsStoreTests : IDisposable
     {
         var s = new SettingsStore(WriteV1(null)).LoadOrCreate();
 
-        Assert.Equal(3, s.SchemaVersion);
+        Assert.Equal(4, s.SchemaVersion);
         Assert.Empty(s.Programs);
         Assert.Empty(s.Regions);
     }
@@ -355,7 +355,7 @@ public class SettingsStoreTests : IDisposable
 
         var loaded = new SettingsStore(path).LoadOrCreate();
 
-        Assert.Equal(3, loaded.SchemaVersion);
+        Assert.Equal(4, loaded.SchemaVersion);
         Assert.Empty(loaded.CustomTypes);
         Assert.False(loaded.Regions[0].NeedsContent);
     }
@@ -376,5 +376,71 @@ public class SettingsStoreTests : IDisposable
         var loaded = new SettingsStore(path).LoadOrCreate();
         Assert.Equal(s.CustomTypes, loaded.CustomTypes);
         Assert.True(loaded.Regions[0].NeedsContent);
+    }
+
+    /// <summary>A schema 3 settings file: a fresh file rewritten with schemaVersion 3, the given hostname and setup state.</summary>
+    private string WriteV3(string? hostname, bool finished, bool worldNamed = false)
+    {
+        var path = Path.Combine(NewDir(), "settings.json");
+        new SettingsStore(path).LoadOrCreate();
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+        node["schemaVersion"] = 3;
+        node["hostname"] = hostname;
+        node["setup"] = new System.Text.Json.Nodes.JsonObject { ["worldNamed"] = worldNamed, ["finished"] = finished };
+        node.Remove("plan");
+        node.Remove("hypergrid");
+        File.WriteAllText(path, node.ToJsonString());
+        return path;
+    }
+
+    [Fact]
+    public void Schema_3_finished_with_public_hostname_becomes_simple_public_with_hypergrid_on()
+    {
+        var s = new SettingsStore(WriteV3("203.0.113.7", finished: true)).LoadOrCreate();
+
+        Assert.Equal(OwnerPlan.SimplePublic, s.Plan);
+        Assert.True(s.Hypergrid);
+        Assert.Equal(4, s.SchemaVersion);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("192.168.1.20")]
+    public void Schema_3_finished_with_lan_or_no_hostname_becomes_local_with_hypergrid_off(string? hostname)
+    {
+        var s = new SettingsStore(WriteV3(hostname, finished: true)).LoadOrCreate();
+
+        Assert.Equal(OwnerPlan.Local, s.Plan);
+        Assert.False(s.Hypergrid);
+    }
+
+    [Fact]
+    public void Schema_3_unfinished_keeps_plan_unset()
+    {
+        var s = new SettingsStore(WriteV3("203.0.113.7", finished: false, worldNamed: true)).LoadOrCreate();
+
+        Assert.Null(s.Plan);
+        Assert.False(s.Hypergrid);
+        Assert.True(s.Setup.WorldNamed);
+    }
+
+    [Fact]
+    public void New_settings_have_no_plan_and_hypergrid_off()
+    {
+        var s = new SettingsStore(Path.Combine(NewDir(), "settings.json")).LoadOrCreate();
+
+        Assert.Null(s.Plan);
+        Assert.False(s.Hypergrid);
+    }
+
+    [Fact]
+    public void Plan_round_trips_as_its_name()
+    {
+        var path = Path.Combine(NewDir(), "settings.json");
+        var store = new SettingsStore(path);
+        store.Save(store.LoadOrCreate() with { Plan = OwnerPlan.GridAsset });
+
+        Assert.Contains("\"plan\": \"GridAsset\"", File.ReadAllText(path));
+        Assert.Equal(OwnerPlan.GridAsset, new SettingsStore(path).LoadOrCreate().Plan);
     }
 }

@@ -1,9 +1,13 @@
 using System.Net;
 using System.Text.Json;
 using AngleSharp.Html.Parser;
+using DreamGrid.Launcher.Core.Database;
 using DreamGrid.Launcher.Core.Grid;
+using DreamGrid.Launcher.Core.Plans;
 using DreamGrid.Launcher.Core.Processes;
 using DreamGrid.Launcher.Core.Settings;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Xunit;
 
 namespace DreamGrid.Launcher.Tests;
@@ -14,23 +18,44 @@ public sealed class SetupFlowTests
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    /// <summary>Before the owner exists: the setup link's token is in the settings.</summary>
+    /// <summary>Before the owner exists: the setup link's token is in the settings; the plan and network steps are done.</summary>
     private static LauncherFactory Fresh(Func<SetupState, SetupState>? setup = null) => new(s => s with
     {
         SetupToken = Token,
-        Setup = setup is null ? s.Setup : setup(s.Setup),
+        Plan = OwnerPlan.Local,
+        Setup = setup is null ? s.Setup with { NetworkSet = true } : setup(s.Setup with { NetworkSet = true }),
     })
     {
         Before = TestAuth.Apply,
     };
+
+    /// <summary>MariaDB as the installer leaves it: found (the test host's own search finds nothing).</summary>
+    private static readonly MariaDbBinaries FoundMariaDb = new("mariadbd", "mariadb-install-db", null);
+
+    /// <summary>Before the owner exists and before a plan is chosen, with MariaDB found unless <paramref name="mariaDb"/> says otherwise.</summary>
+    private static LauncherFactory Unplanned(Func<LauncherSettings, LauncherSettings>? more = null, MariaDbBinaries? mariaDb = null) =>
+        new(s =>
+        {
+            var seeded = s with { SetupToken = Token, Plan = null };
+            return more is null ? seeded : more(seeded);
+        })
+        {
+            Before = TestAuth.Apply,
+            ExtraServices = services =>
+            {
+                services.RemoveAll<MariaDbBinaries>();
+                services.AddSingleton(mariaDb ?? FoundMariaDb);
+            },
+        };
 
     /// <summary>After the owner exists (token spent); the client signs in through TestAuth.</summary>
     private static LauncherFactory AfterOwner(bool regionCreated = false) => new(s => s with
     {
         GridName = "Avalon",
         SetupToken = null,
+        Plan = OwnerPlan.Local,
         Setup = new SetupState(WorldNamed: true, OwnerCreated: true, RegionCreated: regionCreated,
-            Owner: new OwnerInfo("Test", "Owner", Guid.NewGuid())),
+            Owner: new OwnerInfo("Test", "Owner", Guid.NewGuid()), NetworkSet: true),
     })
     {
         Before = TestAuth.Apply,
@@ -101,9 +126,10 @@ public sealed class SetupFlowTests
 
             var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/world", Ct));
             var steps = page.QuerySelectorAll(".checklist li");
-            Assert.Equal(4, steps.Length);
-            Assert.Contains("current", steps[0].ClassName);
-            Assert.DoesNotContain(steps, li => li.ClassList.Contains("done"));
+            Assert.Equal(["Choose your plan (done)", "Your network (done)", "Name your world", "Create your avatar", "Choose your first region", "Connect with Firestorm"],
+                steps.Select(li => li.TextContent.Trim()));
+            Assert.Contains("current", steps[2].ClassName);
+            Assert.Equal(2, steps.Count(li => li.ClassList.Contains("done")));
         }
 
         await using (var f = Fresh(s => s with { WorldNamed = true }))
@@ -114,8 +140,8 @@ public sealed class SetupFlowTests
 
             var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/avatar", Ct));
             var steps = page.QuerySelectorAll(".checklist li");
-            Assert.Contains("done", steps[0].ClassName);
-            Assert.Contains("current", steps[1].ClassName);
+            Assert.Contains("done", steps[2].ClassName);
+            Assert.Contains("current", steps[3].ClassName);
         }
 
         await using (var f = AfterOwner(regionCreated: true))
@@ -137,6 +163,173 @@ public sealed class SetupFlowTests
             using var resp = await client.GetAsync(step, Ct);
             Assert.Equal("/setup", Location(resp));
         }
+
+        // Before a plan is chosen, every later step (the network one too) sends back as well.
+        await using var unplanned = Unplanned();
+        using var early = await SetupClientAsync(unplanned);
+        foreach (var step in new[] { "/setup/network", "/setup/world", "/setup/avatar" })
+        {
+            using var resp = await early.GetAsync(step, Ct);
+            Assert.Equal("/setup", Location(resp));
+        }
+    }
+
+    [Fact]
+    public async Task Setup_link_lands_on_the_plan_cards()
+    {
+        await using var f = Unplanned();
+        using var client = f.CreateClient(new() { AllowAutoRedirect = false });
+
+        using (var link = await client.GetAsync("/setup?token=" + Token, Ct))
+            Assert.Equal("/setup", Location(link));
+        using (var resp = await client.GetAsync("/setup", Ct))
+            Assert.Equal("/setup/plan", Location(resp));
+
+        var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/plan", Ct));
+        Assert.Contains("What will this computer be?", page.QuerySelector("h1")?.TextContent);
+        var cards = page.QuerySelectorAll(".plan-card");
+        Assert.Equal(PlanCatalog.All.Select(p => p.Id), cards.Select(c => c.GetAttribute("data-plan")));
+        foreach (var (card, plan) in cards.Zip(PlanCatalog.All))
+        {
+            Assert.NotNull(card.QuerySelector($"a[href='/setup/plan/{plan.Id}']"));
+            Assert.Contains(plan.Title, card.TextContent);
+        }
+        Assert.Contains("current", page.QuerySelectorAll(".checklist li")[0].ClassName);
+    }
+
+    [Fact]
+    public async Task Plan_info_page_shows_diagram_advisories_and_change_rules()
+    {
+        await using var f = Unplanned();
+        using var client = await SetupClientAsync(f);
+
+        var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/plan/grid-asset", Ct));
+
+        Assert.NotNull(page.QuerySelector("svg"));
+        Assert.Contains("isn't advised", page.Body!.TextContent);
+        foreach (var advisory in PlanCatalog.Get(OwnerPlan.GridAsset).Advisories)
+            Assert.Contains(page.QuerySelectorAll(".plan-advisories li"), li => li.TextContent.Trim() == advisory);
+        var changes = page.QuerySelectorAll(".plan-changes li");
+        Assert.Contains(changes, li => li.TextContent.Contains('✘') && li.TextContent.Contains("Region Server"));
+        Assert.Contains(changes, li => li.TextContent.Contains('✔') && li.TextContent.Contains("Local"));
+        Assert.NotNull(page.QuerySelector("form[action='/setup/plan/grid-asset?handler=Choose']"));
+        Assert.NotNull(page.QuerySelector("a[href='/setup/plan']"));
+
+        using var unknown = await client.GetAsync("/setup/plan/nope", Ct);
+        Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
+    }
+
+    [Fact]
+    public async Task Unavailable_plan_page_has_a_disabled_choose_button()
+    {
+        await using var f = Unplanned();
+        using var client = await SetupClientAsync(f);
+
+        var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/plan/region-server", Ct));
+
+        var button = page.QuerySelectorAll("main button").Single(b => b.TextContent.Trim() == "Choose this plan");
+        Assert.True(button.HasAttribute("disabled"));
+        Assert.Contains("Coming in a later DreamGrid update.", page.Body!.TextContent);
+        Assert.Null(page.QuerySelector("form[action*='handler=Choose']"));
+
+        var cards = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/plan", Ct));
+        Assert.Equal("Coming in a later DreamGrid update.", cards.QuerySelector(".plan-card[data-plan=region-server] .plan-later")?.TextContent.Trim());
+    }
+
+    [Fact]
+    public async Task Every_plan_page_has_a_diagram_with_this_computer_highlighted()
+    {
+        await using var f = Unplanned();
+        using var client = await SetupClientAsync(f);
+
+        foreach (var plan in PlanCatalog.All)
+        {
+            var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/plan/" + plan.Id, Ct));
+            var here = page.QuerySelector("svg .node.here");
+            Assert.True(here is not null, plan.Id);
+            Assert.Contains("This computer", here.TextContent);
+            Assert.DoesNotContain("Robust", page.QuerySelector("svg")!.TextContent);
+        }
+    }
+
+    [Fact]
+    public async Task Choosing_local_saves_the_plan_and_moves_to_network()
+    {
+        await using var f = Unplanned();
+        using var client = await SetupClientAsync(f);
+
+        using var resp = await PostFormAsync(client, "/setup/plan/local?handler=Choose", new());
+
+        Assert.Equal("/setup", Location(resp));
+        Assert.Equal(OwnerPlan.Local, f.Store.LoadOrCreate().Plan);
+        Assert.True(f.Grid.UpdateWriteConfig.Last());
+        using var next = await client.GetAsync("/setup", Ct);
+        Assert.Equal("/setup/network", Location(next));
+    }
+
+    [Fact]
+    public async Task Cards_page_continue_chooses_the_picked_plan()
+    {
+        await using var f = Unplanned();
+        using var client = await SetupClientAsync(f);
+
+        using var resp = await PostFormAsync(client, "/setup/plan", new() { ["Id"] = "simple-public" });
+
+        Assert.Equal("/setup", Location(resp));
+        Assert.Equal(OwnerPlan.SimplePublic, f.Store.LoadOrCreate().Plan);
+    }
+
+    [Fact]
+    public async Task Choosing_an_unavailable_or_unknown_plan_is_refused()
+    {
+        await using var f = Unplanned();
+        using var client = await SetupClientAsync(f);
+
+        foreach (var id in new[] { "region-server", "connected-server", "nope" })
+        {
+            using var resp = await PostFormAsync(client, $"/setup/plan/{id}?handler=Choose", new(), tokenFrom: "/setup/plan");
+            Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+            using var card = await PostFormAsync(client, "/setup/plan", new() { ["Id"] = id });
+            Assert.Equal(HttpStatusCode.BadRequest, card.StatusCode);
+        }
+        Assert.Null(f.Store.LoadOrCreate().Plan);
+        Assert.DoesNotContain("UpdateSettings", f.Grid.Snapshot());
+    }
+
+    [Fact]
+    public async Task Missing_database_shows_why_and_saves_nothing()
+    {
+        await using var f = Unplanned(mariaDb: MariaDbBinaries.NotFound("MariaDB server not found; searched: X"));
+        using var client = await SetupClientAsync(f);
+
+        using var resp = await PostFormAsync(client, "/setup/plan/local?handler=Choose", new());
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var box = new HtmlParser().ParseDocument(await resp.Content.ReadAsStringAsync(Ct)).QuerySelector(".error-box")?.TextContent;
+        Assert.Contains("Run the DreamGrid installer again", box);
+        Assert.Contains("administrator", box);
+        Assert.Contains("searched: X", box);
+        Assert.Null(f.Store.LoadOrCreate().Plan);
+    }
+
+    [Fact]
+    public async Task Half_done_v7_setup_resumes_at_the_cards_with_world_name_kept()
+    {
+        await using var f = Unplanned(s => s with { GridName = "Avalon", Setup = new SetupState(WorldNamed: true) });
+        using var client = await SetupClientAsync(f);
+
+        using (var resp = await client.GetAsync("/setup", Ct))
+            Assert.Equal("/setup/plan", Location(resp));
+        using (var resp = await PostFormAsync(client, "/setup/plan/local?handler=Choose", new()))
+            Assert.Equal("/setup", Location(resp));
+        using (var resp = await PostFormAsync(client, "/setup/network", new()))
+            Assert.Equal("/setup", Location(resp));
+        using (var resp = await client.GetAsync("/setup", Ct))
+            Assert.Equal("/setup/avatar", Location(resp));
+
+        var s = f.Store.LoadOrCreate();
+        Assert.Equal("Avalon", s.GridName);
+        Assert.True(s.Setup.NetworkSet);
     }
 
     [Fact]
@@ -312,6 +505,73 @@ public sealed class SetupFlowTests
         Assert.Equal("/setup/region", Location(setup));
         Assert.Equal("/setup", Location(avatar));
         Assert.Equal(0, f.Grid.CreateOwnerCalls);
+    }
+
+    private static LauncherFactory AfterOwnerWith(OwnerPlan plan) => new(s => s with
+    {
+        GridName = "Avalon",
+        SetupToken = null,
+        Plan = plan,
+        Setup = new SetupState(WorldNamed: true, OwnerCreated: true,
+            Owner: new OwnerInfo("Test", "Owner", Guid.NewGuid()), NetworkSet: true),
+    })
+    {
+        Before = TestAuth.Apply,
+    };
+
+    [Fact]
+    public async Task Grid_asset_region_step_can_be_skipped()
+    {
+        await using var f = AfterOwnerWith(OwnerPlan.GridAsset);
+        using var client = await SignedInClientAsync(f);
+
+        var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/region", Ct));
+        Assert.Contains("Skip: no regions on this computer", page.Body!.TextContent);
+        Assert.Contains("isn't advised", page.Body.TextContent);
+        Assert.NotNull(page.QuerySelector("main > form input[name=RegionName]")); // the create form, not Skip's, is main's own
+
+        using var skip = await PostFormAsync(client, "/setup/region?handler=Skip", new(), tokenFrom: "/setup/region");
+        Assert.Equal("/setup/connect", Location(skip));
+        Assert.True(f.Store.LoadOrCreate().Setup.RegionSkipped);
+        using var setup = await client.GetAsync("/setup", Ct);
+        Assert.Equal("/setup/connect", Location(setup));
+    }
+
+    [Fact]
+    public async Task Connect_step_after_skipping_the_region_says_visitors_have_nowhere_to_arrive()
+    {
+        await using var f = AfterOwnerWith(OwnerPlan.GridAsset);
+        using var client = await SignedInClientAsync(f);
+        (await PostFormAsync(client, "/setup/region?handler=Skip", new(), tokenFrom: "/setup/region")).Dispose();
+
+        var text = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/connect", Ct)).Body!.TextContent;
+
+        Assert.Contains("nowhere to arrive", text);
+        Assert.Contains("Region Server", text);
+    }
+
+    [Fact]
+    public async Task Connect_step_with_a_region_does_not_say_visitors_have_nowhere_to_arrive()
+    {
+        await using var f = AfterOwner(regionCreated: true);
+        using var client = await SignedInClientAsync(f);
+
+        Assert.DoesNotContain("nowhere to arrive", await client.GetStringAsync("/setup/connect", Ct));
+    }
+
+    [Theory]
+    [InlineData(OwnerPlan.Local)]
+    [InlineData(OwnerPlan.SimplePublic)]
+    public async Task Region_step_has_no_skip_for_other_plans(OwnerPlan plan)
+    {
+        await using var f = AfterOwnerWith(plan);
+        using var client = await SignedInClientAsync(f);
+
+        var html = await client.GetStringAsync("/setup/region", Ct);
+        Assert.DoesNotContain("Skip: no regions", html);
+
+        using var skip = await PostFormAsync(client, "/setup/region?handler=Skip", new(), tokenFrom: "/setup/region");
+        Assert.False(f.Store.LoadOrCreate().Setup.RegionSkipped);
     }
 
     [Fact]
@@ -830,5 +1090,222 @@ public sealed class SetupFlowTests
         Assert.Equal(8105, saved.Regions.Single().UdpPort);
         Assert.Equal(8004, saved.Programs.Single().HttpPort);
         Assert.Equal(8004, saved.RegionPort);
+    }
+
+    /// <summary>On the network step under <paramref name="plan"/>: the plan is chosen, nothing after it is.</summary>
+    private static LauncherFactory OnNetwork(OwnerPlan plan) => new(s => s with { SetupToken = Token, Plan = plan })
+    {
+        Before = TestAuth.Apply,
+    };
+
+    private const string NotPublic = "That's an address only computers on your network can reach. Enter your public IP address or your grid's name.";
+
+    [Theory]
+    [InlineData("192.168.1.20")]
+    [InlineData("10.0.0.5")]
+    [InlineData("100.64.0.9")]
+    [InlineData("127.0.0.1")]
+    public async Task Network_step_for_simple_public_refuses_lan_addresses(string address)
+    {
+        await using var f = OnNetwork(OwnerPlan.SimplePublic);
+        using var client = await SetupClientAsync(f);
+
+        using var resp = await PostFormAsync(client, "/setup/network", new() { ["PublicAddress"] = address, ["Hypergrid"] = "on" });
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        Assert.Contains("only computers on your network can reach", await resp.Content.ReadAsStringAsync(Ct));
+        var page = new HtmlParser().ParseDocument(await resp.Content.ReadAsStringAsync(Ct));
+        Assert.Equal(NotPublic, page.QuerySelector(".field-error")!.TextContent.Trim());
+        Assert.False(f.Store.LoadOrCreate().Setup.NetworkSet);
+    }
+
+    [Fact]
+    public async Task Network_step_for_simple_public_requires_an_address()
+    {
+        await using var f = OnNetwork(OwnerPlan.SimplePublic);
+        using var client = await SetupClientAsync(f);
+
+        using var resp = await PostFormAsync(client, "/setup/network", new() { ["PublicAddress"] = "  " });
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        Assert.False(f.Store.LoadOrCreate().Setup.NetworkSet);
+    }
+
+    [Fact]
+    public async Task Network_step_for_simple_public_saves_address_and_switch()
+    {
+        await using var f = OnNetwork(OwnerPlan.SimplePublic);
+        using var client = await SetupClientAsync(f);
+
+        using var resp = await PostFormAsync(client, "/setup/network", new() { ["PublicAddress"] = "203.0.113.7", ["Hypergrid"] = "on" });
+
+        Assert.Equal("/setup", Location(resp));
+        var s = f.Store.LoadOrCreate();
+        Assert.Equal("203.0.113.7", s.Hostname);
+        Assert.True(s.Hypergrid);
+        Assert.True(s.Setup.NetworkSet);
+        Assert.True(f.Grid.UpdateWriteConfig.Last());
+    }
+
+    [Fact]
+    public async Task Network_step_for_simple_public_without_the_switch_saves_it_off()
+    {
+        await using var f = OnNetwork(OwnerPlan.SimplePublic);
+        using var client = await SetupClientAsync(f);
+
+        using var resp = await PostFormAsync(client, "/setup/network", new() { ["PublicAddress"] = "world.example.com" });
+
+        Assert.Equal("/setup", Location(resp));
+        var s = f.Store.LoadOrCreate();
+        Assert.Equal("world.example.com", s.Hostname);
+        Assert.False(s.Hypergrid);
+    }
+
+    [Fact]
+    public async Task Network_step_for_grid_asset_lan_forces_hypergrid_off()
+    {
+        await using var f = OnNetwork(OwnerPlan.GridAsset);
+        using var client = await SetupClientAsync(f);
+
+        using var resp = await PostFormAsync(client, "/setup/network",
+            new() { ["AddressKind"] = "lan", ["PublicAddress"] = "203.0.113.7", ["Hypergrid"] = "on" });
+
+        Assert.Equal("/setup", Location(resp));
+        var s = f.Store.LoadOrCreate();
+        Assert.False(s.Hypergrid);
+        Assert.Null(s.Hostname);
+        Assert.True(s.Setup.NetworkSet);
+    }
+
+    [Fact]
+    public async Task Network_step_for_grid_asset_public_checks_the_address()
+    {
+        await using var f = OnNetwork(OwnerPlan.GridAsset);
+        using var client = await SetupClientAsync(f);
+
+        using (var bad = await PostFormAsync(client, "/setup/network", new() { ["AddressKind"] = "public", ["PublicAddress"] = "10.1.2.3" }))
+        {
+            Assert.Equal(HttpStatusCode.OK, bad.StatusCode);
+            Assert.Contains("only computers on your network can reach", await bad.Content.ReadAsStringAsync(Ct));
+        }
+        using var ok = await PostFormAsync(client, "/setup/network",
+            new() { ["AddressKind"] = "public", ["PublicAddress"] = "203.0.113.7", ["Hypergrid"] = "on" });
+        Assert.Equal("/setup", Location(ok));
+        var s = f.Store.LoadOrCreate();
+        Assert.Equal("203.0.113.7", s.Hostname);
+        Assert.True(s.Hypergrid);
+    }
+
+    [Fact]
+    public async Task Network_step_for_grid_asset_shows_only_the_advisories_for_the_chosen_address_after_an_error()
+    {
+        await using var f = OnNetwork(OwnerPlan.GridAsset);
+        using var client = await SetupClientAsync(f);
+
+        using var pub = await PostFormAsync(client, "/setup/network", new() { ["AddressKind"] = "public", ["PublicAddress"] = "10.1.2.3" });
+        var page = new HtmlParser().ParseDocument(await pub.Content.ReadAsStringAsync(Ct));
+
+        Assert.True(page.QuerySelector("#advisories-lan")!.HasAttribute("hidden"));
+        Assert.False(page.QuerySelector("#advisories-public")!.HasAttribute("hidden"));
+        Assert.False(page.QuerySelector("#public-part")!.HasAttribute("hidden"));
+    }
+
+    [Fact]
+    public async Task Network_step_for_local_has_no_switch_and_saves_the_detected_address()
+    {
+        await using var f = OnNetwork(OwnerPlan.Local);
+        using var client = await SetupClientAsync(f);
+
+        var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/network", Ct));
+        Assert.Null(page.QuerySelector("input[name=Hypergrid]"));
+        Assert.Null(page.QuerySelector("input[name=PublicAddress]"));
+
+        using var resp = await PostFormAsync(client, "/setup/network", new() { ["PublicAddress"] = "203.0.113.7", ["Hypergrid"] = "on" });
+        Assert.Equal("/setup", Location(resp));
+        var s = f.Store.LoadOrCreate();
+        Assert.Null(s.Hostname);
+        Assert.False(s.Hypergrid);
+        Assert.True(s.Setup.NetworkSet);
+    }
+
+    [Fact]
+    public async Task Network_step_for_local_keeps_a_custom_network_hostname()
+    {
+        await using var f = new LauncherFactory(s => s with { SetupToken = Token, Plan = OwnerPlan.Local, Hostname = "192.168.1.50" })
+        {
+            Before = TestAuth.Apply,
+        };
+        using var client = await SetupClientAsync(f);
+
+        using var resp = await PostFormAsync(client, "/setup/network", new());
+
+        Assert.Equal("/setup", Location(resp));
+        Assert.Equal("192.168.1.50", f.Store.LoadOrCreate().Hostname);
+    }
+
+    [Fact]
+    public async Task Network_step_for_local_drops_a_public_hostname()
+    {
+        await using var f = new LauncherFactory(s => s with { SetupToken = Token, Plan = OwnerPlan.Local, Hostname = "world.example.com" })
+        {
+            Before = TestAuth.Apply,
+        };
+        using var client = await SetupClientAsync(f);
+
+        using var resp = await PostFormAsync(client, "/setup/network", new());
+
+        Assert.Equal("/setup", Location(resp));
+        Assert.Null(f.Store.LoadOrCreate().Hostname);
+    }
+
+    [Fact]
+    public async Task Router_advice_names_the_forwarded_ports()
+    {
+        await using var f = new LauncherFactory(s => s with { SetupToken = Token, Plan = OwnerPlan.SimplePublic, RobustPublicPort = 9102, RegionPort = 9204 })
+        {
+            Before = TestAuth.Apply,
+        };
+        using var client = await SetupClientAsync(f);
+
+        var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/network", Ct));
+
+        var advice = page.QuerySelector(".router-advice")!.TextContent;
+        Assert.Contains("9102", advice);
+        Assert.Contains("9204 upward for regions", advice);
+        Assert.NotNull(page.QuerySelector("input[name=Hypergrid]"));
+    }
+
+    [Fact]
+    public async Task Network_step_is_closed_until_the_plan_is_chosen()
+    {
+        await using var f = Unplanned();
+        using var client = await SetupClientAsync(f);
+
+        using var resp = await client.GetAsync("/setup/network", Ct);
+
+        Assert.Equal("/setup", Location(resp));
+    }
+
+    [Fact]
+    public async Task Fresh_grid_asset_page_has_both_advisory_lists_lan_shown_and_public_hidden_and_can_pick_public()
+    {
+        await using var f = OnNetwork(OwnerPlan.GridAsset);
+        using var client = await SetupClientAsync(f);
+
+        var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/network", Ct));
+
+        var lan = page.QuerySelector("#advisories-lan")!;
+        var pub = page.QuerySelector("#advisories-public")!;
+        Assert.False(lan.HasAttribute("hidden"));
+        Assert.True(pub.HasAttribute("hidden"));
+        Assert.Contains("only computers on this network can visit", lan.TextContent);
+        Assert.Contains("passwords cross the internet", pub.TextContent);
+        Assert.Contains("Your router must forward", pub.TextContent);
+        // The public choice and its field are in the form (the script only shows/hides them; without it all parts show).
+        Assert.NotNull(page.QuerySelector("input[name=AddressKind][value=public]"));
+        Assert.NotNull(page.QuerySelector("#public-part input[name=PublicAddress]"));
+        Assert.NotNull(page.QuerySelector("#switch-part input[name=Hypergrid]"));
+        Assert.NotNull(page.QuerySelector("noscript style"));
+        Assert.Contains(page.QuerySelectorAll("script"), x => x.TextContent.Contains("advisories-public"));
     }
 }

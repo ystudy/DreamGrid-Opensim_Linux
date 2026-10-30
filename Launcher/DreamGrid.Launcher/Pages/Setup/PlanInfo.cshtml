@@ -1,0 +1,27 @@
+@page "/setup/plan/{id}"
+@model DreamGrid.Launcher.Pages.Setup.PlanInfoModel
+@{
+    var plan = Model.Plan;
+    ViewData["Title"] = plan.Title;
+}
+<partial name="_Checklist" />
+<h1><span aria-hidden="true">@plan.Icon</span> @plan.Title <small class="text-body-secondary">@plan.Subtitle</small></h1>
+@if (Model.Error is not null)
+{
+    <div class="error-box alert alert-danger"><p>@Model.Error</p></div>
+}
+<partial name="_PlanDetails" model="plan" />
+<div class="d-flex flex-wrap gap-2 mt-4">
+    @if (plan.Available)
+    {
+        <form method="post" action="/setup/plan/@plan.Id?handler=Choose" asp-antiforgery="true">
+            <button type="submit" class="btn btn-primary">Choose this plan</button>
+        </form>
+    }
+    else
+    {
+        <button type="button" class="btn btn-primary" disabled>Choose this plan</button>
+        <p class="plan-later text-body-secondary w-100 mb-0">Coming in a later DreamGrid update.</p>
+    }
+    <a class="btn btn-outline-secondary" href="/setup/plan">Back to all plans</a>
+</div>

@@ -1,0 +1,50 @@
+@using DreamGrid.Launcher.Core.Plans
+@model PlanInfo
+@{
+    // Every other plan, with whether an install running this one can move to it (spec section 8).
+    var changes = PlanCatalog.All.Where(p => p.Plan != Model.Plan)
+        .Select(p => (p.Title, Change: PlanCatalog.CanChange(Model.Plan, p.Plan))).ToList();
+    var reasons = changes.Where(c => !c.Change.Allowed).Select(c => c.Change.Reason).Distinct().ToList();
+    // A page that knows the address passes just its advisories (ViewData "Advisories"); otherwise all are listed.
+    var advisories = ViewData["Advisories"] as IReadOnlyList<string> ?? Model.Advisories;
+}
+<div class="plan-details">
+    <p class="lead">@Model.Summary</p>
+    <p>@Model.Details</p>
+    <figure class="my-3">
+        <partial name="_PlanDiagram" model="Model.Plan" />
+        <figcaption class="small text-body-secondary">Arrows show who connects to whom. This computer is highlighted.</figcaption>
+    </figure>
+    <p class="plan-runs"><strong>This computer runs:</strong> @string.Join(", ", Model.Runs)</p>
+
+    <h2>You'll need</h2>
+    <ul class="plan-needs">
+        @foreach (var need in Model.YouNeed)
+        {
+            <li>@need</li>
+        }
+    </ul>
+
+    <h2>Hypergrid</h2>
+    <p class="plan-hypergrid">@Model.HypergridLine</p>
+
+    <h2>Can you change it later?</h2>
+    <ul class="plan-changes">
+        @foreach (var (title, change) in changes)
+        {
+            <li class="@(change.Allowed ? "change-yes" : "change-no")">@(change.Allowed ? "✔" : "✘") @title</li>
+        }
+    </ul>
+    @foreach (var reason in reasons)
+    {
+        <p class="small text-body-secondary">✘ @reason</p>
+    }
+
+    <h2>Before you go on</h2>
+    <ul class="plan-advisories">
+        @foreach (var advisory in advisories)
+        {
+            <li>@advisory</li>
+        }
+    </ul>
+</div>

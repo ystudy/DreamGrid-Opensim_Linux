@@ -1,0 +1,28 @@
+@model DreamGrid.Launcher.Setup.HypergridSwitchModel
+@*
+    The hypergrid on/off switch with its one-sentence explanation and the "Before you turn it on" box. Shared by the
+    setup network step and the Advanced plan page. Model: HypergridSwitchModel (On, Allowed, Reason, PublicPort,
+    RegionPort). It renders a checkbox named "Hypergrid" (value "true") inside the caller's form; when Allowed is false
+    it renders the Reason instead and no field, so nothing can be posted.
+*@
+<div class="hypergrid-switch mt-3">
+    @if (Model.Allowed)
+    {
+        <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" role="switch" id="Hypergrid" name="Hypergrid" value="true" checked="@Model.On">
+            <label class="form-check-label" for="Hypergrid">Hypergrid</label>
+        </div>
+        <p class="hint form-text">Hypergrid lets avatars travel between your grid and other grids, in both directions.</p>
+        <div class="hypergrid-warning alert alert-warning">
+            <strong>Before you turn it on</strong>
+            <ul class="mb-0">
+                <li>Your router must forward port @Model.PublicPort and the region ports (@Model.RegionPort upward) to this computer.</li>
+                <li>Visitors from anywhere can arrive.</li>
+            </ul>
+        </div>
+    }
+    else
+    {
+        <p class="hypergrid-reason hint form-text">@Model.Reason</p>
+    }
+</div>

@@ -32,10 +32,15 @@ try
 {
     using var web = new WebSession(baseUri.Port);
 
-    // 1. The four setup steps. The link names the machine's LAN address; follow its path on --url so the cookies
-    // stay with the one host the rest of the run talks to.
+    // 1. The setup steps. The link names the machine's LAN address; follow its path on --url so the cookies
+    // stay with the one host the rest of the run talks to. The Local plan, then its network step (no fields).
     var password = "Smoke-" + Convert.ToHexString(RandomNumberGenerator.GetBytes(8));
     var page = await web.FollowAsync(setupLink.PathAndQuery);
+    Expect("/setup/plan", page.Path);
+    page = await web.FollowAsync("/setup/plan/local");
+    page = await web.SubmitAsync(page, new());
+    Expect("/setup/network", page.Path);
+    page = await web.SubmitAsync(page, new());
     Expect("/setup/world", page.Path);
     page = await web.SubmitAsync(page, new() { ["GridName"] = World });
     Expect("/setup/avatar", page.Path);
@@ -53,7 +58,7 @@ try
         throw new SmokeFailure($"the connect step does not show the login port {robustPort}");
     page = await web.SubmitAsync(page, new());
     Expect("/", page.Path);
-    Pass("setup", "world, owner, region and connect steps done");
+    Pass("setup", "plan, network, world, owner, region and connect steps done");
 
     // 2. Logins open, as an admin sees it.
     stage = "logins";

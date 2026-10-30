@@ -78,7 +78,7 @@ public sealed class AccessTests
         using var api = await client.GetAsync("/api/setup/progress", Ct);
         using var other = await client.GetAsync("/", Ct);
 
-        Assert.Equal("/setup/world", setup.Headers.Location?.OriginalString);
+        Assert.Equal("/setup/plan", setup.Headers.Location?.OriginalString);
         Assert.Equal(HttpStatusCode.OK, api.StatusCode);
         Assert.Equal("/waiting", other.Headers.Location?.OriginalString);
     }
@@ -192,8 +192,8 @@ public sealed class AccessTests
         using var setup = await client.GetAsync("/setup", Ct);
         using var api = await client.GetAsync("/api/setup/progress", Ct);
 
-        // Passed the gate: the checklist sends on to its first unfinished step (this seed never named the world).
-        Assert.Equal("/setup/world", setup.Headers.Location?.OriginalString);
+        // Passed the gate: the checklist sends on to its first unfinished step (this seed never chose a plan).
+        Assert.Equal("/setup/plan", setup.Headers.Location?.OriginalString);
         Assert.Equal(HttpStatusCode.OK, api.StatusCode);
     }
 
@@ -283,6 +283,9 @@ public sealed class AccessTests
             "page setup-done",
             "page setup/avatar",
             "page setup/connect",
+            "page setup/network",
+            "page setup/plan",
+            "page setup/plan/{id}",
             "page setup/region",
             "page setup/world",
             "page waiting",
