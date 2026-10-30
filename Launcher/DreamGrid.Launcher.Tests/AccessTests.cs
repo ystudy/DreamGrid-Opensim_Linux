@@ -285,6 +285,7 @@ public sealed class AccessTests
             "page setup/connect",
             "page setup/join",
             "page setup/network",
+            "page setup/other-grid",
             "page setup/plan",
             "page setup/plan/{id}",
             "page setup/region",

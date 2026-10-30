@@ -415,7 +415,17 @@ internal sealed class FakeOtherGrid : IOtherGridClient
             : Task.FromException<OtherGridInfo>(new GridJoinException($"Nothing answered at {address}.", noAnswer: true));
     }
 
-    public Task CheckServicesAsync(Uri services, CancellationToken ct) => Task.CompletedTask;
+    /// <summary>Thrown by <see cref="CheckServicesAsync"/> when set.</summary>
+    public Exception? ServicesError { get; set; }
+
+    /// <summary>Every services address checked, in order.</summary>
+    public List<Uri> ServicesChecks { get; } = new();
+
+    public Task CheckServicesAsync(Uri services, CancellationToken ct)
+    {
+        lock (ServicesChecks) ServicesChecks.Add(services);
+        return ServicesError is { } e ? Task.FromException(e) : Task.CompletedTask;
+    }
 }
 
 /// <summary>Robust with a fixed set of avatars: (first, last) → (level, password).</summary>

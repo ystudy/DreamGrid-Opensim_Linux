@@ -165,8 +165,9 @@ public sealed class SetupRunner(
             // The headline stays plain newcomer text; the technical message leads the details, above the log lines.
             var where = stage == "" ? "" : $" It stopped at \"{stage}\".";
             var excerpt = Excerpt();
-            // A grid service on another computer that doesn't answer, or isn't one this computer can use, is said as is: the owner can act on it.
-            var headline = e is GridUnreachableException or GridJoinException ? e.Message : PortConflictText(e);
+            // A grid service on another computer that doesn't answer or isn't one this computer can use, and a refusal with a
+            // reason for the owner (no free place on the other grid's map), are said as is: the owner can act on them.
+            var headline = e is GridUnreachableException or GridJoinException or ArgumentException ? e.Message : PortConflictText(e);
             progress.Fail(headline ?? $"Your region could not be set up.{where} Check the details, then try again.",
                 excerpt is null ? e.Message : e.Message + "\n\n" + excerpt);
         }

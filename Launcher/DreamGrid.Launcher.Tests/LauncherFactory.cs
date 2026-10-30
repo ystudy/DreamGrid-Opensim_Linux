@@ -38,6 +38,8 @@ internal sealed class LauncherFactory : WebApplicationFactory<Program>
     public FakeOnlineUsers OnlineUsers { get; } = new();
     /// <summary>The Grid Asset Server's join information the host reads (no network).</summary>
     public FakeGridJoin Join { get; } = new();
+    /// <summary>The other grid's information the host reads (no network).</summary>
+    public FakeOtherGrid OtherGrid { get; } = new();
     public ConcurrentQueue<(LogLevel Level, string Category, string Message)> Logs { get; } = new();
 
     /// <summary>Runs before the app's own middleware (e.g. to fake the remote address).</summary>
@@ -61,6 +63,8 @@ internal sealed class LauncherFactory : WebApplicationFactory<Program>
             services.AddSingleton<IOnlineUsers>(OnlineUsers);
             services.RemoveAll<IGridJoinClient>();
             services.AddSingleton<IGridJoinClient>(Join);
+            services.RemoveAll<IOtherGridClient>();
+            services.AddSingleton<IOtherGridClient>(OtherGrid);
             if (Before is { } before)
                 services.AddSingleton<Microsoft.AspNetCore.Hosting.IStartupFilter>(new BeforeFilter(before));
             ExtraServices?.Invoke(services);

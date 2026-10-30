@@ -107,14 +107,15 @@ public static class PlanCatalog
             "Runs regions on another grid such as OSgrid. That grid keeps the accounts.",
             "This computer runs regions only, joined to a grid run by someone else.",
             ["Database (region data only)", "Regions", "Website"],
-            ["An account with the other grid", "Their region details", "A public address for your regions"],
+            ["An avatar on the other grid", "The grid's login address, and its address for region servers (OSgrid's are built in)", "A public address for your regions"],
             HypergridCapability.OtherGrid,
             "The other grid decides how hypergrid works.",
             [
                 "The other grid's rules apply, including their sign-up and region-placement rules.",
                 "Your regions must be reachable from the internet.",
+                "Signing in to this computer's website uses your avatar on the other grid: that grid checks the password.",
             ],
-            false),
+            true),
     ];
 
     /// <summary>

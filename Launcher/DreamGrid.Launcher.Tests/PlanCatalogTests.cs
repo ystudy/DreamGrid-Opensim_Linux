@@ -49,10 +49,20 @@ public class PlanCatalogTests
     }
 
     [Fact]
-    public void Every_plan_but_connected_server_is_available()
+    public void Every_plan_is_available()
     {
-        Assert.Equal([true, true, true, true, false], PlanCatalog.All.Select(p => p.Available));
-        Assert.True(PlanCatalog.Get(OwnerPlan.RegionServer).Available);
+        Assert.Equal([true, true, true, true, true], PlanCatalog.All.Select(p => p.Available));
+        Assert.True(PlanCatalog.Get(OwnerPlan.Connected).Available);
+    }
+
+    [Fact]
+    public void Connected_server_says_what_you_need_and_warns_about_signing_in()
+    {
+        var connected = PlanCatalog.Get(OwnerPlan.Connected);
+        Assert.Equal(
+            ["An avatar on the other grid", "The grid's login address, and its address for region servers (OSgrid's are built in)", "A public address for your regions"],
+            connected.YouNeed);
+        Assert.Contains("Signing in to this computer's website uses your avatar on the other grid: that grid checks the password.", connected.Advisories);
     }
 
     [Fact]
