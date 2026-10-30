@@ -96,6 +96,14 @@ public sealed record JoinedGrid(
     string Host, int PublicPort, int PrivatePort, string GridName, string LoginUri, string Version, bool Hypergrid,
     int? RegionPortsFrom, int? RegionPortsTo);
 
+/// <summary>
+/// The grid a Connected Server's regions are on: a preset's id (null for another grid), where this computer reaches its
+/// login service, the login address the grid publishes, the address for region servers, and its gatekeeper (null when it
+/// publishes none). Never holds a password.
+/// </summary>
+public sealed record ConnectedGrid(
+    string? Preset, string GridName, string Address, string LoginUri, string ServicesUri, string? GatekeeperUri);
+
 public sealed record LauncherSettings
 {
     public const int CurrentSchema = 4;
@@ -112,6 +120,9 @@ public sealed record LauncherSettings
 
     /// <summary>The Grid Asset Server this Region Server joined; null until joined.</summary>
     public JoinedGrid? Join { get; init; }
+
+    /// <summary>The other grid this Connected Server's regions are on; null until connected.</summary>
+    public ConnectedGrid? Connected { get; init; }
 
     public int WebPort { get; init; } = 8001;
     public int RobustPublicPort { get; init; } = 8002;
