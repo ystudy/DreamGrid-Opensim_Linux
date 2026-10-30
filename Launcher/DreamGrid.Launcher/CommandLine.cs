@@ -31,7 +31,9 @@ public static class CommandLine
     public static string Version() => LauncherVersion.Current;
 
     /// <summary>The verb's exit code, or null when <paramref name="args"/> names no verb (the host runs). A verb is recognised only as the first argument.</summary>
-    public static async Task<int?> RunVerbAsync(string[] args, IDictionary<string, string?> env, TextWriter output, CancellationToken ct)
+    /// <param name="foreignDataOwner">Who owns a data folder when it isn't this account (<see cref="ForeignDataOwner"/>; tests replace it).</param>
+    public static async Task<int?> RunVerbAsync(string[] args, IDictionary<string, string?> env, TextWriter output, CancellationToken ct,
+        Func<string, string?>? foreignDataOwner = null)
     {
         switch (args.FirstOrDefault())
         {
@@ -45,7 +47,7 @@ public static class CommandLine
             case "set-web-port":
                 return await Guarded(output, () => Task.FromResult(SetWebPort(args, env, output)));
             case "reset-two-factor":
-                return await Guarded(output, () => Task.FromResult(ResetTwoFactor(args, env, output)));
+                return await Guarded(output, () => Task.FromResult(ResetTwoFactor(args, env, output, foreignDataOwner ?? ForeignDataOwner)));
             default:
                 return null;
         }
@@ -196,9 +198,11 @@ public static class CommandLine
     /// an owner who lost their phone. <c>reset-two-factor --all-damaged</c>: sets a damaged <c>twofactor.json</c> aside (everyone
     /// then sets two-factor up again). It edits <c>&lt;data&gt;/security/twofactor.json</c> directly, with a store that needs no data
     /// protection key (taking someone out needs no decryption), so it works with the launcher running or stopped: the launcher
-    /// reads that file on every check. Exit 0 done, 2 with a one-line reason.
+    /// reads that file on every check. On Unix it runs only as the account that owns the data folder: a file root wrote would be
+    /// root's alone, the service (user <c>dreamgrid</c>) could no longer read it, and every staff sign-in would be refused.
+    /// Exit 0 done, 2 with a one-line reason.
     /// </summary>
-    private static int ResetTwoFactor(string[] args, IDictionary<string, string?> env, TextWriter output)
+    private static int ResetTwoFactor(string[] args, IDictionary<string, string?> env, TextWriter output, Func<string, string?> foreignDataOwner)
     {
         var dataDir = LauncherPaths.ResolveData(args, env, OperatingSystem.IsWindows());
         if (!Directory.Exists(dataDir))
@@ -206,10 +210,39 @@ public static class CommandLine
             output.WriteLine($"The data folder {dataDir} does not exist. Pass --data <folder> if the grid keeps its data elsewhere.");
             return 2;
         }
+        if (foreignDataOwner(dataDir) is { } account)
+        {
+            output.WriteLine($"Run this as {account}, the account that owns {dataDir}, so the grid can still read what it changes:");
+            output.WriteLine($"sudo runuser -u {account} -- {SameCommand(args)}");
+            return 2;
+        }
+        try
+        {
+            return ResetTwoFactorIn(dataDir, args.Contains("--all-damaged"), output);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            output.WriteLine(OperatingSystem.IsWindows()
+                ? "This account can't change the two-factor file. Run this from an Administrator command prompt."
+                : "This account can't change twofactor.json; run the command as the account that owns the data folder.");
+            return 2;
+        }
+    }
+
+    private static int ResetTwoFactorIn(string dataDir, bool allDamaged, TextWriter output)
+    {
         var file = Path.Combine(dataDir, "security", "twofactor.json");
+        // A file this account may not open is not damaged: saying so would send the owner to --all-damaged for nothing.
+        if (!CanOpen(file))
+        {
+            output.WriteLine(OperatingSystem.IsWindows()
+                ? "This account can't read twofactor.json. Run this from an Administrator command prompt."
+                : "This account can't read twofactor.json; run the command as the account that owns the data folder.");
+            return 2;
+        }
         var store = new TwoFactorStore(file, new EphemeralDataProtectionProvider(), TimeProvider.System);
 
-        if (args.Contains("--all-damaged"))
+        if (allDamaged)
         {
             var existed = File.Exists(file);
             TwoFactorStore.MoveAsideIfDamaged(file);
@@ -266,6 +299,65 @@ public static class CommandLine
         output.WriteLine($"Two-factor sign-in is off for {owner.FirstName} {owner.LastName}.");
         return 0;
     }
+
+    /// <summary>False only when <paramref name="file"/> is there but this account may not open it; a missing or busy file is the store's to answer.</summary>
+    private static bool CanOpen(string file)
+    {
+        try
+        {
+            using var _ = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            return true;
+        }
+        catch (UnauthorizedAccessException) { return false; }
+        catch (IOException) { return true; }
+    }
+
+    /// <summary>
+    /// The name of the account that owns <paramref name="dataDir"/> when this process runs as another one (on Unix: its effective
+    /// user, root under sudo, say, is not the folder's owner); null when it is the same account, on Windows, or when the owner
+    /// can't be found out.
+    /// </summary>
+    public static string? ForeignDataOwner(string dataDir)
+    {
+        if (OperatingSystem.IsWindows()) return null;
+        try
+        {
+            using var stat = Process.Start(new ProcessStartInfo("stat")
+            {
+                ArgumentList = { "-c", "%u %U", "--", dataDir },
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+            });
+            if (stat is null) return null;
+            var line = stat.StandardOutput.ReadToEnd().Trim();
+            if (!stat.WaitForExit(5000) || stat.ExitCode != 0) return null;
+            var parts = line.Split(' ', 2);
+            if (parts.Length != 2 || !uint.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out var ownerUid)) return null;
+            if (ownerUid == GetEffectiveUid()) return null;
+            return parts[1] is "" or "UNKNOWN" ? parts[0] : parts[1]; // an account with no name: its number
+        }
+        catch (Exception e) when (e is Win32Exception or InvalidOperationException or DllNotFoundException or EntryPointNotFoundException)
+        {
+            return null;
+        }
+    }
+
+    [System.Runtime.InteropServices.DllImport("libc", EntryPoint = "geteuid")]
+    private static extern uint GetEffectiveUid();
+
+    /// <summary>This process's own command line with <paramref name="args"/>: the dotnet host and the launcher's DLL, or the launcher's own program.</summary>
+    private static string SameCommand(string[] args)
+    {
+        var host = Environment.ProcessPath ?? "dotnet";
+        string[] program = Path.GetFileNameWithoutExtension(host) == "dotnet" ? [host, typeof(CommandLine).Assembly.Location] : [host];
+        return string.Join(' ', program.Concat(args).Select(ShellQuoted));
+    }
+
+    private static string ShellQuoted(string word) =>
+        word.Length > 0 && word.All(c => char.IsAsciiLetterOrDigit(c) || c is '/' or '.' or '-' or '_' or ':' or '=' or '+' or ',')
+            ? word
+            : "'" + word.Replace("'", "'\\''") + "'";
 
     /// <summary>The running processes named by the PID files in <paramref name="pidsDir"/> (none when it does not exist); one this account may not inspect counts as running.</summary>
     public static IReadOnlyList<int> LiveChildPids(string pidsDir)
