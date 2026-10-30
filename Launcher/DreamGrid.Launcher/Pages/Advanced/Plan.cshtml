@@ -39,6 +39,12 @@
     <p><a class="btn btn-outline-primary" href="/advanced/join">Point at a different Grid Asset Server</a></p>
 }
 
+@if (Model.ConnectedGrid is { } connectedGrid)
+{
+    <h2 class="mt-4">Your grid</h2>
+    <p>This computer runs regions on <strong>@connectedGrid.GridName</strong>. Its login address is <strong>@connectedGrid.LoginUri</strong>.</p>
+}
+
 <h2 class="mt-4">Change plan</h2>
 <ul class="plan-allowed list-unstyled">
     @foreach (var c in Model.Changes.Where(c => c.Allowed))

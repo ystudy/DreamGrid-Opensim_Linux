@@ -107,14 +107,15 @@ public static class PlanCatalog
             "Runs regions on another grid such as OSgrid. That grid keeps the accounts.",
             "This computer runs regions only, joined to a grid run by someone else.",
             ["Database (region data only)", "Regions", "Website"],
-            ["An account with the other grid", "Their region details", "A public address for your regions"],
+            ["An avatar on the other grid", "The grid's login address, and its address for region servers (OSgrid's are built in)", "A public address for your regions"],
             HypergridCapability.OtherGrid,
             "The other grid decides how hypergrid works.",
             [
                 "The other grid's rules apply, including their sign-up and region-placement rules.",
                 "Your regions must be reachable from the internet.",
+                "Signing in to this computer's website uses your avatar on the other grid: that grid checks the password.",
             ],
-            false),
+            true),
     ];
 
     /// <summary>
@@ -176,10 +177,32 @@ public static class PlanCatalog
     public static bool HypergridAllowed(LauncherSettings s) =>
         s.Plan is OwnerPlan.SimplePublic or OwnerPlan.GridAsset && HostAddress.IsPublic(s.Hostname);
 
+    /// <summary>
+    /// The one hypergrid sentence of a plan that uses another computer's grid (there is no switch for it), saying who
+    /// decides; null on a plan that has a switch or none.
+    /// </summary>
+    public static string? OtherGridHypergridLine(LauncherSettings s)
+    {
+        var state = HypergridOn(s) ? "on" : "off";
+        return s.Plan switch
+        {
+            OwnerPlan.Connected => $"Hypergrid is {state} for {s.Connected?.GridName ?? s.GridName}; that grid decides.",
+            OwnerPlan.RegionServer => $"Hypergrid is {state} for this grid; the Grid Asset Server decides.",
+            _ => null,
+        };
+    }
+
     /// <summary>Whether this computer runs Robust: not a Region Server or a Connected Server, which use another computer's.</summary>
     public static bool RunsRobust(LauncherSettings s) => s.Plan is not (OwnerPlan.RegionServer or OwnerPlan.Connected);
 
-    /// <summary>Whether hypergrid is actually on. A Region Server follows the grid it joined.</summary>
-    public static bool HypergridOn(LauncherSettings s) =>
-        s.Plan == OwnerPlan.RegionServer ? s.Join?.Hypergrid ?? false : s.Hypergrid && HypergridAllowed(s);
+    /// <summary>
+    /// Whether hypergrid is actually on. A Region Server follows the grid it joined; a Connected Server has it when the
+    /// other grid published a gatekeeper.
+    /// </summary>
+    public static bool HypergridOn(LauncherSettings s) => s.Plan switch
+    {
+        OwnerPlan.RegionServer => s.Join?.Hypergrid ?? false,
+        OwnerPlan.Connected => s.Connected?.GatekeeperUri is not null,
+        _ => s.Hypergrid && HypergridAllowed(s),
+    };
 }

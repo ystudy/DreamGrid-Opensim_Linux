@@ -71,8 +71,9 @@ public sealed class LegacyCommandApi(
                 return 0;
             }
             throttle.RecordSuccess(name.Key);
-            // A Region Server's estate owner is level 0 on the Grid Asset Server's grid but administers here.
-            return AdminRule.MayAdminister(settings(), account) ? Math.Max(account.UserLevel, AdminLevel) : account.UserLevel;
+            // A Region Server's or Connected Server's estate owner is level 0 on the other grid but administers here; on a
+            // Connected Server a higher level on that grid counts for nothing.
+            return AdminRule.EffectiveLevel(settings(), account);
         }
         catch (Exception e) when (!ct.IsCancellationRequested)
         {

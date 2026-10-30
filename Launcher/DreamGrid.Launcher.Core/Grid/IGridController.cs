@@ -7,9 +7,10 @@ namespace DreamGrid.Launcher.Core.Grid;
 public interface IGridController
 {
     /// <summary>
-    /// Stages, writes the INIs, checks ports, then starts (or adopts) MariaDB, Robust and the region. A Region Server never
-    /// starts Robust: it reads the Grid Asset Server's join information again instead, and throws
-    /// <see cref="GridAssetUnreachableException"/> (starting no region) when that server doesn't answer.
+    /// Stages, writes the INIs, checks ports, then starts (or adopts) MariaDB, Robust and the region. A Region Server or a
+    /// Connected Server never starts Robust: it reads the other grid's information (the Grid Asset Server's join
+    /// information, the other grid's get_grid_info) again instead, and throws a <see cref="GridUnreachableException"/>
+    /// (starting no region) when that grid doesn't answer.
     /// </summary>
     Task StartAsync(CancellationToken ct);
 
@@ -28,7 +29,7 @@ public interface IGridController
     /// Makes the avatar called <paramref name="first"/> <paramref name="last"/> on the grid the estate owner, without a
     /// password: the grid service looks the name up, and the account's own spelling is saved as the owner. Throws
     /// <see cref="ArgumentException"/> in plain words when the grid has no such avatar, and
-    /// <see cref="GridAssetUnreachableException"/> on a Region Server whose Grid Asset Server doesn't answer.
+    /// <see cref="GridUnreachableException"/> on a Region Server or a Connected Server whose other grid doesn't answer.
     /// </summary>
     Task<RobustAccount> SetEstateOwnerAsync(string first, string last, CancellationToken ct);
 
@@ -166,8 +167,8 @@ public interface IGridController
     LauncherSettings CurrentSettings();
 
     /// <summary>
-    /// <paramref name="name"/> is "database" or "robust"; regions use <see cref="RegionPowerAsync"/>. A Region Server refuses
-    /// "robust" with <see cref="InvalidOperationException"/>, as do <see cref="StartComponentAsync"/>,
+    /// <paramref name="name"/> is "database" or "robust"; regions use <see cref="RegionPowerAsync"/>. A Region Server or a
+    /// Connected Server refuses "robust" with <see cref="InvalidOperationException"/>, as do <see cref="StartComponentAsync"/>,
     /// <see cref="StopComponentAsync"/> and <see cref="CreateOwnerAsync"/>.
     /// </summary>
     Task RestartComponentAsync(string name, CancellationToken ct);

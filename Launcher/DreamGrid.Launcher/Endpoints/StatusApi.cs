@@ -50,7 +50,7 @@ public static class StatusApi
     {
         var s = grid.GetStatus();
         var people = withOnline && s.Database.State == ProcessState.Running ? await online.ListAsync(ct) : OnlineList.Unavailable;
-        var problem = Problem(s);
+        var problem = Problem(s, settings);
         var regionNames = s.Regions.ToDictionary(r => r.Id, r => r.Name);
         return new StatusView(
             new GridView(View(s.Database, "Database"), RobustView(s, settings),
@@ -67,12 +67,12 @@ public static class StatusApi
     /// In plain words: the last failed start (unless everything runs again), else the first component (in start
     /// order) that failed or crashed, else (with nothing under way) one that is stopped while another runs; null when
     /// the world is running, starting, stopping, restarting or wholly stopped. A region stopped or parked on purpose
-    /// is not a problem (spec 6.8); a failed one is, by name.
+    /// is not a problem (spec 6.8); a failed one is, by name. <paramref name="settings"/> names the other grid on a Connected Server.
     /// </summary>
-    public static string? Problem(GridStatus s)
+    public static string? Problem(GridStatus s, LauncherSettings? settings = null)
     {
         if (ShowsStartFailure(s)) return PlainStartFailure(s.StartFailure!);
-        var parts = Parts(s).ToList();
+        var parts = Parts(s, settings).ToList();
         if (parts.FirstOrDefault(p => p.C.State is ProcessState.Failed or ProcessState.Crashed) is { C: not null } down)
             return down.Message;
         // Between components of a start or stop every state looks settled; only a settled partial grid is a problem.
@@ -116,10 +116,10 @@ public static class StatusApi
     /// The database, Robust, and every region that should be up (not stopped or parked on purpose), each with its state
     /// as a process state and the sentence for when it is down.
     /// </summary>
-    private static IEnumerable<(ComponentStatus C, string Message)> Parts(GridStatus s)
+    private static IEnumerable<(ComponentStatus C, string Message)> Parts(GridStatus s, LauncherSettings? settings = null)
     {
         yield return (s.Database, "The database isn't running.");
-        yield return (s.Robust, s.RunsRobust ? "The grid service isn't running." : "The Grid Asset Server isn't answering.");
+        yield return (s.Robust, GridServiceRow(s, settings).Down);
         foreach (var r in s.Regions.Where(r => r.State is not (RegionState.Stopped or RegionState.Parked)))
             yield return (new ComponentStatus(r.Name, AsProcessState(r.State), null, null, null, null), $"{r.Name} isn't running.");
     }
@@ -151,14 +151,24 @@ public static class StatusApi
     }
 
     /// <summary>
-    /// The Robust row. On a Region Server it is the Grid Asset Server: that label, with its address as the detail
-    /// (from the join in <paramref name="settings"/>, else the host the status names).
+    /// The grid-service row: this computer's Robust, or on a Region Server the Grid Asset Server (its address from the join
+    /// in <paramref name="settings"/>, else the host the status names), or on a Connected Server the other grid, named, at
+    /// the address chosen in setup. <c>Down</c> is the sentence for when it isn't running or isn't answering.
     /// </summary>
+    private static (string Label, string Address, string Down) GridServiceRow(GridStatus s, LauncherSettings? settings)
+    {
+        if (s.RunsRobust) return ("Grid service", "", "The grid service isn't running.");
+        if (settings is { Plan: OwnerPlan.Connected, Connected: { } connected })
+            return (connected.GridName, connected.Address, $"{connected.GridName} isn't answering.");
+        var address = settings?.Join is { } join ? $"{join.Host}:{join.PublicPort}" : s.OtherGridAddress ?? "";
+        return ("Grid Asset Server", address, "The Grid Asset Server isn't answering.");
+    }
+
     private static ComponentView RobustView(GridStatus s, LauncherSettings? settings)
     {
-        if (s.RunsRobust) return View(s.Robust, "Grid service");
-        var address = settings?.Join is { } join ? $"{join.Host}:{join.PublicPort}" : s.GridAssetHost ?? "";
-        return View(s.Robust, "Grid Asset Server") with { Detail = address };
+        var (label, address, _) = GridServiceRow(s, settings);
+        var view = View(s.Robust, label);
+        return s.RunsRobust ? view : view with { Detail = address };
     }
 
     private static ComponentView View(ComponentStatus c, string label) =>

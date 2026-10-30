@@ -14,6 +14,7 @@ namespace DreamGrid.Launcher.Pages.Setup;
 /// address and offers the hypergrid switch (a custom network hostname Local already has is kept). Grid Asset Server asks first whether visitors are on the network or the
 /// internet and then goes like Local or like Simple Public. A Region Server asks for this computer's address (on the
 /// network or from the internet) and its first region port, and has no hypergrid switch: the Grid Asset Server decides.
+/// A Connected Server asks the same, starting at the internet choice, and the other grid decides about hypergrid.
 /// The save goes through IGridController.UpdateSettings.
 /// </summary>
 public sealed class NetworkModel(IGridController grid, Func<LauncherSettings> settings) : PageModel
@@ -57,9 +58,10 @@ public sealed class NetworkModel(IGridController grid, Func<LauncherSettings> se
         var s = settings();
         Plan = s.Plan!.Value;
         var isPublic = Plan != OwnerPlan.Local && HostAddress.IsPublic(s.Hostname);
-        AddressKind = isPublic && Plan is OwnerPlan.GridAsset or OwnerPlan.RegionServer ? "public" : "lan";
+        // Regions on someone else's grid are reached from the internet, so a Connected Server starts at that choice.
+        AddressKind = Plan == OwnerPlan.Connected || (isPublic && Plan is OwnerPlan.GridAsset or OwnerPlan.RegionServer) ? "public" : "lan";
         PublicAddress = isPublic ? s.Hostname : null;
-        if (Plan == OwnerPlan.RegionServer)
+        if (Plan is OwnerPlan.RegionServer or OwnerPlan.Connected)
         {
             FirstRegionPort = SuggestedRegionPort(s).ToString(CultureInfo.InvariantCulture);
             FillRegionServer(s);
@@ -74,7 +76,7 @@ public sealed class NetworkModel(IGridController grid, Func<LauncherSettings> se
         if (Closed() is { } closed) return closed;
         var s = settings();
         Plan = s.Plan!.Value;
-        if (Plan == OwnerPlan.RegionServer) return PostRegionServer(s);
+        if (Plan is OwnerPlan.RegionServer or OwnerPlan.Connected) return PostRegionServer(s);
         var wantsHypergrid = IsOn(Request.Form["Hypergrid"].ToString());
 
         // Local is always the network address; Simple Public always public; Grid Asset follows the radio (network by default).
@@ -161,9 +163,9 @@ public sealed class NetworkModel(IGridController grid, Func<LauncherSettings> se
     private void FillRegionServer(LauncherSettings s)
     {
         NetworkAddress = DetectedAddress;
-        LanAdvisories = PlanCatalog.AdvisoriesFor(PlanCatalog.Get(OwnerPlan.RegionServer), publicAddress: AddressKind == "public");
+        LanAdvisories = PlanCatalog.AdvisoriesFor(PlanCatalog.Get(Plan), publicAddress: AddressKind == "public");
         PublicAdvisories = [];
-        HypergridLine = $"Hypergrid is {(PlanCatalog.HypergridOn(s) ? "on" : "off")} for this grid; the Grid Asset Server decides.";
+        HypergridLine = PlanCatalog.OtherGridHypergridLine(s) ?? "";
         GridAssetRegionPorts = s.Join is { RegionPortsFrom: { } from, RegionPortsTo: { } to }
             ? string.Create(CultureInfo.InvariantCulture, $"{from} to {to}")
             : null;

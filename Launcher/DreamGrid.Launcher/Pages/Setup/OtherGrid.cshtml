@@ -1,0 +1,70 @@
+@page "/setup/other-grid"
+@model DreamGrid.Launcher.Pages.Setup.OtherGridModel
+@using DreamGrid.Launcher.Core.Plans
+@{
+    ViewData["Title"] = "Connect to the other grid";
+}
+<partial name="_Checklist" />
+<h1>Connect to the other grid</h1>
+@if (Model.Found is { } found)
+{
+    <div class="join-found mt-3">
+        <p>DreamGrid found this grid at <strong>@Model.FoundAt</strong>:</p>
+        <ul class="join-details">
+            <li>Grid: <strong>@found.GridName</strong></li>
+            <li>Hypergrid: <strong>@(found.GatekeeperUri is not null ? "on" : "off")</strong> (that grid decides)</li>
+        </ul>
+        @if (found.IsGridAssetServer)
+        {
+            <div class="grid-asset-warning alert alert-warning">This is a DreamGrid Grid Asset Server. The Region Server plan joins it more simply; go back to the plans to choose it.</div>
+        }
+        <form method="post">
+            <input type="hidden" name="Grid" value="@Model.Grid">
+            <input type="hidden" name="LoginAddress" value="@Model.LoginAddress">
+            <input type="hidden" name="ServicesAddress" value="@Model.ServicesAddress">
+            <button type="submit" class="btn btn-primary" asp-page-handler="Confirm">Connect to this grid</button>
+            <button type="submit" class="btn btn-outline-secondary" asp-page-handler="Change">Change</button>
+        </form>
+    </div>
+    return;
+}
+<p>This computer adds regions to a grid run by someone else. The grid keeps the accounts. Choose it: DreamGrid reads what it needs from the grid and shows you what it found before anything is saved.</p>
+@if (Model.Error is not null)
+{
+    <div class="error-box alert alert-danger">
+        <p>@Model.Error</p>
+    </div>
+}
+<form method="post">
+    <div class="form-check">
+        <input class="form-check-input" type="radio" name="Grid" id="Grid-osgrid" value="@GridPresets.All[0].Id" checked="@(!Model.IsAnotherGrid)">
+        <label class="form-check-label" for="Grid-osgrid">@GridPresets.All[0].Title</label>
+    </div>
+    <div class="form-check">
+        <input class="form-check-input" type="radio" name="Grid" id="Grid-other" value="@OtherGridModel.AnotherGrid" checked="@Model.IsAnotherGrid">
+        <label class="form-check-label" for="Grid-other">Another grid</label>
+    </div>
+
+    <div id="other-part" hidden="@(!Model.IsAnotherGrid)">
+        <label class="form-label mt-3" for="LoginAddress">The grid's login address</label>
+        <input class="form-control" id="LoginAddress" name="LoginAddress" value="@Model.LoginAddress" placeholder="login.example.org" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <span class="hint form-text d-block">Type its login address (the one you'd give Firestorm). Add a colon and the port only if it doesn't use port 8002.</span>
+        <span id="login-error" class="field-error text-danger small d-block">@Model.LoginError</span>
+        <label class="form-label mt-3" for="ServicesAddress">The grid's address for region servers</label>
+        <input class="form-control" id="ServicesAddress" name="ServicesAddress" value="@Model.ServicesAddress" placeholder="grid.example.org" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <span class="hint form-text d-block">Type its address for region servers (the grid gives this to people who host regions). Add a colon and the port only if it doesn't use port 8003.</span>
+        <span id="services-error" class="field-error text-danger small d-block">@Model.ServicesError</span>
+    </div>
+    <button type="submit" class="btn btn-primary mt-3">Look up this grid</button>
+</form>
+<noscript><style>[hidden] { display: block !important; }</style></noscript>
+<script>
+    // Show the addresses only for another grid; the server enforces it either way.
+    (function () {
+        function update() {
+            document.getElementById('other-part').hidden = !document.getElementById('Grid-other').checked;
+        }
+        document.querySelectorAll('input[name=Grid]').forEach(function (k) { k.addEventListener('change', update); });
+        update();
+    })();
+</script>

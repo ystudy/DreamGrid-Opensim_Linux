@@ -15,19 +15,15 @@
     <div class="plan-cards">
         @foreach (var plan in PlanCatalog.All)
         {
-            <div class="plan-card card@(plan.Available ? "" : " unavailable")" data-plan="@plan.Id">
+            <div class="plan-card card" data-plan="@plan.Id">
                 <a class="plan-info-link" href="/setup/plan/@plan.Id" title="More about @plan.Title" aria-label="More about @plan.Title">ⓘ</a>
                 <label class="plan-pick">
-                    <input type="radio" name="Id" value="@plan.Id" checked="@(Model.Id == plan.Id)" disabled="@(!plan.Available)" required>
+                    <input type="radio" name="Id" value="@plan.Id" checked="@(Model.Id == plan.Id)" required>
                     <span class="plan-icon" aria-hidden="true">@plan.Icon</span>
                     <span class="plan-title">@plan.Title</span>
                     <span class="plan-subtitle">@plan.Subtitle</span>
                     <span class="plan-summary">@plan.Summary</span>
                     <span class="plan-runs">Runs: @string.Join(", ", plan.Runs)</span>
-                    @if (!plan.Available)
-                    {
-                        <span class="plan-later">Coming in a later DreamGrid update.</span>
-                    }
                 </label>
             </div>
         }

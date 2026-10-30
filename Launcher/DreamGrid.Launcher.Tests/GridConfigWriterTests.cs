@@ -39,6 +39,11 @@ public sealed class GridConfigWriterTests : IDisposable
         foreach (var f in new[] { "GridCommon.ini", "OpenSim.ini" })
             File.Copy(Path.Combine(bin, "config-include", "Proto", "Robust", f),
                 Path.Combine(rt, "config-include", "Proto", "Robust", f));
+        // A Connected Server joined to a preset grid reads that grid's own prototypes.
+        var osgrid = Path.Combine(rt, "config-include", "Proto", "OsGrid");
+        Directory.CreateDirectory(osgrid);
+        foreach (var f in Directory.EnumerateFiles(Path.Combine(bin, "config-include", "Proto", "OsGrid")))
+            File.Copy(f, Path.Combine(osgrid, Path.GetFileName(f)));
         return paths;
     }
 
@@ -735,6 +740,93 @@ public sealed class GridConfigWriterTests : IDisposable
         var r = Region();
         Assert.Equal("http://127.0.0.1", r.Get("Const", "PrivURL"));
         Assert.Equal("8002", r.Get("Const", "PublicPort"));
+    }
+
+    private static LauncherSettings Connected(ConnectedGrid grid) => Make(plan: OwnerPlan.Connected, owner: true, hostname: "203.0.113.7") with
+    {
+        Connected = grid,
+    };
+
+    private static readonly ConnectedGrid Elsewhere = new(null, "Elsewhere", "http://10.0.0.9:8002/",
+        "http://grid.example.org:8002/", "http://grid.example.org:8003/", "http://grid.example.org:8002/");
+
+    private static readonly ConnectedGrid OsGrid = new("osgrid", "OSGrid", "http://login.osgrid.org/",
+        "http://login.osgrid.org", "http://grid.osgrid.org/", "http://hg.osgrid.org/");
+
+    [Fact]
+    public void Connected_to_another_grid_uses_its_addresses()
+    {
+        Write(Connected(Elsewhere));
+
+        var r = Region();
+        Assert.Equal("203.0.113.7", r.Get("Const", "BaseHostname"));
+        Assert.Equal("http://grid.example.org", r.Get("Const", "BaseURL"));
+        Assert.Equal("8002", r.Get("Const", "PublicPort"));
+        Assert.Equal("http://grid.example.org", r.Get("Const", "PrivURL"));
+        Assert.Equal("8003", r.Get("Const", "PrivatePort"));
+        Assert.Equal("config-include/GridHypergrid.ini", r.Get("Architecture", "Include-Architecture"));
+        Assert.Equal("Ada Lovelace", r.Get("Estates", "DefaultEstateOwnerName"));
+        Assert.True(string.IsNullOrWhiteSpace(r.Get("Estates", "DefaultEstateOwnerUUID")));
+        Assert.Equal("${Const|PrivURL}:${Const|PrivatePort}", Grid().Get("AssetService", "AssetServerURI"));
+        // The gatekeeper is the grid's own login address, so the hypergrid keys keep building it from [Const].
+        Assert.Equal("${Const|BaseURL}:${Const|PublicPort}", Grid().Get("Hypergrid", "GatekeeperURI"));
+        Assert.Equal("203.0.113.7", IniDocument.Load(RegionFile("Region1", "Welcome Area")).Get("Welcome Area", "ExternalHostName"));
+    }
+
+    [Fact]
+    public void Connected_to_another_grid_without_gatekeeper_uses_grid_ini()
+    {
+        Write(Connected(Elsewhere with { GatekeeperUri = null }));
+
+        Assert.Equal("config-include/Grid.ini", Region().Get("Architecture", "Include-Architecture"));
+        Assert.Equal("false", Grid().Get("GridService", "AllowHypergridMapSearch"));
+    }
+
+    [Fact]
+    public void Connected_to_another_grid_with_its_own_gatekeeper_points_hypergrid_there()
+    {
+        Write(Connected(Elsewhere with { GatekeeperUri = "http://hg.example.org:8002/" }));
+
+        var g = Grid();
+        foreach (var (section, key) in new[]
+                 {
+                     ("Hypergrid", "HomeURI"), ("Hypergrid", "GatekeeperURI"), ("GridService", "Gatekeeper"), ("Messaging", "Gatekeeper"),
+                     ("HGInventoryAccessModule", "HomeURI"), ("HGInventoryAccessModule", "Gatekeeper"), ("HGAssetService", "HomeURI"),
+                     ("UserAgentService", "UserAgentServerURI"),
+                 })
+            Assert.Equal("http://hg.example.org:8002", g.Get(section, key));
+    }
+
+    [Fact]
+    public void Connected_to_osgrid_uses_the_osgrid_proto()
+    {
+        var s = Connected(OsGrid);
+        Write(s);
+
+        var g = Grid();
+        Assert.Equal("http://assets.osgrid.org", g.Get("AssetService", "AssetServerURI"));
+        Assert.Equal("http://users.osgrid.org", g.Get("UserAccountService", "UserAccountServerURI"));
+        Assert.Equal("http://hg.osgrid.org:80", g.Get("Hypergrid", "GatekeeperURI"));
+        var conn = g.Get("DatabaseService", "ConnectionString")!;
+        Assert.Contains("Database=opensim;", conn);
+        Assert.Contains($"Port={s.MariaDbPort};", conn);
+
+        var r = Region();
+        Assert.Equal("203.0.113.7", r.Get("Const", "BaseHostname"));
+        Assert.Equal("http://login.osgrid.org", r.Get("Const", "BaseURL"));
+        Assert.Equal("80", r.Get("Const", "PublicPort"));
+        Assert.Equal("http://groups.osgrid.org/xmlrpc.php", r.Get("Groups", "GroupsServerURI"));
+        Assert.Equal("XmlRpcGroupsServicesConnector", r.Get("Groups", "ServicesConnectorModule"));
+        Assert.Null(r.Get("Groups", "LocalService"));
+        Assert.Equal("http://services.osgrid.org", r.Get("UserProfiles", "ProfileServiceURL"));
+        Assert.Equal("http://xbakes.osgrid.org", r.Get("XBakes", "URL"));
+        Assert.Equal("http://services.osgrid.org", r.Get("Messaging", "OfflineMessageURL"));
+        Assert.Equal("MuteListModule", r.Get("Messaging", "MuteListModule"));
+        Assert.Equal("http://services.osgrid.org", r.Get("Messaging", "MuteListURL"));
+        // Textures are served by the region itself, as OSgrid's own OpenSim.ini says, not by OSgrid's login address.
+        Assert.Equal("localhost", r.Get("ClientStack.LindenCaps", "Cap_GetTexture"));
+        Assert.Equal("http://maptiles.osgrid.org:80", r.Get("SimulatorFeatures", "MapTileURL"));
+        Assert.Equal("http://search.osgrid.org/v2/query.php", r.Get("Search", "SearchURL"));
     }
 
     public static TheoryData<string, OwnerPlan, string, bool> SnapshotCases => new()

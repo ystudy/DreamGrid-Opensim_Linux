@@ -15,7 +15,14 @@
 <h1>@title</h1>
 @if (Model.ByName)
 {
-    <p>Type the name of your avatar on @Model.GridName. It becomes the owner of the regions on this computer. No password is needed here.</p>
+    if (Model.OnConnected)
+    {
+        <p>Type the name of your avatar on @Model.GridName. It becomes the owner of the regions on this computer, and it is the avatar you sign in to this website with. No password is needed here.</p>
+    }
+    else
+    {
+        <p>Type the name of your avatar on @Model.GridName. It becomes the owner of the regions on this computer. No password is needed here.</p>
+    }
 }
 else
 {

@@ -220,20 +220,19 @@ public sealed class SetupFlowTests
     }
 
     [Fact]
-    public async Task Unavailable_plan_page_has_a_disabled_choose_button()
+    public async Task Every_plan_page_offers_to_choose_it()
     {
         await using var f = Unplanned();
         using var client = await SetupClientAsync(f);
 
-        var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/plan/connected-server", Ct));
-
-        var button = page.QuerySelectorAll("main button").Single(b => b.TextContent.Trim() == "Choose this plan");
-        Assert.True(button.HasAttribute("disabled"));
-        Assert.Contains("Coming in a later DreamGrid update.", page.Body!.TextContent);
-        Assert.Null(page.QuerySelector("form[action*='handler=Choose']"));
-
+        foreach (var plan in PlanCatalog.All)
+        {
+            var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/plan/" + plan.Id, Ct));
+            Assert.NotNull(page.QuerySelector($"form[action='/setup/plan/{plan.Id}?handler=Choose']"));
+            Assert.DoesNotContain("Coming in a later DreamGrid update.", page.Body!.TextContent);
+        }
         var cards = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/plan", Ct));
-        Assert.Equal("Coming in a later DreamGrid update.", cards.QuerySelector(".plan-card[data-plan=connected-server] .plan-later")?.TextContent.Trim());
+        Assert.Empty(cards.QuerySelectorAll(".plan-card.unavailable"));
     }
 
     [Fact]
@@ -280,12 +279,12 @@ public sealed class SetupFlowTests
     }
 
     [Fact]
-    public async Task Choosing_an_unavailable_or_unknown_plan_is_refused()
+    public async Task Choosing_an_unknown_plan_is_refused()
     {
         await using var f = Unplanned();
         using var client = await SetupClientAsync(f);
 
-        foreach (var id in new[] { "connected-server", "nope" })
+        foreach (var id in new[] { "nope" })
         {
             using var resp = await PostFormAsync(client, $"/setup/plan/{id}?handler=Choose", new(), tokenFrom: "/setup/plan");
             Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
@@ -1695,5 +1694,431 @@ public sealed class SetupFlowTests
         var done = await WaitForProgressAsync(client, p => !p.GetProperty("running").GetBoolean());
         Assert.Equal(GridAssetUnreachableException.MessageFor("192.168.1.5", 8002), Str(done, "error"));
         Assert.DoesNotContain(f.Grid.Snapshot(), c => c.StartsWith("CreateRegion", StringComparison.Ordinal));
+    }
+
+    // ---- Connected Server (plan 6c) ----
+
+    /// <summary>What the other grid answers in these tests: OSGrid, with a gatekeeper (hypergrid on).</summary>
+    private static OtherGridInfo OsgridInfo(bool gridAssetServer = false) =>
+        new("OSGrid", "http://login.osgrid.org/", "http://gatekeeper.osgrid.org:8002/", gridAssetServer);
+
+    private static ConnectedGrid Osgrid(string? gatekeeper = "http://gatekeeper.osgrid.org:8002/") =>
+        new("osgrid", "OSGrid", "http://login.osgrid.org/", "http://login.osgrid.org/", "http://grid.osgrid.org/", gatekeeper);
+
+    /// <summary>A Connected Server before its owner exists; <paramref name="more"/> seeds the rest (the other grid, steps done).</summary>
+    private static LauncherFactory ConnectedServer(Func<LauncherSettings, LauncherSettings>? more = null)
+    {
+        var f = new LauncherFactory(s =>
+        {
+            var seeded = s with { SetupToken = Token, Plan = OwnerPlan.Connected };
+            return more is null ? seeded : more(seeded);
+        })
+        {
+            Before = TestAuth.Apply,
+        };
+        f.OtherGrid.Result = OsgridInfo();
+        return f;
+    }
+
+    /// <summary>A Connected Server that has connected to OSgrid, with its network set unless <paramref name="networkSet"/> is false.</summary>
+    private static LauncherFactory ConnectedToOsgrid(bool networkSet = true, string? gatekeeper = "http://gatekeeper.osgrid.org:8002/") => ConnectedServer(s => s with
+    {
+        Connected = Osgrid(gatekeeper),
+        GridName = "OSGrid",
+        Setup = s.Setup with { WorldNamed = true, NetworkSet = networkSet },
+    });
+
+    [Fact]
+    public async Task Connected_server_card_can_be_chosen()
+    {
+        await using var f = Unplanned();
+        using var client = await SetupClientAsync(f);
+
+        using var resp = await PostFormAsync(client, "/setup/plan/connected-server?handler=Choose", new(), tokenFrom: "/setup/plan");
+
+        Assert.Equal("/setup", Location(resp));
+        Assert.Equal(OwnerPlan.Connected, f.Store.LoadOrCreate().Plan);
+        using var next = await client.GetAsync("/setup", Ct);
+        Assert.Equal("/setup/other-grid", Location(next));
+    }
+
+    [Fact]
+    public async Task Osgrid_shows_what_it_found_then_saves_on_confirm()
+    {
+        await using var f = ConnectedServer();
+        using var client = await SetupClientAsync(f);
+
+        var form = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/other-grid", Ct));
+        Assert.Contains("current", form.QuerySelectorAll(".checklist li")[1].ClassName);
+        Assert.True(form.QuerySelector("input[name=Grid][value=osgrid]")!.HasAttribute("checked"));
+
+        using var first = await PostFormAsync(client, "/setup/other-grid", new() { ["Grid"] = "osgrid" });
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        var page = new HtmlParser().ParseDocument(await first.Content.ReadAsStringAsync(Ct));
+        var text = page.Body!.TextContent;
+        Assert.Contains("OSGrid", text);
+        Assert.Contains("Hypergrid: on", text);
+        Assert.Null(page.QuerySelector(".grid-asset-warning"));
+        Assert.Contains(page.QuerySelectorAll("button"), b => b.TextContent.Trim() == "Connect to this grid");
+        Assert.Contains(page.QuerySelectorAll("button, a"), b => b.TextContent.Trim() == "Change");
+        Assert.Null(f.Store.LoadOrCreate().Connected);
+        Assert.DoesNotContain("UpdateSettings", f.Grid.Snapshot());
+        Assert.Equal(new Uri("http://login.osgrid.org/"), f.OtherGrid.Reads.Single());
+        Assert.Equal(new Uri("http://grid.osgrid.org/"), f.OtherGrid.ServicesChecks.Single());
+
+        // Confirm reads the grid again: posted look-alike values are never trusted.
+        using var confirm = await PostFormAsync(client, "/setup/other-grid?handler=Confirm",
+            new() { ["Grid"] = "osgrid", ["GridName"] = "Forged" }, tokenFrom: "/setup/other-grid");
+        Assert.Equal("/setup", Location(confirm));
+        Assert.Equal(2, f.OtherGrid.Reads.Count);
+        var s = f.Store.LoadOrCreate();
+        Assert.Equal(Osgrid(), s.Connected);
+        Assert.Equal("OSGrid", s.GridName);
+        Assert.True(s.Setup.WorldNamed);
+        Assert.True(f.Grid.UpdateWriteConfig.Last());
+        using var next = await client.GetAsync("/setup", Ct);
+        Assert.Equal("/setup/network", Location(next));
+    }
+
+    [Fact]
+    public async Task Another_grid_needs_both_addresses()
+    {
+        await using var f = ConnectedServer();
+        using var client = await SetupClientAsync(f);
+
+        foreach (var url in new[] { "/setup/other-grid", "/setup/other-grid?handler=Confirm" })
+        {
+            using var refused = await PostFormAsync(client, url,
+                new() { ["Grid"] = "other", ["LoginAddress"] = "grid.example.org", ["ServicesAddress"] = "" }, tokenFrom: "/setup/other-grid");
+            Assert.Equal(HttpStatusCode.OK, refused.StatusCode);
+            Assert.Contains("Type the other grid&#x27;s address", await refused.Content.ReadAsStringAsync(Ct));
+        }
+        Assert.Null(f.Store.LoadOrCreate().Connected);
+        Assert.Empty(f.OtherGrid.ServicesChecks);
+
+        using var confirm = await PostFormAsync(client, "/setup/other-grid?handler=Confirm",
+            new() { ["Grid"] = "other", ["LoginAddress"] = "grid.example.org", ["ServicesAddress"] = "grid.example.org" }, tokenFrom: "/setup/other-grid");
+        Assert.Equal("/setup", Location(confirm));
+        var saved = f.Store.LoadOrCreate().Connected!;
+        Assert.Null(saved.Preset);
+        Assert.Equal("http://grid.example.org:8002/", saved.Address);
+        Assert.Equal("http://grid.example.org:8003/", saved.ServicesUri);
+        Assert.Equal("OSGrid", saved.GridName); // what the fake grid answered
+        Assert.Equal(new Uri("http://grid.example.org:8003/"), f.OtherGrid.ServicesChecks.Single());
+    }
+
+    [Theory]
+    [InlineData("false", "Hypergrid: off")]
+    [InlineData("true", "Hypergrid: on")]
+    public async Task Another_dreamgrid_says_hypergrid_as_its_own_switch_says(string dreamgridHypergrid, string expected)
+    {
+        await using var f = ConnectedServer();
+        // A DreamGrid's Robust publishes a gatekeeper even with hypergrid off; its own switch decides.
+        f.OtherGrid.Result = OtherGridInfoParser.Parse(new Uri("http://grid.example.org:8002/"),
+            "<gridinfo><login>http://grid.example.org:8002/</login><gridname>Elsewhere</gridname>" +
+            "<gatekeeper>http://grid.example.org:8002/</gatekeeper>" +
+            $"<dreamgrid_hypergrid>{dreamgridHypergrid}</dreamgrid_hypergrid></gridinfo>");
+        using var client = await SetupClientAsync(f);
+
+        var form = new Dictionary<string, string> { ["Grid"] = "other", ["LoginAddress"] = "grid.example.org", ["ServicesAddress"] = "grid.example.org" };
+        using var first = await PostFormAsync(client, "/setup/other-grid", form);
+        var text = new HtmlParser().ParseDocument(await first.Content.ReadAsStringAsync(Ct)).Body!.TextContent;
+        Assert.Contains(expected, text);
+
+        using var confirm = await PostFormAsync(client, "/setup/other-grid?handler=Confirm", form, tokenFrom: "/setup/other-grid");
+        Assert.Equal("/setup", Location(confirm));
+        Assert.Equal(dreamgridHypergrid == "true", PlanCatalog.HypergridOn(f.Store.LoadOrCreate()));
+    }
+
+    [Fact]
+    public async Task Another_grid_page_names_its_two_addresses()
+    {
+        await using var f = ConnectedServer();
+        using var client = await SetupClientAsync(f);
+
+        var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/other-grid", Ct));
+
+        var text = page.Body!.TextContent;
+        Assert.Contains("its login address (the one you'd give Firestorm)", text);
+        Assert.Contains("its address for region servers (the grid gives this to people who host regions)", text);
+        Assert.NotNull(page.QuerySelector("input[name=Grid][value=other]"));
+        Assert.NotNull(page.QuerySelector("input[name=LoginAddress]"));
+        Assert.NotNull(page.QuerySelector("input[name=ServicesAddress]"));
+    }
+
+    [Fact]
+    public async Task Another_grid_that_is_a_grid_asset_server_is_warned_not_refused()
+    {
+        await using var f = ConnectedServer();
+        f.OtherGrid.Result = OsgridInfo(gridAssetServer: true);
+        using var client = await SetupClientAsync(f);
+
+        using var first = await PostFormAsync(client, "/setup/other-grid",
+            new() { ["Grid"] = "other", ["LoginAddress"] = "192.168.1.5", ["ServicesAddress"] = "192.168.1.5" });
+        var page = new HtmlParser().ParseDocument(await first.Content.ReadAsStringAsync(Ct));
+        Assert.Contains("This is a DreamGrid Grid Asset Server. The Region Server plan joins it more simply; go back to the plans to choose it.",
+            page.QuerySelector(".grid-asset-warning")?.TextContent);
+        Assert.Null(f.Store.LoadOrCreate().Connected);
+
+        using var confirm = await PostFormAsync(client, "/setup/other-grid?handler=Confirm",
+            new() { ["Grid"] = "other", ["LoginAddress"] = "192.168.1.5", ["ServicesAddress"] = "192.168.1.5" }, tokenFrom: "/setup/other-grid");
+        Assert.Equal("/setup", Location(confirm));
+        Assert.NotNull(f.Store.LoadOrCreate().Connected);
+    }
+
+    [Fact]
+    public async Task Other_grid_errors_are_shown()
+    {
+        await using var f = ConnectedServer();
+        using var client = await SetupClientAsync(f);
+
+        f.OtherGrid.Error = new GridJoinException("Nothing answered at http://login.osgrid.org/. Check the address.", noAnswer: true);
+        foreach (var url in new[] { "/setup/other-grid", "/setup/other-grid?handler=Confirm" })
+        {
+            using var resp = await PostFormAsync(client, url, new() { ["Grid"] = "osgrid" }, tokenFrom: "/setup/other-grid");
+            Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+            Assert.Contains("Nothing answered at http://login.osgrid.org/.", await resp.Content.ReadAsStringAsync(Ct));
+        }
+
+        f.OtherGrid.Error = null;
+        f.OtherGrid.ServicesError = new GridJoinException("http://grid.osgrid.org/ answered, but not like a grid's services.");
+        foreach (var url in new[] { "/setup/other-grid", "/setup/other-grid?handler=Confirm" })
+        {
+            using var resp = await PostFormAsync(client, url, new() { ["Grid"] = "osgrid" }, tokenFrom: "/setup/other-grid");
+            Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+            Assert.Contains("answered, but not like a grid&#x27;s services.", await resp.Content.ReadAsStringAsync(Ct));
+        }
+        var s = f.Store.LoadOrCreate();
+        Assert.Null(s.Connected);
+        Assert.False(s.Setup.WorldNamed);
+        Assert.DoesNotContain("UpdateSettings", f.Grid.Snapshot());
+    }
+
+    [Fact]
+    public async Task Other_grid_change_shows_the_form_again()
+    {
+        await using var f = ConnectedServer();
+        using var client = await SetupClientAsync(f);
+
+        using var resp = await PostFormAsync(client, "/setup/other-grid?handler=Change",
+            new() { ["Grid"] = "other", ["LoginAddress"] = "grid.example.org", ["ServicesAddress"] = "grid.example.org:9003" }, tokenFrom: "/setup/other-grid");
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var page = new HtmlParser().ParseDocument(await resp.Content.ReadAsStringAsync(Ct));
+        Assert.True(page.QuerySelector("input[name=Grid][value=other]")!.HasAttribute("checked"));
+        Assert.Equal("grid.example.org:9003", page.QuerySelector("input[name=ServicesAddress]:not([type=hidden])")?.GetAttribute("value"));
+        Assert.Empty(f.OtherGrid.Reads);
+        Assert.Null(f.Store.LoadOrCreate().Connected);
+    }
+
+    [Fact]
+    public async Task Connected_network_defaults_to_the_internet_and_has_no_switch()
+    {
+        await using var f = ConnectedToOsgrid(networkSet: false);
+        using var client = await SetupClientAsync(f);
+
+        var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/network", Ct));
+
+        Assert.Null(page.QuerySelector("input[name=Hypergrid]"));
+        Assert.Contains("Hypergrid is on for OSGrid; that grid decides.", page.Body!.TextContent);
+        Assert.True(page.QuerySelector("input[name=AddressKind][value=public]")!.HasAttribute("checked"));
+        Assert.False(page.QuerySelector("input[name=AddressKind][value=lan]")!.HasAttribute("checked"));
+        Assert.Equal(f.Store.LoadOrCreate().RegionPort.ToString(), page.QuerySelector("input[name=FirstRegionPort]")?.GetAttribute("value"));
+        Assert.Contains(page.QuerySelectorAll(".plan-advisories li"), li => li.TextContent.Contains("reachable from the internet"));
+        Assert.Contains(page.QuerySelectorAll(".plan-advisories li"),
+            li => li.TextContent.Contains("uses your avatar on the other grid: that grid checks the password."));
+
+        using var resp = await PostFormAsync(client, "/setup/network",
+            new() { ["AddressKind"] = "public", ["PublicAddress"] = "203.0.113.7", ["FirstRegionPort"] = "9100", ["Hypergrid"] = "on" });
+        Assert.Equal("/setup", Location(resp));
+        var s = f.Store.LoadOrCreate();
+        Assert.Equal("203.0.113.7", s.Hostname);
+        Assert.Equal(9100, s.RegionPort);
+        Assert.True(s.Setup.NetworkSet);
+        Assert.False(s.Hypergrid);
+    }
+
+    [Fact]
+    public async Task Connected_network_says_hypergrid_is_off_when_the_grid_has_no_gatekeeper()
+    {
+        await using var f = ConnectedToOsgrid(networkSet: false, gatekeeper: null);
+        using var client = await SetupClientAsync(f);
+
+        var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/network", Ct));
+
+        Assert.Contains("Hypergrid is off for OSGrid; that grid decides.", page.Body!.TextContent);
+    }
+
+    [Fact]
+    public async Task Connected_avatar_is_typed_by_name()
+    {
+        await using var f = ConnectedToOsgrid();
+        f.Grid.EstateOwnerFound = ("Ann", "Lee");
+        using var client = await SetupClientAsync(f);
+
+        var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/avatar", Ct));
+        Assert.Equal("Your avatar", page.QuerySelector("h1")?.TextContent.Trim());
+        Assert.Null(page.QuerySelector("input[type=password]"));
+        Assert.Null(page.QuerySelector("input[name=Email]"));
+        Assert.Contains("Type the name of your avatar on OSGrid. It becomes the owner of the regions on this computer, and it is the avatar you sign in to this website with. No password is needed here.",
+            page.Body!.TextContent);
+
+        using var resp = await PostFormAsync(client, "/setup/avatar", new() { ["FirstName"] = "ann", ["LastName"] = "lee" });
+
+        Assert.Equal("/setup", Location(resp));
+        Assert.Contains("SetEstateOwner ann lee", f.Grid.Snapshot());
+        Assert.Equal(0, f.Grid.CreateOwnerCalls);
+        var s = f.Store.LoadOrCreate();
+        Assert.Equal(("Ann", "Lee"), (s.Setup.Owner?.FirstName, s.Setup.Owner?.LastName));
+        Assert.Null(s.SetupToken);
+        Assert.Contains(resp.Headers.GetValues("Set-Cookie"), c => c.StartsWith("dg-auth=", StringComparison.Ordinal));
+        using var next = await client.GetAsync("/setup", Ct);
+        Assert.Equal("/setup/region", Location(next));
+    }
+
+    [Fact]
+    public async Task Connected_avatar_errors_are_shown_as_they_are()
+    {
+        await using var f = ConnectedToOsgrid();
+        using var client = await SetupClientAsync(f);
+
+        f.Grid.EstateOwnerError = new ArgumentException("There's no avatar called Ann Lee on OSGrid. Check the spelling, or sign up with OSGrid first.");
+        using var missing = await PostFormAsync(client, "/setup/avatar", new() { ["FirstName"] = "Ann", ["LastName"] = "Lee" });
+        Assert.Contains("sign up with OSGrid first.", new HtmlParser().ParseDocument(await missing.Content.ReadAsStringAsync(Ct)).QuerySelector(".error-box")?.TextContent);
+
+        f.Grid.EstateOwnerError = new OtherGridUnreachableException("OSGrid", "http://login.osgrid.org/");
+        using var down = await PostFormAsync(client, "/setup/avatar", new() { ["FirstName"] = "Ann", ["LastName"] = "Lee" });
+        Assert.Equal(HttpStatusCode.OK, down.StatusCode);
+        Assert.Contains("OSGrid", new HtmlParser().ParseDocument(await down.Content.ReadAsStringAsync(Ct)).QuerySelector(".error-box")?.TextContent);
+        Assert.False(f.Store.LoadOrCreate().Setup.OwnerCreated);
+    }
+
+    [Fact]
+    public async Task Connected_skips_name_your_world()
+    {
+        await using var f = ConnectedToOsgrid();
+        using var client = await SetupClientAsync(f);
+
+        var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/avatar", Ct));
+        Assert.Equal(["Choose your plan (done)", "Connect to the other grid (done)", "Your network (done)", "Your avatar", "Choose your first region", "Connect with Firestorm"],
+            page.QuerySelectorAll(".checklist li").Select(li => li.TextContent.Trim()));
+        Assert.DoesNotContain(DreamGrid.Launcher.Setup.SetupSteps.For(f.Store.LoadOrCreate()), step => step.Path == "/setup/world");
+
+        using var resp = await client.GetAsync("/setup/world", Ct);
+        Assert.Equal("/setup", Location(resp));
+    }
+
+    [Fact]
+    public async Task Connected_other_grid_step_is_closed_once_the_owner_exists()
+    {
+        await using var f = ConnectedServer(s => s with
+        {
+            Connected = Osgrid(),
+            SetupToken = null,
+            Setup = new SetupState(WorldNamed: true, OwnerCreated: true, Owner: new OwnerInfo("Ann", "Lee", Guid.NewGuid()), NetworkSet: true),
+        });
+        using var client = await SignedInClientAsync(f);
+
+        using var resp = await client.GetAsync("/setup/other-grid", Ct);
+
+        Assert.Equal("/setup", Location(resp));
+    }
+
+    [Fact]
+    public async Task Region_step_headlines_the_placement_message()
+    {
+        await using var f = ConnectedServer(s => s with
+        {
+            Connected = Osgrid(),
+            GridName = "OSGrid",
+            SetupToken = null,
+            Setup = new SetupState(WorldNamed: true, OwnerCreated: true, Owner: new OwnerInfo("Ann", "Lee", Guid.NewGuid()), NetworkSet: true),
+        });
+        using var client = await SignedInClientAsync(f);
+        await f.Grid.Started.Task.WaitAsync(TimeSpan.FromSeconds(5), Ct);
+        const string Message = "The squares near 1000,1000 on OSGrid's map are all taken. Try again, or ask the grid for a place.";
+        f.Grid.OnCreateRegion = (_, _) => throw new ArgumentException(Message);
+
+        (await PostFormAsync(client, "/setup/region", new() { ["RegionName"] = "Welcome", ["Content"] = "island" })).Dispose();
+
+        var done = await WaitForProgressAsync(client, p => !p.GetProperty("running").GetBoolean());
+        Assert.Equal(Message, Str(done, "error"));
+    }
+
+    /// <summary>A Connected Server on OSgrid at its region step, signed in, after the host's own start at launch.</summary>
+    private static async Task<(LauncherFactory F, HttpClient Client)> ConnectedAtRegionAsync()
+    {
+        var f = ConnectedServer(s => s with
+        {
+            Connected = Osgrid(),
+            GridName = "OSGrid",
+            SetupToken = null,
+            Setup = new SetupState(WorldNamed: true, OwnerCreated: true, Owner: new OwnerInfo("Ann", "Lee", Guid.NewGuid()), NetworkSet: true),
+        });
+        var client = await SignedInClientAsync(f);
+        await f.Grid.Started.Task.WaitAsync(TimeSpan.FromSeconds(5), Ct);
+        return (f, client);
+    }
+
+    [Fact]
+    public async Task Region_step_headlines_an_owner_reason_without_the_parameter_name()
+    {
+        var (f, client) = await ConnectedAtRegionAsync();
+        await using var factory = f;
+        using var http = client;
+        const string Message = "A region name can't be longer than 32 characters.";
+        f.Grid.OnCreateRegion = (_, _) => throw new ArgumentException(Message, "name");
+
+        (await PostFormAsync(client, "/setup/region", new() { ["RegionName"] = "Welcome", ["Content"] = "island" })).Dispose();
+
+        var done = await WaitForProgressAsync(client, p => !p.GetProperty("running").GetBoolean());
+        Assert.Equal(Message, Str(done, "error"));
+        Assert.DoesNotContain("(Parameter", Str(done, "error"));
+    }
+
+    [Fact]
+    public async Task Region_step_does_not_headline_a_null_argument()
+    {
+        var (f, client) = await ConnectedAtRegionAsync();
+        await using var factory = f;
+        using var http = client;
+        f.Grid.OnCreateRegion = (_, _) => throw new ArgumentNullException("content", "A bug, not a reason for the owner.");
+
+        (await PostFormAsync(client, "/setup/region", new() { ["RegionName"] = "Welcome", ["Content"] = "island" })).Dispose();
+
+        var done = await WaitForProgressAsync(client, p => !p.GetProperty("running").GetBoolean());
+        var error = Str(done, "error")!;
+        Assert.StartsWith("Your region could not be set up.", error);
+        Assert.DoesNotContain("A bug", error);
+    }
+
+    [Theory]
+    [InlineData(true, "Reaching the other grid")]
+    [InlineData(false, "Reaching the Grid Asset Server")]
+    public async Task Region_step_names_whose_grid_it_is_reaching(bool connected, string stage)
+    {
+        LauncherFactory f;
+        HttpClient client;
+        if (connected)
+            (f, client) = await ConnectedAtRegionAsync();
+        else
+        {
+            f = RegionServerAtRegion();
+            client = await SignedInClientAsync(f);
+            await f.Grid.Started.Task.WaitAsync(TimeSpan.FromSeconds(5), Ct);
+        }
+        await using var factory = f;
+        using var http = client;
+        var running = new ComponentStatus("database", ProcessState.Running, null, null, null, null);
+        f.Grid.Status = new GridStatus(running, running with { Name = "robust", State = ProcessState.Failed }, [], [], false, "http://127.0.0.1:8002/");
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        f.Grid.OnStart = ct => release.Task.WaitAsync(ct);
+
+        (await PostFormAsync(client, "/setup/region", new() { ["RegionName"] = "Welcome", ["Content"] = "island" })).Dispose();
+
+        var reaching = await WaitForProgressAsync(client, p => Str(p, "stage") == stage);
+        Assert.True(reaching.GetProperty("running").GetBoolean());
+        release.SetResult();
+        await WaitForProgressAsync(client, p => !p.GetProperty("running").GetBoolean());
     }
 }

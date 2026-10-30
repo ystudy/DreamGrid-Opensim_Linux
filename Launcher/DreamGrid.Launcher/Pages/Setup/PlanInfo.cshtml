@@ -12,16 +12,8 @@
 }
 <partial name="_PlanDetails" model="plan" />
 <div class="d-flex flex-wrap gap-2 mt-4">
-    @if (plan.Available)
-    {
-        <form method="post" action="/setup/plan/@plan.Id?handler=Choose" asp-antiforgery="true">
-            <button type="submit" class="btn btn-primary">Choose this plan</button>
-        </form>
-    }
-    else
-    {
-        <button type="button" class="btn btn-primary" disabled>Choose this plan</button>
-        <p class="plan-later text-body-secondary w-100 mb-0">Coming in a later DreamGrid update.</p>
-    }
+    <form method="post" action="/setup/plan/@plan.Id?handler=Choose" asp-antiforgery="true">
+        <button type="submit" class="btn btn-primary">Choose this plan</button>
+    </form>
     <a class="btn btn-outline-secondary" href="/setup/plan">Back to all plans</a>
 </div>

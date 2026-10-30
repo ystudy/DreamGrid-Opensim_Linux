@@ -40,32 +40,47 @@ public static class JoinAddress
     /// </summary>
     public static (string Host, int Port)? Parse(string? typed, out string? error)
     {
+        var parsed = Split(typed, DefaultPort, NoAddress,
+            "Type just the address, like 192.168.1.5 or grid.example.org.",
+            "The port after the colon must be a number from 1 to 65535. The grid service's port is usually 8002.", out error);
+        return parsed is { } p ? (p.Host, p.Port) : null;
+    }
+
+    /// <summary>
+    /// Splits <paramref name="typed"/> into scheme (<c>http</c> unless <c>https://</c> was typed), host and port. Any other
+    /// <c>scheme://</c> gives <paramref name="schemeError"/>. Shared with <see cref="OtherGridAddress"/>, which words its
+    /// errors for the other grid.
+    /// </summary>
+    internal static (string Scheme, string Host, int Port)? Split(
+        string? typed, int defaultPort, string noAddress, string schemeError, string portError, out string? error)
+    {
         error = null;
         var text = (typed ?? "").Trim();
-        foreach (var scheme in new[] { "http://", "https://" })
-            if (text.StartsWith(scheme, StringComparison.OrdinalIgnoreCase)) { text = text[scheme.Length..]; break; }
+        var scheme = "http";
+        foreach (var s in new[] { "http", "https" })
+            if (text.StartsWith(s + "://", StringComparison.OrdinalIgnoreCase)) { scheme = s; text = text[(s.Length + 3)..]; break; }
         if (text.Contains("://"))
         {
-            error = "Type just the address, like 192.168.1.5 or grid.example.org.";
+            error = schemeError;
             return null;
         }
         text = text.TrimEnd('/');
 
         var host = text;
-        var port = DefaultPort;
+        var port = defaultPort;
         var colon = text.LastIndexOf(':');
         if (colon >= 0)
         {
             host = text[..colon];
             if (!int.TryParse(text[(colon + 1)..], NumberStyles.None, CultureInfo.InvariantCulture, out port) || port is < 1 or > 65535)
             {
-                error = "The port after the colon must be a number from 1 to 65535. The grid service's port is usually 8002.";
+                error = portError;
                 return null;
             }
         }
         if (host.Length == 0)
         {
-            error = NoAddress;
+            error = noAddress;
             return null;
         }
         if (SettingsValidator.HostnameError(host) is { } hostError)
@@ -73,7 +88,7 @@ public static class JoinAddress
             error = hostError;
             return null;
         }
-        return (host, port);
+        return (scheme, host, port);
     }
 }
 

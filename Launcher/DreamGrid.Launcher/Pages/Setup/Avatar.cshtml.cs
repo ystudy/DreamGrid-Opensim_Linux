@@ -34,10 +34,13 @@ public sealed partial class AvatarModel(
     /// <summary>True when another submit is already creating the avatar.</summary>
     public bool Creating { get; private set; }
 
-    /// <summary>True on a Region Server: the avatar is named, not created, and no password is asked for.</summary>
+    /// <summary>True on a Region Server or a Connected Server: the avatar is named, not created, and no password is asked for.</summary>
     public bool ByName { get; private set; }
 
-    /// <summary>The grid the avatar lives on: the joined grid's name on a Region Server.</summary>
+    /// <summary>True on a Connected Server: the avatar is on someone else's grid, which also checks its password at sign-in.</summary>
+    public bool OnConnected { get; private set; }
+
+    /// <summary>The grid the avatar lives on: the joined grid's name on a Region Server, the other grid's on a Connected Server.</summary>
     public string GridName { get; private set; } = "";
 
     public IActionResult OnGet()
@@ -86,7 +89,7 @@ public sealed partial class AvatarModel(
     }
 
     /// <summary>
-    /// A Region Server's post: the name of an avatar on the Grid Asset Server. A missing avatar or a Grid Asset Server that
+    /// A Region Server's or Connected Server's post: the name of an avatar on the other grid. A missing avatar or a grid that
     /// doesn't answer is said in the controller's own words.
     /// </summary>
     private async Task<IActionResult> PostByNameAsync()
@@ -102,7 +105,7 @@ public sealed partial class AvatarModel(
         {
             account = await runner.TrySetEstateOwnerAsync(first, last, lifetime.ApplicationStopping);
         }
-        catch (Exception e) when (e is ArgumentException or GridAssetUnreachableException or GridJoinException)
+        catch (Exception e) when (e is ArgumentException or GridUnreachableException or GridJoinException)
         {
             log.LogWarning("Setup: {First} {Last} could not be made the owner: {Message}", first, last, e.Message);
             Error = e.Message;
@@ -138,8 +141,9 @@ public sealed partial class AvatarModel(
     private void Load()
     {
         var s = settings();
-        ByName = s.Plan == OwnerPlan.RegionServer;
-        GridName = (ByName ? s.Join?.GridName : null) ?? s.GridName;
+        OnConnected = s.Plan == OwnerPlan.Connected;
+        ByName = OnConnected || s.Plan == OwnerPlan.RegionServer;
+        GridName = (OnConnected ? s.Connected?.GridName : ByName ? s.Join?.GridName : null) ?? s.GridName;
     }
 
     private IActionResult? Closed()

@@ -123,7 +123,7 @@ public sealed class RegionServerPagesTests
     {
         ComponentStatus C(string n, ProcessState s) => new(n, s, null, null, null, null);
         return new GridStatus(C("database", ProcessState.Running), C("robust", gridAsset), [], [], false, "http://192.168.1.5:8002/",
-            RunsRobust: false, GridAssetHost: "192.168.1.5");
+            RunsRobust: false, OtherGridAddress: "192.168.1.5:8002");
     }
 
     [Fact]

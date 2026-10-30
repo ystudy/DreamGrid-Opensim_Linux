@@ -21,7 +21,7 @@ public sealed class GridControllerTests : IDisposable
         _paths = new LauncherPaths(_root, Path.Combine(_root, "program"), null);
         _store = new SettingsStore(_paths.SettingsFile);
         _grid = new GridController(_paths, _store, new MariaDbBinaries("mariadbd", "install-db", null),
-            [new LogLevelModule()], new NoRobust(), new FakeGridJoin(), new NoHttp(), TimeProvider.System);
+            [new LogLevelModule()], new NoRobust(), new FakeGridJoin(), new FakeOtherGrid(), new NoHttp(), TimeProvider.System);
     }
 
     public void Dispose()
@@ -106,6 +106,7 @@ public sealed class GridControllerTests : IDisposable
         public Task<RobustAccount?> GetAccountAsync(string first, string last, CancellationToken ct) => throw new InvalidOperationException("not expected");
         public Task<bool> AuthenticateAsync(Guid principal, string plainPassword, CancellationToken ct) => throw new InvalidOperationException("not expected");
         public Task<IReadOnlyList<MapRegion>> GetMapRegionsAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<MapRegion>>([]);
+        public Task<IReadOnlyList<MapRegion>> GetMapRegionsAsync(MapArea area, CancellationToken ct) => GetMapRegionsAsync(ct);
     }
 
     private sealed class NoHttp : IHttpClientFactory

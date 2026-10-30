@@ -8,7 +8,7 @@
 }
 <partial name="_Checklist" />
 <h1>Your network</h1>
-@if (Model.Plan == OwnerPlan.RegionServer)
+@if (Model.Plan is OwnerPlan.RegionServer or OwnerPlan.Connected)
 {
     var regionPublic = Model.AddressKind == "public";
     <form method="post">

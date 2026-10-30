@@ -67,6 +67,40 @@ public class RobustClientTests
     }
 
     [Fact]
+    public async Task Connected_asks_each_service_where_it_lives()
+    {
+        var h = new StubHandler(r => (HttpStatusCode.OK, "<gridinfo></gridinfo>"));
+        var osgrid = Defaults with
+        {
+            Plan = OwnerPlan.Connected,
+            Connected = new ConnectedGrid("osgrid", "OSGrid", "http://login.osgrid.org/", "http://login.osgrid.org",
+                "http://grid.osgrid.org/", "http://hg.osgrid.org/"),
+        };
+        var other = Defaults with
+        {
+            Plan = OwnerPlan.Connected,
+            Connected = new ConnectedGrid(null, "Elsewhere", "http://10.0.0.9:8002/", "http://grid.example.org:8002/",
+                "http://grid.example.org:8003/", "http://grid.example.org:8002/"),
+        };
+
+        foreach (var s in new[] { osgrid, other })
+        {
+            var c = new RobustClient(new HttpClient(h), () => s);
+            await c.GetAccountAsync("Ann", "Lee", CancellationToken.None);
+            await c.AuthenticateAsync(Guid.Parse(Pid), "x", CancellationToken.None);
+            await c.GetMapRegionsAsync(CancellationToken.None);
+        }
+        await new RobustClient(new HttpClient(h), () => osgrid).IsReadyAsync(CancellationToken.None);
+
+        Assert.Equal(
+        [
+            "http://users.osgrid.org/accounts", "http://login.osgrid.org/auth/plain", "http://grid.osgrid.org/grid",
+            "http://grid.example.org:8003/accounts", "http://grid.example.org:8003/auth/plain", "http://grid.example.org:8003/grid",
+            "http://login.osgrid.org/get_grid_info",
+        ], h.Requests.Select(q => q.Uri.ToString()));
+    }
+
+    [Fact]
     public async Task Authenticate_sends_md5_hex_of_password()
     {
         var (c, h) = Make(r => (HttpStatusCode.OK, "<ServerResponse><Result>Success</Result><Token>tok-1</Token></ServerResponse>"));
@@ -164,5 +198,40 @@ public class RobustClientTests
         var (c, _) = Make(r => (HttpStatusCode.OK, body));
 
         Assert.Empty(await c.GetMapRegionsAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task GetMapRegionsAsync_in_an_area_asks_for_that_area()
+    {
+        var (c, h) = Make(r => (HttpStatusCode.OK, "<ServerResponse>null</ServerResponse>"));
+
+        // Robust filters by region origin, so the query reaches 16 squares (the largest region) west and south.
+        await c.GetMapRegionsAsync(new MapArea(1000, 2000, 1001, 2003), CancellationToken.None);
+        await c.GetMapRegionsAsync(CancellationToken.None);
+
+        Assert.Equal(2, h.Requests.Count);
+        var area = h.Requests[0];
+        Assert.Equal("/grid", area.Uri.AbsolutePath);
+        Assert.Equal("get_region_range", area.Form("METHOD"));
+        Assert.Equal("251904", area.Form("XMIN"));
+        Assert.Equal("507904", area.Form("YMIN"));
+        Assert.Equal("256511", area.Form("XMAX"));
+        Assert.Equal("513023", area.Form("YMAX"));
+        Assert.Equal("0", h.Requests[1].Form("XMIN"));
+        Assert.Equal("16776960", h.Requests[1].Form("XMAX"));
+    }
+
+    [Fact]
+    public async Task GetMapRegionsAsync_in_an_area_at_the_map_edge_starts_at_zero()
+    {
+        var (c, h) = Make(r => (HttpStatusCode.OK, "<ServerResponse>null</ServerResponse>"));
+
+        await c.GetMapRegionsAsync(new MapArea(0, 15, 3, 20), CancellationToken.None);
+
+        var req = Assert.Single(h.Requests);
+        Assert.Equal("0", req.Form("XMIN"));
+        Assert.Equal("0", req.Form("YMIN"));
+        Assert.Equal("1023", req.Form("XMAX"));
+        Assert.Equal("5375", req.Form("YMAX"));
     }
 }
