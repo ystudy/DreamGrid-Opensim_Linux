@@ -180,10 +180,63 @@ public sealed class LoginThrottleTests : IDisposable
         throttle.RecordFailure("New Failure", Ip6);
 
         var json = File.ReadAllText(StateFile);
-        Assert.DoesNotContain("old failure", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("10.0.0.5", json);
-        Assert.Contains("New Failure", json, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("10.0.0.6", json);
         Assert.False(File.Exists(StateFile + ".tmp"));
+        // Only one name entry is left: the old one was dropped at the save.
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        Assert.Single(doc.RootElement.GetProperty("names").EnumerateObject());
+    }
+
+    [Fact]
+    public void The_saved_file_holds_no_typed_text()
+    {
+        var throttle = new LoginThrottle(new FakeTimeProvider(), StateFile);
+        var typed = "hunter2-my-real-password and more";
+        var huge = new string('x', 100_000);
+        throttle.RecordFailure(typed, Ip5);
+        throttle.RecordFailure("Test Owner", Ip5);
+        throttle.RecordFailure(huge, Ip5);
+
+        var json = File.ReadAllText(StateFile);
+        Assert.DoesNotContain("hunter2", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Owner", json, StringComparison.OrdinalIgnoreCase);
+        Assert.True(json.Length < 5_000, "the file does not grow with the length of the typed name");
+        // Names still match case-insensitively through the hash.
+        for (var i = 0; i < LoginThrottle.NameMaxFailures - 1; i++) throttle.RecordFailure("TEST owner", null);
+        Assert.True(throttle.IsLocked("test OWNER", null));
+    }
+
+    [Fact]
+    public void Expiry_found_by_a_lookup_is_saved()
+    {
+        var time = new FakeTimeProvider();
+        var throttle = new LoginThrottle(time, StateFile);
+        throttle.RecordFailure("Test Owner", Ip5);
+        Assert.Contains("10.0.0.5", File.ReadAllText(StateFile));
+
+        time.Advance(TimeSpan.FromMinutes(11));
+        Assert.False(throttle.IsLocked("Test Owner", Ip5));
+
+        Assert.DoesNotContain("10.0.0.5", File.ReadAllText(StateFile));
+    }
+
+    [Fact]
+    public void A_failed_save_is_logged_once_and_the_throttle_carries_on()
+    {
+        var file = Path.Combine(_dir, "missing", "throttle.json"); // its folder does not exist, so every save fails
+        var logs = new List<(LogLevel Level, string Message)>();
+        var throttle = new LoginThrottle(new FakeTimeProvider(), file, new ListLogger(logs));
+
+        for (var i = 0; i < LoginThrottle.NameMaxFailures; i++) throttle.RecordFailure("Test Owner", Ip5);
+
+        Assert.True(throttle.IsLocked("Test Owner", Ip5));
+        Assert.Single(logs, l => l.Level == LogLevel.Warning);
+
+        // Once the folder is back, saving works again and the next failure to save would be logged afresh.
+        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        throttle.RecordFailure("Someone Else", Ip5);
+        Assert.True(File.Exists(file));
     }
 
     [Fact]

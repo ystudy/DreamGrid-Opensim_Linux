@@ -1,4 +1,6 @@
 using System.Net;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 
@@ -7,7 +9,9 @@ namespace DreamGrid.Launcher.Core.Security;
 /// <summary>
 /// Slows down password guessing, by name and by address. Five failures for one name within 10 minutes lock that name for
 /// 10 minutes; 20 failures from one address within 10 minutes lock that address for 10 minutes (whatever names were tried).
-/// Names are compared case-insensitively; an IPv4-mapped IPv6 address counts as its IPv4 address. A sign-in is refused when
+/// Names are compared case-insensitively and are never stored as typed (a password pasted into the name field must not
+/// reach the disk, and a huge name must not become a huge key): the name table, in memory and in the file, is keyed by the
+/// SHA-256 hex of the lowercased name. An IPv4-mapped IPv6 address counts as its IPv4 address. A sign-in is refused when
 /// either its name or its address is locked. A success clears the name only: the address keeps its failures, so one good
 /// account cannot be used to wash a guesser's count. A caller whose address is unknown (null) is counted by name only.
 /// The state is written to <c>stateFile</c> after each change and read back at construction, so a restart does not give a
@@ -26,7 +30,8 @@ public sealed class LoginThrottle
     private readonly string? _stateFile;
     private readonly ILogger<LoginThrottle>? _log;
     private readonly object _gate = new();
-    private readonly Dictionary<string, Entry> _names = new(StringComparer.OrdinalIgnoreCase);
+    private bool _saveFailing;
+    private readonly Dictionary<string, Entry> _names = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Entry> _ips = new(StringComparer.Ordinal);
 
     public LoginThrottle(TimeProvider time, string? stateFile, ILogger<LoginThrottle>? log = null)
@@ -53,8 +58,8 @@ public sealed class LoginThrottle
         lock (_gate)
         {
             var now = _time.GetUtcNow();
-            Prune(now);
-            return LockedAt(_names, name, now) || (ip is not null && LockedAt(_ips, Normalise(ip), now));
+            if (Prune(now)) Save();
+            return LockedAt(_names, NameKey(name), now) || (ip is not null && LockedAt(_ips, Normalise(ip), now));
         }
     }
 
@@ -64,7 +69,7 @@ public sealed class LoginThrottle
         {
             var now = _time.GetUtcNow();
             Prune(now);
-            Add(_names, name, NameMaxFailures, now);
+            Add(_names, NameKey(name), NameMaxFailures, now);
             if (ip is not null) Add(_ips, Normalise(ip), IpMaxFailures, now);
             Save();
         }
@@ -75,7 +80,7 @@ public sealed class LoginThrottle
     {
         lock (_gate)
         {
-            if (!_names.Remove(name)) return;
+            if (!_names.Remove(NameKey(name))) return;
             Save();
         }
     }
@@ -95,6 +100,10 @@ public sealed class LoginThrottle
         }
     }
 
+    /// <summary>The name table's key: SHA-256 hex of the lowercased name, so nothing typed is stored and every key is 64 characters.</summary>
+    private static string NameKey(string name) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes((name ?? "").ToLowerInvariant())));
+
     /// <summary>IPv4-mapped IPv6 (::ffff:a.b.c.d) is its IPv4 address; an IPv6 zone is dropped.</summary>
     private static string Normalise(IPAddress ip)
     {
@@ -104,19 +113,23 @@ public sealed class LoginThrottle
     }
 
     /// <summary>Forgets entries whose failures are all old and whose lock is over, so the tables cannot grow forever.</summary>
-    private static void Prune(Dictionary<string, Entry> table, DateTimeOffset now)
+    private static bool Prune(Dictionary<string, Entry> table, DateTimeOffset now)
     {
+        var changed = false;
         foreach (var (key, e) in table.ToList())
         {
-            e.Failures.RemoveAll(f => now - f >= Window);
-            if (e.Failures.Count == 0 && e.LockedUntil <= now) table.Remove(key);
+            changed |= e.Failures.RemoveAll(f => now - f >= Window) > 0;
+            if (e.Failures.Count == 0 && e.LockedUntil <= now) { table.Remove(key); changed = true; }
         }
+        return changed;
     }
 
-    private void Prune(DateTimeOffset now)
+    /// <summary>True when anything was dropped (so the file is out of date).</summary>
+    private bool Prune(DateTimeOffset now)
     {
-        Prune(_names, now);
-        Prune(_ips, now);
+        var names = Prune(_names, now);
+        var ips = Prune(_ips, now);
+        return names || ips;
     }
 
     private void Load()
@@ -162,11 +175,15 @@ public sealed class LoginThrottle
         {
             var state = new State(Snapshot(_names), Snapshot(_ips));
             AtomicFile.WriteAllText(_stateFile, JsonSerializer.Serialize(state, Options));
+            _saveFailing = false;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            _log?.LogWarning("The sign-in throttle file {File} could not be saved ({Error}); failures are kept in memory only.",
-                _stateFile, e.GetType().Name);
+            // Once, until a save works again: every failed sign-in would otherwise add a line.
+            if (!_saveFailing)
+                _log?.LogWarning("The sign-in throttle file {File} could not be saved ({Error}); failures are kept in memory only.",
+                    _stateFile, e.GetType().Name);
+            _saveFailing = true;
         }
     }
 
