@@ -1,5 +1,6 @@
 using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.OpenSim;
+using DreamGrid.Launcher.Core.Plans;
 using DreamGrid.Launcher.Core.Processes;
 using DreamGrid.Launcher.Core.Settings;
 
@@ -342,6 +343,55 @@ internal sealed class FakeGridController : IGridController
         Record("Alert " + alert.Alert + " " + alert.Login);
         if (alert.Alert == "region_ready") _loginsEnabled = alert.Login == "enabled";
     }
+
+    /// <summary>Thrown by <see cref="SetEstateOwnerAsync"/> when set.</summary>
+    public Exception? EstateOwnerError { get; set; }
+
+    /// <summary>The account's own spelling of the name <see cref="SetEstateOwnerAsync"/> finds; the typed name when null.</summary>
+    public (string First, string Last)? EstateOwnerFound { get; set; }
+
+    /// <summary>Like the controller: saves Setup.OwnerCreated and Setup.Owner through <see cref="UpdateSettings"/>.</summary>
+    public Task<RobustAccount> SetEstateOwnerAsync(string first, string last, CancellationToken ct)
+    {
+        Record("SetEstateOwner " + first + " " + last);
+        if (EstateOwnerError is { } e) throw e;
+        (first, last) = EstateOwnerFound ?? (first, last);
+        var account = new RobustAccount(Guid.NewGuid(), first, last, 0, "");
+        UpdateSettings(l => l with { Setup = l.Setup with { OwnerCreated = true, Owner = new OwnerInfo(first, last, account.PrincipalId) } });
+        return Task.FromResult(account);
+    }
+
+    /// <summary>What <see cref="JoinedRegionCountAsync"/> returns; it throws <see cref="JoinedRegionError"/> instead when set.</summary>
+    public int JoinedRegions { get; set; }
+    public Exception? JoinedRegionError { get; set; }
+
+    public Task<int> JoinedRegionCountAsync(CancellationToken ct)
+    {
+        Record("JoinedRegionCount");
+        return JoinedRegionError is { } e ? Task.FromException<int>(e) : Task.FromResult(JoinedRegions);
+    }
+}
+
+/// <summary>A Grid Asset Server's join information without a network: <see cref="Result"/>, or <see cref="Error"/> thrown.</summary>
+internal sealed class FakeGridJoin : IGridJoinClient
+{
+    public JoinedGrid? Result { get; set; }
+    public Exception? Error { get; set; }
+
+    /// <summary>Every (host, port) read, in order.</summary>
+    public List<(string Host, int Port)> Reads { get; } = new();
+
+    /// <summary>Runs during each read, before it answers (a test changes the settings between a read and its save).</summary>
+    public Action? OnRead { get; set; }
+
+    public Task<JoinedGrid> ReadAsync(string host, int port, CancellationToken ct)
+    {
+        lock (Reads) Reads.Add((host, port));
+        OnRead?.Invoke();
+        if (Error is { } e) return Task.FromException<JoinedGrid>(e);
+        return Result is { } joined ? Task.FromResult(joined)
+            : Task.FromException<JoinedGrid>(new GridJoinException($"Nothing answered at {host}:{port}.", noAnswer: true));
+    }
 }
 
 /// <summary>Robust with a fixed set of avatars: (first, last) → (level, password).</summary>
@@ -354,9 +404,9 @@ internal sealed class FakeRobustAccounts : IRobustClient
     /// <summary>Simulates Robust not running: lookups and sign-in checks fail like a refused connection.</summary>
     public bool Down { get; set; }
 
-    public FakeRobustAccounts Add(string first, string last, int level, string password)
+    public FakeRobustAccounts Add(string first, string last, int level, string password, Guid? id = null)
     {
-        _accounts[(first, last)] = (new RobustAccount(Guid.NewGuid(), first, last, level, ""), password);
+        _accounts[(first, last)] = (new RobustAccount(id ?? Guid.NewGuid(), first, last, level, ""), password);
         return this;
     }
 
@@ -371,6 +421,12 @@ internal sealed class FakeRobustAccounts : IRobustClient
 
     public Task<bool> AuthenticateAsync(Guid principal, string plainPassword, CancellationToken ct) =>
         Down ? throw new HttpRequestException("Connection refused") : Task.FromResult(_accounts.Values.Any(a => a.Account.PrincipalId == principal && a.Password == plainPassword));
+
+    /// <summary>The grid's map this fake reports.</summary>
+    public List<MapRegion> MapRegions { get; } = [];
+
+    public Task<IReadOnlyList<MapRegion>> GetMapRegionsAsync(CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<MapRegion>>(MapRegions.ToList());
 }
 
 /// <summary>Who's online without a database: returns <see cref="Result"/>.</summary>

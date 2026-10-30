@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Text.RegularExpressions;
 using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.OpenSim;
+using DreamGrid.Launcher.Core.Plans;
 using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Security;
 using DreamGrid.Launcher.Setup;
@@ -12,7 +13,8 @@ namespace DreamGrid.Launcher.Pages.Setup;
 
 /// <summary>
 /// Step 2: creates the owner avatar, spends the setup token and signs the person in, so step 3 onward runs signed in.
-/// Skipped once the owner exists. The password is never logged or shown.
+/// Skipped once the owner exists. The password is never logged or shown. On a Region Server the avatar already exists
+/// on the Grid Asset Server: the owner types its name only, and it becomes the owner of this computer's regions.
 /// </summary>
 public sealed partial class AvatarModel(
     IGridController grid,
@@ -32,9 +34,16 @@ public sealed partial class AvatarModel(
     /// <summary>True when another submit is already creating the avatar.</summary>
     public bool Creating { get; private set; }
 
+    /// <summary>True on a Region Server: the avatar is named, not created, and no password is asked for.</summary>
+    public bool ByName { get; private set; }
+
+    /// <summary>The grid the avatar lives on: the joined grid's name on a Region Server.</summary>
+    public string GridName { get; private set; } = "";
+
     public IActionResult OnGet()
     {
         if (Closed() is { } closed) return closed;
+        Load();
         Creating = runner.CreatingOwner;
         return Page();
     }
@@ -42,6 +51,8 @@ public sealed partial class AvatarModel(
     public async Task<IActionResult> OnPostAsync()
     {
         if (Closed() is { } closed) return closed;
+        Load();
+        if (ByName) return await PostByNameAsync();
         Validate();
         if (!ModelState.IsValid) return Page();
 
@@ -71,10 +82,64 @@ public sealed partial class AvatarModel(
             return Page();
         }
 
+        return await SignInAsync(account);
+    }
+
+    /// <summary>
+    /// A Region Server's post: the name of an avatar on the Grid Asset Server. A missing avatar or a Grid Asset Server that
+    /// doesn't answer is said in the controller's own words.
+    /// </summary>
+    private async Task<IActionResult> PostByNameAsync()
+    {
+        var first = FirstName?.Trim() ?? "";
+        var last = LastName?.Trim() ?? "";
+        if (first.Length == 0) ModelState.AddModelError(nameof(FirstName), "Type your avatar's first name.");
+        if (last.Length == 0) ModelState.AddModelError(nameof(LastName), "Type your avatar's last name.");
+        if (!ModelState.IsValid) return Page();
+
+        RobustAccount? account;
+        try
+        {
+            account = await runner.TrySetEstateOwnerAsync(first, last, lifetime.ApplicationStopping);
+        }
+        catch (Exception e) when (e is ArgumentException or GridAssetUnreachableException or GridJoinException)
+        {
+            log.LogWarning("Setup: {First} {Last} could not be made the owner: {Message}", first, last, e.Message);
+            Error = e.Message;
+            return Page();
+        }
+        // Only the launcher stopping is a cancellation; an HttpClient timeout (TaskCanceledException) is a failure.
+        catch (Exception e) when (!lifetime.ApplicationStopping.IsCancellationRequested)
+        {
+            log.LogError("Setup: {First} {Last} could not be made the owner: {Message}", first, last, e.Message);
+            Error = runner.PortConflictText(e)
+                ?? "Your avatar could not be looked up. The grid may still be starting: wait a minute, then try again.";
+            Details = e.Message;
+            return Page();
+        }
+        if (account is null)
+        {
+            // A second submit while the first is still looking the avatar up: that one finishes the step.
+            Creating = true;
+            return Page();
+        }
+        return await SignInAsync(account);
+    }
+
+    /// <summary>Spends the setup token and signs the owner in, so the rest of setup runs signed in.</summary>
+    private async Task<IActionResult> SignInAsync(RobustAccount account)
+    {
         grid.UpdateSettings(s => s with { SetupToken = null }, writeConfig: false);
         Response.Cookies.Delete(SetupTokenCookie.Name, new CookieOptions { Path = "/" });
         await AdminSignIn.SignInAsync(HttpContext, account.FirstName, account.LastName, account.PrincipalId);
         return Redirect("/setup");
+    }
+
+    private void Load()
+    {
+        var s = settings();
+        ByName = s.Plan == OwnerPlan.RegionServer;
+        GridName = (ByName ? s.Join?.GridName : null) ?? s.GridName;
     }
 
     private IActionResult? Closed()

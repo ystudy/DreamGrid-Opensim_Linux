@@ -41,7 +41,9 @@ public class CommandLineTests : IDisposable
 
         Assert.Equal(0, code);
         Assert.Equal(CommandLine.Version(), output);
-        Assert.Equal(typeof(Program).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion, output);
+        // The version is the entry assembly's: the launcher when it runs, the test host here.
+        Assert.Equal(LauncherVersion.Current, output);
+        Assert.Equal(Assembly.GetEntryAssembly()!.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion, output);
     }
 
     [Fact]

@@ -49,9 +49,20 @@ public class PlanCatalogTests
     }
 
     [Fact]
-    public void Only_single_machine_plans_are_available_in_6a()
+    public void Every_plan_but_connected_server_is_available()
     {
-        Assert.Equal([true, true, true, false, false], PlanCatalog.All.Select(p => p.Available));
+        Assert.Equal([true, true, true, true, false], PlanCatalog.All.Select(p => p.Available));
+        Assert.True(PlanCatalog.Get(OwnerPlan.RegionServer).Available);
+    }
+
+    [Fact]
+    public void Region_server_and_grid_asset_advisories_name_the_open_private_port()
+    {
+        const string Sentence = "Every computer on your network can reach the Grid Asset Server's private port; anyone on your network can add regions to the grid.";
+        Assert.Contains(Sentence, PlanCatalog.Get(OwnerPlan.RegionServer).Advisories);
+        Assert.Contains(Sentence, PlanCatalog.Get(OwnerPlan.GridAsset).Advisories);
+        Assert.Contains(PlanCatalog.Get(OwnerPlan.RegionServer).Advisories, a => a.Contains("private port"));
+        Assert.Contains(PlanCatalog.Get(OwnerPlan.GridAsset).Advisories, a => a.Contains("private port"));
     }
 
     [Fact]
@@ -82,6 +93,27 @@ public class PlanCatalogTests
         Assert.False(PlanCatalog.HypergridOn(S(OwnerPlan.Local, "203.0.113.7", true)));
         Assert.False(PlanCatalog.HypergridOn(S(null, "203.0.113.7", true)));
         Assert.False(PlanCatalog.HypergridOn(S(OwnerPlan.SimplePublic, "203.0.113.7", false)));
+    }
+
+    [Theory]
+    [InlineData(OwnerPlan.Local, true)]
+    [InlineData(OwnerPlan.SimplePublic, true)]
+    [InlineData(OwnerPlan.GridAsset, true)]
+    [InlineData(OwnerPlan.RegionServer, false)]
+    [InlineData(OwnerPlan.Connected, false)]
+    [InlineData(null, true)]
+    public void RunsRobust(OwnerPlan? plan, bool expected) =>
+        Assert.Equal(expected, PlanCatalog.RunsRobust(S(plan, "192.168.1.20", false)));
+
+    [Fact]
+    public void HypergridOn_region_server_follows_join()
+    {
+        var s = S(OwnerPlan.RegionServer, "192.168.1.20", true);
+        var join = new JoinedGrid("192.168.1.5", 8002, 8003, "Avalon", "http://192.168.1.5:8002/", "7.1.0", true, 8004, 8006);
+
+        Assert.False(PlanCatalog.HypergridOn(s));
+        Assert.True(PlanCatalog.HypergridOn(s with { Join = join }));
+        Assert.False(PlanCatalog.HypergridOn((s with { Join = join with { Hypergrid = false } })));
     }
 
     [Fact]

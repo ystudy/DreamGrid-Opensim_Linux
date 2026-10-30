@@ -40,6 +40,12 @@ public sealed class GridConfigWriter(LauncherPaths paths)
         robust.Set("GatekeeperService", "ForeignAgentsAllowed", Bool(hypergrid));
         robust.Set("GridInfoService", "welcome", $"http://{host}:{s.WebPort}/welcome");
         robust.Set("GridInfoService", "gridname", s.GridName);
+        // What a Region Server reads to join this grid.
+        robust.Set("GridInfoService", GridInfoKeys.Version, LauncherVersion.Current);
+        robust.Set("GridInfoService", GridInfoKeys.PrivatePort, s.RobustPrivatePort.ToString());
+        robust.Set("GridInfoService", GridInfoKeys.Hypergrid, Bool(hypergrid));
+        robust.Set("GridInfoService", GridInfoKeys.RegionPorts, RegionPorts(s));
+        robust.Set("GridInfoService", GridInfoKeys.Plan, s.Plan is { } plan ? PlanCatalog.Get(plan).Id : "");
         Finish(robust, "robust", extra, Path.Combine(rt, "Robust.HG.ini"));
 
         // 2. GridCommon.ini
@@ -80,10 +86,13 @@ public sealed class GridConfigWriter(LauncherPaths paths)
         var os = LoadProto(Path.Combine(rt, "config-include", "Proto", "Robust", "OpenSim.ini"));
         os.Set("Architecture", "Include-Architecture", hypergrid ? "\"config-include/GridHypergrid.ini\"" : "\"config-include/Grid.ini\"");
         os.Set("Const", "BaseHostname", host);
-        os.Set("Const", "BaseURL", $"http://{host}");
-        os.Set("Const", "PublicPort", s.RobustPublicPort.ToString());
-        os.Set("Const", "PrivatePort", s.RobustPrivatePort.ToString());
-        os.Set("Const", "PrivURL", "http://127.0.0.1");
+        // On a Region Server BaseURL and PublicPort are the grid's published login address, PrivURL and PrivatePort the
+        // Grid Asset Server's typed address; BaseHostname stays this computer.
+        var (baseUrl, publicPort) = GridEndpoints.Advertised(s);
+        os.Set("Const", "BaseURL", baseUrl);
+        os.Set("Const", "PublicPort", publicPort.ToString());
+        os.Set("Const", "PrivatePort", GridEndpoints.PrivatePort(s).ToString());
+        os.Set("Const", "PrivURL", $"http://{GridEndpoints.PrivateHost(s)}");
         os.Set("Const", "http_listener_port", program.HttpPort.ToString());
         os.Set("Const", "RegionFolderName", instance);
         os.Set("Const", "DiagnosticsPort", s.WebPort.ToString());
@@ -101,7 +110,9 @@ public sealed class GridConfigWriter(LauncherPaths paths)
         {
             os.Set("Estates", "DefaultEstateName", $"{s.GridName} Estate");
             os.Set("Estates", "DefaultEstateOwnerName", $"{owner.FirstName} {owner.LastName}");
-            os.Set("Estates", "DefaultEstateOwnerUUID", owner.PrincipalId.ToString());
+            // The owner's id is the grid's to know; only a standalone region file carries it.
+            if (s.Plan == OwnerPlan.RegionServer) os.CommentOut("Estates", "DefaultEstateOwnerUUID");
+            else os.Set("Estates", "DefaultEstateOwnerUUID", owner.PrincipalId.ToString());
         }
         else
         {
@@ -142,6 +153,13 @@ public sealed class GridConfigWriter(LauncherPaths paths)
             if (ro.ClampSize) def.Set(r.Name, "ClampPrimSize", "True");
             Finish(def, "region", extra, Path.Combine(dir, r.Name + ".ini"), applyExtra: false);
         }
+    }
+
+    /// <summary>The lowest and highest of every program's HTTP port and every live region's UDP port as "from-to"; empty without programs.</summary>
+    private static string RegionPorts(LauncherSettings s)
+    {
+        var ports = s.Programs.Select(p => p.HttpPort).Concat(RegionModel.Live(s).Select(r => r.UdpPort)).ToList();
+        return ports.Count == 0 ? "" : $"{ports.Min()}-{ports.Max()}";
     }
 
     private static string Num(int v) => v.ToString(CultureInfo.InvariantCulture);

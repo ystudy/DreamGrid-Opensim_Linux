@@ -8,6 +8,65 @@
 }
 <partial name="_Checklist" />
 <h1>Your network</h1>
+@if (Model.Plan == OwnerPlan.RegionServer)
+{
+    var regionPublic = Model.AddressKind == "public";
+    <form method="post">
+        <p>How will visitors reach the regions on this computer?</p>
+        <div class="form-check">
+            <input class="form-check-input" type="radio" name="AddressKind" id="AddressKind-lan" value="lan" checked="@(!regionPublic)">
+            <label class="form-check-label" for="AddressKind-lan">On my network</label>
+        </div>
+        <div class="form-check">
+            <input class="form-check-input" type="radio" name="AddressKind" id="AddressKind-public" value="public" checked="@regionPublic">
+            <label class="form-check-label" for="AddressKind-public">From the internet</label>
+        </div>
+
+        <div id="lan-part" hidden="@regionPublic">
+            <p class="mt-3">Your regions use this computer's address on your network, <strong>@Model.NetworkAddress</strong>. You can change it later in Advanced settings.</p>
+        </div>
+        <div id="public-part" hidden="@(!regionPublic)">
+            <label class="form-label mt-3" for="PublicAddress">Your public IP address or a name for this computer</label>
+            <input class="form-control" id="PublicAddress" name="PublicAddress" value="@Model.PublicAddress" placeholder="regions.example.com" autocomplete="off" autocapitalize="off" spellcheck="false">
+            <span class="hint form-text d-block">The address visitors use to reach your regions from the internet.</span>
+            <span class="field-error text-danger small d-block">@Model.AddressError</span>
+            <p class="router-advice mt-3">Your router must forward the region ports, @Model.FirstRegionPort upward, to this computer.</p>
+        </div>
+
+        <label class="form-label mt-3" for="FirstRegionPort">First region port</label>
+        <input class="form-control" id="FirstRegionPort" name="FirstRegionPort" value="@Model.FirstRegionPort" inputmode="numeric" autocomplete="off" required>
+        <span class="hint form-text d-block">
+            Regions on this computer use this port and the ones after it.
+            @if (Model.GridAssetRegionPorts is not null)
+            {
+                @:The Grid Asset Server's own regions use @Model.GridAssetRegionPorts, so this starts after them.
+            }
+        </span>
+        <span id="port-error" class="field-error text-danger small d-block">@Model.PortError</span>
+
+        <p id="region-hypergrid" class="hint form-text mt-3">@Model.HypergridLine</p>
+
+        <h2 class="h5 mt-4">Before you go on</h2>
+        <ul class="plan-advisories">
+            @foreach (var advisory in Model.LanAdvisories) { <li>@advisory</li> }
+        </ul>
+        <button type="submit" class="btn btn-primary mt-3">Continue</button>
+    </form>
+    <noscript><style>[hidden] { display: block !important; }</style></noscript>
+    <script>
+        // Show the part that matches the address choice; the server enforces it either way.
+        (function () {
+            function update() {
+                var pub = document.getElementById('AddressKind-public').checked;
+                document.getElementById('lan-part').hidden = pub;
+                document.getElementById('public-part').hidden = !pub;
+            }
+            document.querySelectorAll('input[name=AddressKind]').forEach(function (k) { k.addEventListener('change', update); });
+            update();
+        })();
+    </script>
+    return;
+}
 <form method="post">
     @if (gridAsset)
     {

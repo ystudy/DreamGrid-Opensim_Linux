@@ -31,7 +31,7 @@ public sealed class GridControllerFirstLaunchTests : IDisposable
             var store = new SettingsStore(paths.SettingsFile);
             var console = new RecordingConsole();
             var grid = new GridController(paths, store, new MariaDbBinaries("mariadbd", "install-db", null),
-                [new LogLevelModule()], new NoAccounts(), console, TimeProvider.System);
+                [new LogLevelModule()], new NoAccounts(), new FakeGridJoin(), console, TimeProvider.System);
 
             using var go = new ManualResetEventSlim();
             var polls = Enumerable.Range(0, 4).Select(_ => Task.Run(() => { go.Wait(); grid.GetStatus(); }, TestContext.Current.CancellationToken)).ToArray();
@@ -55,6 +55,7 @@ public sealed class GridControllerFirstLaunchTests : IDisposable
         public Task<bool> IsReadyAsync(CancellationToken ct) => Task.FromResult(false);
         public Task<RobustAccount?> GetAccountAsync(string first, string last, CancellationToken ct) => Task.FromResult<RobustAccount?>(null);
         public Task<bool> AuthenticateAsync(Guid principal, string plainPassword, CancellationToken ct) => Task.FromResult(false);
+        public Task<IReadOnlyList<MapRegion>> GetMapRegionsAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<MapRegion>>([]);
     }
 
     /// <summary>A console that records the USER each session start used, then rejects it.</summary>

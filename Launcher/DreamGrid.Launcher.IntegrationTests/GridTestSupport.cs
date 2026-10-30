@@ -7,6 +7,7 @@ using DreamGrid.Launcher.Core.Database;
 using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.Modules;
 using DreamGrid.Launcher.Core.OpenSim;
+using DreamGrid.Launcher.Core.Plans;
 using DreamGrid.Launcher.Core.Processes;
 using DreamGrid.Launcher.Core.Settings;
 
@@ -53,7 +54,7 @@ internal static class GridTestSupport
     /// <summary>A controller wired the way the host wires it (Program.cs).</summary>
     public static GridController NewController(LauncherPaths paths, SettingsStore store, IRobustClient robust) =>
         new(paths, store, MariaDbBinaries.Locate(paths.MariaDbBin, OperatingSystem.IsWindows()),
-            [new LogLevelModule()], robust, new SimpleHttpFactory(), TimeProvider.System);
+            [new LogLevelModule()], robust, new GridJoinClient(new HttpClient()), new SimpleHttpFactory(), TimeProvider.System);
 
     /// <summary>Kills every process whose image or command line mentions the test's data directory.</summary>
     public static void KillEverythingUnder(string root)

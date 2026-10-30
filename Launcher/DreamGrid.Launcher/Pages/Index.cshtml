@@ -67,7 +67,7 @@
                 </div>
                 <div class="list-group-item">
                     <button type="submit" name="gridAction" value="restart" class="btn btn-link p-0 fw-semibold">Restart</button>
-                    <span class="form-text d-block m-0">Every running region, the grid service and the database.</span>
+                    <span class="form-text d-block m-0">Every running region@(Model.RunsRobust ? ", the grid service" : "") and the database.</span>
                 </div>
                 <div class="list-group-item">
                     <button type="submit" name="gridAction" value="stop" class="btn btn-link p-0 fw-semibold">Stop all</button>
@@ -80,7 +80,10 @@
             <p class="form-text">Restart one part of your world.</p>
             <div class="d-flex flex-wrap gap-2">
                 <button type="submit" name="gridAction" value="restart-database" class="btn btn-sm btn-outline-secondary">Restart the database</button>
-                <button type="submit" name="gridAction" value="restart-robust" class="btn btn-sm btn-outline-secondary">Restart the grid service</button>
+                @if (Model.RunsRobust)
+                {
+                    <button type="submit" name="gridAction" value="restart-robust" class="btn btn-sm btn-outline-secondary">Restart the grid service</button>
+                }
             </div>
         </details>
     </form>

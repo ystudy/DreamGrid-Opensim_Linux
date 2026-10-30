@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using DreamGrid.Launcher.Core;
 using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.OpenSim;
+using DreamGrid.Launcher.Core.Plans;
 using DreamGrid.Launcher.Core.Settings;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -35,6 +36,8 @@ internal sealed class LauncherFactory : WebApplicationFactory<Program>
     public FakeGridController Grid { get; } = new();
     public FakeRobustAccounts Robust { get; } = new();
     public FakeOnlineUsers OnlineUsers { get; } = new();
+    /// <summary>The Grid Asset Server's join information the host reads (no network).</summary>
+    public FakeGridJoin Join { get; } = new();
     public ConcurrentQueue<(LogLevel Level, string Category, string Message)> Logs { get; } = new();
 
     /// <summary>Runs before the app's own middleware (e.g. to fake the remote address).</summary>
@@ -56,6 +59,8 @@ internal sealed class LauncherFactory : WebApplicationFactory<Program>
             services.AddSingleton<IRobustClient>(Robust);
             services.RemoveAll<IOnlineUsers>();
             services.AddSingleton<IOnlineUsers>(OnlineUsers);
+            services.RemoveAll<IGridJoinClient>();
+            services.AddSingleton<IGridJoinClient>(Join);
             if (Before is { } before)
                 services.AddSingleton<Microsoft.AspNetCore.Hosting.IStartupFilter>(new BeforeFilter(before));
             ExtraServices?.Invoke(services);

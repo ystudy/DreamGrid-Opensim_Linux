@@ -27,6 +27,18 @@
     </form>
 }
 
+@if (Model.HypergridLine is { } hypergridLine)
+{
+    <h2 class="mt-4">Hypergrid</h2>
+    <p id="region-hypergrid" class="hint form-text">@hypergridLine</p>
+}
+@if (Model.GridAssetAddress is { } gridAssetAddress)
+{
+    <h2 class="mt-4">Grid Asset Server</h2>
+    <p>This computer adds regions to the grid at <strong>@gridAssetAddress</strong>.</p>
+    <p><a class="btn btn-outline-primary" href="/advanced/join">Point at a different Grid Asset Server</a></p>
+}
+
 <h2 class="mt-4">Change plan</h2>
 <ul class="plan-allowed list-unstyled">
     @foreach (var c in Model.Changes.Where(c => c.Allowed))

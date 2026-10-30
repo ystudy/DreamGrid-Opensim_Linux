@@ -23,6 +23,9 @@ public sealed partial class LauncherEndToEndTests : IDisposable
     private static readonly TimeSpan BootTimeout = TimeSpan.FromMinutes(5);
 
     private readonly string _root = NewDataDir();
+
+    /// <summary>A second launcher's data directory, for the tests that run two (created only by them).</summary>
+    private readonly string _secondRoot = NewDataDir();
     private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(30) };
     private readonly List<LauncherProcess> _launchers = [];
     private string _lastConsoleReply = "";
@@ -31,8 +34,10 @@ public sealed partial class LauncherEndToEndTests : IDisposable
     {
         foreach (var l in _launchers) l.Dispose();
         KillEverythingUnder(_root);
+        if (Directory.Exists(_secondRoot)) KillEverythingUnder(_secondRoot);
         _http.Dispose();
         DeleteDataDir(_root);
+        DeleteDataDir(_secondRoot);
     }
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;

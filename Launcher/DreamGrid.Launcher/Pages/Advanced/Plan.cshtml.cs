@@ -34,9 +34,15 @@ public sealed class PlanModel(IGridController grid, Func<LauncherSettings> setti
 
     public string? Problem { get; private set; }
 
+    /// <summary>A Region Server's one hypergrid sentence, shown instead of the switch; null on every other plan.</summary>
+    public string? HypergridLine { get; private set; }
+
+    /// <summary>On a Region Server, the Grid Asset Server's address as the owner would type it (the page links to <c>/advanced/join</c>); else null.</summary>
+    public string? GridAssetAddress { get; private set; }
+
     public void OnGet() => Fill(settings());
 
-    public IActionResult OnPostChange(string? to)
+    public async Task<IActionResult> OnPostChangeAsync(string? to)
     {
         var s = settings();
         var target = PlanCatalog.ById(to);
@@ -50,6 +56,15 @@ public sealed class PlanModel(IGridController grid, Func<LauncherSettings> setti
         if (!allowed)
         {
             Problem = reason;
+            Fill(s);
+            return Page();
+        }
+
+        // CanChange stays a pure matrix; the one live condition is checked here: a Grid Asset Server can't go back to
+        // a single-computer plan while other computers' regions are joined to it.
+        if (from == OwnerPlan.GridAsset && await JoinedRegionsProblemAsync() is { } joinedProblem)
+        {
+            Problem = joinedProblem;
             Fill(s);
             return Page();
         }
@@ -79,7 +94,8 @@ public sealed class PlanModel(IGridController grid, Func<LauncherSettings> setti
         var s = settings();
         if (!Offered(s) || !PlanCatalog.HypergridAllowed(s))
         {
-            Problem = NeedsPublicAddress;
+            // A Region Server has no switch: the page's own sentence (HypergridLine) says who decides.
+            Problem = s.Plan == OwnerPlan.RegionServer ? null : NeedsPublicAddress;
             Fill(s);
             return Page();
         }
@@ -88,6 +104,22 @@ public sealed class PlanModel(IGridController grid, Func<LauncherSettings> setti
         SavedNotes = [];
         Fill(saved);
         return Page();
+    }
+
+    /// <summary>Why a Grid Asset Server can't change plan now, or null when no other computer's regions are joined to it.</summary>
+    private async Task<string?> JoinedRegionsProblemAsync()
+    {
+        try
+        {
+            var joined = await grid.JoinedRegionCountAsync(HttpContext.RequestAborted);
+            return joined > 0
+                ? $"{joined} region(s) from other computers are joined to this grid. Move them to another grid or shut those computers down first."
+                : null;
+        }
+        catch (InvalidOperationException)
+        {
+            return "Start your world first, so DreamGrid can check whether other computers have joined.";
+        }
     }
 
     private const string NeedsPublicAddress = "Hypergrid needs a public address";
@@ -103,6 +135,10 @@ public sealed class PlanModel(IGridController grid, Func<LauncherSettings> setti
         Changes = PlanCatalog.All.Where(p => p.Plan != plan)
             .Select(p => { var (ok, why) = PlanCatalog.CanChange(plan, p.Plan); return (p, ok, why); })
             .ToList();
+        GridAssetAddress = plan == OwnerPlan.RegionServer && s.Join is { } joined ? JoinForm.AddressOf(joined) : null;
+        HypergridLine = plan == OwnerPlan.RegionServer
+            ? $"Hypergrid is {(PlanCatalog.HypergridOn(s) ? "on" : "off")} for this grid; the Grid Asset Server decides."
+            : null;
         Switch = Offered(s)
             ? new HypergridSwitchModel(PlanCatalog.HypergridOn(s), PlanCatalog.HypergridAllowed(s),
                 PlanCatalog.HypergridAllowed(s) ? null : NeedsPublicAddress + ".", s.RobustPublicPort, s.RegionPort)

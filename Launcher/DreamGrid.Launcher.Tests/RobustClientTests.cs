@@ -1,4 +1,5 @@
 using System.Net;
+using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.OpenSim;
 using DreamGrid.Launcher.Core.Settings;
 using Xunit;
@@ -30,6 +31,39 @@ public class RobustClientTests
         await c.AuthenticateAsync(Guid.Parse(Pid), "x", CancellationToken.None);
 
         Assert.Equal([8002, 8102, 8103], h.Requests.Select(q => q.Uri.Port));
+    }
+
+    [Fact]
+    public async Task Region_server_asks_the_grid_asset_server()
+    {
+        var h = new StubHandler(r => (HttpStatusCode.OK, "<ServerResponse><result>null</result></ServerResponse>"));
+        var region = Defaults with
+        {
+            Plan = OwnerPlan.RegionServer,
+            Join = new JoinedGrid("192.168.1.5", 8002, 8003, "Avalon", "http://192.168.1.5:8002/", "7.1.0", false, 8004, 8006),
+        };
+        var local = Defaults with { Plan = OwnerPlan.Local };
+
+        await new RobustClient(new HttpClient(h), () => region).GetAccountAsync("Ann", "Lee", CancellationToken.None);
+        await new RobustClient(new HttpClient(h), () => local).GetAccountAsync("Ann", "Lee", CancellationToken.None);
+
+        Assert.Equal(["http://192.168.1.5:8003/accounts", $"http://127.0.0.1:{local.RobustPrivatePort}/accounts"],
+            h.Requests.Select(q => q.Uri.ToString()));
+    }
+
+    [Fact]
+    public async Task Region_server_reaches_the_grid_asset_server_at_the_typed_address_not_its_public_name()
+    {
+        var h = new StubHandler(r => (HttpStatusCode.OK, "<gridinfo></gridinfo>"));
+        var region = Defaults with
+        {
+            Plan = OwnerPlan.RegionServer,
+            Join = new JoinedGrid("192.168.1.5", 8002, 8003, "Avalon", "http://grid.example.org:8002/", "7.1.0", false, 8004, 8006),
+        };
+
+        await new RobustClient(new HttpClient(h), () => region).IsReadyAsync(CancellationToken.None);
+
+        Assert.Equal(["http://192.168.1.5:8002/get_grid_info"], h.Requests.Select(q => q.Uri.ToString()));
     }
 
     [Fact]
@@ -100,5 +134,35 @@ public class RobustClientTests
         Assert.Equal(HttpMethod.Get, req.Method);
         Assert.Equal("/get_grid_info", req.Uri.AbsolutePath);
         Assert.Equal(8002, req.Uri.Port);
+    }
+
+    [Fact]
+    public async Task GetMapRegionsAsync_reads_get_region_range()
+    {
+        var id = Guid.NewGuid();
+        var (c, h) = Make(r => (HttpStatusCode.OK,
+            "<?xml version=\"1.0\"?><ServerResponse><region0 type=\"List\"><uuid>" + id + "</uuid><locX>256000</locX><locY>256256</locY>" +
+            "<sizeX>512</sizeX><sizeY>512</sizeY><regionName>Hub</regionName></region0></ServerResponse>"));
+
+        var regions = await c.GetMapRegionsAsync(CancellationToken.None);
+
+        Assert.Equal([new MapRegion(id, "Hub", 1000, 1001, 2)], regions);
+        var req = Assert.Single(h.Requests);
+        Assert.Equal("/grid", req.Uri.AbsolutePath);
+        Assert.Equal("get_region_range", req.Form("METHOD"));
+        Assert.Equal("00000000-0000-0000-0000-000000000000", req.Form("SCOPEID"));
+        Assert.Equal("0", req.Form("XMIN"));
+        Assert.Equal("16776960", req.Form("YMAX"));
+    }
+
+    [Theory]
+    [InlineData("<ServerResponse>null</ServerResponse>")]
+    [InlineData("<ServerResponse><result>null</result></ServerResponse>")]
+    [InlineData("")]
+    public async Task GetMapRegionsAsync_is_empty_for_a_null_reply(string body)
+    {
+        var (c, _) = Make(r => (HttpStatusCode.OK, body));
+
+        Assert.Empty(await c.GetMapRegionsAsync(CancellationToken.None));
     }
 }

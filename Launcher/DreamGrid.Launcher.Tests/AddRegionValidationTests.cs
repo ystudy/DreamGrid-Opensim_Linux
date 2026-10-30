@@ -26,7 +26,7 @@ public sealed class AddRegionValidationTests : IDisposable
             Regions = [new RegionSettings("Home", "Home", Guid.NewGuid(), 1000, 1000, UdpPort: 8004)],
         });
         _grid = new GridController(_paths, _store, new MariaDbBinaries("mariadbd", "install-db", null),
-            [new LogLevelModule()], new NoRobust(), new NoHttp(), TimeProvider.System);
+            [new LogLevelModule()], new NoRobust(), new FakeGridJoin(), new NoHttp(), TimeProvider.System);
     }
 
     public void Dispose()
@@ -84,6 +84,7 @@ public sealed class AddRegionValidationTests : IDisposable
         public Task<bool> IsReadyAsync(CancellationToken ct) => throw new InvalidOperationException("not expected");
         public Task<RobustAccount?> GetAccountAsync(string first, string last, CancellationToken ct) => throw new InvalidOperationException("not expected");
         public Task<bool> AuthenticateAsync(Guid principalId, string password, CancellationToken ct) => throw new InvalidOperationException("not expected");
+        public Task<IReadOnlyList<MapRegion>> GetMapRegionsAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<MapRegion>>([]);
     }
 
     private sealed class NoHttp : IHttpClientFactory

@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Xml;
 using DreamGrid.Launcher.Core.Api;
 using DreamGrid.Launcher.Core.Config;
+using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.Modules;
 using DreamGrid.Launcher.Core.Processes;
 using DreamGrid.Launcher.Core.OpenSim;
@@ -122,6 +123,25 @@ public sealed class LegacyCommandApiTests
         var god = await Api().HandleAsync(Req("StopRobust", "God Owner", "godpw"), Ct);
         Assert.Equal("ACK", god);
         Assert.Equal(["Stop robust"], _grid.Snapshot());
+    }
+
+    [Fact]
+    public async Task A_region_servers_level_0_estate_owner_is_an_administrator_and_other_level_0_avatars_are_not()
+    {
+        var ownerId = Guid.NewGuid();
+        _robust.Add("Estate", "Owner", 0, "estatepw", ownerId).Add("Plain", "Person", 0, "plainpw");
+        _settings = _settings with
+        {
+            Plan = OwnerPlan.RegionServer,
+            Setup = new SetupState(OwnerCreated: true, Finished: true, Owner: new OwnerInfo("Estate", "Owner", ownerId)),
+        };
+
+        Assert.Equal("ACK", await Api().HandleAsync(Req("StopRobust", "Estate Owner", "estatepw"), Ct));
+        Assert.StartsWith("NAK You do not have permission to StopRobust", await Api().HandleAsync(Req("StopRobust", "Plain Person", "plainpw"), Ct));
+
+        // The same avatar is nobody special on a plan that is not a Region Server.
+        _settings = _settings with { Plan = OwnerPlan.Local };
+        Assert.StartsWith("NAK You do not have permission to StopRobust", await Api().HandleAsync(Req("StopRobust", "Estate Owner", "estatepw"), Ct));
     }
 
     [Theory]
@@ -342,6 +362,7 @@ public sealed class LegacyCommandApiTests
         public Task<bool> IsReadyAsync(CancellationToken ct) => Task.FromResult(true);
         public Task<RobustAccount?> GetAccountAsync(string first, string last, CancellationToken ct) => Task.FromException<RobustAccount?>(failure);
         public Task<bool> AuthenticateAsync(Guid principal, string plainPassword, CancellationToken ct) => Task.FromResult(true);
+        public Task<IReadOnlyList<MapRegion>> GetMapRegionsAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<MapRegion>>([]);
     }
 
     private sealed class PingModule : IFeatureModule

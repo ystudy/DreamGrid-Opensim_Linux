@@ -1,5 +1,6 @@
 using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.Processes;
+using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Security;
 using Microsoft.AspNetCore.Antiforgery;
 
@@ -26,31 +27,33 @@ public static class StatusApi
     public static void Map(WebApplication app)
     {
         // Open to anyone (the port-8001 contract already tells the LAN the region status); avatar names only for an admin.
-        app.MapGet("/api/status", async (HttpContext ctx, IGridController grid, IOnlineUsers online) =>
+        app.MapGet("/api/status", async (HttpContext ctx, IGridController grid, IOnlineUsers online, Func<LauncherSettings> settings) =>
         {
             ctx.Response.Headers.CacheControl = "no-store";
-            return Results.Json(await BuildAsync(grid, online, ctx.User.IsInRole(AuthSchemes.AdminRole), ctx.RequestAborted));
+            return Results.Json(await BuildAsync(grid, online, ctx.User.IsInRole(AuthSchemes.AdminRole), ctx.RequestAborted, settings()));
         }).AllowAnonymous();
 
-        app.MapPost("/api/grid/{action}", async (string action, HttpContext ctx, IAntiforgery antiforgery, GridActions actions) =>
+        app.MapPost("/api/grid/{action}", async (string action, HttpContext ctx, IAntiforgery antiforgery, GridActions actions,
+            Func<LauncherSettings> settings) =>
         {
             if (!await antiforgery.IsRequestValidAsync(ctx))
                 return Results.BadRequest("The request verification token is missing or wrong. Reload the page and try again.");
             return actions.TryRun(action)
-                ? Results.Accepted(value: new { notice = GridActions.Notices[action] })
+                ? Results.Accepted(value: new { notice = GridActions.NoticeFor(action, settings()) })
                 : Results.NotFound();
         }).RequireAuthorization(AuthSchemes.AdminPolicy);
     }
 
     /// <summary>The status as the dashboard shows it; who's online is asked only for an admin and a running database.</summary>
-    public static async Task<StatusView> BuildAsync(IGridController grid, IOnlineUsers online, bool withOnline, CancellationToken ct)
+    public static async Task<StatusView> BuildAsync(IGridController grid, IOnlineUsers online, bool withOnline, CancellationToken ct,
+        LauncherSettings? settings = null)
     {
         var s = grid.GetStatus();
         var people = withOnline && s.Database.State == ProcessState.Running ? await online.ListAsync(ct) : OnlineList.Unavailable;
         var problem = Problem(s);
         var regionNames = s.Regions.ToDictionary(r => r.Id, r => r.Name);
         return new StatusView(
-            new GridView(View(s.Database, "Database"), View(s.Robust, "Grid service"),
+            new GridView(View(s.Database, "Database"), RobustView(s, settings),
                 s.Regions.Select(r => new RegionView(withOnline ? r.Id : null, r.Name, r.State.ToString(), RegionStateText(r.State),
                     withOnline ? r.RunsWith : null, withOnline ? r.LoginsEnabled : null)).ToList(),
                 s.LoginsEnabled, s.LoginUri),
@@ -116,7 +119,7 @@ public static class StatusApi
     private static IEnumerable<(ComponentStatus C, string Message)> Parts(GridStatus s)
     {
         yield return (s.Database, "The database isn't running.");
-        yield return (s.Robust, "The grid service isn't running.");
+        yield return (s.Robust, s.RunsRobust ? "The grid service isn't running." : "The Grid Asset Server isn't answering.");
         foreach (var r in s.Regions.Where(r => r.State is not (RegionState.Stopped or RegionState.Parked)))
             yield return (new ComponentStatus(r.Name, AsProcessState(r.State), null, null, null, null), $"{r.Name} isn't running.");
     }
@@ -145,6 +148,17 @@ public static class StatusApi
         if (states.Any(x => x == ProcessState.Starting)) return "Your world is starting.";
         if (states.Any(x => x == ProcessState.Stopping)) return "Your world is stopping.";
         return "Your world is stopped.";
+    }
+
+    /// <summary>
+    /// The Robust row. On a Region Server it is the Grid Asset Server: that label, with its address as the detail
+    /// (from the join in <paramref name="settings"/>, else the host the status names).
+    /// </summary>
+    private static ComponentView RobustView(GridStatus s, LauncherSettings? settings)
+    {
+        if (s.RunsRobust) return View(s.Robust, "Grid service");
+        var address = settings?.Join is { } join ? $"{join.Host}:{join.PublicPort}" : s.GridAssetHost ?? "";
+        return View(s.Robust, "Grid Asset Server") with { Detail = address };
     }
 
     private static ComponentView View(ComponentStatus c, string label) =>

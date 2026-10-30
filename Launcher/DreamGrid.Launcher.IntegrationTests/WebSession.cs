@@ -83,13 +83,18 @@ internal sealed class WebSession : IDisposable
     /// Posts the page's form (<paramref name="selector"/>, by default the one in &lt;main&gt;) with its own
     /// values, overridden by <paramref name="fields"/>; every field must exist in the form. The answer must be a redirect,
     /// unless <paramref name="redirects"/> is false: then it must be a page (a question asked on the same page).
+    /// <paramref name="button"/> (a selector within the form) clicks that submit button: its name and value are sent and
+    /// its <c>formaction</c>, when it has one, replaces the form's action.
     /// </summary>
-    public async Task<WebPage> SubmitAsync(WebPage page, Dictionary<string, string> fields, string selector = "main form", bool redirects = true)
+    public async Task<WebPage> SubmitAsync(WebPage page, Dictionary<string, string> fields, string selector = "main form", bool redirects = true,
+        string? button = null)
     {
         var doc = await _parser.ParseDocumentAsync(page.Html, Ct);
         var form = doc.QuerySelector(selector);
         Assert.True(form is not null, $"{page.Path} has no form matching \"{selector}\"");
         Assert.Equal("post", form!.GetAttribute("method"), StringComparer.OrdinalIgnoreCase);
+        var clicked = button is null ? null : form.QuerySelector(button);
+        Assert.True(button is null || clicked is not null, $"the form on {page.Path} has no button matching \"{button}\"");
 
         var values = new List<KeyValuePair<string, string>>();
         var names = new HashSet<string>();
@@ -108,8 +113,12 @@ internal sealed class WebSession : IDisposable
             Assert.True(names.Contains(name), $"the form on {page.Path} has no field \"{name}\"");
             values.Add(new(name, value));
         }
+        if (clicked?.GetAttribute("name") is { Length: > 0 } buttonName)
+            values.Add(new(buttonName, clicked.GetAttribute("value") ?? ""));
 
-        var action = new Uri(page.Uri, form.GetAttribute("action") is { Length: > 0 } a ? a : page.PathAndQuery);
+        var target = clicked?.GetAttribute("formaction") is { Length: > 0 } fa ? fa
+            : form.GetAttribute("action") is { Length: > 0 } a ? a : page.PathAndQuery;
+        var action = new Uri(page.Uri, target);
         using var content = new FormUrlEncodedContent(values);
         var response = await _client.PostAsync(action, content, Ct);
         if (!redirects)

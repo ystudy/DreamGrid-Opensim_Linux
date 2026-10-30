@@ -1,0 +1,26 @@
+@page "/setup/join"
+@model DreamGrid.Launcher.Pages.Setup.JoinModel
+@using DreamGrid.Launcher.Setup
+@{
+    ViewData["Title"] = "Join the Grid Asset Server";
+}
+<partial name="_Checklist" />
+<h1>Join the Grid Asset Server</h1>
+@if (Model.Found is { } found)
+{
+    <partial name="_JoinFound" model="new JoinFoundModel(found, Model.Address!)" />
+    return;
+}
+<p>This computer adds regions to a grid whose Grid Asset Server is another computer on your network. Type that computer's address: DreamGrid reads what it needs from it and shows you what it found before anything is saved.</p>
+@if (Model.Error is not null)
+{
+    <div class="error-box alert alert-danger">
+        <p>@Model.Error</p>
+    </div>
+}
+<form method="post">
+    <label class="form-label mt-3" for="Address">The Grid Asset Server's address</label>
+    <input class="form-control" id="Address" name="Address" value="@Model.Address" placeholder="192.168.1.5" autocomplete="off" autocapitalize="off" spellcheck="false" required>
+    <span class="hint form-text d-block">Its address on your network, like 192.168.1.5. Add a colon and the port only if its grid service doesn't use port 8002.</span>
+    <button type="submit" class="btn btn-primary mt-3">Look up this grid</button>
+</form>

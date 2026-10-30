@@ -225,7 +225,7 @@ public sealed class SetupFlowTests
         await using var f = Unplanned();
         using var client = await SetupClientAsync(f);
 
-        var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/plan/region-server", Ct));
+        var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/plan/connected-server", Ct));
 
         var button = page.QuerySelectorAll("main button").Single(b => b.TextContent.Trim() == "Choose this plan");
         Assert.True(button.HasAttribute("disabled"));
@@ -233,7 +233,7 @@ public sealed class SetupFlowTests
         Assert.Null(page.QuerySelector("form[action*='handler=Choose']"));
 
         var cards = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/plan", Ct));
-        Assert.Equal("Coming in a later DreamGrid update.", cards.QuerySelector(".plan-card[data-plan=region-server] .plan-later")?.TextContent.Trim());
+        Assert.Equal("Coming in a later DreamGrid update.", cards.QuerySelector(".plan-card[data-plan=connected-server] .plan-later")?.TextContent.Trim());
     }
 
     [Fact]
@@ -285,7 +285,7 @@ public sealed class SetupFlowTests
         await using var f = Unplanned();
         using var client = await SetupClientAsync(f);
 
-        foreach (var id in new[] { "region-server", "connected-server", "nope" })
+        foreach (var id in new[] { "connected-server", "nope" })
         {
             using var resp = await PostFormAsync(client, $"/setup/plan/{id}?handler=Choose", new(), tokenFrom: "/setup/plan");
             Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
@@ -1307,5 +1307,393 @@ public sealed class SetupFlowTests
         Assert.NotNull(page.QuerySelector("#switch-part input[name=Hypergrid]"));
         Assert.NotNull(page.QuerySelector("noscript style"));
         Assert.Contains(page.QuerySelectorAll("script"), x => x.TextContent.Contains("advisories-public"));
+    }
+
+    // ---- Region Server (plan 6b) ----
+
+    /// <summary>The Grid Asset Server the Region Server tests join: Avalon, hypergrid off, region ports 8004 to 8006.</summary>
+    private static JoinedGrid Avalon(string? version = null) => new("192.168.1.5", 8002, 8003, "Avalon", "http://192.168.1.5:8002/",
+        version ?? DreamGrid.Launcher.Core.LauncherVersion.Current, false, 8004, 8006);
+
+    /// <summary>A Region Server before its owner exists; <paramref name="more"/> seeds the rest (join, steps done).</summary>
+    private static LauncherFactory RegionServer(Func<LauncherSettings, LauncherSettings>? more = null)
+    {
+        var f = new LauncherFactory(s =>
+        {
+            var seeded = s with { SetupToken = Token, Plan = OwnerPlan.RegionServer };
+            return more is null ? seeded : more(seeded);
+        })
+        {
+            Before = TestAuth.Apply,
+        };
+        f.Join.Result = Avalon();
+        return f;
+    }
+
+    /// <summary>A Region Server that has joined Avalon, with its network set unless <paramref name="networkSet"/> is false.</summary>
+    private static LauncherFactory JoinedRegionServer(bool networkSet = true) => RegionServer(s => s with
+    {
+        Join = Avalon(),
+        GridName = "Avalon",
+        Setup = s.Setup with { WorldNamed = true, NetworkSet = networkSet },
+    });
+
+    /// <summary>A joined Region Server whose owner exists (token spent), at the region step.</summary>
+    private static LauncherFactory RegionServerAtRegion() => RegionServer(s => s with
+    {
+        Join = Avalon(),
+        GridName = "Avalon",
+        SetupToken = null,
+        Setup = new SetupState(WorldNamed: true, OwnerCreated: true, Owner: new OwnerInfo("Ann", "Lee", Guid.NewGuid()), NetworkSet: true),
+    });
+
+    [Fact]
+    public async Task Region_server_card_can_be_chosen()
+    {
+        await using var f = Unplanned();
+        using var client = await SetupClientAsync(f);
+
+        using var resp = await PostFormAsync(client, "/setup/plan/region-server?handler=Choose", new(), tokenFrom: "/setup/plan");
+
+        Assert.Equal("/setup", Location(resp));
+        Assert.Equal(OwnerPlan.RegionServer, f.Store.LoadOrCreate().Plan);
+        using var next = await client.GetAsync("/setup", Ct);
+        Assert.Equal("/setup/join", Location(next));
+    }
+
+    [Fact]
+    public async Task Join_shows_what_it_found_then_saves_on_confirm()
+    {
+        await using var f = RegionServer();
+        using var client = await SetupClientAsync(f);
+
+        var form = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/join", Ct));
+        Assert.NotNull(form.QuerySelector("input[name=Address]"));
+        Assert.Contains("current", form.QuerySelectorAll(".checklist li")[1].ClassName);
+
+        using var first = await PostFormAsync(client, "/setup/join", new() { ["Address"] = "192.168.1.5" });
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        var page = new HtmlParser().ParseDocument(await first.Content.ReadAsStringAsync(Ct));
+        var text = page.Body!.TextContent;
+        Assert.Contains("Avalon", text);
+        Assert.Contains("Hypergrid: off", text);
+        Assert.Contains(page.QuerySelectorAll("button"), b => b.TextContent.Trim() == "Join this grid");
+        Assert.Contains(page.QuerySelectorAll("button, a"), b => b.TextContent.Trim() == "Change the address");
+        Assert.Null(page.QuerySelector(".version-warning"));
+        Assert.Null(f.Store.LoadOrCreate().Join);
+        Assert.DoesNotContain("UpdateSettings", f.Grid.Snapshot());
+        Assert.Equal(("192.168.1.5", 8002), f.Join.Reads.Single());
+
+        // Confirm reads the file again: posted look-alike values are never trusted.
+        using var confirm = await PostFormAsync(client, "/setup/join?handler=Confirm",
+            new() { ["Address"] = "192.168.1.5", ["GridName"] = "Forged", ["Hypergrid"] = "true" }, tokenFrom: "/setup/join");
+        Assert.Equal("/setup", Location(confirm));
+        Assert.Equal(2, f.Join.Reads.Count);
+        var s = f.Store.LoadOrCreate();
+        Assert.Equal(Avalon(), s.Join);
+        Assert.Equal("Avalon", s.GridName);
+        Assert.True(s.Setup.WorldNamed);
+        Assert.True(f.Grid.UpdateWriteConfig.Last());
+        using var next = await client.GetAsync("/setup", Ct);
+        Assert.Equal("/setup/network", Location(next));
+    }
+
+    [Fact]
+    public async Task Join_change_the_address_shows_the_form_again()
+    {
+        await using var f = RegionServer();
+        using var client = await SetupClientAsync(f);
+
+        using var resp = await PostFormAsync(client, "/setup/join?handler=Change", new() { ["Address"] = "192.168.1.5" });
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var page = new HtmlParser().ParseDocument(await resp.Content.ReadAsStringAsync(Ct));
+        Assert.Equal("192.168.1.5", page.QuerySelector("input[name=Address]:not([type=hidden])")?.GetAttribute("value"));
+        Assert.Empty(f.Join.Reads);
+        Assert.Null(f.Store.LoadOrCreate().Join);
+    }
+
+    [Fact]
+    public async Task Join_warns_on_a_different_version()
+    {
+        await using var f = RegionServer();
+        f.Join.Result = Avalon("6.9.0");
+        using var client = await SetupClientAsync(f);
+
+        using var first = await PostFormAsync(client, "/setup/join", new() { ["Address"] = "192.168.1.5:8002" });
+        var page = new HtmlParser().ParseDocument(await first.Content.ReadAsStringAsync(Ct));
+        var warning = page.QuerySelector(".version-warning")?.TextContent ?? "";
+        Assert.Contains("6.9.0", warning);
+        Assert.Contains(DreamGrid.Launcher.Core.LauncherVersion.Current, warning);
+
+        using var confirm = await PostFormAsync(client, "/setup/join?handler=Confirm", new() { ["Address"] = "192.168.1.5:8002" });
+        Assert.Equal("/setup", Location(confirm));
+        Assert.Equal("6.9.0", f.Store.LoadOrCreate().Join?.Version);
+    }
+
+    [Fact]
+    public async Task Join_refuses_a_bad_address()
+    {
+        await using var f = RegionServer();
+        using var client = await SetupClientAsync(f);
+
+        foreach (var url in new[] { "/setup/join", "/setup/join?handler=Confirm" })
+        {
+            using var resp = await PostFormAsync(client, url, new() { ["Address"] = "192.168.1.5:70000" });
+            Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+            Assert.Contains("The port after the colon must be a number from 1 to 65535.", await resp.Content.ReadAsStringAsync(Ct));
+        }
+        Assert.Empty(f.Join.Reads);
+        Assert.Null(f.Store.LoadOrCreate().Join);
+    }
+
+    [Fact]
+    public async Task Join_shows_why_it_could_not_read()
+    {
+        await using var f = RegionServer();
+        f.Join.Error = new GridJoinException("Nothing answered at 192.168.1.5:8002. Check the address, and that the Grid Asset Server is running.", noAnswer: true);
+        using var client = await SetupClientAsync(f);
+
+        foreach (var url in new[] { "/setup/join", "/setup/join?handler=Confirm" })
+        {
+            using var resp = await PostFormAsync(client, url, new() { ["Address"] = "192.168.1.5" });
+            Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+            Assert.Contains("Nothing answered at 192.168.1.5:8002.", await resp.Content.ReadAsStringAsync(Ct));
+        }
+        Assert.Null(f.Store.LoadOrCreate().Join);
+        Assert.False(f.Store.LoadOrCreate().Setup.WorldNamed);
+    }
+
+    [Fact]
+    public async Task Region_server_network_suggests_a_port_after_the_grid_asset_servers()
+    {
+        await using var f = JoinedRegionServer(networkSet: false);
+        using var client = await SetupClientAsync(f);
+
+        var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/network", Ct));
+        Assert.Equal("8007", page.QuerySelector("input[name=FirstRegionPort]")?.GetAttribute("value"));
+        Assert.NotNull(page.QuerySelector("input[name=AddressKind][value=lan]"));
+        Assert.NotNull(page.QuerySelector("input[name=AddressKind][value=public]"));
+
+        foreach (var port in new[] { "8001", "80", "nope", "3307", "8011" })
+        {
+            using var refused = await PostFormAsync(client, "/setup/network", new() { ["AddressKind"] = "lan", ["FirstRegionPort"] = port });
+            Assert.Equal(HttpStatusCode.OK, refused.StatusCode);
+            var error = new HtmlParser().ParseDocument(await refused.Content.ReadAsStringAsync(Ct)).QuerySelector("#port-error")?.TextContent;
+            Assert.False(string.IsNullOrWhiteSpace(error), port);
+            Assert.False(f.Store.LoadOrCreate().Setup.NetworkSet);
+        }
+
+        using var resp = await PostFormAsync(client, "/setup/network", new() { ["AddressKind"] = "lan", ["FirstRegionPort"] = "8007" });
+        Assert.Equal("/setup", Location(resp));
+        var s = f.Store.LoadOrCreate();
+        Assert.Equal(8007, s.RegionPort);
+        Assert.Null(s.Hostname);
+        Assert.True(s.Setup.NetworkSet);
+        Assert.True(f.Grid.UpdateWriteConfig.Last());
+        using var next = await client.GetAsync("/setup", Ct);
+        Assert.Equal("/setup/avatar", Location(next));
+    }
+
+    [Fact]
+    public async Task Region_server_network_suggests_the_own_region_port_without_reported_ports()
+    {
+        await using var f = RegionServer(s => s with
+        {
+            Join = Avalon() with { RegionPortsFrom = null, RegionPortsTo = null },
+            Setup = s.Setup with { WorldNamed = true },
+        });
+        using var client = await SetupClientAsync(f);
+
+        var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/network", Ct));
+
+        Assert.Equal("8004", page.QuerySelector("input[name=FirstRegionPort]")?.GetAttribute("value"));
+    }
+
+    [Fact]
+    public async Task Region_server_network_from_the_internet_checks_the_address()
+    {
+        await using var f = JoinedRegionServer(networkSet: false);
+        using var client = await SetupClientAsync(f);
+
+        using (var refused = await PostFormAsync(client, "/setup/network",
+                   new() { ["AddressKind"] = "public", ["PublicAddress"] = "192.168.1.20", ["FirstRegionPort"] = "8007" }))
+        {
+            Assert.Equal(HttpStatusCode.OK, refused.StatusCode);
+            Assert.Contains(NotPublic.Replace("'", "&#x27;"), await refused.Content.ReadAsStringAsync(Ct));
+            Assert.False(f.Store.LoadOrCreate().Setup.NetworkSet);
+        }
+
+        using var resp = await PostFormAsync(client, "/setup/network",
+            new() { ["AddressKind"] = "public", ["PublicAddress"] = "203.0.113.7", ["FirstRegionPort"] = "9000" });
+        Assert.Equal("/setup", Location(resp));
+        var s = f.Store.LoadOrCreate();
+        Assert.Equal("203.0.113.7", s.Hostname);
+        Assert.Equal(9000, s.RegionPort);
+    }
+
+    [Fact]
+    public async Task Region_server_network_has_no_hypergrid_switch()
+    {
+        await using var f = JoinedRegionServer(networkSet: false);
+        using var client = await SetupClientAsync(f);
+
+        var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/network", Ct));
+
+        Assert.Null(page.QuerySelector("input[name=Hypergrid]"));
+        Assert.Contains("Hypergrid is off for this grid; the Grid Asset Server decides.", page.Body!.TextContent);
+        Assert.Contains(page.QuerySelectorAll(".plan-advisories li"), li => li.TextContent.Contains("private port"));
+
+        // Even a posted switch changes nothing.
+        (await PostFormAsync(client, "/setup/network",
+            new() { ["AddressKind"] = "public", ["PublicAddress"] = "203.0.113.7", ["FirstRegionPort"] = "8007", ["Hypergrid"] = "on" })).Dispose();
+        Assert.True(f.Store.LoadOrCreate().Setup.NetworkSet);
+        Assert.False(f.Store.LoadOrCreate().Hypergrid);
+    }
+
+    [Fact]
+    public async Task Region_server_avatar_is_typed_by_name()
+    {
+        await using var f = JoinedRegionServer();
+        f.Grid.EstateOwnerFound = ("Ann", "Lee");
+        using var client = await SetupClientAsync(f);
+
+        var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/avatar", Ct));
+        Assert.Equal("Your avatar", page.QuerySelector("h1")?.TextContent.Trim());
+        Assert.Null(page.QuerySelector("input[type=password]"));
+        Assert.Null(page.QuerySelector("input[name=Email]"));
+        Assert.Contains("Type the name of your avatar on Avalon. It becomes the owner of the regions on this computer. No password is needed here.",
+            page.Body!.TextContent);
+
+        using var resp = await PostFormAsync(client, "/setup/avatar", new() { ["FirstName"] = "ann", ["LastName"] = "lee" });
+
+        Assert.Equal("/setup", Location(resp));
+        Assert.Contains("SetEstateOwner ann lee", f.Grid.Snapshot());
+        Assert.Equal(0, f.Grid.CreateOwnerCalls);
+        var s = f.Store.LoadOrCreate();
+        Assert.Equal(("Ann", "Lee"), (s.Setup.Owner?.FirstName, s.Setup.Owner?.LastName));
+        Assert.Null(s.SetupToken);
+        Assert.Contains(resp.Headers.GetValues("Set-Cookie"), c => c.StartsWith("dg-auth=", StringComparison.Ordinal));
+        Assert.Contains(resp.Headers.GetValues("Set-Cookie"), c => c.StartsWith("dg-setup=;", StringComparison.Ordinal));
+        using var next = await client.GetAsync("/setup", Ct);
+        Assert.Equal("/setup/region", Location(next));
+    }
+
+    [Fact]
+    public async Task Region_server_avatar_not_found_is_shown()
+    {
+        await using var f = JoinedRegionServer();
+        f.Grid.EstateOwnerError = new ArgumentException(
+            "There's no avatar called Ann Lee on Avalon. Check the spelling, or create the avatar on the Grid Asset Server first.");
+        using var client = await SetupClientAsync(f);
+
+        using var resp = await PostFormAsync(client, "/setup/avatar", new() { ["FirstName"] = "Ann", ["LastName"] = "Lee" });
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var page = new HtmlParser().ParseDocument(await resp.Content.ReadAsStringAsync(Ct));
+        Assert.Contains("There's no avatar called", page.QuerySelector(".error-box")?.TextContent);
+        Assert.Equal(Token, f.Store.LoadOrCreate().SetupToken);
+        Assert.False(f.Store.LoadOrCreate().Setup.OwnerCreated);
+    }
+
+    [Fact]
+    public async Task Region_server_avatar_shows_an_unreachable_grid_asset_server()
+    {
+        await using var f = JoinedRegionServer();
+        f.Grid.EstateOwnerError = new GridAssetUnreachableException("192.168.1.5", 8002);
+        using var client = await SetupClientAsync(f);
+
+        using var resp = await PostFormAsync(client, "/setup/avatar", new() { ["FirstName"] = "Ann", ["LastName"] = "Lee" });
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var page = new HtmlParser().ParseDocument(await resp.Content.ReadAsStringAsync(Ct));
+        Assert.Contains(GridAssetUnreachableException.MessageFor("192.168.1.5", 8002), page.QuerySelector(".error-box")?.TextContent);
+    }
+
+    [Fact]
+    public async Task Region_server_avatar_starts_the_grid_not_a_grid_service()
+    {
+        await using var f = JoinedRegionServer();
+        using var client = await SetupClientAsync(f);
+        await f.Grid.Started.Task.WaitAsync(TimeSpan.FromSeconds(5), Ct); // the host's own start at launch
+        var before = f.Grid.Snapshot().Count(c => c == "StartAsync");
+        var stopped = new ComponentStatus("database", ProcessState.Stopped, null, null, null, null);
+        f.Grid.Status = new GridStatus(stopped, stopped with { Name = "robust" }, [], [], false, "http://192.168.1.5:8002/");
+
+        using var resp = await PostFormAsync(client, "/setup/avatar", new() { ["FirstName"] = "Ann", ["LastName"] = "Lee" });
+
+        Assert.Equal("/setup", Location(resp));
+        var calls = f.Grid.Snapshot();
+        Assert.Equal(before + 1, calls.Count(c => c == "StartAsync"));
+        Assert.DoesNotContain(calls, c => c.StartsWith("Start ", StringComparison.Ordinal) || c.StartsWith("Restart ", StringComparison.Ordinal));
+        Assert.True(Array.LastIndexOf(calls, "StartAsync") < Array.IndexOf(calls, "SetEstateOwner Ann Lee"), string.Join(", ", calls));
+    }
+
+    [Fact]
+    public async Task Region_server_skips_name_your_world()
+    {
+        await using var f = JoinedRegionServer();
+        using var client = await SetupClientAsync(f);
+
+        var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/avatar", Ct));
+        Assert.Equal(["Choose your plan (done)", "Join the Grid Asset Server (done)", "Your network (done)", "Your avatar", "Choose your first region", "Connect with Firestorm"],
+            page.QuerySelectorAll(".checklist li").Select(li => li.TextContent.Trim()));
+        Assert.DoesNotContain(DreamGrid.Launcher.Setup.SetupSteps.For(f.Store.LoadOrCreate()), step => step.Path == "/setup/world");
+
+        using var resp = await client.GetAsync("/setup/world", Ct);
+        Assert.Equal("/setup", Location(resp));
+    }
+
+    [Fact]
+    public async Task Region_server_region_step_starts_the_grid_instead_of_a_grid_service()
+    {
+        await using var f = RegionServerAtRegion();
+        using var client = await SignedInClientAsync(f);
+        await f.Grid.Started.Task.WaitAsync(TimeSpan.FromSeconds(5), Ct); // the host's own start at launch
+        var before = f.Grid.Snapshot().Count(c => c == "StartAsync");
+        var stopped = new ComponentStatus("database", ProcessState.Stopped, null, null, null, null);
+        f.Grid.Status = new GridStatus(stopped, stopped with { Name = "robust" }, [], [], false, "http://192.168.1.5:8002/");
+
+        (await PostFormAsync(client, "/setup/region", new() { ["RegionName"] = "Welcome", ["Content"] = "island" })).Dispose();
+
+        var done = await WaitForProgressAsync(client, p => !p.GetProperty("running").GetBoolean());
+        Assert.Equal("Ready", Str(done, "stage"));
+        var calls = f.Grid.Snapshot();
+        Assert.DoesNotContain(calls, c => c.StartsWith("Start ", StringComparison.Ordinal) || c.StartsWith("Restart ", StringComparison.Ordinal));
+        Assert.Equal(before + 1, calls.Count(c => c == "StartAsync"));
+        var region = Array.FindIndex(calls, c => c.StartsWith("CreateRegion", StringComparison.Ordinal));
+        Assert.True(Array.LastIndexOf(calls, "StartAsync") < region, string.Join(", ", calls));
+    }
+
+    [Fact]
+    public async Task Region_server_region_step_leaves_a_running_grid_alone()
+    {
+        await using var f = RegionServerAtRegion();
+        using var client = await SignedInClientAsync(f);
+        await f.Grid.Started.Task.WaitAsync(TimeSpan.FromSeconds(5), Ct);
+        var before = f.Grid.Snapshot().Count(c => c == "StartAsync");
+
+        (await PostFormAsync(client, "/setup/region", new() { ["RegionName"] = "Welcome", ["Content"] = "island" })).Dispose();
+
+        var done = await WaitForProgressAsync(client, p => !p.GetProperty("running").GetBoolean());
+        Assert.Equal("Ready", Str(done, "stage"));
+        Assert.Equal(before, f.Grid.Snapshot().Count(c => c == "StartAsync"));
+    }
+
+    [Fact]
+    public async Task Region_server_region_step_shows_an_unreachable_grid_asset_server()
+    {
+        await using var f = RegionServerAtRegion();
+        using var client = await SignedInClientAsync(f);
+        await f.Grid.Started.Task.WaitAsync(TimeSpan.FromSeconds(5), Ct);
+        var running = new ComponentStatus("database", ProcessState.Running, null, null, null, null);
+        f.Grid.Status = new GridStatus(running, running with { Name = "robust", State = ProcessState.Failed }, [], [], false, "http://192.168.1.5:8002/");
+        f.Grid.OnStart = _ => throw new GridAssetUnreachableException("192.168.1.5", 8002);
+
+        (await PostFormAsync(client, "/setup/region", new() { ["RegionName"] = "Welcome", ["Content"] = "island" })).Dispose();
+
+        var done = await WaitForProgressAsync(client, p => !p.GetProperty("running").GetBoolean());
+        Assert.Equal(GridAssetUnreachableException.MessageFor("192.168.1.5", 8002), Str(done, "error"));
+        Assert.DoesNotContain(f.Grid.Snapshot(), c => c.StartsWith("CreateRegion", StringComparison.Ordinal));
     }
 }

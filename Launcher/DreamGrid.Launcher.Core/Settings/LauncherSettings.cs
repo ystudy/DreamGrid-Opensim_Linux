@@ -88,6 +88,14 @@ public sealed record LegacyRegionV1(string Instance, string Name, Guid Uuid, int
 /// <summary><see cref="Target"/> is "robust" or "region".</summary>
 public sealed record IniOverride(string Target, string Section, string Key, string Value);
 
+/// <summary>
+/// The Grid Asset Server a Region Server has joined: its address, the grid service's ports, the grid's name and
+/// version, whether hypergrid is on, and the region ports it publishes (null when none). Never holds a password.
+/// </summary>
+public sealed record JoinedGrid(
+    string Host, int PublicPort, int PrivatePort, string GridName, string LoginUri, string Version, bool Hypergrid,
+    int? RegionPortsFrom, int? RegionPortsTo);
+
 public sealed record LauncherSettings
 {
     public const int CurrentSchema = 4;
@@ -101,6 +109,9 @@ public sealed record LauncherSettings
     public OwnerPlan? Plan { get; init; }
     /// <summary>Whether avatars may travel to and from other grids.</summary>
     public bool Hypergrid { get; init; }
+
+    /// <summary>The Grid Asset Server this Region Server joined; null until joined.</summary>
+    public JoinedGrid? Join { get; init; }
 
     public int WebPort { get; init; } = 8001;
     public int RobustPublicPort { get; init; } = 8002;

@@ -22,6 +22,9 @@ public sealed class IndexModel(IGridController grid, IOnlineUsers online, GridAc
     /// <summary>For the "Show details" box: the raw start failure and the last log lines of each failed component.</summary>
     public IReadOnlyList<(string Label, IReadOnlyList<string> Lines)> FailedLogs { get; private set; } = [];
 
+    /// <summary>False on a Region Server, whose grid service is the Grid Asset Server on another computer: there is nothing to restart.</summary>
+    public bool RunsRobust { get; private set; } = true;
+
     [TempData] public string? Notice { get; set; }
 
     /// <summary>The features area; empty (and not shown) while no module has a switch.</summary>
@@ -30,7 +33,8 @@ public sealed class IndexModel(IGridController grid, IOnlineUsers online, GridAc
     public async Task OnGetAsync()
     {
         var raw = grid.GetStatus();
-        Status = await StatusApi.BuildAsync(grid, online, withOnline: true, HttpContext.RequestAborted);
+        RunsRobust = raw.RunsRobust;
+        Status = await StatusApi.BuildAsync(grid, online, withOnline: true, HttpContext.RequestAborted, settings());
         var g = Status.Grid;
         var details = new List<(string Label, IReadOnlyList<string> Lines)>();
         // The raw start message may name paths: only this admin page shows it, never /api/status. A port conflict's
@@ -38,7 +42,8 @@ public sealed class IndexModel(IGridController grid, IOnlineUsers online, GridAc
         if (StatusApi.ShowsStartFailure(raw) && raw.StartFailure!.ConflictPort is null)
             details.Add(("Why the last start failed", [raw.StartFailure!.Message]));
         details.AddRange(new[] { g.Database, g.Robust }
-            .Where(c => c.State == nameof(Core.Processes.ProcessState.Failed))
+            // A Region Server has no Robust log for the Grid Asset Server row: it runs on another computer.
+            .Where(c => c.State == nameof(Core.Processes.ProcessState.Failed) && (raw.RunsRobust || c.Name != "robust"))
             .Select(c => (c.Label + ": the last lines it wrote", LastLines(c.Name)))
             .Where(f => f.Item2.Count > 0));
         // A failed region: its program's log (regions sharing a program share it).
@@ -55,7 +60,7 @@ public sealed class IndexModel(IGridController grid, IOnlineUsers online, GridAc
     public IActionResult OnPostRun(string? gridAction)
     {
         if (gridAction is not null && actions.TryRun(gridAction))
-            Notice = GridActions.Notices[gridAction];
+            Notice = GridActions.NoticeFor(gridAction, settings());
         return Redirect("/");
     }
 

@@ -46,6 +46,8 @@ public static class PlanCatalog
         "The website uses plain HTTP, so passwords cross the internet unencrypted until HTTPS exists.";
     private const string CgnatAdvice =
         "Some internet providers share one address between customers; if yours does, nobody outside can reach you.";
+    private const string PrivatePortAdvice =
+        "Every computer on your network can reach the Grid Asset Server's private port; anyone on your network can add regions to the grid.";
 
     // The two Grid Asset Server advisories that depend on the address; AdvisoriesFor picks by these prefixes.
     private const string LanOnlyPrefix = "With a network-only address";
@@ -82,6 +84,7 @@ public static class PlanCatalog
             [
                 "If this computer is off, every Region Server's regions stop working.",
                 "You can run regions here too, but it isn't advised: busy regions slow down logins, inventory and the map for everyone on the grid.",
+                PrivatePortAdvice,
                 "With a network-only address, only computers on this network can visit and there is no hypergrid. You can switch to a public address later.",
                 "With a public address: " + PublicAdvice + " " + HttpAdvice + " " + CgnatAdvice,
             ],
@@ -97,8 +100,9 @@ public static class PlanCatalog
                 "The Grid Asset Server must be set up first and running.",
                 "Both computers should run the same DreamGrid version.",
                 "Your router must forward this computer's region ports.",
+                PrivatePortAdvice,
             ],
-            false),
+            true),
         new(OwnerPlan.Connected, "connected-server", "🔗", "Connected Server", "Uses someone else's grid",
             "Runs regions on another grid such as OSgrid. That grid keeps the accounts.",
             "This computer runs regions only, joined to a grid run by someone else.",
@@ -133,8 +137,8 @@ public static class PlanCatalog
     public static PlanInfo Get(OwnerPlan plan) => All.First(p => p.Plan == plan);
 
     // The change matrix (spec section 8). Only moves among Local, Simple Public and Grid Asset are
-    // allowed. Moving away from a Grid Asset Server will also require that no region servers are joined;
-    // that condition arrives in 6b.
+    // allowed. Moving away from a Grid Asset Server also requires that no region servers are joined; that live
+    // condition is checked by the Advanced Plan page, so this stays a pure matrix.
     /// <summary>Whether an install running <paramref name="from"/> may switch to <paramref name="to"/>, with a reason when it may not.</summary>
     public static (bool Allowed, string Reason) CanChange(OwnerPlan from, OwnerPlan to)
     {
@@ -172,6 +176,10 @@ public static class PlanCatalog
     public static bool HypergridAllowed(LauncherSettings s) =>
         s.Plan is OwnerPlan.SimplePublic or OwnerPlan.GridAsset && HostAddress.IsPublic(s.Hostname);
 
-    /// <summary>Whether hypergrid is actually on.</summary>
-    public static bool HypergridOn(LauncherSettings s) => s.Hypergrid && HypergridAllowed(s);
+    /// <summary>Whether this computer runs Robust: not a Region Server or a Connected Server, which use another computer's.</summary>
+    public static bool RunsRobust(LauncherSettings s) => s.Plan is not (OwnerPlan.RegionServer or OwnerPlan.Connected);
+
+    /// <summary>Whether hypergrid is actually on. A Region Server follows the grid it joined.</summary>
+    public static bool HypergridOn(LauncherSettings s) =>
+        s.Plan == OwnerPlan.RegionServer ? s.Join?.Hypergrid ?? false : s.Hypergrid && HypergridAllowed(s);
 }
