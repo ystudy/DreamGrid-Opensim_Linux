@@ -20,12 +20,11 @@ public interface IRobustClient
 }
 
 /// <summary>
-/// Robust's public grid-info endpoint plus the private account and auth services. The ports are read from the
-/// settings on every call, so a changed Robust port applies at once.
+/// Robust's public grid-info endpoint plus the private account, auth and grid services. Their addresses are read from
+/// the settings on every call, so a changed Robust port applies at once.
 /// </summary>
 public sealed class RobustClient(HttpClient http, Func<LauncherSettings> settings) : IRobustClient
 {
-    private Uri PrivateBase => GridEndpoints.PrivateBase(settings());
     private Uri PublicBase => GridEndpoints.PublicBase(settings());
 
     public async Task<bool> IsReadyAsync(CancellationToken ct)
@@ -44,7 +43,7 @@ public sealed class RobustClient(HttpClient http, Func<LauncherSettings> setting
 
     public async Task<RobustAccount?> GetAccountAsync(string first, string last, CancellationToken ct)
     {
-        var root = await PostAsync("/accounts", ct,
+        var root = await PostAsync(GridServiceKind.Accounts, "/accounts", ct,
             ("METHOD", "getaccount"), ("FirstName", first), ("LastName", last));
         var result = root?.Element("result");
         if (result is null || !result.HasElements) return null; // "null" or absent
@@ -58,7 +57,7 @@ public sealed class RobustClient(HttpClient http, Func<LauncherSettings> setting
     public async Task<bool> AuthenticateAsync(Guid principal, string plainPassword, CancellationToken ct)
     {
         var md5 = Convert.ToHexStringLower(MD5.HashData(Encoding.UTF8.GetBytes(plainPassword)));
-        var root = await PostAsync("/auth/plain", ct,
+        var root = await PostAsync(GridServiceKind.Authentication, "/auth/plain", ct,
             ("METHOD", "authenticate"), ("PRINCIPAL", principal.ToString()), ("PASSWORD", md5));
         return !string.IsNullOrWhiteSpace(root?.Element("Token")?.Value);
     }
@@ -66,7 +65,7 @@ public sealed class RobustClient(HttpClient http, Func<LauncherSettings> setting
     public async Task<IReadOnlyList<MapRegion>> GetMapRegionsAsync(CancellationToken ct)
     {
         // The reply is <region0 type="List">…</region0><region1…>; "null" comes back as <result>null</result>.
-        var root = await PostAsync("/grid", ct,
+        var root = await PostAsync(GridServiceKind.Grid, "/grid", ct,
             ("METHOD", "get_region_range"), ("SCOPEID", Guid.Empty.ToString()),
             ("XMIN", "0"), ("YMIN", "0"), ("XMAX", "16776960"), ("YMAX", "16776960"));
         var regions = new List<MapRegion>();
@@ -84,10 +83,10 @@ public sealed class RobustClient(HttpClient http, Func<LauncherSettings> setting
         return regions;
     }
 
-    private async Task<XElement?> PostAsync(string path, CancellationToken ct, params (string Key, string Value)[] fields)
+    private async Task<XElement?> PostAsync(GridServiceKind service, string path, CancellationToken ct, params (string Key, string Value)[] fields)
     {
         using var content = new FormUrlEncodedContent(fields.Select(f => new KeyValuePair<string, string>(f.Key, f.Value)));
-        using var resp = await http.PostAsync(new Uri(PrivateBase, path), content, ct);
+        using var resp = await http.PostAsync(new Uri(GridEndpoints.ServiceBase(settings(), service), path), content, ct);
         resp.EnsureSuccessStatusCode();
         try { return XDocument.Parse(await resp.Content.ReadAsStringAsync(ct)).Root; }
         catch (System.Xml.XmlException) { return null; }

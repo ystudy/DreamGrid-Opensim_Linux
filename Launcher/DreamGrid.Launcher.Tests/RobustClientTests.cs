@@ -67,6 +67,40 @@ public class RobustClientTests
     }
 
     [Fact]
+    public async Task Connected_asks_each_service_where_it_lives()
+    {
+        var h = new StubHandler(r => (HttpStatusCode.OK, "<gridinfo></gridinfo>"));
+        var osgrid = Defaults with
+        {
+            Plan = OwnerPlan.Connected,
+            Connected = new ConnectedGrid("osgrid", "OSGrid", "http://login.osgrid.org/", "http://login.osgrid.org",
+                "http://grid.osgrid.org/", "http://hg.osgrid.org/"),
+        };
+        var other = Defaults with
+        {
+            Plan = OwnerPlan.Connected,
+            Connected = new ConnectedGrid(null, "Elsewhere", "http://10.0.0.9:8002/", "http://grid.example.org:8002/",
+                "http://grid.example.org:8003/", "http://grid.example.org:8002/"),
+        };
+
+        foreach (var s in new[] { osgrid, other })
+        {
+            var c = new RobustClient(new HttpClient(h), () => s);
+            await c.GetAccountAsync("Ann", "Lee", CancellationToken.None);
+            await c.AuthenticateAsync(Guid.Parse(Pid), "x", CancellationToken.None);
+            await c.GetMapRegionsAsync(CancellationToken.None);
+        }
+        await new RobustClient(new HttpClient(h), () => osgrid).IsReadyAsync(CancellationToken.None);
+
+        Assert.Equal(
+        [
+            "http://users.osgrid.org/accounts", "http://login.osgrid.org/auth/plain", "http://grid.osgrid.org/grid",
+            "http://grid.example.org:8003/accounts", "http://grid.example.org:8003/auth/plain", "http://grid.example.org:8003/grid",
+            "http://login.osgrid.org/get_grid_info",
+        ], h.Requests.Select(q => q.Uri.ToString()));
+    }
+
+    [Fact]
     public async Task Authenticate_sends_md5_hex_of_password()
     {
         var (c, h) = Make(r => (HttpStatusCode.OK, "<ServerResponse><Result>Success</Result><Token>tok-1</Token></ServerResponse>"));

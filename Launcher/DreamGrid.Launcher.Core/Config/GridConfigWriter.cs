@@ -11,6 +11,19 @@ public sealed class GridConfigWriter(LauncherPaths paths)
 {
     private static readonly string[] ThirdParties = ["outworldz.com", "hyperica.com", "gloebit.com"];
 
+    // What a preset grid's own OpenSim.ini decides for the regions: these whole sections, and these single keys.
+    private static readonly string[] PresetSections = ["Groups", "UserProfiles", "XBakes", "Search"];
+    private static readonly (string Section, string Key)[] PresetKeys =
+        [("Messaging", "OfflineMessageURL"), ("Messaging", "MuteListURL"), ("SimulatorFeatures", "MapTileURL")];
+
+    // The keys in GridCommon.ini that name the grid's gatekeeper and home address.
+    private static readonly (string Section, string Key)[] GatekeeperKeys =
+    [
+        ("Hypergrid", "HomeURI"), ("Hypergrid", "GatekeeperURI"), ("GridService", "Gatekeeper"), ("Messaging", "Gatekeeper"),
+        ("HGInventoryAccessModule", "HomeURI"), ("HGInventoryAccessModule", "Gatekeeper"), ("HGAssetService", "HomeURI"),
+        ("UserAgentService", "UserAgentServerURI"),
+    ];
+
     /// <summary>
     /// Writes Robust's INIs and every program's. <paramref name="held"/> are regions stopped for now: their program
     /// runs without them until a world start.
@@ -48,11 +61,13 @@ public sealed class GridConfigWriter(LauncherPaths paths)
         robust.Set("GridInfoService", GridInfoKeys.Plan, s.Plan is { } plan ? PlanCatalog.Get(plan).Id : "");
         Finish(robust, "robust", extra, Path.Combine(rt, "Robust.HG.ini"));
 
-        // 2. GridCommon.ini
-        var common = LoadProto(Path.Combine(rt, "config-include", "Proto", "Robust", "GridCommon.ini"));
+        // 2. GridCommon.ini. A preset grid's own names each of its services; every other builds them from [Const].
+        var preset = GridEndpoints.Preset(s);
+        var common = LoadProto(Path.Combine(rt, "config-include", "Proto", preset?.ProtoFolder ?? "Robust", "GridCommon.ini"));
         common.Set("DatabaseService", "StorageProvider", "\"OpenSim.Data.MySQL.dll\"");
         common.Set("DatabaseService", "ConnectionString", $"\"{DbConn(s, "opensim", "opensimuser", s.Db.OpensimPassword)}\"");
         common.Set("GridService", "AllowHypergridMapSearch", Bool(hypergrid));
+        if (preset is null) SetOtherGatekeeper(common, s);
         Finish(common, "region", extra, Path.Combine(rt, "config-include", "GridCommon.ini"), applyExtra: false);
 
         // 3. FlotsamCache.ini
@@ -87,15 +102,18 @@ public sealed class GridConfigWriter(LauncherPaths paths)
         os.Set("Architecture", "Include-Architecture", hypergrid ? "\"config-include/GridHypergrid.ini\"" : "\"config-include/Grid.ini\"");
         os.Set("Const", "BaseHostname", host);
         // On a Region Server BaseURL and PublicPort are the grid's published login address, PrivURL and PrivatePort the
-        // Grid Asset Server's typed address; BaseHostname stays this computer.
+        // Grid Asset Server's typed address; on a Connected Server they are the other grid's login and services
+        // addresses. BaseHostname stays this computer.
         var (baseUrl, publicPort) = GridEndpoints.Advertised(s);
         os.Set("Const", "BaseURL", baseUrl);
         os.Set("Const", "PublicPort", publicPort.ToString());
         os.Set("Const", "PrivatePort", GridEndpoints.PrivatePort(s).ToString());
-        os.Set("Const", "PrivURL", $"http://{GridEndpoints.PrivateHost(s)}");
+        os.Set("Const", "PrivURL", GridEndpoints.PrivateUrl(s));
         os.Set("Const", "http_listener_port", program.HttpPort.ToString());
         os.Set("Const", "RegionFolderName", instance);
         os.Set("Const", "DiagnosticsPort", s.WebPort.ToString());
+        if (GridEndpoints.Preset(s) is { } preset)
+            CopyFromPreset(os, LoadProto(Path.Combine(rt, "config-include", "Proto", preset.ProtoFolder, "OpenSim.ini")));
         os.Set("Startup", "regionload_regionsdir", Fwd(paths.RegionDefinitionDir(instance)) + "/");
         os.Set("Startup", "PIDFile", Fwd(Path.Combine(paths.Pids, instance + ".pid")));
         os.Set("Startup", "ConsoleHistoryFile", Fwd(Path.Combine(paths.RegionDir(instance), "ConsoleHistory.txt")));
@@ -110,8 +128,8 @@ public sealed class GridConfigWriter(LauncherPaths paths)
         {
             os.Set("Estates", "DefaultEstateName", $"{s.GridName} Estate");
             os.Set("Estates", "DefaultEstateOwnerName", $"{owner.FirstName} {owner.LastName}");
-            // The owner's id is the grid's to know; only a standalone region file carries it.
-            if (s.Plan == OwnerPlan.RegionServer) os.CommentOut("Estates", "DefaultEstateOwnerUUID");
+            // The owner's id is the grid's to know; only an install running its own Robust carries it.
+            if (!PlanCatalog.RunsRobust(s)) os.CommentOut("Estates", "DefaultEstateOwnerUUID");
             else os.Set("Estates", "DefaultEstateOwnerUUID", owner.PrincipalId.ToString());
         }
         else
@@ -154,6 +172,47 @@ public sealed class GridConfigWriter(LauncherPaths paths)
             Finish(def, "region", extra, Path.Combine(dir, r.Name + ".ini"), applyExtra: false);
         }
     }
+
+    /// <summary>
+    /// Copies what a preset grid decides for its regions from its <paramref name="preset"/> OpenSim.ini: each of
+    /// <see cref="PresetSections"/> as a whole (a key the preset lacks goes off) and each of <see cref="PresetKeys"/>.
+    /// </summary>
+    private static void CopyFromPreset(IniDocument os, IniDocument preset)
+    {
+        foreach (var section in PresetSections)
+        {
+            var theirs = preset.ActiveEntries().Where(e => e.Section.Equals(section, StringComparison.OrdinalIgnoreCase)).ToList();
+            var ours = os.ActiveEntries().Where(e => e.Section.Equals(section, StringComparison.OrdinalIgnoreCase)).ToList();
+            foreach (var (_, key, _) in ours.Where(o => !theirs.Any(t => t.Key.Equals(o.Key, StringComparison.OrdinalIgnoreCase))))
+                os.CommentOut(section, key);
+            foreach (var (_, key, value) in theirs)
+                os.Set(section, key, value);
+        }
+        foreach (var (section, key) in PresetKeys)
+        {
+            if (preset.Get(section, key) is { } value) os.Set(section, key, value);
+            else os.CommentOut(section, key);
+        }
+    }
+
+    /// <summary>
+    /// On a Connected Server whose grid's gatekeeper is not its login address, points the hypergrid keys at that
+    /// gatekeeper instead of <c>BaseURL:PublicPort</c>.
+    /// </summary>
+    private static void SetOtherGatekeeper(IniDocument common, LauncherSettings s)
+    {
+        if (s.Plan != OwnerPlan.Connected || s.Connected?.GatekeeperUri is not { } uri) return;
+        var gatekeeper = uri.TrimEnd('/');
+        var (baseUrl, publicPort) = GridEndpoints.Advertised(s);
+        if (SameAddress(gatekeeper, $"{baseUrl}:{publicPort}")) return;
+        foreach (var (section, key) in GatekeeperKeys)
+            common.Set(section, key, $"\"{gatekeeper}\"");
+    }
+
+    private static bool SameAddress(string a, string b) =>
+        Uri.TryCreate(a, UriKind.Absolute, out var x) && Uri.TryCreate(b, UriKind.Absolute, out var y)
+            ? x == y
+            : a.Equals(b, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>The lowest and highest of every program's HTTP port and every live region's UDP port as "from-to"; empty without programs.</summary>
     private static string RegionPorts(LauncherSettings s)

@@ -179,7 +179,14 @@ public static class PlanCatalog
     /// <summary>Whether this computer runs Robust: not a Region Server or a Connected Server, which use another computer's.</summary>
     public static bool RunsRobust(LauncherSettings s) => s.Plan is not (OwnerPlan.RegionServer or OwnerPlan.Connected);
 
-    /// <summary>Whether hypergrid is actually on. A Region Server follows the grid it joined.</summary>
-    public static bool HypergridOn(LauncherSettings s) =>
-        s.Plan == OwnerPlan.RegionServer ? s.Join?.Hypergrid ?? false : s.Hypergrid && HypergridAllowed(s);
+    /// <summary>
+    /// Whether hypergrid is actually on. A Region Server follows the grid it joined; a Connected Server has it when the
+    /// other grid published a gatekeeper.
+    /// </summary>
+    public static bool HypergridOn(LauncherSettings s) => s.Plan switch
+    {
+        OwnerPlan.RegionServer => s.Join?.Hypergrid ?? false,
+        OwnerPlan.Connected => s.Connected?.GatekeeperUri is not null,
+        _ => s.Hypergrid && HypergridAllowed(s),
+    };
 }

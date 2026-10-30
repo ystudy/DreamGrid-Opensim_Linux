@@ -117,6 +117,20 @@ public class PlanCatalogTests
     }
 
     [Fact]
+    public void HypergridOn_connected_follows_the_gatekeeper()
+    {
+        var s = S(OwnerPlan.Connected, "203.0.113.7", false);
+        var grid = new ConnectedGrid(null, "Elsewhere", "http://10.0.0.9:8002/", "http://grid.example.org:8002/",
+            "http://grid.example.org:8003/", "http://grid.example.org:8002/");
+
+        Assert.False(PlanCatalog.HypergridOn(s));
+        Assert.True(PlanCatalog.HypergridOn(s with { Connected = grid }));
+        Assert.False(PlanCatalog.HypergridOn(s with { Connected = grid with { GatekeeperUri = null } }));
+        // The owner's own switch has no say on another grid.
+        Assert.False(PlanCatalog.HypergridOn(s with { Hypergrid = true, Connected = grid with { GatekeeperUri = null } }));
+    }
+
+    [Fact]
     public void Every_plan_has_advisories_and_runs()
     {
         foreach (var p in PlanCatalog.All)
