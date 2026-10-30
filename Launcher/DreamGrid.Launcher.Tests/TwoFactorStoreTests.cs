@@ -32,7 +32,7 @@ public sealed class TwoFactorStoreTests : IDisposable
     {
         var store = New();
         var (secret, _) = store.BeginEnrol(who, name, "DreamGrid");
-        var backup = store.ConfirmEnrol(who, CodeNow(secret));
+        var backup = store.ConfirmEnrol(who, CodeNow(secret), secret);
         Assert.NotNull(backup);
         return (store, secret, backup);
     }
@@ -47,7 +47,7 @@ public sealed class TwoFactorStoreTests : IDisposable
         Assert.StartsWith("otpauth://totp/DreamGrid:Ann%20Admin?secret=" + Totp.Base32(secret), uri);
         Assert.Equal(TwoFactorState.Off, store.StateOf(Ann)); // not on until confirmed
 
-        var backup = store.ConfirmEnrol(Ann, CodeNow(secret));
+        var backup = store.ConfirmEnrol(Ann, CodeNow(secret), secret);
         Assert.NotNull(backup);
         Assert.Equal(10, backup.Count);
         Assert.Equal(TwoFactorState.On, store.StateOf(Ann));
@@ -69,19 +69,19 @@ public sealed class TwoFactorStoreTests : IDisposable
         var store = New();
         var (secret, _) = store.BeginEnrol(Ann, "Ann", "DreamGrid");
         var wrong = CodeNow(secret) == "123456" ? "654321" : "123456";
-        Assert.Null(store.ConfirmEnrol(Ann, wrong));
+        Assert.Null(store.ConfirmEnrol(Ann, wrong, secret));
         Assert.Equal(TwoFactorState.Off, store.StateOf(Ann));
         Assert.Empty(store.Enrolled());
         Assert.False(store.VerifyCode(Ann, CodeNow(secret), out _)); // an unconfirmed secret signs nobody in
         // Confirming with the right code afterwards still works.
-        Assert.NotNull(store.ConfirmEnrol(Ann, CodeNow(secret)));
+        Assert.NotNull(store.ConfirmEnrol(Ann, CodeNow(secret), secret));
         Assert.Equal(TwoFactorState.On, store.StateOf(Ann));
     }
 
     [Fact]
     public void Confirm_without_begin_is_null()
     {
-        Assert.Null(New().ConfirmEnrol(Ann, "123456"));
+        Assert.Null(New().ConfirmEnrol(Ann, "123456", new byte[20]));
     }
 
     [Fact]
@@ -108,7 +108,7 @@ public sealed class TwoFactorStoreTests : IDisposable
         Assert.DoesNotContain(Totp.Base32(secret), pending);
         Assert.DoesNotContain(Convert.ToBase64String(secret), pending);
 
-        var backup = store.ConfirmEnrol(Ann, CodeNow(secret))!;
+        var backup = store.ConfirmEnrol(Ann, CodeNow(secret), secret)!;
         var text = File.ReadAllText(StateFile);
         Assert.DoesNotContain(Totp.Base32(secret), text);
         Assert.DoesNotContain(Convert.ToBase64String(secret), text);
@@ -178,7 +178,7 @@ public sealed class TwoFactorStoreTests : IDisposable
     {
         var (store, secret, backup) = Enrolled(Ann);
         var bob = store.BeginEnrol(Bob, "Bob", "DreamGrid");
-        store.ConfirmEnrol(Bob, CodeNow(bob.Secret));
+        store.ConfirmEnrol(Bob, CodeNow(bob.Secret), bob.Secret);
         store.Disable(Ann);
         Assert.Equal(TwoFactorState.Off, store.StateOf(Ann));
         Assert.Equal(TwoFactorState.On, store.StateOf(Bob));
@@ -195,7 +195,7 @@ public sealed class TwoFactorStoreTests : IDisposable
         var (newSecret, _) = store.BeginEnrol(Ann, "Ann", "DreamGrid");
         Assert.Equal(TwoFactorState.On, store.StateOf(Ann));
         Assert.True(store.VerifyCode(Ann, CodeNow(oldSecret, 1), out _));
-        Assert.NotNull(store.ConfirmEnrol(Ann, CodeNow(newSecret, 1)));
+        Assert.NotNull(store.ConfirmEnrol(Ann, CodeNow(newSecret, 1), newSecret));
         Assert.False(store.VerifyCode(Ann, CodeNow(oldSecret, 1), out _));
     }
 
@@ -206,7 +206,7 @@ public sealed class TwoFactorStoreTests : IDisposable
         var b = New();
         Assert.Equal(TwoFactorState.Off, b.StateOf(Ann));
         var (secret, _) = a.BeginEnrol(Ann, "Ann", "DreamGrid");
-        a.ConfirmEnrol(Ann, CodeNow(secret));
+        a.ConfirmEnrol(Ann, CodeNow(secret), secret);
         Assert.Equal(TwoFactorState.On, b.StateOf(Ann));
         a.Disable(Ann);
         Assert.Equal(TwoFactorState.Off, b.StateOf(Ann));
@@ -259,6 +259,22 @@ public sealed class TwoFactorStoreTests : IDisposable
         Assert.Equal(TwoFactorState.Off, store.StateOf(Ann));
         Assert.NotNull(store.ConfirmEnrol(Ann, CodeNow(other), other));
         Assert.False(store.IsPending(Ann, other)); // confirmed: nothing waits
+    }
+
+    [Fact]
+    public void A_code_that_cannot_be_marked_used_throws_and_is_not_accepted()
+    {
+        var (store, secret, backup) = Enrolled(Ann);
+        Directory.CreateDirectory(StateFile + ".tmp"); // the save's temp file can't be written
+        Assert.True(Record.Exception(() => store.VerifyCode(Ann, CodeNow(secret, 1), out _)) is IOException or UnauthorizedAccessException);
+        Assert.True(Record.Exception(() => store.VerifyCode(Ann, backup[0], out _)) is IOException or UnauthorizedAccessException);
+        var valid = new[] { CodeNow(secret, -1), CodeNow(secret), CodeNow(secret, 1) };
+        var wrong = new[] { "000000", "111111", "222222", "333333" }.First(c => !valid.Contains(c));
+        Assert.False(store.VerifyCode(Ann, wrong, out _)); // a wrong code saves nothing, so doesn't throw
+        Directory.Delete(StateFile + ".tmp");
+        // Nothing was used up: both still work once the save succeeds.
+        Assert.True(store.VerifyCode(Ann, CodeNow(secret, 1), out _));
+        Assert.True(store.VerifyCode(Ann, backup[0], out _));
     }
 
     [Fact]

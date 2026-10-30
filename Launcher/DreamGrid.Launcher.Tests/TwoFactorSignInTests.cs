@@ -22,6 +22,7 @@ public sealed class TwoFactorSignInTests
     private const string Unknown =
         "Two-factor sign-in can't be checked on this computer. The grid owner can run reset-two-factor on the grid computer.";
     private const string Required = "The grid owner requires two-factor sign-in.";
+    private const string SaveFailed = "The two-factor file couldn't be saved. Try again.";
 
     private static LauncherFactory Factory(bool required = false)
     {
@@ -94,7 +95,7 @@ public sealed class TwoFactorSignInTests
         var store = f.Services.GetRequiredService<TwoFactorStore>();
         var account = TestAuth.Account(role);
         var (secret, _) = store.BeginEnrol(account.PrincipalId, $"{account.FirstName} {account.LastName}", "Avalon");
-        var backup = store.ConfirmEnrol(account.PrincipalId, CodeNow(f, secret));
+        var backup = store.ConfirmEnrol(account.PrincipalId, CodeNow(f, secret), secret);
         Assert.NotNull(backup);
         f.Time.Advance(TimeSpan.FromSeconds(Totp.PeriodSeconds));
         return (secret, backup);
@@ -417,6 +418,9 @@ public sealed class TwoFactorSignInTests
 
         Assert.Equal(Locked, await ErrorAsync(r));
         Assert.Equal(TwoFactorState.On, f.Services.GetRequiredService<TwoFactorStore>().StateOf(TestAuth.OwnerId));
+        var refused = Audit(f).Where(e => e.GetProperty("action").GetString() == "sign-in-refused").ToList();
+        Assert.Equal(LoginThrottle.NameMaxFailures, refused.Count);
+        Assert.All(refused, e => Assert.Equal("Test Owner", e.GetProperty("actor").GetString()));
     }
 
     [Fact]
@@ -438,6 +442,181 @@ public sealed class TwoFactorSignInTests
         var store = f.Services.GetRequiredService<TwoFactorStore>();
         Assert.False(store.VerifyCode(TestAuth.AdminId, old[0], out _));
         Assert.True(store.VerifyCode(TestAuth.AdminId, codes[0], out _));
+        Assert.Equal(1, AuditCount(f, "backup-codes-new"));
+    }
+
+    [Fact]
+    public async Task Code_that_signed_in_is_refused_in_another_browser_in_the_same_step()
+    {
+        await using var f = Factory();
+        var (secret, _) = Enrol(f, StaffRole.Admin);
+        var code = CodeNow(f, secret);
+
+        var first = Client(f);
+        (await PasswordAsync(first, "Test Admin")).Dispose();
+        using (var r = await CodeAsync(first, code))
+            Assert.Equal("/", LocationPath(r));
+
+        var second = Client(f);
+        (await PasswordAsync(second, "Test Admin")).Dispose();
+        using (var r = await CodeAsync(second, code))
+            Assert.Equal(WrongCodeMessage, await ErrorAsync(r));
+        Assert.Equal(HttpStatusCode.Redirect, await DashboardAsync(second));
+    }
+
+    [Fact]
+    public async Task Turn_off_with_a_backup_code()
+    {
+        await using var f = Factory();
+        var (_, backup) = Enrol(f, StaffRole.Owner);
+        var client = Client(f);
+        (await client.GetAsync("/__test/signin?role=owner", Ct)).Dispose();
+        var page = await PageAsync(client, "/profile/two-factor");
+
+        using var r = await PostAsync(client, "/profile/two-factor?handler=TurnOff",
+            new() { ["Code"] = backup[0], ["__RequestVerificationToken"] = Token(page, "form#turn-off") });
+
+        Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
+        Assert.Equal(TwoFactorState.Off, f.Services.GetRequiredService<TwoFactorStore>().StateOf(TestAuth.OwnerId));
+        Assert.Equal(1, AuditCount(f, "backup-code-used"));
+        Assert.Equal(1, AuditCount(f, "two-factor-off"));
+    }
+
+    [Fact]
+    public async Task Pending_sign_in_is_refused_once_two_factor_was_reset()
+    {
+        await using var f = Factory();
+        var (secret, _) = Enrol(f, StaffRole.Admin);
+        var client = Client(f);
+        (await PasswordAsync(client, "Test Admin")).Dispose();
+        var page = await PageAsync(client, "/login/code");
+
+        f.Services.GetRequiredService<TwoFactorStore>().Disable(TestAuth.AdminId);
+        using var r = await PostAsync(client, "/login/code",
+            new() { ["Code"] = CodeNow(f, secret), ["__RequestVerificationToken"] = Token(page) });
+
+        Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
+        Assert.Equal("/login", LocationPath(r));
+        Assert.Equal(HttpStatusCode.Redirect, await DashboardAsync(client));
+        Assert.Equal(0, AuditCount(f, "sign-in"));
+    }
+
+    [Fact]
+    public async Task Code_that_cannot_be_saved_is_not_a_wrong_code()
+    {
+        await using var f = Factory();
+        var (secret, _) = Enrol(f, StaffRole.Admin);
+        var client = Client(f);
+        (await PasswordAsync(client, "Test Admin")).Dispose();
+        var blocker = Path.Combine(f.Paths.Security, "twofactor.json.tmp");
+        Directory.CreateDirectory(blocker); // the save's temp file can't be written
+
+        for (var i = 0; i < LoginThrottle.NameMaxFailures; i++)
+        {
+            using var r = await CodeAsync(client, CodeNow(f, secret));
+            Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+            Assert.Equal(SaveFailed, await ErrorAsync(r));
+        }
+        Assert.Equal(HttpStatusCode.Redirect, await DashboardAsync(client));
+
+        // Not counted by the throttle, and the code wasn't used up: it works once the file can be saved.
+        Directory.Delete(blocker);
+        using (var r = await CodeAsync(client, CodeNow(f, secret)))
+            Assert.Equal("/", LocationPath(r));
+        Assert.Equal(HttpStatusCode.OK, await DashboardAsync(client));
+        Assert.Equal(0, AuditCount(f, "sign-in-refused"));
+    }
+
+    [Fact]
+    public async Task Turn_off_that_cannot_be_saved_says_so()
+    {
+        await using var f = Factory();
+        var (secret, _) = Enrol(f, StaffRole.Owner);
+        var client = Client(f);
+        (await client.GetAsync("/__test/signin?role=owner", Ct)).Dispose();
+        var page = await PageAsync(client, "/profile/two-factor");
+        Directory.CreateDirectory(Path.Combine(f.Paths.Security, "twofactor.json.tmp"));
+
+        for (var i = 0; i < LoginThrottle.NameMaxFailures; i++)
+        {
+            using var r = await PostAsync(client, "/profile/two-factor?handler=" + (i % 2 == 0 ? "TurnOff" : "NewCodes"),
+                new() { ["Code"] = CodeNow(f, secret), ["__RequestVerificationToken"] = Token(page, "form#turn-off") });
+            Assert.Equal(SaveFailed, await ErrorAsync(r));
+        }
+
+        Assert.Equal(TwoFactorState.On, f.Services.GetRequiredService<TwoFactorStore>().StateOf(TestAuth.OwnerId));
+        Assert.Equal(0, AuditCount(f, "sign-in-refused"));
+        Assert.False(f.Services.GetRequiredService<LoginThrottle>().IsLocked("Test Owner", null));
+    }
+
+    [Fact]
+    public async Task Enrolment_form_survives_the_five_minute_recheck()
+    {
+        await using var f = Factory(required: true);
+        var client = Client(f);
+        (await PasswordAsync(client, "Test Admin")).Dispose();
+        var page = await PageAsync(client, "/profile/two-factor");
+        var secret = FromBase32(page.QuerySelector("#two-factor-secret")!.TextContent);
+
+        f.Time.Advance(StaffPrincipalValidator.RecheckEvery + TimeSpan.FromSeconds(1));
+        using var on = await PostAsync(client, "/profile/two-factor?handler=TurnOn", new()
+        {
+            ["Code"] = CodeNow(f, secret),
+            ["Shown"] = page.QuerySelector("form#turn-on input[name=Shown]")!.GetAttribute("value")!,
+            ["__RequestVerificationToken"] = Token(page, "form#turn-on"),
+        });
+
+        Assert.Equal(HttpStatusCode.OK, on.StatusCode);
+        var shown = new HtmlParser().ParseDocument(await on.Content.ReadAsStringAsync(Ct));
+        Assert.Equal(BackupCodes.Count, shown.QuerySelectorAll("#backup-codes li").Length);
+        Assert.Equal(HttpStatusCode.OK, await DashboardAsync(client));
+    }
+
+    [Fact]
+    public async Task Admin_form_survives_the_five_minute_recheck()
+    {
+        await using var f = Factory();
+        var client = Client(f);
+        (await client.GetAsync("/__test/signin?role=admin", Ct)).Dispose();
+        var page = await PageAsync(client, "/dashboard");
+
+        f.Time.Advance(StaffPrincipalValidator.RecheckEvery + TimeSpan.FromSeconds(1));
+        using var r = await PostAsync(client, "/dashboard?handler=run",
+            new() { ["__RequestVerificationToken"] = Token(page, "form#controls") });
+
+        Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
+        Assert.Equal("/", LocationPath(r));
+    }
+
+    [Fact]
+    public async Task Switch_turned_on_sends_signed_in_admin_to_enrol()
+    {
+        await using var f = Factory();
+        var admin = Client(f);
+        (await admin.GetAsync("/__test/signin?role=admin", Ct)).Dispose();
+        var supervisor = Client(f);
+        (await supervisor.GetAsync("/__test/signin?role=supervisor", Ct)).Dispose();
+        var owner = Client(f);
+        (await owner.GetAsync("/__test/signin?role=owner", Ct)).Dispose();
+        Assert.Equal(HttpStatusCode.OK, await DashboardAsync(admin));
+
+        var s = f.Store.LoadOrCreate();
+        f.Store.Save(s with { Security = s.Security with { RequireTwoFactorForStaff = true } });
+
+        using (var r = await admin.GetAsync("/dashboard", Ct))
+            Assert.Equal("/profile/two-factor", LocationPath(r));
+        using (var r = await admin.GetAsync("/api/status", Ct))
+            Assert.Equal(HttpStatusCode.Forbidden, r.StatusCode);
+        using (var r = await supervisor.GetAsync("/profile/sessions", Ct))
+            Assert.Equal("/profile/two-factor", LocationPath(r));
+        var page = await PageAsync(admin, "/profile/two-factor");
+        Assert.Contains(Required, page.QuerySelector("main")!.TextContent, StringComparison.Ordinal);
+        Assert.Null(page.QuerySelector("nav a[href='/regions']"));
+        Assert.Equal(HttpStatusCode.OK, await DashboardAsync(owner));
+
+        // Once the admin has two-factor, the same cookie works again.
+        Enrol(f, StaffRole.Admin);
+        Assert.Equal(HttpStatusCode.OK, await DashboardAsync(admin));
     }
 
     [Fact]

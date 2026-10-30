@@ -30,7 +30,6 @@ public sealed class TwoFactorModel(TwoFactorStore store, Func<LauncherSettings> 
 {
     public const string WrongCode = "That code isn't right. Try again.";
     public const string RequiredText = "The grid owner requires two-factor sign-in.";
-    private const string SaveFailed = "Your change couldn't be saved. Try again.";
     private const string ShownPurpose = "DreamGrid.TwoFactorSetup.v1";
 
     [BindProperty] public string? Code { get; set; }
@@ -39,8 +38,10 @@ public sealed class TwoFactorModel(TwoFactorStore store, Func<LauncherSettings> 
     [BindProperty] public string? Shown { get; set; }
 
     public TwoFactorState State { get; private set; }
-    /// <summary>Signed in only to set up two-factor.</summary>
+    /// <summary>Has to set up two-factor before anything else (<see cref="TwoFactorGate.MustEnrol"/>).</summary>
     public bool MustEnrol { get; private set; }
+    /// <summary>Signed in with a password only, to set up two-factor: the cookie is replaced once it is on.</summary>
+    private bool HasEnrolClaim { get; set; }
     /// <summary>The owner's switch is on and applies to this person.</summary>
     public bool Required { get; private set; }
     public string? QrSvg { get; private set; }
@@ -99,17 +100,18 @@ public sealed class TwoFactorModel(TwoFactorStore store, Func<LauncherSettings> 
         }
 
         audit.Write(Entry(claims, "two-factor-on"));
-        if (MustEnrol)
+        if (HasEnrolClaim)
         {
             // The cookie that could only reach this page is replaced by an ordinary one (a new session; the old one ends).
             var name = AvatarName.Parse(User.Identity?.Name);
-            // The level isn't part of the cookie. This page is then rendered for the new cookie, so the layout's links and the
-            // antiforgery tokens (bound to the claims) match it.
+            // The level isn't part of the cookie. This page is then rendered for the new cookie, so the layout shows the ordinary
+            // links (TwoFactorGate.MustEnrol is worked out again for it).
             HttpContext.User = await StaffSignIn.SignInAsync(HttpContext,
                 new RobustAccount(claims.Principal, name.First, name.Last, 0, ""), claims.Role);
             MustEnrol = false;
         }
         State = TwoFactorState.On;
+        TwoFactorGate.Forget(HttpContext); // the layout works it out again: two-factor is on now
         BackupCodes = codes;
         return Page();
     }
@@ -126,10 +128,10 @@ public sealed class TwoFactorModel(TwoFactorStore store, Func<LauncherSettings> 
         }
 
         if (Locked()) return Page();
-        if (!store.VerifyCode(claims.Principal, Code ?? "", out var usedBackup)) return Wrong();
-        if (usedBackup) audit.Write(Entry(claims, "backup-code-used"));
         try
         {
+            if (!store.VerifyCode(claims.Principal, Code ?? "", out var usedBackup)) return Wrong(claims);
+            if (usedBackup) audit.Write(Entry(claims, "backup-code-used"));
             store.Disable(claims.Principal);
         }
         catch (Exception e) when (Failed(e, claims))
@@ -156,8 +158,8 @@ public sealed class TwoFactorModel(TwoFactorStore store, Func<LauncherSettings> 
         {
             return Page();
         }
-        if (codes is null) return Wrong();
-        // No action of its own in the audit log's list: AuditMiddleware records the request.
+        if (codes is null) return Wrong(claims);
+        audit.Write(Entry(claims, "backup-codes-new"));
         BackupCodes = codes;
         return Page();
     }
@@ -171,9 +173,11 @@ public sealed class TwoFactorModel(TwoFactorStore store, Func<LauncherSettings> 
         return true;
     }
 
-    private IActionResult Wrong()
+    /// <summary>A wrong code: counted by the throttle and audited, as at the code step.</summary>
+    private IActionResult Wrong(StaffClaims claims)
     {
         throttle.RecordFailure(ThrottleKey, HttpContext.Connection.RemoteIpAddress);
+        audit.Write(Entry(claims, "sign-in-refused", "two-factor code", "refused"));
         Error = WrongCode;
         return Page();
     }
@@ -181,7 +185,8 @@ public sealed class TwoFactorModel(TwoFactorStore store, Func<LauncherSettings> 
     private void Load(StaffClaims claims)
     {
         State = store.StateOf(claims.Principal);
-        MustEnrol = User.HasClaim(c => c.Type == StaffSignIn.EnrolClaim);
+        HasEnrolClaim = User.HasClaim(c => c.Type == StaffSignIn.EnrolClaim);
+        MustEnrol = TwoFactorGate.MustEnrol(HttpContext);
         Required = settings().Security.RequireTwoFactorForStaff && claims.Role is StaffRole.Admin or StaffRole.Supervisor;
         Home = StaffSignIn.Home(claims.Role);
     }
@@ -238,11 +243,11 @@ public sealed class TwoFactorModel(TwoFactorStore store, Func<LauncherSettings> 
         if (e is not (IOException or UnauthorizedAccessException)) return false;
         log.LogWarning("Two-factor: a change for first name {First} couldn't be saved: {Message}",
             AvatarName.Parse(User.Identity?.Name).ForLog, e.Message);
-        Error = SaveFailed;
+        Error = TwoFactorStore.SaveFailed;
         return true;
     }
 
-    private AuditEntry Entry(StaffClaims claims, string action) =>
+    private AuditEntry Entry(StaffClaims claims, string action, string? target = null, string result = "ok") =>
         new(LogText.Clean(User.Identity?.Name, 64), claims.Principal, claims.Role.AuditName(),
-            HttpContext.Connection.RemoteIpAddress?.ToString(), action, null, "ok");
+            HttpContext.Connection.RemoteIpAddress?.ToString(), action, target, result);
 }

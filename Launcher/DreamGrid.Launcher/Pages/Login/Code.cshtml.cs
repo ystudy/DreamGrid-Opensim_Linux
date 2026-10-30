@@ -12,7 +12,8 @@ namespace DreamGrid.Launcher.Pages.Login;
 /// five minutes); a right authenticator code or an unused backup code signs them in (audited as <c>sign-in</c>, plus
 /// <c>backup-code-used</c>). A wrong code counts as a failure in the throttle for the account name and the address, so five of
 /// them lock the name as five wrong passwords do; while locked, no code is checked. Without a pending cookie (or once it has
-/// expired, or two-factor was turned off for them meanwhile) this sends back to the password. Codes are never logged.
+/// expired, or two-factor was turned off for them meanwhile) this sends back to the password. A right code that can't be marked
+/// used (the save failed) signs nobody in and isn't counted as wrong. Codes are never logged.
 /// </summary>
 public sealed class CodeModel(TwoFactorStore twoFactor, LoginThrottle throttle, AuditLog audit, ILogger<CodeModel> log) : PageModel
 {
@@ -52,7 +53,21 @@ public sealed class CodeModel(TwoFactorStore twoFactor, LoginThrottle throttle, 
                 return Page();
         }
 
-        if (!twoFactor.VerifyCode(pending.Principal, Code ?? "", out var usedBackup))
+        bool right, usedBackup;
+        try
+        {
+            right = twoFactor.VerifyCode(pending.Principal, Code ?? "", out usedBackup);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // Not a wrong code, so not counted; nothing was used up.
+            log.LogWarning("Sign-in: a two-factor code for first name {First} couldn't be marked used: {Message}",
+                LogText.Clean(pending.First, 32), e.Message);
+            Error = TwoFactorStore.SaveFailed;
+            return Page();
+        }
+
+        if (!right)
         {
             throttle.RecordFailure(key, remote);
             log.LogInformation("Sign-in: a two-factor code for first name {First} was refused", LogText.Clean(pending.First, 32));

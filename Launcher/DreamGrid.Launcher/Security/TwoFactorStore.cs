@@ -21,6 +21,9 @@ public sealed class TwoFactorStore(string file, IDataProtectionProvider dp, Time
 {
     private const string Purpose = "DreamGrid.TwoFactor.v1";
 
+    /// <summary>What the pages say when a change (or a code being marked used) couldn't be saved.</summary>
+    public const string SaveFailed = "The two-factor file couldn't be saved. Try again.";
+
     private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
     private readonly IDataProtector _protector = dp.CreateProtector(Purpose);
@@ -83,17 +86,18 @@ public sealed class TwoFactorStore(string file, IDataProtectionProvider dp, Time
 
     /// <summary>
     /// Switches two-factor on if <paramref name="code"/> is right for the pending secret, and returns the ten backup codes (shown
-    /// once). Returns null, changing nothing, if there is no pending secret, the code is wrong, or <paramref name="shown"/> is
-    /// given and is not the pending secret (setup was started again in another browser, whose secret this one never showed).
+    /// once). Returns null, changing nothing, if there is no pending secret, the code is wrong, or <paramref name="shown"/> (the
+    /// secret the confirming page showed) is not the pending secret: setup was started again in another browser, whose secret
+    /// this one never showed.
     /// </summary>
-    public IReadOnlyList<string>? ConfirmEnrol(Guid principal, string code, byte[]? shown = null)
+    public IReadOnlyList<string>? ConfirmEnrol(Guid principal, string code, byte[] shown)
     {
         lock (_gate)
         {
             var state = ReadForWrite();
             if (!state.TryGetValue(principal, out var e) || e.Pending is not { Length: > 0 } pending) return null;
             var secret = Unprotect(pending);
-            if (secret is null || shown is not null && !CryptographicOperations.FixedTimeEquals(secret, shown)) return null;
+            if (secret is null || !CryptographicOperations.FixedTimeEquals(secret, shown)) return null;
             if (!Totp.Verify(secret, code, time.GetUtcNow(), null, out var step)) return null;
 
             var backup = BackupCodes.New();
@@ -106,7 +110,9 @@ public sealed class TwoFactorStore(string file, IDataProtectionProvider dp, Time
     /// <summary>
     /// Whether <paramref name="codeOrBackup"/> signs the person in: six digits are tried as an authenticator code (its step is then
     /// used up), anything else as a backup code (which is then used up). False for anyone without two-factor and whenever the
-    /// file is damaged. Throws nothing for a failed save: a code that cannot be marked used is refused.
+    /// file is damaged. A right code that cannot be marked used (the save failed) is not accepted: that throws
+    /// <see cref="IOException"/> or <see cref="UnauthorizedAccessException"/>, so callers can tell it from a wrong code, and nothing
+    /// is used up.
     /// </summary>
     public bool VerifyCode(Guid principal, string codeOrBackup, out bool usedBackup)
     {
@@ -117,35 +123,28 @@ public sealed class TwoFactorStore(string file, IDataProtectionProvider dp, Time
             if (!state.TryGetValue(principal, out var e) || e.Secret is not { Length: > 0 } protectedSecret) return false;
 
             var typed = new string([.. (codeOrBackup ?? "").Where(c => c != ' ')]);
-            try
+            if (typed.Length == Totp.Digits && typed.All(char.IsAsciiDigit))
             {
-                if (typed.Length == Totp.Digits && typed.All(char.IsAsciiDigit))
-                {
-                    var secret = Unprotect(protectedSecret);
-                    if (secret is null || !Totp.Verify(secret, typed, time.GetUtcNow(), e.LastStep, out var step)) return false;
-                    state[principal] = e with { LastStep = step };
-                    Save(state);
-                    return true;
-                }
-
-                if (typed.Length == 0) return false;
-                var hash = Encoding.ASCII.GetBytes(BackupCodes.Hash(typed));
-                var backup = e.Backup ?? [];
-                var at = -1;
-                for (var i = 0; i < backup.Count; i++) // every hash is compared, so the time does not say which matched
-                    if (CryptographicOperations.FixedTimeEquals(hash, Encoding.ASCII.GetBytes(backup[i] ?? ""))) at = i;
-                if (at < 0) return false;
-                var rest = new List<string>(backup);
-                rest.RemoveAt(at);
-                state[principal] = e with { Backup = rest };
+                var secret = Unprotect(protectedSecret);
+                if (secret is null || !Totp.Verify(secret, typed, time.GetUtcNow(), e.LastStep, out var step)) return false;
+                state[principal] = e with { LastStep = step };
                 Save(state);
-                usedBackup = true;
                 return true;
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                return false;
-            }
+
+            if (typed.Length == 0) return false;
+            var hash = Encoding.ASCII.GetBytes(BackupCodes.Hash(typed));
+            var backup = e.Backup ?? [];
+            var at = -1;
+            for (var i = 0; i < backup.Count; i++) // every hash is compared, so the time does not say which matched
+                if (CryptographicOperations.FixedTimeEquals(hash, Encoding.ASCII.GetBytes(backup[i] ?? ""))) at = i;
+            if (at < 0) return false;
+            var rest = new List<string>(backup);
+            rest.RemoveAt(at);
+            state[principal] = e with { Backup = rest };
+            Save(state);
+            usedBackup = true;
+            return true;
         }
     }
 

@@ -46,6 +46,9 @@ public static class StaffSignIn
         [
             new(ClaimTypes.Name, $"{account.FirstName} {account.LastName}"),
             new(PrincipalClaim, account.PrincipalId.ToString()),
+            // Antiforgery binds its tokens to this claim when present, and otherwise to every claim, including the session id
+            // and the check time that the 5-minute recheck renews: without it a form open across a recheck would be refused.
+            new(ClaimTypes.NameIdentifier, account.PrincipalId.ToString()),
             .. RoleClaims(role).Select(r => new Claim(ClaimTypes.Role, r)),
             new(SessionClaim, session.Id),
             new(StampClaim, sessions.StampOf(account.PrincipalId)),

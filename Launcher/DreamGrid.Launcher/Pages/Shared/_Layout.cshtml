@@ -5,7 +5,7 @@
     var version = DreamGrid.Launcher.CommandLine.Version();
     var gridName = Settings().GridName;
     var path = Context.Request.Path.Value ?? "/";
-    var enrolOnly = User.HasClaim(c => c.Type == DreamGrid.Launcher.Security.StaffSignIn.EnrolClaim);
+    var enrolOnly = DreamGrid.Launcher.Security.TwoFactorGate.MustEnrol(Context);
     string Active(string prefix) => (prefix == "/" ? path == "/" : path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) ? " active" : "";
 }
 <!DOCTYPE html>
