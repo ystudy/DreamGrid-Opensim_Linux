@@ -40,6 +40,7 @@ public sealed class SettingsStore(string path)
                 json = reader.ReadToEnd();
             var loaded = JsonSerializer.Deserialize<LauncherSettings>(json, Options)
                 ?? throw new JsonException("settings file contains null");
+            Validate(loaded);
             if (loaded.SchemaVersion >= LauncherSettings.CurrentSchema) return loaded;
             var migrated = Migrate(loaded);
             Save(migrated);
@@ -49,6 +50,18 @@ public sealed class SettingsStore(string path)
         {
             throw new SettingsCorruptException(path, e);
         }
+    }
+
+    /// <summary>
+    /// The values a hand edit could make unsafe are checked as the Security page checks them: a supervisor level of 0 would make
+    /// every guest a supervisor. Settings that fail refuse to load, like a file that doesn't parse.
+    /// </summary>
+    private void Validate(LauncherSettings s)
+    {
+        var security = SettingsValidator.Security(s.Security);
+        if (!security.Ok)
+            throw new SettingsCorruptException(path,
+                security.Errors.Select(e => $"security.{JsonNamingPolicy.CamelCase.ConvertName(e.Key)}: {e.Value}"));
     }
 
     /// <summary>

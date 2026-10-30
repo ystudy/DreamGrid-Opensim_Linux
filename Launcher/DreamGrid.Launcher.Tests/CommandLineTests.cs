@@ -372,6 +372,17 @@ public class CommandLineTests : IDisposable
         Assert.False(Directory.Exists(Path.Combine(_root, "nowhere")));
     }
 
+    [Fact]
+    public async Task Security_levels_that_are_not_allowed_are_refused_like_corrupt_settings()
+    {
+        NewStore(s => s with { Security = s.Security with { SupervisorLevel = 0 } });
+
+        var (code, output) = await RunAsync("admin-link", "--data", DataDir);
+
+        Assert.Equal(2, code);
+        Assert.Contains("security.supervisorLevel: Use a supervisor level of 1 or more.", output);
+    }
+
     private static async Task<(int? Code, string Output)> RunAsync(Func<string, string?> foreignOwner, params string[] args)
     {
         var output = new StringWriter();

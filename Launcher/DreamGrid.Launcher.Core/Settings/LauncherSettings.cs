@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
 
 namespace DreamGrid.Launcher.Core.Settings;
@@ -155,8 +156,11 @@ public sealed record LauncherSettings
     public bool DefaultScripts { get; init; } = true;
 
     public SetupState Setup { get; init; } = new();
-    /// <summary>Sign-in security; a missing value reads as the defaults.</summary>
-    public SecuritySettings Security { get; init; } = new();
+    private readonly SecuritySettings _security = new();
+
+    /// <summary>Sign-in security; a missing or null value (a hand edit) reads as the defaults.</summary>
+    [AllowNull]
+    public SecuritySettings Security { get => _security; init => _security = value ?? new(); }
     public List<ProgramSettings> Programs { get; init; } = new();
     public List<RegionSettings> Regions { get; init; } = new();
     /// <summary>Region types made from library files, in the order they were added; a missing list reads as empty.</summary>

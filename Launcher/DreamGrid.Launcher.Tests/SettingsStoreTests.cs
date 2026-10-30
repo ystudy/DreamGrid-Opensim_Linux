@@ -433,6 +433,59 @@ public class SettingsStoreTests : IDisposable
         Assert.Equal(5, s.SchemaVersion);
     }
 
+    /// <summary>A saved settings file whose "security" object is <paramref name="security"/> (JSON), as a hand edit would leave it.</summary>
+    private string WithSecurity(string security)
+    {
+        var path = Path.Combine(NewDir(), "settings.json");
+        new SettingsStore(path).LoadOrCreate();
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+        node["security"] = System.Text.Json.Nodes.JsonNode.Parse(security);
+        File.WriteAllText(path, node.ToJsonString());
+        return path;
+    }
+
+    [Fact]
+    public void Null_security_reads_as_the_defaults()
+    {
+        var path = WithSecurity("null");
+
+        var s = new SettingsStore(path).LoadOrCreate();
+
+        Assert.Equal(100, s.Security.SupervisorLevel);
+        Assert.Equal(200, s.Security.AdminLevel);
+        Assert.False(s.Security.RequireTwoFactorForStaff);
+        Assert.Null(s.Security.AdminNetworks);
+        Assert.Equal(100, new SettingsStore(path).TryLoad()!.Security.SupervisorLevel);
+    }
+
+    [Theory]
+    [InlineData("""{ "supervisorLevel": 0 }""", "security.supervisorLevel", "Use a supervisor level of 1 or more.")]
+    [InlineData("""{ "supervisorLevel": -5, "adminLevel": 200 }""", "security.supervisorLevel", "Use a supervisor level of 1 or more.")]
+    [InlineData("""{ "adminLevel": 0 }""", "security.adminLevel", "The admin level must be higher than the supervisor level.")]
+    [InlineData("""{ "supervisorLevel": 150, "adminLevel": 150 }""", "security.adminLevel", "The admin level must be higher than the supervisor level.")]
+    [InlineData("""{ "adminLevel": 300 }""", "security.adminLevel", "Use an admin level of 255 or less.")]
+    public void Security_levels_that_are_not_allowed_refuse_to_load_and_leave_the_file_alone(string security, string key, string reason)
+    {
+        var path = WithSecurity(security);
+        var before = File.ReadAllBytes(path);
+
+        var ex = Assert.Throws<SettingsCorruptException>(() => new SettingsStore(path).LoadOrCreate());
+        Assert.Throws<SettingsCorruptException>(() => new SettingsStore(path).TryLoad());
+
+        Assert.Contains(path, ex.Message);
+        Assert.Contains($"{key}: {reason}", ex.Message);
+        Assert.Equal(before, File.ReadAllBytes(path));
+    }
+
+    [Fact]
+    public void Allowed_security_levels_load()
+    {
+        var s = new SettingsStore(WithSecurity("""{ "supervisorLevel": 1, "adminLevel": 255 }""")).LoadOrCreate();
+
+        Assert.Equal(1, s.Security.SupervisorLevel);
+        Assert.Equal(255, s.Security.AdminLevel);
+    }
+
     [Fact]
     public void Schema_3_unfinished_keeps_plan_unset()
     {
