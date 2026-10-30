@@ -252,6 +252,39 @@ public class RobustClientTests
         Assert.Equal("getaccount", req.Form("METHOD"));
     }
 
+    private static string AccountReplyWith(string extra) =>
+        "<?xml version=\"1.0\"?><ServerResponse><result type=\"List\"><FirstName>Test</FirstName><LastName>Owner</LastName>" +
+        "<Email>t@example.com</Email><PrincipalID>" + Pid + "</PrincipalID><UserLevel>100</UserLevel>" + extra + "</result></ServerResponse>";
+
+    [Fact]
+    public async Task Account_created_time_parsed()
+    {
+        var (c, _) = Make(r => (HttpStatusCode.OK, AccountReplyWith("<Created>1700000000</Created>")));
+
+        var strict = await c.FindAccountAsync("Test", "Owner", CancellationToken.None);
+        var lenient = await c.GetAccountAsync("Test", "Owner", CancellationToken.None);
+
+        Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1700000000), strict!.Created);
+        Assert.Equal(strict.Created, lenient!.Created);
+        Assert.Equal("t@example.com", strict.Email);
+    }
+
+    [Theory]
+    [InlineData("")] // no Created at all
+    [InlineData("<Created></Created>")]
+    [InlineData("<Created>0</Created>")] // Robust's "unknown"
+    [InlineData("<Created>soon</Created>")]
+    [InlineData("<Created>99999999999999999999</Created>")]
+    [InlineData("<Created>253402300800</Created>")] // past the year 9999
+    [InlineData("<Created>-5</Created>")]
+    public async Task Account_created_time_is_unknown_when_robust_gives_nothing_usable(string created)
+    {
+        var (c, _) = Make(r => (HttpStatusCode.OK, AccountReplyWith(created)));
+
+        Assert.Null((await c.FindAccountAsync("Test", "Owner", CancellationToken.None))!.Created);
+        Assert.Null((await c.GetAccountAsync("Test", "Owner", CancellationToken.None))!.Created);
+    }
+
     [Fact]
     public async Task FindAccount_returns_null_only_for_no_such_account()
     {

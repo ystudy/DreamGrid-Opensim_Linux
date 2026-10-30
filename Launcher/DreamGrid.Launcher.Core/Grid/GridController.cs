@@ -836,6 +836,26 @@ public sealed partial class GridController(
         finally { _ops.Release(); }
     }
 
+    public async Task<RobustAccount> SetUserLevelAsync(string first, string last, int level, CancellationToken ct)
+    {
+        GridConsoleCommands.ValidateAvatarName(first, last);
+
+        await _ops.WaitAsync(ct);
+        try
+        {
+            ThrowIfNoGridService(LoadSettings());
+            var transcript = new List<string>();
+            transcript.AddRange(await _robust!.Console!.RunAsync($"set user level {first} {last} {level}", ConsoleSettle, ct));
+            // Robust runs console commands on its own thread: the level shows only after the console output has settled.
+            var account = await WaitForAccountAsync(first, last, a => a.UserLevel == level, ct);
+            if (account is null || account.UserLevel != level)
+                throw new InvalidOperationException(
+                    $"Robust did not give {first} {last} level {level} within {AccountWait.TotalSeconds:0} s. Console: {string.Join(" | ", transcript)}");
+            return account;
+        }
+        finally { _ops.Release(); }
+    }
+
     private static readonly string ContentError =
         $"Content must be starter, a built-in type ({string.Join(", ", RegionTypes.BuiltIn.Select(t => t.Id))}) or one of your region types.";
 

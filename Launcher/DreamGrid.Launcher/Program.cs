@@ -126,16 +126,21 @@ builder.Services.AddAuthorizationBuilder()
 builder.Services.AddRazorPages(o =>
 {
     // Every page needs the admin role except these; the setup pages are guarded by SetupGate. A person's own pages under
-    // /Profile are for every staff member, and the Security page is the owner's. (Two folder policies on one page would both
-    // have to pass, so those two folders are left out of the admin one rather than given a second.)
+    // /Profile and the People page are for every staff member, and the Security and Staff pages are the owner's. (Two folder
+    // policies on one page would both have to pass, so those folders are left out of the admin one rather than given a second.)
+    // The Staff and People pages do not exist (404) where there are no supervisors.
+    string[] ownFolders = ["/Profile/", "/Security/", "/Staff/", "/People/"];
     o.Conventions.AddFolderApplicationModelConvention("/", m =>
     {
-        if (!m.ViewEnginePath.StartsWith("/Profile/", StringComparison.OrdinalIgnoreCase)
-            && !m.ViewEnginePath.StartsWith("/Security/", StringComparison.OrdinalIgnoreCase))
+        if (!ownFolders.Any(f => m.ViewEnginePath.StartsWith(f, StringComparison.OrdinalIgnoreCase)))
             m.EndpointMetadata.Add(new AuthorizeAttribute(AuthSchemes.AdminPolicy));
     });
     o.Conventions.AuthorizeFolder("/Profile", AuthSchemes.StaffPolicy);
     o.Conventions.AuthorizeFolder("/Security", AuthSchemes.OwnerPolicy);
+    o.Conventions.AuthorizeFolder("/Staff", AuthSchemes.OwnerPolicy);
+    o.Conventions.AuthorizeFolder("/People", AuthSchemes.StaffPolicy);
+    o.Conventions.AddFolderApplicationModelConvention("/Staff", m => m.Filters.Add(new StaffPagesOnly()));
+    o.Conventions.AddFolderApplicationModelConvention("/People", m => m.Filters.Add(new StaffPagesOnly()));
     foreach (var open in new[] { "/Login", "/Login/Code", "/Logout", "/Welcome", "/Waiting", "/SetupDone", "/Setup" })
         o.Conventions.AllowAnonymousToPage(open);
     o.Conventions.AllowAnonymousToFolder("/Setup");
@@ -156,6 +161,9 @@ builder.Services.AddSingleton(sp => new StaffSessions(Path.Combine(paths.Securit
 builder.Services.AddSingleton(sp => new TwoFactorStore(Path.Combine(paths.Security, "twofactor.json"),
     sp.GetRequiredService<IDataProtectionProvider>(), sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<TwoFactorStore>>()));
 builder.Services.AddSingleton<ITwoFactorStatus>(sp => sp.GetRequiredService<TwoFactorStore>());
+builder.Services.AddSingleton(sp => new SuspendedStore(Path.Combine(paths.Security, "suspended.json")));
+builder.Services.AddSingleton<IStaffDirectory>(sp => new StaffDirectory(sp.GetRequiredService<Func<LauncherSettings>>()));
+builder.Services.AddSingleton<StaffActions>();
 builder.Services.AddSingleton<StaffPrincipalValidator>();
 builder.Services.AddSingleton<LegacyCommandApi>();
 builder.Services.AddSingleton<IOnlineUsers>(sp => new OnlineUsers(sp.GetRequiredService<Func<LauncherSettings>>(),

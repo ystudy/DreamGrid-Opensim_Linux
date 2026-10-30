@@ -220,6 +220,61 @@ public sealed class GridControllerWiringTests : IDisposable
     }
 
     [Fact]
+    public async Task SetUserLevel_runs_console_command_and_waits()
+    {
+        // Robust applies the console command on its own thread: the account shows its old level for a while.
+        foreach (var level in new int?[] { 50, 50, 50, 100 }) _robust.Levels.Enqueue(level);
+
+        var account = await _grid.SetUserLevelAsync("Gail", "Guest", 100, TestContext.Current.CancellationToken);
+
+        Assert.Equal(100, account.UserLevel);
+        Assert.Empty(_robust.Levels);
+        Assert.Equal(["set user level Gail Guest 100"], _http.Commands(_store.LoadOrCreate().RobustConsolePort));
+    }
+
+    [Fact]
+    public async Task SetUserLevel_takes_a_negative_level_for_a_suspension()
+    {
+        _robust.Levels.Enqueue(-1);
+
+        var account = await _grid.SetUserLevelAsync("Gail", "Guest", -1, TestContext.Current.CancellationToken);
+
+        Assert.Equal(-1, account.UserLevel);
+        Assert.Equal(["set user level Gail Guest -1"], _http.Commands(_store.LoadOrCreate().RobustConsolePort));
+    }
+
+    [Theory]
+    [InlineData("Ga il", "Guest")]
+    [InlineData("Gail", "")]
+    [InlineData("--Gail", "Guest")]
+    public async Task SetUserLevel_rejects_names_the_console_would_split(string first, string last)
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() => _grid.SetUserLevelAsync(first, last, 100, TestContext.Current.CancellationToken));
+        Assert.Empty(_http.Commands(_store.LoadOrCreate().RobustConsolePort));
+    }
+
+    [Fact]
+    public async Task SetUserLevel_throws_with_the_transcript_when_the_level_never_shows()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        _robust.Clock = time.GetUtcNow; // the account stays at level 200
+        var change = NewGrid(time).SetUserLevelAsync("Gail", "Guest", 100, ct);
+
+        var guard = DateTime.UtcNow.AddSeconds(60);
+        while (!change.IsCompleted && DateTime.UtcNow < guard)
+        {
+            time.Advance(TimeSpan.FromMilliseconds(100));
+            await Task.Delay(10, ct);
+        }
+
+        var e = await Assert.ThrowsAsync<InvalidOperationException>(() => change);
+        Assert.Contains("Gail Guest", e.Message);
+        Assert.Contains("100", e.Message);
+        Assert.Contains("Console:", e.Message);
+    }
+
+    [Fact]
     public async Task CreateOwner_gives_up_after_30_s_when_Robust_never_shows_the_account()
     {
         var ct = TestContext.Current.CancellationToken;

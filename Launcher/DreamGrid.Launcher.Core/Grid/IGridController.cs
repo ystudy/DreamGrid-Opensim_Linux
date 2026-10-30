@@ -26,6 +26,15 @@ public interface IGridController
     Task<RobustAccount> CreateOwnerAsync(string first, string last, string password, string? email, CancellationToken ct);
 
     /// <summary>
+    /// Gives the avatar called <paramref name="first"/> <paramref name="last"/> the user <paramref name="level"/> (Robust's console
+    /// <c>set user level</c>; −1 is a suspension) and waits until the account shows it. Throws <see cref="ArgumentException"/> for a
+    /// name the console would split, and <see cref="InvalidOperationException"/> (with the console transcript) when this computer
+    /// runs no grid service or the account does not show the level in time; <see cref="HttpRequestException"/> when the console
+    /// can't be reached (Robust isn't running).
+    /// </summary>
+    Task<RobustAccount> SetUserLevelAsync(string first, string last, int level, CancellationToken ct);
+
+    /// <summary>
     /// Makes the avatar called <paramref name="first"/> <paramref name="last"/> on the grid the estate owner, without a
     /// password: the grid service looks the name up, and the account's own spelling is saved as the owner. Throws
     /// <see cref="ArgumentException"/> in plain words when the grid has no such avatar, and

@@ -156,7 +156,7 @@ public sealed class StaffAccessTests
 
         // Home leads a supervisor to their own page, not the sign-in page.
         using var home = await client.GetAsync("/", Ct);
-        Assert.Equal("/profile/sessions", LocationPath(home));
+        Assert.Equal("/people", LocationPath(home));
     }
 
     private static async Task<HttpResponseMessage> LoginAsync(HttpClient client, string name, string url = "/login")
@@ -172,7 +172,7 @@ public sealed class StaffAccessTests
     }
 
     [Fact]
-    public async Task Supervisor_signs_in_and_lands_on_sessions()
+    public async Task Supervisor_signs_in_and_lands_on_people()
     {
         await using var f = Factory();
         var client = Client(f);
@@ -180,8 +180,8 @@ public sealed class StaffAccessTests
         using var r = await LoginAsync(client, "Test Supervisor", "/login?ReturnUrl=%2Flogs");
 
         Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
-        Assert.Equal("/profile/sessions", LocationPath(r));
-        await AssertOkAsync(client, "/profile/sessions");
+        Assert.Equal("/people", LocationPath(r));
+        await AssertOkAsync(client, "/people");
         var entry = Assert.Single(Audit(f), e => e.GetProperty("action").GetString() == "sign-in");
         Assert.Equal("supervisor", entry.GetProperty("role").GetString());
     }

@@ -7,7 +7,8 @@ using DreamGrid.Launcher.Core.Settings;
 
 namespace DreamGrid.Launcher.Core.OpenSim;
 
-public sealed record RobustAccount(Guid PrincipalId, string FirstName, string LastName, int UserLevel, string Email);
+/// <param name="Created">When the account was made (the reply's <c>Created</c> unix time); null when Robust gave none or an unusable one.</param>
+public sealed record RobustAccount(Guid PrincipalId, string FirstName, string LastName, int UserLevel, string Email, DateTimeOffset? Created = null);
 
 public interface IRobustClient
 {
@@ -67,7 +68,7 @@ public sealed class RobustClient(HttpClient http, Func<LauncherSettings> setting
         string Field(string name) => result.Element(name)?.Value.Trim() ?? "";
         if (!Guid.TryParse(Field("PrincipalID"), out var id)) return null;
         _ = int.TryParse(Field("UserLevel"), out var level);
-        return new RobustAccount(id, Field("FirstName"), Field("LastName"), level, Field("Email"));
+        return new RobustAccount(id, Field("FirstName"), Field("LastName"), level, Field("Email"), CreatedOf(Field("Created")));
     }
 
     public async Task<RobustAccount?> FindAccountAsync(string first, string last, CancellationToken ct)
@@ -91,8 +92,14 @@ public sealed class RobustClient(HttpClient http, Func<LauncherSettings> setting
             throw new InvalidDataException("The account service's reply has no readable PrincipalID.");
         if (!int.TryParse(Field("UserLevel"), System.Globalization.NumberStyles.AllowLeadingSign, System.Globalization.CultureInfo.InvariantCulture, out var level))
             throw new InvalidDataException("The account service's reply has no readable UserLevel.");
-        return new RobustAccount(id, Field("FirstName"), Field("LastName"), level, Field("Email"));
+        return new RobustAccount(id, Field("FirstName"), Field("LastName"), level, Field("Email"), CreatedOf(Field("Created")));
     }
+
+    /// <summary>The account's creation time from Robust's unix seconds; null for nothing, 0 (Robust's "unknown") or anything unreadable.</summary>
+    private static DateTimeOffset? CreatedOf(string seconds) =>
+        long.TryParse(seconds, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var s)
+            && s > 0 && s <= 253402300799 // the last second of year 9999
+            ? DateTimeOffset.FromUnixTimeSeconds(s) : null;
 
     public async Task<bool> AuthenticateAsync(Guid principal, string plainPassword, CancellationToken ct)
     {

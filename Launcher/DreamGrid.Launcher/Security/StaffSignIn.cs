@@ -60,8 +60,8 @@ public static class StaffSignIn
         return principal;
     }
 
-    /// <summary>Where a person lands after signing in: a supervisor has no dashboard (the People page arrives later).</summary>
-    public static string Home(StaffRole role) => role == StaffRole.Supervisor ? "/profile/sessions" : "/";
+    /// <summary>Where a person lands after signing in: a supervisor has no dashboard, so the People page.</summary>
+    public static string Home(StaffRole role) => role == StaffRole.Supervisor ? "/people" : "/";
 
     /// <summary>The role claims for <paramref name="role"/>: each role carries the ones below it.</summary>
     public static IEnumerable<string> RoleClaims(StaffRole role) => role switch

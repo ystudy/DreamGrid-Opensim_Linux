@@ -4,6 +4,7 @@
 @{
     var version = DreamGrid.Launcher.CommandLine.Version();
     var gridName = Settings().GridName;
+    var hasStaffPages = DreamGrid.Launcher.Core.Security.AdminRule.HasStaffPages(Settings());
     var path = Context.Request.Path.Value ?? "/";
     var enrolOnly = DreamGrid.Launcher.Security.TwoFactorGate.MustEnrol(Context);
     string Active(string prefix) => (prefix == "/" ? path == "/" : path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) ? " active" : "";
@@ -47,6 +48,15 @@
                         <a class="nav-link@(Active("/regions"))" href="/regions">Regions</a>
                         <a class="nav-link@(Active("/advanced"))" href="/advanced">Advanced</a>
                         <a class="nav-link@(Active("/logs"))" href="/logs">Logs</a>
+                    }
+                    // The Staff and People pages exist only where there are supervisors (not on a Region Server or a Connected Server).
+                    if (hasStaffPages)
+                    {
+                        <a class="nav-link@(Active("/people"))" href="/people">People</a>
+                        if (User.IsInRole(DreamGrid.Launcher.Security.AuthSchemes.OwnerRole))
+                        {
+                            <a class="nav-link@(Active("/staff"))" href="/staff">Staff</a>
+                        }
                     }
                     if (User.IsInRole(DreamGrid.Launcher.Security.AuthSchemes.OwnerRole))
                     {
