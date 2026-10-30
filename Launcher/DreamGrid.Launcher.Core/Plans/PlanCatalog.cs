@@ -186,7 +186,7 @@ public static class PlanCatalog
         var state = HypergridOn(s) ? "on" : "off";
         return s.Plan switch
         {
-            OwnerPlan.Connected => $"Hypergrid is {state} on {s.Connected?.GridName ?? s.GridName}; that grid decides.",
+            OwnerPlan.Connected => $"Hypergrid is {state} for {s.Connected?.GridName ?? s.GridName}; that grid decides.",
             OwnerPlan.RegionServer => $"Hypergrid is {state} for this grid; the Grid Asset Server decides.",
             _ => null,
         };

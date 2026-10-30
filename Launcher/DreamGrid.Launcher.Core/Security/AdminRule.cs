@@ -14,6 +14,13 @@ public static class AdminRule
     /// <summary>The account level that administers any plan.</summary>
     public const int AdminLevel = 200;
 
+    /// <summary>
+    /// The level to use for a command check: at least <see cref="AdminLevel"/> when the account may administer, else its
+    /// own level but never an administrator's (a level of 200 or more on another grid, refused above, must not pass).
+    /// </summary>
+    public static int EffectiveLevel(LauncherSettings s, RobustAccount account) =>
+        MayAdminister(s, account) ? Math.Max(account.UserLevel, AdminLevel) : Math.Min(account.UserLevel, AdminLevel - 1);
+
     /// <summary>Whether <paramref name="account"/> may administer under <paramref name="s"/>'s plan.</summary>
     public static bool MayAdminister(LauncherSettings s, RobustAccount account)
     {

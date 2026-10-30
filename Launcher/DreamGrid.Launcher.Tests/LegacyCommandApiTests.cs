@@ -126,6 +126,26 @@ public sealed class LegacyCommandApiTests
     }
 
     [Fact]
+    public async Task A_connected_servers_level_0_owner_is_an_administrator_and_a_level_250_stranger_is_not()
+    {
+        var ownerId = Guid.NewGuid();
+        _robust.Add("Estate", "Owner", 0, "estatepw", ownerId).Add("Far", "Admin", 250, "farpw");
+        _settings = _settings with
+        {
+            Plan = OwnerPlan.Connected,
+            Connected = new ConnectedGrid("osgrid", "OSGrid", "http://login.osgrid.org/", "http://login.osgrid.org/", "http://grid.osgrid.org/", null),
+            Setup = new SetupState(OwnerCreated: true, Finished: true, Owner: new OwnerInfo("Estate", "Owner", ownerId)),
+        };
+
+        Assert.StartsWith("NAK You do not have permission to StartRegion",
+            await Api().HandleAsync(Req("StartRegion", "Far Admin", "farpw", regionName: "Welcome"), Ct));
+        Assert.StartsWith("NAK You do not have permission to StopRobust", await Api().HandleAsync(Req("StopRobust", "Far Admin", "farpw"), Ct));
+        Assert.Empty(_grid.Snapshot());
+
+        Assert.Equal("ACK", await Api().HandleAsync(Req("StartRegion", "Estate Owner", "estatepw", regionName: "Welcome"), Ct));
+    }
+
+    [Fact]
     public async Task A_region_servers_level_0_estate_owner_is_an_administrator_and_other_level_0_avatars_are_not()
     {
         var ownerId = Guid.NewGuid();

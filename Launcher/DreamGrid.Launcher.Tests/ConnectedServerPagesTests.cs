@@ -173,7 +173,7 @@ public sealed class ConnectedServerPagesTests
         var refused = doc.QuerySelectorAll(".plan-refused li").Select(li => li.TextContent).ToList();
         Assert.Equal(4, refused.Count);
         Assert.All(refused, t => Assert.Contains('✘', t));
-        Assert.Contains("Hypergrid is on on OSGrid; that grid decides.", text);
+        Assert.Contains("Hypergrid is on for OSGrid; that grid decides.", text);
     }
 
     [Fact]
@@ -183,7 +183,7 @@ public sealed class ConnectedServerPagesTests
         using var client = await SignedInAsync(f);
 
         var doc = new HtmlParser().ParseDocument(await client.GetStringAsync("/advanced/network", Ct));
-        Assert.Contains("Hypergrid is on on OSGrid; that grid decides.", doc.QuerySelector("main")!.TextContent);
+        Assert.Contains("Hypergrid is on for OSGrid; that grid decides.", doc.QuerySelector("main")!.TextContent);
         Assert.Null(doc.QuerySelector("[name=Hypergrid]"));
     }
 }

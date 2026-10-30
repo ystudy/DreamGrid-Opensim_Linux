@@ -1897,7 +1897,7 @@ public sealed class SetupFlowTests
         var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/network", Ct));
 
         Assert.Null(page.QuerySelector("input[name=Hypergrid]"));
-        Assert.Contains("Hypergrid is on on OSGrid; that grid decides.", page.Body!.TextContent);
+        Assert.Contains("Hypergrid is on for OSGrid; that grid decides.", page.Body!.TextContent);
         Assert.True(page.QuerySelector("input[name=AddressKind][value=public]")!.HasAttribute("checked"));
         Assert.False(page.QuerySelector("input[name=AddressKind][value=lan]")!.HasAttribute("checked"));
         Assert.Equal(f.Store.LoadOrCreate().RegionPort.ToString(), page.QuerySelector("input[name=FirstRegionPort]")?.GetAttribute("value"));
@@ -1923,7 +1923,7 @@ public sealed class SetupFlowTests
 
         var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/network", Ct));
 
-        Assert.Contains("Hypergrid is off on OSGrid; that grid decides.", page.Body!.TextContent);
+        Assert.Contains("Hypergrid is off for OSGrid; that grid decides.", page.Body!.TextContent);
     }
 
     [Fact]
