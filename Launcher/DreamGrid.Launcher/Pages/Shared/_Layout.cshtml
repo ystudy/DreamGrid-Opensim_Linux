@@ -15,15 +15,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>@(ViewData["Title"] is string t ? t + " - " : "")@gridName</title>
-    <script>
-    // Bootstrap's dark theme follows the computer's setting; without JavaScript the page stays light.
-    (function () {
-        var dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)");
-        function apply() { document.documentElement.setAttribute("data-bs-theme", dark && dark.matches ? "dark" : "light"); }
-        apply();
-        if (dark && dark.addEventListener) dark.addEventListener("change", apply);
-    })();
-    </script>
+    <script src="/js/theme.js"></script>
     <link rel="stylesheet" href="/lib/bootstrap/bootstrap.min.css">
     <link rel="stylesheet" href="/css/site.css">
     @await RenderSectionAsync("Head", required: false)

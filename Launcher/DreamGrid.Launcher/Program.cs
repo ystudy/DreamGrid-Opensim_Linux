@@ -186,6 +186,8 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<BackgroundWork>())
 builder.Services.AddSingleton<OarJobs>();
 
 var app = builder.Build();
+// First, so static files, API answers and the plain-text replies carry the browser security headers too.
+app.UseMiddleware<SecurityHeaders>();
 app.UseStaticFiles();
 // Callers outside the owner's allow-list get 404 before anything reads their cookie.
 app.UseMiddleware<AdminNetworkFilter>();

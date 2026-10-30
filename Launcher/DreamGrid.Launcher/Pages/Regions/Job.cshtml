@@ -17,7 +17,7 @@
     <p class="notice alert alert-info py-2" role="status">@Model.Notice</p>
 }
 
-<div id="oar-job">
+<div id="oar-job" data-job-url="/api/regions/@Model.Id/job">
     @if (Model.Job.Running)
     {
         <p><strong>Stage:</strong> <span id="job-stage">@Model.Job.Stage</span></p>
@@ -52,16 +52,6 @@ else
 @section Scripts {
 @if (Model.Job.Running)
 {
-    <script>
-    (function () {
-        poll("/api/regions/@Model.Id/job", 2000, function (job) {
-            // Finished or failed: the page itself shows the result.
-            if (!job.running) { window.location.reload(); return; }
-            document.getElementById("job-stage").textContent = job.stage;
-            document.getElementById("job-written").textContent = job.writtenText || "";
-            document.getElementById("job-elapsed").textContent = job.elapsedText;
-        });
-    })();
-    </script>
+    <script src="/js/job.js"></script>
 }
 }
