@@ -110,19 +110,7 @@ public abstract class OtherGridControllerRig : IAsyncLifetime
                 Path.Combine(program, "config-include", "Proto", "Robust", f));
     }
 
-    private static int[] FreePorts(int count)
-    {
-        var ls = new List<TcpListener>();
-        while (ls.Count < count)
-        {
-            var l = new TcpListener(IPAddress.Any, 0);
-            l.Start();
-            ls.Add(l);
-        }
-        var ports = ls.Select(l => ((IPEndPoint)l.LocalEndpoint).Port).ToArray();
-        foreach (var l in ls) l.Stop();
-        return ports;
-    }
+    private static int[] FreePorts(int count) => TestPorts.Free(count);
 
     /// <summary>A free port for a stand-in to serve on, never one the settings already hold.</summary>
     private int StandInPort()

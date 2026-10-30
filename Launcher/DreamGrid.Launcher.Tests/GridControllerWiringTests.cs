@@ -96,19 +96,7 @@ public sealed class GridControllerWiringTests : IDisposable
     /// <summary>Every port the settings hold; a stand-in's own port must not be one of them, or starting reports a port conflict.</summary>
     private readonly int[] _ports;
 
-    private static int[] FreePorts(int count)
-    {
-        var ls = new List<TcpListener>();
-        while (ls.Count < count)
-        {
-            var l = new TcpListener(IPAddress.Any, 0);
-            l.Start();
-            ls.Add(l);
-        }
-        var ports = ls.Select(l => ((IPEndPoint)l.LocalEndpoint).Port).ToArray();
-        foreach (var l in ls) l.Stop();
-        return ports;
-    }
+    private static int[] FreePorts(int count) => TestPorts.Free(count);
 
     /// <summary>A free port for a stand-in to serve on, never one the settings already hold (a released port can be handed out again).</summary>
     private int StandInPort()
