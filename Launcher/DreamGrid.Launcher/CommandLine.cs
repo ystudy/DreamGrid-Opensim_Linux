@@ -210,7 +210,18 @@ public static class CommandLine
             output.WriteLine($"The data folder {dataDir} does not exist. Pass --data <folder> if the grid keeps its data elsewhere.");
             return 2;
         }
-        if (foreignDataOwner(dataDir) is { } account)
+        string? account;
+        try
+        {
+            account = foreignDataOwner(dataDir);
+        }
+        catch (DataOwnerUnknownException)
+        {
+            output.WriteLine($"The owner of {dataDir} couldn't be read, so this command won't run as root; run the command as the account that owns the data folder:");
+            output.WriteLine($"sudo runuser -u dreamgrid -- {SameCommand(args)}");
+            return 2;
+        }
+        if (account is not null)
         {
             output.WriteLine($"Run this as {account}, the account that owns {dataDir}, so the grid can still read what it changes:");
             output.WriteLine($"sudo runuser -u {account} -- {SameCommand(args)}");
@@ -313,33 +324,67 @@ public static class CommandLine
     }
 
     /// <summary>
-    /// The name of the account that owns <paramref name="dataDir"/> when this process runs as another one (on Unix: its effective
-    /// user, root under sudo, say, is not the folder's owner); null when it is the same account, on Windows, or when the owner
-    /// can't be found out.
+    /// The name of the account that owns <paramref name="dataDir"/> (the folder a symlink points to) when this process runs as
+    /// another one (on Unix: its effective user, root under sudo, say, is not the folder's owner); null when it is the same
+    /// account, or on Windows. When the owner can't be found out, root gets <see cref="DataOwnerUnknownException"/> (root never
+    /// owns the data folder, so it must not write there on a guess) and any other account null.
     /// </summary>
-    public static string? ForeignDataOwner(string dataDir)
+    public static string? ForeignDataOwner(string dataDir) =>
+        OperatingSystem.IsWindows() ? null : ForeignDataOwner(dataDir, FolderOwner, EffectiveUid());
+
+    /// <summary>
+    /// <see cref="ForeignDataOwner(string)"/> with the folder's owner (<paramref name="folderOwner"/>: uid and name, or null when
+    /// it can't be read) and this process's effective uid given (null when unknown: then the account names are compared).
+    /// </summary>
+    public static string? ForeignDataOwner(string dataDir, Func<string, (uint Uid, string Name)?> folderOwner, uint? effectiveUid)
     {
-        if (OperatingSystem.IsWindows()) return null;
+        if (folderOwner(dataDir) is not { } owner) return effectiveUid == 0 ? throw new DataOwnerUnknownException(dataDir) : null;
+        if (effectiveUid is { } me ? owner.Uid == me : owner.Name == Environment.UserName) return null;
+        return owner.Name is "" or "UNKNOWN" ? owner.Uid.ToString(CultureInfo.InvariantCulture) : owner.Name; // an account with no name: its number
+    }
+
+    /// <summary>
+    /// The uid and name of the account that owns <paramref name="dir"/>, following a symlink (<c>stat -L</c>), or null when that
+    /// can't be read within 5 seconds.
+    /// </summary>
+    private static (uint Uid, string Name)? FolderOwner(string dir)
+    {
         try
         {
             using var stat = Process.Start(new ProcessStartInfo("stat")
             {
-                ArgumentList = { "-c", "%u %U", "--", dataDir },
+                ArgumentList = { "-L", "-c", "%u %U", "--", dir },
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
             });
             if (stat is null) return null;
-            var line = stat.StandardOutput.ReadToEnd().Trim();
-            if (!stat.WaitForExit(5000) || stat.ExitCode != 0) return null;
-            var parts = line.Split(' ', 2);
-            if (parts.Length != 2 || !uint.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out var ownerUid)) return null;
-            if (ownerUid == GetEffectiveUid()) return null;
-            return parts[1] is "" or "UNKNOWN" ? parts[0] : parts[1]; // an account with no name: its number
+            // Both pipes are read at once, so a full one can't stall stat, and nothing waits past the timeout.
+            var stdout = stat.StandardOutput.ReadToEndAsync();
+            var stderr = stat.StandardError.ReadToEndAsync();
+            if (!stat.WaitForExit(5000) || !Task.WhenAll(stdout, stderr).Wait(1000))
+            {
+                try { stat.Kill(); } catch (InvalidOperationException) { }
+                return null;
+            }
+            if (stat.ExitCode != 0) return null;
+            var parts = stdout.Result.Trim().Split(' ', 2);
+            if (parts.Length != 2 || !uint.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out var uid)) return null;
+            return (uid, parts[1]);
         }
-        catch (Exception e) when (e is Win32Exception or InvalidOperationException or DllNotFoundException or EntryPointNotFoundException)
+        catch (Exception e) when (e is Win32Exception or InvalidOperationException)
         {
             return null;
+        }
+    }
+
+    /// <summary>This process's effective uid; without libc's geteuid, 0 for root and otherwise null.</summary>
+    private static uint? EffectiveUid()
+    {
+        try { return GetEffectiveUid(); }
+        catch (Exception e) when (e is DllNotFoundException or EntryPointNotFoundException)
+        {
+            return Environment.IsPrivilegedProcess ? 0 : null;
         }
     }
 
@@ -404,4 +449,14 @@ public static class CommandLine
         var i = Array.IndexOf(args, name);
         return i >= 0 && i < args.Length - 1 ? args[i + 1] : null;
     }
+}
+
+/// <summary>
+/// The account that owns the data folder couldn't be found out while this process runs as root, which is never the account
+/// that owns it: a verb that writes in the folder refuses rather than leave root's files behind.
+/// </summary>
+public sealed class DataOwnerUnknownException(string dataDir)
+    : Exception($"The owner of {dataDir} couldn't be read.")
+{
+    public string DataDir { get; } = dataDir;
 }

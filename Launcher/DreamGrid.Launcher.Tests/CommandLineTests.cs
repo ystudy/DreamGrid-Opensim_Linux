@@ -484,6 +484,87 @@ public class CommandLineTests : IDisposable
         Assert.Null(CommandLine.ForeignDataOwner(DataDir));
     }
 
+    [Fact]
+    public void Root_refuses_when_the_folders_owner_cannot_be_read()
+    {
+        // Root is never the account that owns the data folder: not knowing the owner is no reason to write as root.
+        var e = Assert.Throws<DataOwnerUnknownException>(() => CommandLine.ForeignDataOwner("/var/lib/dreamgrid", _ => null, effectiveUid: 0));
+        Assert.Equal("/var/lib/dreamgrid", e.DataDir);
+    }
+
+    [Fact]
+    public void Another_account_goes_on_when_the_folders_owner_cannot_be_read()
+    {
+        Assert.Null(CommandLine.ForeignDataOwner("/var/lib/dreamgrid", _ => null, effectiveUid: 1000));
+    }
+
+    [Fact]
+    public void Without_the_uid_the_owner_check_compares_names()
+    {
+        Assert.Null(CommandLine.ForeignDataOwner("/data", _ => (999u, Environment.UserName), effectiveUid: null));
+        Assert.Equal("someone-else", CommandLine.ForeignDataOwner("/data", _ => (999u, "someone-else"), effectiveUid: null));
+    }
+
+    [Theory]
+    [InlineData(0u, 999u, "dreamgrid", "dreamgrid")]
+    [InlineData(999u, 999u, "dreamgrid", null)]
+    [InlineData(0u, 1234u, "UNKNOWN", "1234")]
+    public void The_owner_check_compares_uids(uint me, uint owner, string name, string? expected)
+    {
+        Assert.Equal(expected, CommandLine.ForeignDataOwner("/data", _ => (owner, name), me));
+    }
+
+    [Fact]
+    public async Task Reset_two_factor_refuses_when_the_folders_owner_cannot_be_read()
+    {
+        NewStoreWithOwner();
+        Enrol(Owner, "Olive Owner");
+        var before = File.ReadAllBytes(TwoFactorFile);
+
+        var (code, output) = await RunAsync(dir => throw new DataOwnerUnknownException(dir), "reset-two-factor", "--data", DataDir);
+
+        Assert.Equal(2, code);
+        Assert.Contains($"The owner of {DataDir} couldn't be read", output);
+        Assert.Contains("run the command as the account that owns the data folder", output);
+        Assert.Contains("sudo runuser -u dreamgrid -- ", output);
+        Assert.Equal(before, File.ReadAllBytes(TwoFactorFile));
+    }
+
+    [Fact]
+    [SupportedOSPlatform("linux")]
+    public void The_real_owner_check_finds_another_owner_through_a_symlink()
+    {
+        Assert.SkipUnless(OperatingSystem.IsLinux(), "Linux only");
+        Directory.CreateDirectory(_root);
+        string target;
+        string expected;
+        if (Environment.UserName == "root")
+        {
+            // CI runs as root: hand a folder to nobody (65534).
+            target = Path.Combine(_root, "theirs");
+            Directory.CreateDirectory(target);
+            using (var chown = Process.Start(new ProcessStartInfo("chown") { ArgumentList = { "65534", target } })!)
+            {
+                chown.WaitForExit();
+                Assert.Equal(0, chown.ExitCode);
+            }
+            expected = CommandLine.ForeignDataOwner(target) ?? "";
+            Assert.NotEqual("", expected);
+            Assert.NotEqual("root", expected);
+        }
+        else
+        {
+            target = "/";
+            expected = "root";
+            Assert.Equal("root", CommandLine.ForeignDataOwner(target));
+        }
+        // A symlinked --data is judged by the folder it points to, not by the link (which this account owns).
+        var link = Path.Combine(_root, "link");
+        Directory.CreateSymbolicLink(link, target);
+
+        Assert.Equal(expected, CommandLine.ForeignDataOwner(link));
+    }
+
     /// <summary>Takes this account's read (or write) access away from a file or folder until disposed: an ACL deny rule on Windows, the mode on Unix.</summary>
     private sealed class NoAccess : IDisposable
     {
