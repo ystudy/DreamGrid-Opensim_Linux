@@ -182,11 +182,14 @@ Ok "DreamGrid $v1 in $app; service running as NT SERVICE\DreamGrid on dotnet $($
 $script:stage = 'installsmoke'
 # sc.exe returns while the service is still stopping or starting; wait for the state, as systemctl does on Debian.
 # "Stopped" is reported before the service's own process has exited, and starting it again at once can fail with
-# 1053; the stop also waits for that process. Encoded, so cmd.exe and .NET argument quoting leave it alone.
+# 1053; the stop also waits (up to 60 s) for that process. A poll, not Wait-Process: that one fails the command
+# when the process has already gone. Encoded, so cmd.exe and .NET argument quoting leave it alone.
 $stopScript = '$ProgressPreference = ''SilentlyContinue''; ' +
     '$p = (Get-CimInstance Win32_Service | Where-Object Name -eq DreamGrid).ProcessId; ' +
     'Stop-Service DreamGrid -ErrorAction Stop; (Get-Service DreamGrid).WaitForStatus(''Stopped'', ''00:01:00''); ' +
-    'if ($p) { Wait-Process -Id $p -Timeout 60 -ErrorAction SilentlyContinue }'
+    '$deadline = (Get-Date).AddSeconds(60); ' +
+    'while ($p -and (Get-Process -Id $p -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 200 }; ' +
+    'exit 0'
 $stop = "powershell.exe -NoProfile -EncodedCommand $([Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($stopScript)))"
 $start = "sc.exe start DreamGrid && powershell.exe -NoProfile -Command (Get-Service DreamGrid).WaitForStatus('Running','00:01:00')"
 & $command.Dotnet $smokeDll --url http://127.0.0.1:8001 --setup-link $link --data $data --robust-port 8002 --stop $stop --start $start |
