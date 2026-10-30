@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using DreamGrid.Launcher.Core.Grid;
+using DreamGrid.Launcher.Core.Logs;
 using DreamGrid.Launcher.Core.Modules;
 using DreamGrid.Launcher.Core.OpenSim;
 using DreamGrid.Launcher.Core.Security;
@@ -23,6 +24,7 @@ public sealed class LegacyCommandApi(
     Func<LauncherSettings> settings,
     IEnumerable<IFeatureModule> modules,
     LoginThrottle throttle,
+    AuditLog audit,
     ILogger<LegacyCommandApi> log)
 {
     public const int MachineLevel = 1000;
@@ -39,31 +41,45 @@ public sealed class LegacyCommandApi(
             return $"NAK Unknown command {r.Command}";
 
         var needed = command.MinLevel == AdminLevel ? settings().Security.AdminLevel : command.MinLevel;
-        if (needed > 0 && await LevelAsync(r, caller, ct) < needed)
+        var who = command.MinLevel > 0 ? await CallerAsync(r, caller, ct) : null;
+        if (who is not null && who.Level < needed)
             return $"NAK You do not have permission to {command.Name}";
 
+        string reply;
         try
         {
-            return await command.Run(r, ct);
+            reply = await command.Run(r, ct);
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
-            return "NAK " + e.Message;
+            reply = "NAK " + e.Message;
         }
+
+        // A command that needed a level and ran: who, what, how it ended. The target is the command, never the request's own text.
+        if (who is not null)
+            audit.Write(new AuditEntry(who.Actor, who.ActorId, who.Role, caller?.ToString(), "command", command.Name,
+                reply.StartsWith("NAK", StringComparison.Ordinal) ? "NAK" : "ACK"));
+        return reply;
     }
 
+    /// <summary>Who made a command request: the level they get, and how the audit log names them.</summary>
+    private sealed record Caller(int Level, string Actor, Guid? ActorId, string Role);
+
+    private static readonly Caller Nobody = new(0, "", null, "none");
+
     /// <summary>1000 for the MachineId; else the level of the avatar ("First Last") whose password matches; else 0.</summary>
-    private async Task<int> LevelAsync(LegacyRequest r, IPAddress? caller, CancellationToken ct)
+    private async Task<Caller> CallerAsync(LegacyRequest r, IPAddress? caller, CancellationToken ct)
     {
-        if (string.IsNullOrEmpty(r.Password)) return 0;
-        if (FixedEquals(r.Password, settings().MachineId)) return MachineLevel;
+        if (string.IsNullOrEmpty(r.Password)) return Nobody;
+        // The literal word, never the value.
+        if (FixedEquals(r.Password, settings().MachineId)) return new Caller(MachineLevel, "MachineId", null, "machine");
 
         var name = AvatarName.Parse(r.Avatar);
-        if (!name.IsComplete) return 0;
+        if (!name.IsComplete) return Nobody;
         if (throttle.IsLocked(name.Key, caller))
         {
             log.LogInformation("Avatar check for first name {First} refused: too many failed attempts.", name.ForLog);
-            return 0;
+            return Nobody;
         }
         try
         {
@@ -71,19 +87,20 @@ public sealed class LegacyCommandApi(
             if (account is null || !await robust.AuthenticateAsync(account.PrincipalId, r.Password, ct))
             {
                 throttle.RecordFailure(name.Key, caller);
-                return 0;
+                return Nobody;
             }
             throttle.RecordSuccess(name.Key);
             // A Region Server's or Connected Server's estate owner is level 0 on the other grid but administers here; on a
             // Connected Server a higher level on that grid counts for nothing.
-            return AdminRule.EffectiveLevel(settings(), account);
+            return new Caller(AdminRule.EffectiveLevel(settings(), account), $"{account.FirstName} {account.LastName}",
+                account.PrincipalId, AdminRule.RoleOf(settings(), account).AuditName());
         }
         catch (Exception e) when (!ct.IsCancellationRequested)
         {
             // Robust down, slow (HttpClient timeout) or answering garbage: nobody but the MachineId gets in.
             // Only the exception type is logged: messages could echo the request.
             log.LogWarning("Avatar check against Robust failed ({Error}); treating the caller as level 0.", e.GetType().Name);
-            return 0;
+            return Nobody;
         }
     }
 

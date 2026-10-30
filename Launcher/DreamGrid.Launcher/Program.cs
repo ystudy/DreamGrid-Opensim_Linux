@@ -135,6 +135,7 @@ builder.Services.AddGrid(paths, store);
 // Robust's map tiles, fetched on the browser's behalf (the browser never reaches Robust's port).
 builder.Services.AddHttpClient(RegionsApi.RobustMapClient, c => c.Timeout = TimeSpan.FromSeconds(5));
 builder.Services.AddSingleton<LogReader>();
+builder.Services.AddSingleton(sp => new AuditLog(Path.Combine(paths.Logs, "audit.log"), sp.GetRequiredService<TimeProvider>()));
 builder.Services.AddSingleton(sp => new LoginThrottle(sp.GetRequiredService<TimeProvider>(),
     Path.Combine(paths.Security, "throttle.json"), sp.GetRequiredService<ILogger<LoginThrottle>>()));
 builder.Services.AddSingleton<LegacyCommandApi>();
@@ -160,6 +161,7 @@ builder.Services.AddSingleton<OarJobs>();
 var app = builder.Build();
 app.UseStaticFiles();
 app.UseAuthentication();
+app.UseMiddleware<AuditMiddleware>();
 app.UseMiddleware<SetupGate>();
 app.UseAuthorization();
 LegacyEndpoints.Map(app);

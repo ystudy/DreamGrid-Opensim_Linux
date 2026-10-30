@@ -4,6 +4,7 @@ using System.Xml;
 using DreamGrid.Launcher.Core.Api;
 using DreamGrid.Launcher.Core.Config;
 using DreamGrid.Launcher.Core.Grid;
+using DreamGrid.Launcher.Core.Logs;
 using DreamGrid.Launcher.Core.Modules;
 using DreamGrid.Launcher.Core.Processes;
 using DreamGrid.Launcher.Core.OpenSim;
@@ -15,7 +16,7 @@ using Xunit;
 
 namespace DreamGrid.Launcher.Tests;
 
-public sealed class LegacyCommandApiTests
+public sealed class LegacyCommandApiTests : IDisposable
 {
     private const string MachineId = "machine-id-0123456789abcdef";
     private static readonly Guid RegionUuid = Guid.Parse("6f1f0000-0000-0000-0000-00000000aaaa");
@@ -35,17 +36,83 @@ public sealed class LegacyCommandApiTests
     private readonly ConcurrentQueue<(LogLevel Level, string Category, string Message)> _logs = new();
     private readonly FakeTimeProvider _time = new();
     private readonly LoginThrottle _throttle;
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "dg-cmd-" + Guid.NewGuid().ToString("N"));
+    private readonly AuditLog _audit;
 
     public LegacyCommandApiTests()
     {
         _throttle = new LoginThrottle(_time, null);
+        _audit = new AuditLog(Path.Combine(_dir, "audit.log"), _time);
         _grid.SettingsSource = () => _settings;
+    }
+
+    public void Dispose()
+    {
+        _audit.Dispose();
+        try { Directory.Delete(_dir, true); } catch (IOException) { }
+    }
+
+    /// <summary>The audit log's entries so far (the log keeps the file open for writing).</summary>
+    private List<JsonElement> AuditEntries()
+    {
+        var path = Path.Combine(_dir, "audit.log");
+        if (!File.Exists(path)) return [];
+        using var s = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        return new StreamReader(s).ReadToEnd().Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(l => JsonDocument.Parse(l).RootElement.Clone()).ToList();
+    }
+
+    [Fact]
+    public async Task A_command_that_ran_is_audited_with_the_avatar_and_never_the_password()
+    {
+        var caller = System.Net.IPAddress.Parse("10.2.3.4");
+
+        await Api().HandleAsync(Req("StopRobust", "God Owner", "godpw"), caller, Ct);
+
+        var entry = Assert.Single(AuditEntries());
+        Assert.Equal("command", entry.GetProperty("action").GetString());
+        Assert.Equal("God Owner", entry.GetProperty("actor").GetString());
+        Assert.Equal("admin", entry.GetProperty("role").GetString());
+        Assert.Equal("StopRobust", entry.GetProperty("target").GetString());
+        Assert.Equal("ACK", entry.GetProperty("result").GetString());
+        Assert.Equal("10.2.3.4", entry.GetProperty("ip").GetString());
+        Assert.DoesNotContain("godpw", ReadAudit());
+    }
+
+    private string ReadAudit()
+    {
+        using var s = new FileStream(Path.Combine(_dir, "audit.log"), FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        return new StreamReader(s).ReadToEnd();
+    }
+
+    [Fact]
+    public async Task A_command_run_with_the_MachineId_is_audited_by_the_word_never_the_value()
+    {
+        await Api().HandleAsync(Req("stopmysql", password: MachineId), null, Ct);
+
+        var entry = Assert.Single(AuditEntries());
+        Assert.Equal("MachineId", entry.GetProperty("actor").GetString());
+        Assert.Equal("machine", entry.GetProperty("role").GetString());
+        Assert.Equal(JsonValueKind.Null, entry.GetProperty("actorId").ValueKind);
+        Assert.Equal("StopMysql", entry.GetProperty("target").GetString());
+        Assert.DoesNotContain(MachineId, ReadAudit());
+    }
+
+    [Fact]
+    public async Task Refused_and_open_commands_are_not_audited()
+    {
+        await Api().HandleAsync(Req("StopRobust", "Diva Admin", "divapw"), null, Ct); // level 100: refused
+        await Api().HandleAsync(Req("StopRobust", "God Owner", "wrong"), null, Ct);
+        await Api().HandleAsync(Req("RegionStatus"), null, Ct); // needs no level
+        await Api().HandleAsync(Req("regionlist"), null, Ct);
+
+        Assert.Empty(AuditEntries());
     }
 
     private LegacyCommandApi Api(params IFeatureModule[] modules) => Api(_robust, modules);
 
     private LegacyCommandApi Api(IRobustClient robust, params IFeatureModule[] modules) =>
-        new(_grid, robust, () => _settings, modules, _throttle,
+        new(_grid, robust, () => _settings, modules, _throttle, _audit,
             LoggerFactory.Create(b => b.AddProvider(new CapturingLoggerProvider(_logs))).CreateLogger<LegacyCommandApi>());
 
     private static LegacyRequest Req(string command, string? avatar = null, string? password = null,

@@ -162,11 +162,23 @@ public sealed class LogReaderTests : IDisposable
     [Fact]
     public void Sources_lists_region_only_when_a_region_exists()
     {
-        Assert.Equal(["launcher", "robust", "database"], Reader().Sources());
+        Assert.Equal(["launcher", "robust", "database", "audit"], Reader().Sources());
 
         _settings = _settings with { Programs = TestSettings.ProgramFor(new RegionSettings("r1", "Home", Guid.Empty)), Regions = [new RegionSettings("r1", "Home", Guid.NewGuid())] };
 
-        Assert.Equal(["launcher", "robust", "region-r1", "database"], Reader().Sources());
+        Assert.Equal(["launcher", "robust", "region-r1", "database", "audit"], Reader().Sources());
+    }
+
+    [Fact]
+    public void Lists_audit_source()
+    {
+        File.WriteAllLines(LogFile("audit.log"), ["{\"action\":\"sign-in\"}", "{\"action\":\"request\"}"]);
+
+        Assert.Contains("audit", Reader().Sources());
+        var tail = Reader().Tail("audit");
+
+        Assert.Equal("audit", tail.Source);
+        Assert.Equal(["{\"action\":\"sign-in\"}", "{\"action\":\"request\"}"], tail.Lines);
     }
 
     [Fact]
@@ -174,7 +186,7 @@ public sealed class LogReaderTests : IDisposable
     {
         _settings = _settings with { Programs = [new ProgramSettings("Home", 8004, 8011), new ProgramSettings("Isle", 8006, 8012)] };
 
-        Assert.Equal(["launcher", "robust", "region-Home", "region-Isle", "database"], Reader().Sources());
+        Assert.Equal(["launcher", "robust", "region-Home", "region-Isle", "database", "audit"], Reader().Sources());
     }
 
     [Fact]

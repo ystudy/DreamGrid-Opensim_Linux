@@ -1,3 +1,4 @@
+using DreamGrid.Launcher.Core.Logs;
 using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Core.OpenSim;
 using DreamGrid.Launcher.Core.Settings;
@@ -11,7 +12,7 @@ namespace DreamGrid.Launcher.Pages;
 /// Signs in with the avatar name and password. Only an administrator gets in (<see cref="AdminRule"/>: the admin level or more (200 unless changed), or the estate owner on a Region Server; only the estate owner on a Connected Server), and every
 /// failure shows the same message so the page does not reveal which names exist. The password is never logged.
 /// </summary>
-public sealed class LoginModel(IRobustClient robust, Func<LauncherSettings> settings, LoginThrottle throttle, ILogger<LoginModel> log) : PageModel
+public sealed class LoginModel(IRobustClient robust, Func<LauncherSettings> settings, LoginThrottle throttle, AuditLog audit, ILogger<LoginModel> log) : PageModel
 {
     private const string Generic = "Name or password is wrong, or this avatar is not an administrator.";
 
@@ -59,6 +60,9 @@ public sealed class LoginModel(IRobustClient robust, Func<LauncherSettings> sett
         if (!ok) return Fail(name);
 
         throttle.RecordSuccess(name.Key);
+        audit.Write(new AuditEntry($"{account!.FirstName} {account.LastName}", account.PrincipalId,
+            AdminRule.RoleOf(settings(), account).AuditName(), HttpContext.Connection.RemoteIpAddress?.ToString(),
+            "sign-in", null, "ok"));
         await AdminSignIn.SignInAsync(HttpContext, account!.FirstName, account.LastName, account.PrincipalId);
         return LocalRedirect(Url.IsLocalUrl(ReturnUrl) ? ReturnUrl! : "/");
     }
@@ -68,6 +72,8 @@ public sealed class LoginModel(IRobustClient robust, Func<LauncherSettings> sett
         throttle.RecordFailure(name.Key, HttpContext.Connection.RemoteIpAddress);
         // Only the cleaned first name: the rest could be a password typed into the wrong field.
         log.LogInformation("Sign-in: a sign-in for first name {First} was refused", name.ForLog);
+        audit.Write(new AuditEntry(name.ForLog, null, StaffRole.None.AuditName(),
+            HttpContext.Connection.RemoteIpAddress?.ToString(), "sign-in-refused", null, "refused"));
         Error = Generic;
         return Page();
     }
