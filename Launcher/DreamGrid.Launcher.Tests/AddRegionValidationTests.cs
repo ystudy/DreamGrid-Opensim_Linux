@@ -26,7 +26,7 @@ public sealed class AddRegionValidationTests : IDisposable
             Regions = [new RegionSettings("Home", "Home", Guid.NewGuid(), 1000, 1000, UdpPort: 8004)],
         });
         _grid = new GridController(_paths, _store, new MariaDbBinaries("mariadbd", "install-db", null),
-            [new LogLevelModule()], new NoRobust(), new FakeGridJoin(), new NoHttp(), TimeProvider.System);
+            [new LogLevelModule()], new NoRobust(), new FakeGridJoin(), new FakeOtherGrid(), new NoHttp(), TimeProvider.System);
     }
 
     public void Dispose()

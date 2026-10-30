@@ -34,12 +34,13 @@ public sealed record NewRegion(string Name, int X, int Y, int Size, string Conte
 /// <see cref="ComputeLoginsEnabled"/>. <see cref="StartFailure"/> is the last failed start, cleared by a successful one.
 /// <see cref="RobustOutdated"/>: Robust runs with a world name other than the saved one (the world was named while it
 /// started); restarting it applies the name. <see cref="RunsRobust"/> is false on a plan that uses another computer's grid
-/// service (a Region Server): <see cref="Robust"/> then describes the Grid Asset Server at <see cref="GridAssetHost"/>,
-/// Running when its last check answered, Failed when it didn't and Stopped before the first check.
+/// service (a Region Server or a Connected Server): <see cref="Robust"/> then describes that grid service at
+/// <see cref="OtherGridAddress"/> (the Grid Asset Server's <c>host:port</c>, or the other grid's address), Running when
+/// its last check answered, Failed when it didn't and Stopped before the first check.
 /// </summary>
 public sealed record GridStatus(ComponentStatus Database, ComponentStatus Robust, IReadOnlyList<ProgramStatus> Programs,
     IReadOnlyList<RegionStatus> Regions, bool LoginsEnabled, string LoginUri, StartFailure? StartFailure = null,
-    GridActivity Activity = GridActivity.None, bool RobustOutdated = false, bool RunsRobust = true, string? GridAssetHost = null)
+    GridActivity Activity = GridActivity.None, bool RobustOutdated = false, bool RunsRobust = true, string? OtherGridAddress = null)
 {
     /// <summary>
     /// True when at least one region counts and every counted region runs with logins enabled; parked regions and

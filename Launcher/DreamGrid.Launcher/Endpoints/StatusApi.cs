@@ -157,7 +157,7 @@ public static class StatusApi
     private static ComponentView RobustView(GridStatus s, LauncherSettings? settings)
     {
         if (s.RunsRobust) return View(s.Robust, "Grid service");
-        var address = settings?.Join is { } join ? $"{join.Host}:{join.PublicPort}" : s.GridAssetHost ?? "";
+        var address = settings?.Join is { } join ? $"{join.Host}:{join.PublicPort}" : s.OtherGridAddress ?? "";
         return View(s.Robust, "Grid Asset Server") with { Detail = address };
     }
 

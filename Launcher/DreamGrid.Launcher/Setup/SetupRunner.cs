@@ -64,10 +64,10 @@ public sealed class SetupRunner(
 
     /// <summary>
     /// Starts the database, then the grid service, when they are not running; each start is reported first. A grid
-    /// service that started before the world was named restarts, so it says the new name. On a Region Server, which has
-    /// no grid service of its own, a database that isn't running or a Grid Asset Server not known to answer starts the
-    /// grid instead: that reads the join information again, and throws <see cref="GridAssetUnreachableException"/> when
-    /// the Grid Asset Server doesn't answer.
+    /// service that started before the world was named restarts, so it says the new name. On a plan with no grid service
+    /// of its own (a Region Server or a Connected Server), a database that isn't running or another grid not known to
+    /// answer starts the grid instead: that reads the other grid's information again, and throws a
+    /// <see cref="GridUnreachableException"/> when that grid doesn't answer.
     /// </summary>
     public async Task EnsureGridAsync(IProgress<string>? stages, CancellationToken ct)
     {
@@ -123,7 +123,7 @@ public sealed class SetupRunner(
     /// The avatar step on a Region Server: starts what the grid still needs, then makes the existing avatar called
     /// <paramref name="first"/> <paramref name="last"/> on the Grid Asset Server the owner of this computer's regions;
     /// null, without touching the grid, while another request is already doing it (a double submit). Throws
-    /// <see cref="ArgumentException"/> when there is no such avatar and <see cref="GridAssetUnreachableException"/> when
+    /// <see cref="ArgumentException"/> when there is no such avatar and <see cref="GridUnreachableException"/> when
     /// the Grid Asset Server doesn't answer; both messages are for the owner.
     /// </summary>
     public async Task<RobustAccount?> TrySetEstateOwnerAsync(string first, string last, CancellationToken ct)
@@ -165,8 +165,8 @@ public sealed class SetupRunner(
             // The headline stays plain newcomer text; the technical message leads the details, above the log lines.
             var where = stage == "" ? "" : $" It stopped at \"{stage}\".";
             var excerpt = Excerpt();
-            // A Grid Asset Server that doesn't answer, or isn't one this computer can join, is said as is: the owner can act on it.
-            var headline = e is GridAssetUnreachableException or GridJoinException ? e.Message : PortConflictText(e);
+            // A grid service on another computer that doesn't answer, or isn't one this computer can use, is said as is: the owner can act on it.
+            var headline = e is GridUnreachableException or GridJoinException ? e.Message : PortConflictText(e);
             progress.Fail(headline ?? $"Your region could not be set up.{where} Check the details, then try again.",
                 excerpt is null ? e.Message : e.Message + "\n\n" + excerpt);
         }

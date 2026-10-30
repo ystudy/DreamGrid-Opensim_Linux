@@ -70,7 +70,7 @@ public sealed class JoinModel(IGridController grid, Func<LauncherSettings> setti
             {
                 await grid.SetEstateOwnerAsync(owner.FirstName, owner.LastName, ct);
             }
-            catch (Exception e) when (e is ArgumentException or GridAssetUnreachableException)
+            catch (Exception e) when (e is ArgumentException or GridUnreachableException)
             {
                 return Refuse(before, read,
                     e is ArgumentException ? e.Message + " Create your avatar on that grid first, then try again." : e.Message);

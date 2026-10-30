@@ -394,6 +394,30 @@ internal sealed class FakeGridJoin : IGridJoinClient
     }
 }
 
+/// <summary>Another grid's information without a network: <see cref="Result"/>, or <see cref="Error"/> thrown.</summary>
+internal sealed class FakeOtherGrid : IOtherGridClient
+{
+    public OtherGridInfo? Result { get; set; }
+    public Exception? Error { get; set; }
+
+    /// <summary>Every address read, in order.</summary>
+    public List<Uri> Reads { get; } = new();
+
+    /// <summary>Runs during each read, before it answers (a test changes the settings between a read and its save).</summary>
+    public Action? OnRead { get; set; }
+
+    public Task<OtherGridInfo> ReadAsync(Uri address, CancellationToken ct)
+    {
+        lock (Reads) Reads.Add(address);
+        OnRead?.Invoke();
+        if (Error is { } e) return Task.FromException<OtherGridInfo>(e);
+        return Result is { } info ? Task.FromResult(info)
+            : Task.FromException<OtherGridInfo>(new GridJoinException($"Nothing answered at {address}.", noAnswer: true));
+    }
+
+    public Task CheckServicesAsync(Uri services, CancellationToken ct) => Task.CompletedTask;
+}
+
 /// <summary>Robust with a fixed set of avatars: (first, last) → (level, password).</summary>
 internal sealed class FakeRobustAccounts : IRobustClient
 {

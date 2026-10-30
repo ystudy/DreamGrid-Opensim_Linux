@@ -21,7 +21,7 @@ public sealed class GridControllerTests : IDisposable
         _paths = new LauncherPaths(_root, Path.Combine(_root, "program"), null);
         _store = new SettingsStore(_paths.SettingsFile);
         _grid = new GridController(_paths, _store, new MariaDbBinaries("mariadbd", "install-db", null),
-            [new LogLevelModule()], new NoRobust(), new FakeGridJoin(), new NoHttp(), TimeProvider.System);
+            [new LogLevelModule()], new NoRobust(), new FakeGridJoin(), new FakeOtherGrid(), new NoHttp(), TimeProvider.System);
     }
 
     public void Dispose()

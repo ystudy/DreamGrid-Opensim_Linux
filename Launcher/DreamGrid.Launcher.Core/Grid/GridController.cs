@@ -21,6 +21,7 @@ namespace DreamGrid.Launcher.Core.Grid;
 /// in that order, each one healthy before the next. A program is one OpenSim process hosting one or more regions. Children outlive the launcher (spec 4.12): only
 /// <see cref="StopAllAsync"/>, <see cref="StopComponentAsync"/> and <see cref="RestartComponentAsync"/> stop them. A Region
 /// Server never starts Robust: it uses the Grid Asset Server's grid service, whose join information <paramref name="join"/> reads.
+/// Nor does a Connected Server: it uses another grid's services, whose grid information <paramref name="otherGrid"/> reads.
 /// </summary>
 public sealed partial class GridController(
     LauncherPaths paths,
@@ -29,6 +30,7 @@ public sealed partial class GridController(
     IEnumerable<IFeatureModule> modules,
     IRobustClient robust,
     IGridJoinClient join,
+    IOtherGridClient otherGrid,
     IHttpClientFactory http,
     TimeProvider time,
     ILoggerFactory? loggers = null,
@@ -190,8 +192,10 @@ public sealed partial class GridController(
             if (region.DeletedAt is not null) throw new InvalidOperationException("That region has been deleted.");
             ThrowIfBusy(region.Instance);
             if (!RegionPlacement.OnMap(x, y, region.Size)) throw new ArgumentException("That spot is off the map.");
-            // The region's own square doesn't count: it may move to an overlapping spot.
-            if (RegionPlacement.Check(s, x, y, region.Size, ignore: regionId) is { Ok: false } taken)
+            // The region's own square doesn't count: it may move to an overlapping spot. On a plan that uses another
+            // computer's grid, that grid's other regions hold squares too.
+            var elsewhere = await RegionsElsewhereAsync(s, MapArea.Around(x, y, region.Size), ct);
+            if (RegionPlacement.Check(s, x, y, region.Size, ignore: regionId, elsewhere: elsewhere) is { Ok: false } taken)
                 throw new ArgumentException(RegionAdvice.Placement(taken));
 
             s = UpdateSettings(l => l with { Regions = l.Regions.Select(r => r.Uuid == regionId ? r with { X = x, Y = y } : r).ToList() });
@@ -856,8 +860,17 @@ public sealed partial class GridController(
             var s = LoadSettings();
             // A retry for the same name keeps the region's UUID.
             var uuid = RegionModel.FindByName(s, name) is { } old && old.Name == name ? old.Uuid : Guid.NewGuid();
-            // On a Region Server the grid's other computers hold squares too (one an earlier attempt registered isn't theirs).
-            var elsewhere = (await RegionsElsewhereAsync(s, ct))?.Where(m => m.Uuid != uuid).ToList();
+            // On a plan that uses another computer's grid, that grid's other regions hold squares too (one an earlier
+            // attempt registered isn't theirs).
+            var elsewhere = (await RegionsElsewhereAsync(s, MapArea.Start, ct))?.Where(m => m.Uuid != uuid).ToList();
+            // Placed as if what an earlier attempt left had gone already (it goes below), before anything is stopped. A
+            // Connected Server's grid may be too big to read whole, so only the window near 1000,1000 is searched.
+            var kept = s.Setup.RegionCreated ? s : s with { Programs = [], Regions = [] };
+            var (x, y) = elsewhere is null ? (1000, 1000)
+                : s.Plan == OwnerPlan.Connected
+                    ? RegionPlacement.FirstFreeIn(kept, elsewhere, MapArea.Start) ?? throw new ArgumentException(
+                        $"The squares near 1000,1000 on {OtherGridName(s)}'s map are all taken. Add your region from the Regions page at a spot you choose.")
+                    : RegionPlacement.FirstFree(kept, elsewhere);
             if (!s.Setup.RegionCreated)
             {
                 // What an earlier attempt left goes: its program stops unless the new region takes over its folder.
@@ -865,7 +878,6 @@ public sealed partial class GridController(
                     await StopProgramAsync(other, ct);
                 s = UpdateSettings(l => l with { Programs = [], Regions = [] });
             }
-            var (x, y) = elsewhere is null ? (1000, 1000) : RegionPlacement.FirstFree(s, elsewhere);
             await AddCoreAsync(s, new NewRegion(name, x, y, 1, content, null), uuid, progress, ct, adoptLeftover: true);
             UpdateSettings(l => l with { Setup = l.Setup with { RegionCreated = true } }, writeConfig: false);
         }
@@ -885,7 +897,7 @@ public sealed partial class GridController(
         {
             LauncherSettings s;
             lock (_configGate) s = ReloadSettings();
-            var elsewhere = await RegionsElsewhereAsync(s, ct);
+            var elsewhere = await RegionsElsewhereAsync(s, MapArea.Around(request.X, request.Y, request.Size), ct);
             if (RegionRequestError(s, request, elsewhere) is { } error) throw new ArgumentException(error, nameof(request));
             // Sharing restarts that program, which would cut off its OAR job.
             ThrowIfBusy(request.ShareWith);
@@ -904,7 +916,7 @@ public sealed partial class GridController(
 
     /// <summary>
     /// Why a region can't be added as asked (in words the website shows as they are), or null. <paramref name="elsewhere"/>
-    /// is the grid's map when other computers' regions count (a Region Server).
+    /// is the grid's map when other computers' regions count (a Region Server or a Connected Server).
     /// </summary>
     private static string? RegionRequestError(LauncherSettings s, NewRegion r, IReadOnlyList<MapRegion>? elsewhere = null)
     {
@@ -1226,7 +1238,7 @@ public sealed partial class GridController(
             _activity,
             runsRobust && _robustGridName is { } started && _robust?.Process.State == ProcessState.Running && started != s.GridName,
             runsRobust,
-            runsRobust ? null : s.Join?.Host);
+            runsRobust ? null : OtherGridAddressOf(s));
     }
 
     /// <summary>The settings the controller last loaded (the file only on first use); never waits behind an operation.</summary>

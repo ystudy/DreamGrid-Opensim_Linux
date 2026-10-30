@@ -102,7 +102,7 @@ public sealed partial class AvatarModel(
         {
             account = await runner.TrySetEstateOwnerAsync(first, last, lifetime.ApplicationStopping);
         }
-        catch (Exception e) when (e is ArgumentException or GridAssetUnreachableException or GridJoinException)
+        catch (Exception e) when (e is ArgumentException or GridUnreachableException or GridJoinException)
         {
             log.LogWarning("Setup: {First} {Last} could not be made the owner: {Message}", first, last, e.Message);
             Error = e.Message;

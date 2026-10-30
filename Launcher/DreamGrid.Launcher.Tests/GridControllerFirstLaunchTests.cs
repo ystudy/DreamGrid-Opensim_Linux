@@ -31,7 +31,7 @@ public sealed class GridControllerFirstLaunchTests : IDisposable
             var store = new SettingsStore(paths.SettingsFile);
             var console = new RecordingConsole();
             var grid = new GridController(paths, store, new MariaDbBinaries("mariadbd", "install-db", null),
-                [new LogLevelModule()], new NoAccounts(), new FakeGridJoin(), console, TimeProvider.System);
+                [new LogLevelModule()], new NoAccounts(), new FakeGridJoin(), new FakeOtherGrid(), console, TimeProvider.System);
 
             using var go = new ManualResetEventSlim();
             var polls = Enumerable.Range(0, 4).Select(_ => Task.Run(() => { go.Wait(); grid.GetStatus(); }, TestContext.Current.CancellationToken)).ToArray();

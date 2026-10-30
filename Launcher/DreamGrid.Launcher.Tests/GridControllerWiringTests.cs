@@ -58,7 +58,7 @@ public sealed class GridControllerWiringTests : IDisposable
         // A MariaDB that cannot start: anything past the port check fails with a non-port error.
         var missing = Path.Combine(_root, MissingMariaDb, "mariadbd");
         return new GridController(_paths, _store, new MariaDbBinaries(missing, missing, null),
-            [new LogLevelModule()], _robust, new FakeGridJoin(), _http, time, regionStores: _ => _regionStore, cpu: cpu ?? ((_, _, _) => { }))
+            [new LogLevelModule()], _robust, new FakeGridJoin(), new FakeOtherGrid(), _http, time, regionStores: _ => _regionStore, cpu: cpu ?? ((_, _, _) => { }))
         {
             DatabaseRunningForTests = () => _databaseUp,
             ProgramStartForTests = launchStandIns ? _ => StandIn() : null,
@@ -315,7 +315,7 @@ public sealed class GridControllerWiringTests : IDisposable
     public async Task A_missing_MariaDB_surfaces_its_own_message_on_start()
     {
         var grid = new GridController(_paths, _store, MariaDbBinaries.NotFound("MariaDB server not found; searched: /nowhere/mariadbd"),
-            [new LogLevelModule()], _robust, new FakeGridJoin(), _http, TimeProvider.System);
+            [new LogLevelModule()], _robust, new FakeGridJoin(), new FakeOtherGrid(), _http, TimeProvider.System);
 
         var e = await Assert.ThrowsAsync<MariaDbNotFoundException>(() => grid.StartAsync(TestContext.Current.CancellationToken));
 
@@ -1073,7 +1073,7 @@ public sealed class GridControllerWiringTests : IDisposable
         _paths.EnsureCreated();
         PidFile.Write(Path.Combine(_paths.Pids, "mariadb.pid"), Environment.ProcessId);
         var self = Environment.ProcessPath!;
-        var grid = new GridController(_paths, _store, new MariaDbBinaries(self, self, null), [new LogLevelModule()], _robust, new FakeGridJoin(), _http, TimeProvider.System);
+        var grid = new GridController(_paths, _store, new MariaDbBinaries(self, self, null), [new LogLevelModule()], _robust, new FakeGridJoin(), new FakeOtherGrid(), _http, TimeProvider.System);
         var holder = new TcpListener(IPAddress.Loopback, s.MariaDbPort);
         holder.Start();
         try
