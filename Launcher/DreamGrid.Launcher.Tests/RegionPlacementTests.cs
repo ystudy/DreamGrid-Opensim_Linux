@@ -129,6 +129,14 @@ public sealed class RegionPlacementTests
     }
 
     [Fact]
+    public void FirstFreeIn_finds_the_far_edge_of_a_larger_area()
+    {
+        IReadOnlyList<MapRegion> elsewhere = [new(Guid.NewGuid(), "Hub", 1000, 1000, 4)];
+
+        Assert.Equal((1004, 1000), RegionPlacement.FirstFreeIn(With(), elsewhere, new MapArea(1000, 1000, 1005, 1001), 2));
+    }
+
+    [Fact]
     public void MapArea_around_clamps_at_the_edge()
     {
         Assert.Equal(new MapArea(0, 0, 1, 1), MapArea.Around(0, 0, 1));

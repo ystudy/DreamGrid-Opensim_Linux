@@ -28,6 +28,12 @@ public interface IRobustClient
 /// </summary>
 public sealed class RobustClient(HttpClient http, Func<LauncherSettings> settings) : IRobustClient
 {
+    /// <summary>
+    /// Robust's get_region_range filters regions by their origin (south-west corner), and the largest region is 4096 m =
+    /// 16 squares, so a region reaching into an area can start up to this many squares west or south of it.
+    /// </summary>
+    private const int LargestRegionSquares = 16;
+
     private Uri PublicBase => GridEndpoints.PublicBase(settings());
 
     public async Task<bool> IsReadyAsync(CancellationToken ct)
@@ -69,7 +75,8 @@ public sealed class RobustClient(HttpClient http, Func<LauncherSettings> setting
         GetRegionRangeAsync("0", "0", "16776960", "16776960", ct);
 
     public Task<IReadOnlyList<MapRegion>> GetMapRegionsAsync(MapArea area, CancellationToken ct) =>
-        GetRegionRangeAsync((area.XMin * 256).ToString(), (area.YMin * 256).ToString(),
+        GetRegionRangeAsync((Math.Max(0, area.XMin - LargestRegionSquares) * 256).ToString(),
+            (Math.Max(0, area.YMin - LargestRegionSquares) * 256).ToString(),
             (area.XMax * 256 + 255).ToString(), (area.YMax * 256 + 255).ToString(), ct);
 
     private async Task<IReadOnlyList<MapRegion>> GetRegionRangeAsync(string xMin, string yMin, string xMax, string yMax, CancellationToken ct)
