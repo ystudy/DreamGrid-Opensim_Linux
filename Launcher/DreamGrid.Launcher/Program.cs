@@ -20,7 +20,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.DataProtection;
 
-// Installer verbs (--version, admin-link, stop-grid, set-web-port) run instead of the host.
+// Installer and owner verbs (--version, admin-link, stop-grid, set-web-port, reset-two-factor) run instead of the host.
 var processEnv = new Dictionary<string, string?>
 {
     ["DREAMGRID_DATA"] = Environment.GetEnvironmentVariable("DREAMGRID_DATA"),
@@ -126,14 +126,16 @@ builder.Services.AddAuthorizationBuilder()
 builder.Services.AddRazorPages(o =>
 {
     // Every page needs the admin role except these; the setup pages are guarded by SetupGate. A person's own pages under
-    // /Profile are for every staff member. (Two folder policies on one page would both have to pass, so /Profile is left
-    // out of the admin one rather than given a second.)
+    // /Profile are for every staff member, and the Security page is the owner's. (Two folder policies on one page would both
+    // have to pass, so those two folders are left out of the admin one rather than given a second.)
     o.Conventions.AddFolderApplicationModelConvention("/", m =>
     {
-        if (!m.ViewEnginePath.StartsWith("/Profile/", StringComparison.OrdinalIgnoreCase))
+        if (!m.ViewEnginePath.StartsWith("/Profile/", StringComparison.OrdinalIgnoreCase)
+            && !m.ViewEnginePath.StartsWith("/Security/", StringComparison.OrdinalIgnoreCase))
             m.EndpointMetadata.Add(new AuthorizeAttribute(AuthSchemes.AdminPolicy));
     });
     o.Conventions.AuthorizeFolder("/Profile", AuthSchemes.StaffPolicy);
+    o.Conventions.AuthorizeFolder("/Security", AuthSchemes.OwnerPolicy);
     foreach (var open in new[] { "/Login", "/Login/Code", "/Logout", "/Welcome", "/Waiting", "/SetupDone", "/Setup" })
         o.Conventions.AllowAnonymousToPage(open);
     o.Conventions.AllowAnonymousToFolder("/Setup");
@@ -177,6 +179,8 @@ builder.Services.AddSingleton<OarJobs>();
 
 var app = builder.Build();
 app.UseStaticFiles();
+// Callers outside the owner's allow-list get 404 before anything reads their cookie.
+app.UseMiddleware<AdminNetworkFilter>();
 app.UseAuthentication();
 app.UseMiddleware<AuditMiddleware>();
 // Someone signed in only to set up two-factor reaches nothing else (before SetupGate, which can send "/" onwards).

@@ -1,0 +1,62 @@
+@page "/security"
+@model DreamGrid.Launcher.Pages.Security.IndexModel
+@{
+    ViewData["Title"] = "Security";
+}
+<h1>Security</h1>
+@if (Model.Error is not null)
+{
+    <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
+}
+@if (Model.Notice is not null)
+{
+    <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
+}
+<form id="security" method="post" action="/security?handler=Save" asp-antiforgery="true">
+    <h2>Two-factor sign-in</h2>
+    <div class="form-check form-switch mt-3">
+        <input class="form-check-input" type="checkbox" role="switch" id="RequireTwoFactor" name="RequireTwoFactor" value="true" checked="@Model.RequireTwoFactor">
+        <label class="form-check-label" for="RequireTwoFactor">Require two-factor sign-in for admins and supervisors</label>
+    </div>
+    <p class="hint form-text">They must set it up the next time they sign in, or when they next open a page. You are never asked.</p>
+
+    <h2 class="mt-4">Who can open this website</h2>
+    <label class="form-label" for="Networks">Allowed networks</label>
+    <textarea class="form-control" id="Networks" name="Networks" rows="5" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="192.168.1.0/24">@Model.Networks</textarea>
+    <p class="hint form-text">One address or range on each line, like 203.0.113.7 or 192.168.1.0/24. Leave it empty to allow every address.
+        Any other address gets a "Not found" answer for the whole website, including the sign-in page. This computer is always allowed.</p>
+    <button type="submit" class="btn btn-primary mt-2">Save</button>
+</form>
+
+<h2 class="mt-4">People with two-factor sign-in</h2>
+@if (Model.TwoFactorDamaged)
+{
+    <div class="alert alert-danger" role="alert">The two-factor file can't be read, so nobody can be listed. Run <code>reset-two-factor --all-damaged</code> on the grid computer to set it aside. Everyone then sets two-factor up again.</div>
+}
+else if (Model.Enrolled.Count == 0)
+{
+    <p id="no-two-factor">Nobody has two-factor sign-in on.</p>
+}
+else
+{
+    <p>If someone loses their phone and their backup codes, reset their two-factor sign-in. They are signed out everywhere and sign in with their password again.</p>
+    <div class="table-responsive">
+        <table id="two-factor-people" class="table align-middle">
+            <thead><tr><th>Name</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var p in Model.Enrolled)
+            {
+                <tr data-person="@p.Principal">
+                    <td>@p.Name</td>
+                    <td>
+                        <form method="post" action="/security?handler=Reset" asp-antiforgery="true">
+                            <input type="hidden" name="id" value="@p.Principal">
+                            <button type="submit" class="btn btn-sm btn-outline-danger">Reset</button>
+                        </form>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}

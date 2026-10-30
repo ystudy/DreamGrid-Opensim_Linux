@@ -48,6 +48,10 @@
                         <a class="nav-link@(Active("/advanced"))" href="/advanced">Advanced</a>
                         <a class="nav-link@(Active("/logs"))" href="/logs">Logs</a>
                     }
+                    if (User.IsInRole(DreamGrid.Launcher.Security.AuthSchemes.OwnerRole))
+                    {
+                        <a class="nav-link@(Active("/security"))" href="/security">Security</a>
+                    }
                     <a class="nav-link@(Active("/profile/sessions"))" href="/profile/sessions">Sessions</a>
                     <a class="nav-link@(Active("/profile/two-factor"))" href="/profile/two-factor">Two-factor</a>
                 }

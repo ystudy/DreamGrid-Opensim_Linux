@@ -5,12 +5,15 @@ using DreamGrid.Launcher.Core;
 using DreamGrid.Launcher.Core.Config;
 using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.Processes;
+using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Core.Settings;
+using DreamGrid.Launcher.Security;
+using Microsoft.AspNetCore.DataProtection;
 
 namespace DreamGrid.Launcher;
 
 /// <summary>
-/// The verbs the installers call (<c>--version</c>, <c>admin-link</c>, <c>stop-grid</c>, <c>set-web-port</c>) and the
+/// The verbs the installers and the owner call (<c>--version</c>, <c>admin-link</c>, <c>stop-grid</c>, <c>set-web-port</c>, <c>reset-two-factor</c>) and the
 /// <c>--web-port</c> host option. Exit codes: 0 done, 2 bad arguments, a refused port or unreadable settings, 3 another
 /// launcher holds the data directory, 4 the settings did not appear in time, 5 the grid's programs were still running
 /// a minute after the stop.
@@ -41,6 +44,8 @@ public static class CommandLine
                 return await Guarded(output, () => StopGridAsync(args, env, output, ct));
             case "set-web-port":
                 return await Guarded(output, () => Task.FromResult(SetWebPort(args, env, output)));
+            case "reset-two-factor":
+                return await Guarded(output, () => Task.FromResult(ResetTwoFactor(args, env, output)));
             default:
                 return null;
         }
@@ -183,6 +188,82 @@ public static class CommandLine
             return 2;
         }
         output.WriteLine($"The admin website will use port {port}.");
+        return 0;
+    }
+
+    /// <summary>
+    /// <c>reset-two-factor [--data &lt;dir&gt;]</c>: turns two-factor sign-in off for the owner (<c>Setup.Owner</c>), the way back in for
+    /// an owner who lost their phone. <c>reset-two-factor --all-damaged</c>: sets a damaged <c>twofactor.json</c> aside (everyone
+    /// then sets two-factor up again). It edits <c>&lt;data&gt;/security/twofactor.json</c> directly, with a store that needs no data
+    /// protection key (taking someone out needs no decryption), so it works with the launcher running or stopped: the launcher
+    /// reads that file on every check. Exit 0 done, 2 with a one-line reason.
+    /// </summary>
+    private static int ResetTwoFactor(string[] args, IDictionary<string, string?> env, TextWriter output)
+    {
+        var dataDir = LauncherPaths.ResolveData(args, env, OperatingSystem.IsWindows());
+        if (!Directory.Exists(dataDir))
+        {
+            output.WriteLine($"The data folder {dataDir} does not exist. Pass --data <folder> if the grid keeps its data elsewhere.");
+            return 2;
+        }
+        var file = Path.Combine(dataDir, "security", "twofactor.json");
+        var store = new TwoFactorStore(file, new EphemeralDataProtectionProvider(), TimeProvider.System);
+
+        if (args.Contains("--all-damaged"))
+        {
+            var existed = File.Exists(file);
+            TwoFactorStore.MoveAsideIfDamaged(file);
+            if (existed && !File.Exists(file))
+            {
+                var aside = Directory.EnumerateFiles(Path.GetDirectoryName(file)!, "twofactor.json.damaged-*").Order().LastOrDefault();
+                output.WriteLine($"The damaged two-factor file was set aside as {Path.GetFileName(aside)}. Everyone with two-factor sign-in sets it up again.");
+                return 0;
+            }
+            if (existed && store.StateOf(Guid.Empty) == TwoFactorState.Unknown)
+            {
+                output.WriteLine("The two-factor file could not be read just now, but it does not look damaged. Try again.");
+                return 2;
+            }
+            output.WriteLine(existed
+                ? "The two-factor file is not damaged. Nothing was changed."
+                : "There is no two-factor file, so it is not damaged. Nothing was changed.");
+            return 0;
+        }
+
+        var settings = new SettingsStore(Path.Combine(dataDir, "settings.json")).TryLoad();
+        if (settings is null)
+        {
+            output.WriteLine($"No settings found in {dataDir}. Is the DreamGrid service installed?");
+            return 2;
+        }
+        if (settings.Setup.Owner is not { } owner)
+        {
+            output.WriteLine("There is no owner yet, so there is nobody to reset.");
+            return 2;
+        }
+
+        const string Damaged = "The two-factor file is damaged. Run reset-two-factor --all-damaged to set it aside; everyone then sets two-factor up again.";
+        if (store.StateOf(owner.PrincipalId) == TwoFactorState.Unknown)
+        {
+            output.WriteLine(Damaged);
+            return 2;
+        }
+        try
+        {
+            store.Disable(owner.PrincipalId);
+        }
+        catch (InvalidOperationException)
+        {
+            output.WriteLine(Damaged);
+            return 2;
+        }
+        // A write by the running launcher at the same moment could have put the old file back.
+        if (store.StateOf(owner.PrincipalId) != TwoFactorState.Off)
+        {
+            output.WriteLine("Two-factor sign-in could not be turned off; try again.");
+            return 2;
+        }
+        output.WriteLine($"Two-factor sign-in is off for {owner.FirstName} {owner.LastName}.");
         return 0;
     }
 

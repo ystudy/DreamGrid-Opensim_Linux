@@ -252,4 +252,122 @@ public class CommandLineTests : IDisposable
     [Fact]
     public async Task Wait_until_gone_with_no_children_returns_at_once() =>
         Assert.True(await CommandLine.WaitUntilGoneAsync([], TimeSpan.Zero, TestContext.Current.CancellationToken));
+
+    private static readonly Guid Owner = Guid.Parse("0e000000-0000-0000-0000-00000000000e");
+    private static readonly Guid Staff = Guid.Parse("0a000000-0000-0000-0000-00000000000a");
+    private string TwoFactorFile => Path.Combine(DataDir, "security", "twofactor.json");
+
+    private SettingsStore NewStoreWithOwner() => NewStore(s => s with
+    {
+        Setup = s.Setup with { OwnerCreated = true, Owner = new OwnerInfo("Olive", "Owner", Owner) },
+    });
+
+    /// <summary>Puts <paramref name="who"/> in the two-factor file, as the running launcher would (its own key ring).</summary>
+    private void Enrol(Guid who, string name)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(TwoFactorFile)!);
+        var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
+        var store = new DreamGrid.Launcher.Security.TwoFactorStore(TwoFactorFile,
+            new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider(), time);
+        var (secret, _) = store.BeginEnrol(who, name, "DreamGrid");
+        Assert.NotNull(store.ConfirmEnrol(who, DreamGrid.Launcher.Core.Security.Totp.Code(secret,
+            DreamGrid.Launcher.Core.Security.Totp.StepAt(time.GetUtcNow())), secret));
+    }
+
+    private bool IsEnrolled(Guid who)
+    {
+        // A new store, as the next sign-in would read the file (no decryption is needed to see who is on).
+        var store = new DreamGrid.Launcher.Security.TwoFactorStore(TwoFactorFile,
+            new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider(), TimeProvider.System);
+        return store.Enrolled().Any(e => e.Principal == who);
+    }
+
+    [Fact]
+    public async Task Reset_two_factor_turns_off_owner()
+    {
+        NewStoreWithOwner();
+        Enrol(Owner, "Olive Owner");
+        Enrol(Staff, "Test Admin");
+
+        var (code, output) = await RunAsync("reset-two-factor", "--data", DataDir);
+
+        Assert.Equal(0, code);
+        Assert.Equal("Two-factor sign-in is off for Olive Owner.", output);
+        Assert.False(IsEnrolled(Owner));
+        Assert.True(IsEnrolled(Staff)); // only the owner's
+    }
+
+    [Fact]
+    public async Task Reset_two_factor_when_owner_has_none_says_so()
+    {
+        NewStoreWithOwner();
+
+        var (code, output) = await RunAsync("reset-two-factor", "--data", DataDir);
+
+        Assert.Equal(0, code);
+        Assert.Equal("Two-factor sign-in is off for Olive Owner.", output);
+        Assert.False(File.Exists(TwoFactorFile));
+    }
+
+    [Fact]
+    public async Task Reset_two_factor_moves_damaged_file_aside()
+    {
+        NewStoreWithOwner();
+        Directory.CreateDirectory(Path.GetDirectoryName(TwoFactorFile)!);
+        File.WriteAllText(TwoFactorFile, "{ this is not json");
+
+        // Without the flag nothing is touched, and the reason names the flag.
+        var (refused, message) = await RunAsync("reset-two-factor", "--data", DataDir);
+        Assert.Equal(2, refused);
+        Assert.Contains("reset-two-factor --all-damaged", message);
+        Assert.Equal("{ this is not json", File.ReadAllText(TwoFactorFile));
+
+        var (code, output) = await RunAsync("reset-two-factor", "--all-damaged", "--data", DataDir);
+
+        Assert.Equal(0, code);
+        Assert.Contains("set aside", output);
+        Assert.False(File.Exists(TwoFactorFile));
+        Assert.Single(Directory.GetFiles(Path.GetDirectoryName(TwoFactorFile)!, "twofactor.json.damaged-*"));
+
+        // Run again: nothing to move.
+        var (again, text) = await RunAsync("reset-two-factor", "--all-damaged", "--data", DataDir);
+        Assert.Equal(0, again);
+        Assert.Contains("not damaged", text);
+    }
+
+    [Fact]
+    public async Task Reset_two_factor_all_damaged_leaves_a_good_file()
+    {
+        NewStoreWithOwner();
+        Enrol(Staff, "Test Admin");
+        var before = File.ReadAllText(TwoFactorFile);
+
+        var (code, output) = await RunAsync("reset-two-factor", "--all-damaged", "--data", DataDir);
+
+        Assert.Equal(0, code);
+        Assert.Contains("not damaged", output);
+        Assert.Equal(before, File.ReadAllText(TwoFactorFile));
+    }
+
+    [Fact]
+    public async Task Reset_two_factor_without_owner_exits_2()
+    {
+        NewStore(); // settings exist, no owner yet
+
+        var (code, output) = await RunAsync("reset-two-factor", "--data", DataDir);
+
+        Assert.Equal(2, code);
+        Assert.Contains("no owner", output);
+        Assert.False(File.Exists(TwoFactorFile));
+    }
+
+    [Fact]
+    public async Task Reset_two_factor_without_data_folder_exits_2()
+    {
+        var (code, output) = await RunAsync("reset-two-factor", "--data", Path.Combine(_root, "nowhere"));
+
+        Assert.Equal(2, code);
+        Assert.Contains("nowhere", output);
+        Assert.False(Directory.Exists(Path.Combine(_root, "nowhere")));
+    }
 }
