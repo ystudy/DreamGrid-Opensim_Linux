@@ -427,6 +427,10 @@ internal sealed class FakeRobustAccounts : IRobustClient
 
     public Task<IReadOnlyList<MapRegion>> GetMapRegionsAsync(CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<MapRegion>>(MapRegions.ToList());
+
+    public Task<IReadOnlyList<MapRegion>> GetMapRegionsAsync(MapArea area, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<MapRegion>>(MapRegions.Where(m => m.X <= area.XMax && m.X + m.Size - 1 >= area.XMin
+            && m.Y <= area.YMax && m.Y + m.Size - 1 >= area.YMin).ToList());
 }
 
 /// <summary>Who's online without a database: returns <see cref="Result"/>.</summary>

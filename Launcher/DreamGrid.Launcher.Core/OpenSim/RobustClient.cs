@@ -17,6 +17,9 @@ public interface IRobustClient
 
     /// <summary>Every region on the grid's map (all computers), from the grid service. Empty when there are none.</summary>
     Task<IReadOnlyList<MapRegion>> GetMapRegionsAsync(CancellationToken ct);
+
+    /// <summary>The regions on the grid's map inside <paramref name="area"/> only (a big grid's whole map is too much to read).</summary>
+    Task<IReadOnlyList<MapRegion>> GetMapRegionsAsync(MapArea area, CancellationToken ct);
 }
 
 /// <summary>
@@ -62,12 +65,19 @@ public sealed class RobustClient(HttpClient http, Func<LauncherSettings> setting
         return !string.IsNullOrWhiteSpace(root?.Element("Token")?.Value);
     }
 
-    public async Task<IReadOnlyList<MapRegion>> GetMapRegionsAsync(CancellationToken ct)
+    public Task<IReadOnlyList<MapRegion>> GetMapRegionsAsync(CancellationToken ct) =>
+        GetRegionRangeAsync("0", "0", "16776960", "16776960", ct);
+
+    public Task<IReadOnlyList<MapRegion>> GetMapRegionsAsync(MapArea area, CancellationToken ct) =>
+        GetRegionRangeAsync((area.XMin * 256).ToString(), (area.YMin * 256).ToString(),
+            (area.XMax * 256 + 255).ToString(), (area.YMax * 256 + 255).ToString(), ct);
+
+    private async Task<IReadOnlyList<MapRegion>> GetRegionRangeAsync(string xMin, string yMin, string xMax, string yMax, CancellationToken ct)
     {
         // The reply is <region0 type="List">…</region0><region1…>; "null" comes back as <result>null</result>.
         var root = await PostAsync(GridServiceKind.Grid, "/grid", ct,
             ("METHOD", "get_region_range"), ("SCOPEID", Guid.Empty.ToString()),
-            ("XMIN", "0"), ("YMIN", "0"), ("XMAX", "16776960"), ("YMAX", "16776960"));
+            ("XMIN", xMin), ("YMIN", yMin), ("XMAX", xMax), ("YMAX", yMax));
         var regions = new List<MapRegion>();
         if (root is null) return regions;
         foreach (var e in root.Elements().Where(e => e.Name.LocalName.StartsWith("region", StringComparison.Ordinal) && e.HasElements))

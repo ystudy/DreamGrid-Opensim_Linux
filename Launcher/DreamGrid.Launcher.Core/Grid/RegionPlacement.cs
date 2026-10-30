@@ -8,6 +8,18 @@ public sealed record Neighbour(string Name, string Side);
 /// <summary>A region on the grid's map, in squares (not metres); <see cref="Size"/> is its width in squares.</summary>
 public sealed record MapRegion(Guid Uuid, string Name, int X, int Y, int Size);
 
+/// <summary>A block of map squares, both corners inclusive; the grid's map is read one area at a time.</summary>
+public sealed record MapArea(int XMin, int YMin, int XMax, int YMax)
+{
+    /// <summary>Where placement starts looking: 64 by 64 squares from 1000,1000.</summary>
+    public static MapArea Start => new(1000, 1000, 1063, 1063);
+
+    /// <summary>A region of <paramref name="size"/> at (x, y) with a one-square ring around it, kept on the map.</summary>
+    public static MapArea Around(int x, int y, int size) => new(
+        Math.Max(0, x - 1), Math.Max(0, y - 1),
+        Math.Min(RegionPlacement.MaxCoordinate, x + size), Math.Min(RegionPlacement.MaxCoordinate, y + size));
+}
+
 public sealed record PlacementCheck(bool Ok, string? OverlapsWith, IReadOnlyList<Neighbour> Neighbours);
 
 /// <summary>
@@ -64,5 +76,17 @@ public static class RegionPlacement
             for (var x = 1000; x < 1064; x++)
                 if (OnMap(x, y, size) && Check(s, x, y, size, elsewhere: elsewhere).Ok) return (x, y);
         throw new InvalidOperationException("There is no free place left on the map.");
+    }
+
+    /// <summary>
+    /// The first spot inside <paramref name="area"/> where a region of <paramref name="size"/> fits: rows from the
+    /// bottom (YMin), and within each row from the left (XMin). Null when there is none.
+    /// </summary>
+    public static (int X, int Y)? FirstFreeIn(LauncherSettings s, IReadOnlyList<MapRegion> elsewhere, MapArea area, int size = 1)
+    {
+        for (var y = area.YMin; y <= area.YMax - size + 1; y++)
+            for (var x = area.XMin; x <= area.XMax - size + 1; x++)
+                if (OnMap(x, y, size) && Check(s, x, y, size, elsewhere: elsewhere).Ok) return (x, y);
+        return null;
     }
 }

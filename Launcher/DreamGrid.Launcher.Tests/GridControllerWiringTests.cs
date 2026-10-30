@@ -2501,6 +2501,7 @@ public sealed class GridControllerWiringTests : IDisposable
 
         public Task<bool> AuthenticateAsync(Guid principal, string plainPassword, CancellationToken ct) => Task.FromResult(true);
         public Task<IReadOnlyList<MapRegion>> GetMapRegionsAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<MapRegion>>([]);
+        public Task<IReadOnlyList<MapRegion>> GetMapRegionsAsync(MapArea area, CancellationToken ct) => GetMapRegionsAsync(ct);
     }
 
     /// <summary>

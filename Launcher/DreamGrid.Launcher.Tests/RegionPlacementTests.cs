@@ -110,4 +110,29 @@ public sealed class RegionPlacementTests
         Assert.Equal((1002, 1000), RegionPlacement.FirstFree(With(), elsewhere));
         Assert.Equal((1000, 1000), RegionPlacement.FirstFree(With(), []));
     }
+
+    [Fact]
+    public void FirstFreeIn_skips_used_squares()
+    {
+        IReadOnlyList<MapRegion> elsewhere = [new(Guid.NewGuid(), "Hub", 1000, 1000, 2)];
+
+        Assert.Equal((1002, 1000), RegionPlacement.FirstFreeIn(With(), elsewhere, MapArea.Start));
+    }
+
+    [Fact]
+    public void FirstFreeIn_returns_null_when_the_area_is_full()
+    {
+        IReadOnlyList<MapRegion> elsewhere = [new(Guid.NewGuid(), "Hub", 1000, 1000, 2)];
+
+        Assert.Null(RegionPlacement.FirstFreeIn(With(), elsewhere, new MapArea(1000, 1000, 1001, 1001), 2));
+        Assert.Null(RegionPlacement.FirstFreeIn(With(), [], new MapArea(1000, 1000, 1001, 1001), 3));
+    }
+
+    [Fact]
+    public void MapArea_around_clamps_at_the_edge()
+    {
+        Assert.Equal(new MapArea(0, 0, 1, 1), MapArea.Around(0, 0, 1));
+        Assert.Equal(new MapArea(1099, 1099, 1102, 1102), MapArea.Around(1100, 1100, 2));
+        Assert.Equal(new MapArea(65534, 65534, RegionPlacement.MaxCoordinate, RegionPlacement.MaxCoordinate), MapArea.Around(65535, 65535, 1));
+    }
 }

@@ -106,6 +106,7 @@ public sealed class GridControllerTests : IDisposable
         public Task<RobustAccount?> GetAccountAsync(string first, string last, CancellationToken ct) => throw new InvalidOperationException("not expected");
         public Task<bool> AuthenticateAsync(Guid principal, string plainPassword, CancellationToken ct) => throw new InvalidOperationException("not expected");
         public Task<IReadOnlyList<MapRegion>> GetMapRegionsAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<MapRegion>>([]);
+        public Task<IReadOnlyList<MapRegion>> GetMapRegionsAsync(MapArea area, CancellationToken ct) => GetMapRegionsAsync(ct);
     }
 
     private sealed class NoHttp : IHttpClientFactory

@@ -486,6 +486,8 @@ public sealed class RegionServerControllerTests : IAsyncLifetime
 
         public Task<IReadOnlyList<MapRegion>> GetMapRegionsAsync(CancellationToken ct) =>
             MapError is { } e ? Task.FromException<IReadOnlyList<MapRegion>>(e) : Task.FromResult<IReadOnlyList<MapRegion>>(Map.ToList());
+
+        public Task<IReadOnlyList<MapRegion>> GetMapRegionsAsync(MapArea area, CancellationToken ct) => GetMapRegionsAsync(ct);
     }
 
     /// <summary>Consoles that accept everything and print nothing; <see cref="OnCommand"/> sees the console port of each command.</summary>

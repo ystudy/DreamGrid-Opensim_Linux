@@ -56,6 +56,7 @@ public sealed class GridControllerFirstLaunchTests : IDisposable
         public Task<RobustAccount?> GetAccountAsync(string first, string last, CancellationToken ct) => Task.FromResult<RobustAccount?>(null);
         public Task<bool> AuthenticateAsync(Guid principal, string plainPassword, CancellationToken ct) => Task.FromResult(false);
         public Task<IReadOnlyList<MapRegion>> GetMapRegionsAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<MapRegion>>([]);
+        public Task<IReadOnlyList<MapRegion>> GetMapRegionsAsync(MapArea area, CancellationToken ct) => GetMapRegionsAsync(ct);
     }
 
     /// <summary>A console that records the USER each session start used, then rejects it.</summary>

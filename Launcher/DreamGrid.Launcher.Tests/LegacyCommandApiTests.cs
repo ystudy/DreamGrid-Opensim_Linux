@@ -363,6 +363,7 @@ public sealed class LegacyCommandApiTests
         public Task<RobustAccount?> GetAccountAsync(string first, string last, CancellationToken ct) => Task.FromException<RobustAccount?>(failure);
         public Task<bool> AuthenticateAsync(Guid principal, string plainPassword, CancellationToken ct) => Task.FromResult(true);
         public Task<IReadOnlyList<MapRegion>> GetMapRegionsAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<MapRegion>>([]);
+        public Task<IReadOnlyList<MapRegion>> GetMapRegionsAsync(MapArea area, CancellationToken ct) => GetMapRegionsAsync(ct);
     }
 
     private sealed class PingModule : IFeatureModule

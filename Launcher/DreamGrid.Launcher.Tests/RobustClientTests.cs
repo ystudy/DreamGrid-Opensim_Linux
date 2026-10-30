@@ -199,4 +199,23 @@ public class RobustClientTests
 
         Assert.Empty(await c.GetMapRegionsAsync(CancellationToken.None));
     }
+
+    [Fact]
+    public async Task GetMapRegionsAsync_in_an_area_asks_for_that_area()
+    {
+        var (c, h) = Make(r => (HttpStatusCode.OK, "<ServerResponse>null</ServerResponse>"));
+
+        await c.GetMapRegionsAsync(new MapArea(1000, 1000, 1001, 1001), CancellationToken.None);
+        await c.GetMapRegionsAsync(CancellationToken.None);
+
+        Assert.Equal(2, h.Requests.Count);
+        var area = h.Requests[0];
+        Assert.Equal("/grid", area.Uri.AbsolutePath);
+        Assert.Equal("get_region_range", area.Form("METHOD"));
+        Assert.Equal("256000", area.Form("XMIN"));
+        Assert.Equal("256000", area.Form("YMIN"));
+        Assert.Equal("256511", area.Form("XMAX"));
+        Assert.Equal("256511", area.Form("YMAX"));
+        Assert.Equal("16776960", h.Requests[1].Form("XMAX"));
+    }
 }
