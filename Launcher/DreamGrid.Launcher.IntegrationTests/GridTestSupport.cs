@@ -54,7 +54,7 @@ internal static class GridTestSupport
     /// <summary>A controller wired the way the host wires it (Program.cs).</summary>
     public static GridController NewController(LauncherPaths paths, SettingsStore store, IRobustClient robust) =>
         new(paths, store, MariaDbBinaries.Locate(paths.MariaDbBin, OperatingSystem.IsWindows()),
-            [new LogLevelModule()], robust, new GridJoinClient(new HttpClient()), new SimpleHttpFactory(), TimeProvider.System);
+            [new LogLevelModule()], robust, new GridJoinClient(new HttpClient()), new OtherGridClient(new HttpClient()), new SimpleHttpFactory(), TimeProvider.System);
 
     /// <summary>Kills every process whose image or command line mentions the test's data directory.</summary>
     public static void KillEverythingUnder(string root)
