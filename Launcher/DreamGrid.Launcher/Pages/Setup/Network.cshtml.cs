@@ -165,10 +165,7 @@ public sealed class NetworkModel(IGridController grid, Func<LauncherSettings> se
         NetworkAddress = DetectedAddress;
         LanAdvisories = PlanCatalog.AdvisoriesFor(PlanCatalog.Get(Plan), publicAddress: AddressKind == "public");
         PublicAdvisories = [];
-        var hypergrid = PlanCatalog.HypergridOn(s) ? "on" : "off";
-        HypergridLine = Plan == OwnerPlan.Connected
-            ? $"Hypergrid is {hypergrid} on {s.Connected?.GridName ?? s.GridName}; that grid decides."
-            : $"Hypergrid is {hypergrid} for this grid; the Grid Asset Server decides.";
+        HypergridLine = PlanCatalog.OtherGridHypergridLine(s) ?? "";
         GridAssetRegionPorts = s.Join is { RegionPortsFrom: { } from, RegionPortsTo: { } to }
             ? string.Create(CultureInfo.InvariantCulture, $"{from} to {to}")
             : null;

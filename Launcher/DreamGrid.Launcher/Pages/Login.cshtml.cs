@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 namespace DreamGrid.Launcher.Pages;
 
 /// <summary>
-/// Signs in with the avatar name and password. Only an administrator gets in (<see cref="AdminRule"/>: level 200 or more, or a Region Server's estate owner), and every
+/// Signs in with the avatar name and password. Only an administrator gets in (<see cref="AdminRule"/>: level 200 or more, or the estate owner on a Region Server; only the estate owner on a Connected Server), and every
 /// failure shows the same message so the page does not reveal which names exist. The password is never logged.
 /// </summary>
 public sealed class LoginModel(IRobustClient robust, Func<LauncherSettings> settings, LoginThrottle throttle, ILogger<LoginModel> log) : PageModel

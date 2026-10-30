@@ -21,10 +21,8 @@ public sealed class NetworkModel(IGridController grid, Func<LauncherSettings> se
 
     public string DetectedAddress { get; } = HostAddress.Detect();
 
-    /// <summary>A Region Server's one hypergrid sentence (this page has no hypergrid switch for it); null on every other plan.</summary>
-    public string? HypergridLine => settings() is { Plan: OwnerPlan.RegionServer } s
-        ? $"Hypergrid is {(PlanCatalog.HypergridOn(s) ? "on" : "off")} for this grid; the Grid Asset Server decides."
-        : null;
+    /// <summary>The one hypergrid sentence of a Region Server or Connected Server (this page has no hypergrid switch for them); null on every other plan.</summary>
+    public string? HypergridLine => PlanCatalog.OtherGridHypergridLine(settings());
 
     public IReadOnlyDictionary<string, string> Errors { get; private set; } = new Dictionary<string, string>();
 

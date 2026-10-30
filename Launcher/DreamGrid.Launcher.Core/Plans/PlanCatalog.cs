@@ -177,6 +177,21 @@ public static class PlanCatalog
     public static bool HypergridAllowed(LauncherSettings s) =>
         s.Plan is OwnerPlan.SimplePublic or OwnerPlan.GridAsset && HostAddress.IsPublic(s.Hostname);
 
+    /// <summary>
+    /// The one hypergrid sentence of a plan that uses another computer's grid (there is no switch for it), saying who
+    /// decides; null on a plan that has a switch or none.
+    /// </summary>
+    public static string? OtherGridHypergridLine(LauncherSettings s)
+    {
+        var state = HypergridOn(s) ? "on" : "off";
+        return s.Plan switch
+        {
+            OwnerPlan.Connected => $"Hypergrid is {state} on {s.Connected?.GridName ?? s.GridName}; that grid decides.",
+            OwnerPlan.RegionServer => $"Hypergrid is {state} for this grid; the Grid Asset Server decides.",
+            _ => null,
+        };
+    }
+
     /// <summary>Whether this computer runs Robust: not a Region Server or a Connected Server, which use another computer's.</summary>
     public static bool RunsRobust(LauncherSettings s) => s.Plan is not (OwnerPlan.RegionServer or OwnerPlan.Connected);
 

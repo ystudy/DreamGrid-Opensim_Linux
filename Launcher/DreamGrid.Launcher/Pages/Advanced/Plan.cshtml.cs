@@ -34,11 +34,14 @@ public sealed class PlanModel(IGridController grid, Func<LauncherSettings> setti
 
     public string? Problem { get; private set; }
 
-    /// <summary>A Region Server's one hypergrid sentence, shown instead of the switch; null on every other plan.</summary>
+    /// <summary>The one hypergrid sentence of a Region Server or Connected Server, shown instead of the switch; null on every other plan.</summary>
     public string? HypergridLine { get; private set; }
 
     /// <summary>On a Region Server, the Grid Asset Server's address as the owner would type it (the page links to <c>/advanced/join</c>); else null.</summary>
     public string? GridAssetAddress { get; private set; }
+
+    /// <summary>On a Connected Server, the grid its regions are on (its name and login address); else null. There is no way to change it here.</summary>
+    public ConnectedGrid? ConnectedGrid { get; private set; }
 
     public void OnGet() => Fill(settings());
 
@@ -94,8 +97,8 @@ public sealed class PlanModel(IGridController grid, Func<LauncherSettings> setti
         var s = settings();
         if (!Offered(s) || !PlanCatalog.HypergridAllowed(s))
         {
-            // A Region Server has no switch: the page's own sentence (HypergridLine) says who decides.
-            Problem = s.Plan == OwnerPlan.RegionServer ? null : NeedsPublicAddress;
+            // A Region Server or Connected Server has no switch: the page's own sentence (HypergridLine) says who decides.
+            Problem = s.Plan is OwnerPlan.RegionServer or OwnerPlan.Connected ? null : NeedsPublicAddress;
             Fill(s);
             return Page();
         }
@@ -136,9 +139,8 @@ public sealed class PlanModel(IGridController grid, Func<LauncherSettings> setti
             .Select(p => { var (ok, why) = PlanCatalog.CanChange(plan, p.Plan); return (p, ok, why); })
             .ToList();
         GridAssetAddress = plan == OwnerPlan.RegionServer && s.Join is { } joined ? JoinForm.AddressOf(joined) : null;
-        HypergridLine = plan == OwnerPlan.RegionServer
-            ? $"Hypergrid is {(PlanCatalog.HypergridOn(s) ? "on" : "off")} for this grid; the Grid Asset Server decides."
-            : null;
+        ConnectedGrid = plan == OwnerPlan.Connected ? s.Connected : null;
+        HypergridLine = PlanCatalog.OtherGridHypergridLine(s);
         Switch = Offered(s)
             ? new HypergridSwitchModel(PlanCatalog.HypergridOn(s), PlanCatalog.HypergridAllowed(s),
                 PlanCatalog.HypergridAllowed(s) ? null : NeedsPublicAddress + ".", s.RobustPublicPort, s.RegionPort)
