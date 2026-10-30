@@ -30,8 +30,8 @@ Legend: **[S]** security requirement, **[X]** cross-platform note, **[?]** decis
 
 ### 1.2 Two audiences: admins and residents
 - [ ] (staff side done in plan 7a; guest side is plan 7b) Split the site into an **admin area** (avatar level 200 or higher, today's `dg-auth`) and a **resident area** (any confirmed avatar). Use a separate cookie and scheme so a resident session can never reach admin endpoints.
-- [x] Roles taken from the Robust `UserLevel`: resident (0+), privileged (for example 50, used for hypergrid links), admin (200+). Make the levels settings, not magic numbers.
-- [x] More than one admin: list who has admin level, promote and demote, and refuse to remove the last admin.
+- [x] Roles taken from the Robust `UserLevel`: resident (0+), privileged (for example 50, used for hypergrid links), admin (200+). Make the levels settings, not magic numbers. (admin and supervisor levels as settings; the privileged level 50 for hypergrid is item 2.9, not built in 7a)
+- [x] More than one admin: list who has admin level, promote and demote, and refuse to remove the last admin. (The last admin can't be removed: the owner is always an admin and can't be changed.)
 - Decided: the resident area is on the **same site and port** as the admin area. Still worth adding: an optional "admin pages only from these networks" allow-list.
 
 ### 1.3 Security baseline
@@ -48,7 +48,7 @@ Legend: **[S]** security requirement, **[X]** cross-platform note, **[?]** decis
   - [ ] **[S]** Turning a layer off is written to the audit log. The settings page warns when every layer is off and sign-up is open.
 - [x] **[S]** Optional TOTP two-factor sign-in for admins. The Robust password stays the first factor.
 - [x] Sessions page: an admin sees their active sessions and can end all of them ("sign out everywhere" rotates a per-user stamp).
-- [x] Confirm that the legacy port-8001 routes (`/` with `alt`/`type`/`command`, `/dreamgrid/regionready`) accept only loopback or configured simulator addresses, and add tests for it.
+- [x] Checked the legacy port-8001 routes: `/dreamgrid/regionready` accepts only loopback (tested); the command API on `/` stays reachable from the network on purpose (MachineId or an admin avatar), obeys the admin network list and the throttle, refuses a password alone for two-factor accounts, and audits commands that ran (design 2026-10-30 §7.8).
 
 ### 1.4 Email
 - [ ] SMTP settings page: host, port, TLS mode, user, password, sender address, and a "send test email" button.
