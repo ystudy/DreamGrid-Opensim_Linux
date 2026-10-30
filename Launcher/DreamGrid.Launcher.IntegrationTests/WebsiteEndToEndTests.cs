@@ -145,33 +145,15 @@ public sealed partial class LauncherEndToEndTests
         await RunWithCleanupAsync(paths, store, async () =>
         {
             // 1. Launcher A: a Grid Asset Server on the network, hypergrid off, with a region "Hub" (at 1000,1000).
-            var launcherA = StartLauncher(paths);
-            await WaitForAsync(launcherA, async () => await GetAsync(s, "?type=Booted") == "ACK", "A: GET /?type=Booted == ACK");
-            using var webA = new WebSession(s.WebPort);
-
-            string link = "";
-            await WaitForAsync(launcherA, () => Task.FromResult((link = SetupLink(paths)) != ""), "A's setup link in launcher.log");
-            var page = await webA.FollowAsync(link);
-            Assert.Equal("/setup/plan", page.Path);
-            page = await webA.FollowAsync("/setup/plan/grid-asset");
-            page = await webA.SubmitAsync(page, new());
+            using var a = await OpenSetupAsync(paths, s, "A");
+            var page = await a.Web.FollowAsync("/setup/plan/grid-asset");
+            page = await a.Web.SubmitAsync(page, new());
             Assert.Equal("/setup/network", page.Path);
-            page = await webA.SubmitAsync(page, new() { ["AddressKind"] = "lan" });
+            page = await a.Web.SubmitAsync(page, new() { ["AddressKind"] = "lan" });
             Assert.Equal("/setup/world", page.Path);
-            page = await webA.SubmitAsync(page, new() { ["GridName"] = "Avalon" });
+            page = await a.Web.SubmitAsync(page, new() { ["GridName"] = "Avalon" });
             Assert.Equal("/setup/avatar", page.Path);
-            page = await webA.SubmitAsync(page, new()
-            {
-                ["FirstName"] = "Test", ["LastName"] = "Owner", ["Password"] = Password, ["Confirm"] = Password,
-            });
-            Assert.Equal("/setup/region", page.Path);
-            page = await webA.SubmitAsync(page, new() { ["RegionName"] = "Hub", ["Content"] = "island" }, "main > form");
-            Assert.Equal("/setup/region?working=1", page.PathAndQuery);
-            await WaitForAsync(launcherA, () => RegionReadyAsync(webA), "A: /api/setup/progress to reach \"Ready\"", () => "last progress: " + _lastProgress);
-            page = await webA.FollowAsync("/setup");
-            Assert.Equal("/setup/connect", page.Path);
-            page = await webA.SubmitAsync(page, new());
-            Assert.Equal("/", page.Path);
+            await FinishSetupFromAvatarAsync(a, "A", page, OwnerWithPassword, "Hub", "main > form");
 
             // 2. Launcher B: its own data folder and free ports (picked now, so none is one A already uses).
             var pathsB = RequirePaths(_secondRoot);
@@ -179,39 +161,24 @@ public sealed partial class LauncherEndToEndTests
             var sB = SeedSettings(storeB);
             await RunWithCleanupAsync(pathsB, storeB, async () =>
             {
-                var launcherB = StartLauncher(pathsB);
-                await WaitForAsync(launcherB, async () => await GetAsync(sB, "?type=Booted") == "ACK", "B: GET /?type=Booted == ACK");
-                using var webB = new WebSession(sB.WebPort);
-
-                string linkB = "";
-                await WaitForAsync(launcherB, () => Task.FromResult((linkB = SetupLink(pathsB)) != ""), "B's setup link in launcher.log");
-                var pageB = await webB.FollowAsync(linkB);
-                Assert.Equal("/setup/plan", pageB.Path);
-                pageB = await webB.FollowAsync("/setup/plan/region-server");
-                pageB = await webB.SubmitAsync(pageB, new());
+                using var b = await OpenSetupAsync(pathsB, sB, "B");
+                var pageB = await b.Web.FollowAsync("/setup/plan/region-server");
+                pageB = await b.Web.SubmitAsync(pageB, new());
                 Assert.Equal("/setup/join", pageB.Path);
 
                 // Join: the first post shows what was found; "Join this grid" saves it.
-                pageB = await webB.SubmitAsync(pageB, new() { ["Address"] = $"127.0.0.1:{s.RobustPublicPort}" }, redirects: false);
+                pageB = await b.Web.SubmitAsync(pageB, new() { ["Address"] = $"127.0.0.1:{s.RobustPublicPort}" }, redirects: false);
                 Assert.Contains("Avalon", pageB.Html);
-                pageB = await webB.SubmitAsync(pageB, new(), ".join-found form", button: "button[formaction*='handler=Confirm']");
+                pageB = await b.Web.SubmitAsync(pageB, new(), ".join-found form", button: "button[formaction*='handler=Confirm']");
                 Assert.Equal("/setup/network", pageB.Path);
 
                 // On my network, with B's own free first region port (the suggestion follows A's region ports).
-                pageB = await webB.SubmitAsync(pageB, new()
+                pageB = await b.Web.SubmitAsync(pageB, new()
                 {
                     ["AddressKind"] = "lan", ["FirstRegionPort"] = sB.RegionPort.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 });
                 Assert.Equal("/setup/avatar", pageB.Path);
-                pageB = await webB.SubmitAsync(pageB, new() { ["FirstName"] = "Test", ["LastName"] = "Owner" });
-                Assert.Equal("/setup/region", pageB.Path);
-                pageB = await webB.SubmitAsync(pageB, new() { ["RegionName"] = "Isle", ["Content"] = "island" });
-                Assert.Equal("/setup/region?working=1", pageB.PathAndQuery);
-                await WaitForAsync(launcherB, () => RegionReadyAsync(webB), "B: /api/setup/progress to reach \"Ready\"", () => "last progress: " + _lastProgress);
-                pageB = await webB.FollowAsync("/setup");
-                Assert.Equal("/setup/connect", pageB.Path);
-                pageB = await webB.SubmitAsync(pageB, new());
-                Assert.Equal("/", pageB.Path);
+                await FinishSetupFromAvatarAsync(b, "B", pageB, OwnerByName, "Isle");
 
                 // 3. B joined Avalon, placed Isle beside Hub, runs no grid service, and A's map has both regions.
                 var settingsB = storeB.LoadOrCreate();
@@ -223,40 +190,14 @@ public sealed partial class LauncherEndToEndTests
                 Assert.Contains("Hub", map.Select(r => r.Name));
                 Assert.Contains("Isle", map.Select(r => r.Name));
 
-                await WaitForAsync(launcherB, async () =>
-                {
-                    _lastStatus = await GetAsync(sB, "api/status") ?? "";
-                    if (_lastStatus == "") return false;
-                    using var doc = JsonDocument.Parse(_lastStatus);
-                    return doc.RootElement.GetProperty("grid").GetProperty("loginsEnabled").GetBoolean();
-                }, "B: /api/status to report logins enabled", () => "last status: " + _lastStatus);
-
+                await WaitForLoginsEnabledAsync(b.Launcher, sB, "B");
                 // Signing in to B's website as the owner, with the password kept on A.
-                using (var signIn = new WebSession(sB.WebPort))
-                {
-                    var login = await signIn.FollowAsync("/login");
-                    Assert.Equal("/login", login.Path);
-                    login = await signIn.SubmitAsync(login, new() { ["Name"] = "Test Owner", ["Password"] = Password });
-                    Assert.Equal("/", login.Path);
-                }
+                await AssertWebsiteSignInAsync(sB);
 
                 // 4. Stop A's world; then stop B's and start it again: B can't start without the Grid Asset Server, and
                 // keeps its join.
-                await GridActionAsync(webA, "stop");
-                await WaitForAsync(launcherA, async () => Stopped(await StatusAsync(webA), withGridService: true), "A's world to stop", () => "last status: " + _lastStatus);
                 var joined = storeB.LoadOrCreate().Join;
-                await GridActionAsync(webB, "stop");
-                await WaitForAsync(launcherB, async () => Stopped(await StatusAsync(webB), withGridService: false), "B's world to stop", () => "last status: " + _lastStatus);
-                await GridActionAsync(webB, "start");
-                await WaitForAsync(launcherB, async () => (await StatusAsync(webB)).GetProperty("problem").GetString() == "Your world could not start.",
-                    "B's start to fail", () => "last status: " + _lastStatus);
-
-                // /api/status gives only the plain sentence; the dashboard's details show the start failure itself.
-                var status = await StatusAsync(webB);
-                Assert.Equal("Failed", status.GetProperty("grid").GetProperty("robust").GetProperty("state").GetString());
-                var dashboard = await webB.FollowAsync("/");
-                var details = new HtmlParser().ParseDocument(dashboard.Html).QuerySelector(".failed-details")?.TextContent ?? "";
-                Assert.Contains("isn't answering", details);
+                await AssertStartFailsWhileGridDownAsync(a, b, "isn't answering");
                 Assert.Equal(joined, storeB.LoadOrCreate().Join);
             });
         });
@@ -272,33 +213,15 @@ public sealed partial class LauncherEndToEndTests
         await RunWithCleanupAsync(paths, store, async () =>
         {
             // 1. Launcher A, a Local world "Elsewhere": the "other grid", with a region "Hub" (at 1000,1000).
-            var launcherA = StartLauncher(paths);
-            await WaitForAsync(launcherA, async () => await GetAsync(s, "?type=Booted") == "ACK", "A: GET /?type=Booted == ACK");
-            using var webA = new WebSession(s.WebPort);
-
-            string link = "";
-            await WaitForAsync(launcherA, () => Task.FromResult((link = SetupLink(paths)) != ""), "A's setup link in launcher.log");
-            var page = await webA.FollowAsync(link);
-            Assert.Equal("/setup/plan", page.Path);
-            page = await webA.FollowAsync("/setup/plan/local");
-            page = await webA.SubmitAsync(page, new());
+            using var a = await OpenSetupAsync(paths, s, "A");
+            var page = await a.Web.FollowAsync("/setup/plan/local");
+            page = await a.Web.SubmitAsync(page, new());
             Assert.Equal("/setup/network", page.Path);
-            page = await webA.SubmitAsync(page, new());
+            page = await a.Web.SubmitAsync(page, new());
             Assert.Equal("/setup/world", page.Path);
-            page = await webA.SubmitAsync(page, new() { ["GridName"] = "Elsewhere" });
+            page = await a.Web.SubmitAsync(page, new() { ["GridName"] = "Elsewhere" });
             Assert.Equal("/setup/avatar", page.Path);
-            page = await webA.SubmitAsync(page, new()
-            {
-                ["FirstName"] = "Test", ["LastName"] = "Owner", ["Password"] = Password, ["Confirm"] = Password,
-            });
-            Assert.Equal("/setup/region", page.Path);
-            page = await webA.SubmitAsync(page, new() { ["RegionName"] = "Hub", ["Content"] = "island" });
-            Assert.Equal("/setup/region?working=1", page.PathAndQuery);
-            await WaitForAsync(launcherA, () => RegionReadyAsync(webA), "A: /api/setup/progress to reach \"Ready\"", () => "last progress: " + _lastProgress);
-            page = await webA.FollowAsync("/setup");
-            Assert.Equal("/setup/connect", page.Path);
-            page = await webA.SubmitAsync(page, new());
-            Assert.Equal("/", page.Path);
+            await FinishSetupFromAvatarAsync(a, "A", page, OwnerWithPassword, "Hub");
 
             // 2. Launcher B: its own data folder and free ports (picked now, so none is one A already uses).
             var pathsB = RequirePaths(_secondRoot);
@@ -306,45 +229,29 @@ public sealed partial class LauncherEndToEndTests
             var sB = SeedSettings(storeB);
             await RunWithCleanupAsync(pathsB, storeB, async () =>
             {
-                var launcherB = StartLauncher(pathsB);
-                await WaitForAsync(launcherB, async () => await GetAsync(sB, "?type=Booted") == "ACK", "B: GET /?type=Booted == ACK");
-                using var webB = new WebSession(sB.WebPort);
-
-                string linkB = "";
-                await WaitForAsync(launcherB, () => Task.FromResult((linkB = SetupLink(pathsB)) != ""), "B's setup link in launcher.log");
-                var pageB = await webB.FollowAsync(linkB);
-                Assert.Equal("/setup/plan", pageB.Path);
-                pageB = await webB.FollowAsync("/setup/plan/connected-server");
-                pageB = await webB.SubmitAsync(pageB, new());
+                using var b = await OpenSetupAsync(pathsB, sB, "B");
+                var pageB = await b.Web.FollowAsync("/setup/plan/connected-server");
+                pageB = await b.Web.SubmitAsync(pageB, new());
                 Assert.Equal("/setup/other-grid", pageB.Path);
 
                 // Another grid, by its two addresses: the first post shows what was found; "Connect to this grid" saves it.
-                var otherGrid = new Dictionary<string, string>
+                pageB = await b.Web.SubmitAsync(pageB, new()
                 {
                     ["Grid"] = "other",
                     ["LoginAddress"] = $"127.0.0.1:{s.RobustPublicPort}",
                     ["ServicesAddress"] = $"127.0.0.1:{s.RobustPrivatePort}",
-                };
-                pageB = await webB.SubmitAsync(pageB, otherGrid, redirects: false);
+                }, redirects: false);
                 Assert.Contains("Elsewhere", pageB.Html);
-                pageB = await webB.SubmitAsync(pageB, new(), ".join-found form", button: "button[formaction*='handler=Confirm']");
+                pageB = await b.Web.SubmitAsync(pageB, new(), ".join-found form", button: "button[formaction*='handler=Confirm']");
                 Assert.Equal("/setup/network", pageB.Path);
 
-                // On my network, with B's own free first region port.
-                pageB = await webB.SubmitAsync(pageB, new()
+                // "On my network", not a public address: both launchers run on this one machine. With B's own free first region port.
+                pageB = await b.Web.SubmitAsync(pageB, new()
                 {
                     ["AddressKind"] = "lan", ["FirstRegionPort"] = sB.RegionPort.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 });
                 Assert.Equal("/setup/avatar", pageB.Path);
-                pageB = await webB.SubmitAsync(pageB, new() { ["FirstName"] = "Test", ["LastName"] = "Owner" });
-                Assert.Equal("/setup/region", pageB.Path);
-                pageB = await webB.SubmitAsync(pageB, new() { ["RegionName"] = "Isle", ["Content"] = "island" });
-                Assert.Equal("/setup/region?working=1", pageB.PathAndQuery);
-                await WaitForAsync(launcherB, () => RegionReadyAsync(webB), "B: /api/setup/progress to reach \"Ready\"", () => "last progress: " + _lastProgress);
-                pageB = await webB.FollowAsync("/setup");
-                Assert.Equal("/setup/connect", pageB.Path);
-                pageB = await webB.SubmitAsync(pageB, new());
-                Assert.Equal("/", pageB.Path);
+                await FinishSetupFromAvatarAsync(b, "B", pageB, OwnerByName, "Isle");
 
                 // 3. B is connected to Elsewhere by address (no preset), placed Isle beside Hub, runs no grid service, and
                 // A's map has both regions.
@@ -358,43 +265,115 @@ public sealed partial class LauncherEndToEndTests
                 Assert.Contains("Hub", map.Select(r => r.Name));
                 Assert.Contains("Isle", map.Select(r => r.Name));
 
-                await WaitForAsync(launcherB, async () =>
-                {
-                    _lastStatus = await GetAsync(sB, "api/status") ?? "";
-                    if (_lastStatus == "") return false;
-                    using var doc = JsonDocument.Parse(_lastStatus);
-                    return doc.RootElement.GetProperty("grid").GetProperty("loginsEnabled").GetBoolean();
-                }, "B: /api/status to report logins enabled", () => "last status: " + _lastStatus);
-
+                await WaitForLoginsEnabledAsync(b.Launcher, sB, "B");
                 // Signing in to B's website as the owner: Elsewhere checks the password.
-                using (var signIn = new WebSession(sB.WebPort))
-                {
-                    var login = await signIn.FollowAsync("/login");
-                    Assert.Equal("/login", login.Path);
-                    login = await signIn.SubmitAsync(login, new() { ["Name"] = "Test Owner", ["Password"] = Password });
-                    Assert.Equal("/", login.Path);
-                }
+                await AssertWebsiteSignInAsync(sB);
 
                 // 4. Stop A's world; then stop B's and start it again: B can't start without Elsewhere answering, and keeps
                 // its connection.
-                await GridActionAsync(webA, "stop");
-                await WaitForAsync(launcherA, async () => Stopped(await StatusAsync(webA), withGridService: true), "A's world to stop", () => "last status: " + _lastStatus);
                 var connected = storeB.LoadOrCreate().Connected;
-                await GridActionAsync(webB, "stop");
-                await WaitForAsync(launcherB, async () => Stopped(await StatusAsync(webB), withGridService: false), "B's world to stop", () => "last status: " + _lastStatus);
-                await GridActionAsync(webB, "start");
-                await WaitForAsync(launcherB, async () => (await StatusAsync(webB)).GetProperty("problem").GetString() == "Your world could not start.",
-                    "B's start to fail", () => "last status: " + _lastStatus);
-
-                // /api/status gives only the plain sentence; the dashboard's details show the start failure itself.
-                var status = await StatusAsync(webB);
-                Assert.Equal("Failed", status.GetProperty("grid").GetProperty("robust").GetProperty("state").GetString());
-                var dashboard = await webB.FollowAsync("/");
-                var details = new HtmlParser().ParseDocument(dashboard.Html).QuerySelector(".failed-details")?.TextContent ?? "";
-                Assert.Contains("isn't answering at", details);
+                await AssertStartFailsWhileGridDownAsync(a, b, "Elsewhere isn't answering at");
                 Assert.Equal(connected, storeB.LoadOrCreate().Connected);
             });
         });
+    }
+
+    /// <summary>A launcher that is up, a browser session on its website and the page its setup link led to.</summary>
+    private sealed record SetupSession(LauncherProcess Launcher, WebSession Web, WebPage Page) : IDisposable
+    {
+        public void Dispose() => Web.Dispose();
+    }
+
+    /// <summary>The owner as a plain setup creates it (name and password).</summary>
+    private static Dictionary<string, string> OwnerWithPassword => new()
+    {
+        ["FirstName"] = "Test", ["LastName"] = "Owner", ["Password"] = Password, ["Confirm"] = Password,
+    };
+
+    /// <summary>The owner as a Region Server or Connected Server names it: an avatar that already exists on the other grid.</summary>
+    private static Dictionary<string, string> OwnerByName => new() { ["FirstName"] = "Test", ["LastName"] = "Owner" };
+
+    /// <summary>Starts a launcher (<paramref name="which"/> names it in failure messages) and opens its setup link: the plan cards.</summary>
+    private async Task<SetupSession> OpenSetupAsync(LauncherPaths paths, LauncherSettings s, string which)
+    {
+        var launcher = StartLauncher(paths);
+        await WaitForAsync(launcher, async () => await GetAsync(s, "?type=Booted") == "ACK", $"{which}: GET /?type=Booted == ACK");
+        var web = new WebSession(s.WebPort);
+        try
+        {
+            string link = "";
+            await WaitForAsync(launcher, () => Task.FromResult((link = SetupLink(paths)) != ""), $"{which}'s setup link in launcher.log");
+            var page = await web.FollowAsync(link);
+            Assert.Equal("/setup/plan", page.Path);
+            return new SetupSession(launcher, web, page);
+        }
+        catch
+        {
+            web.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// From the avatar step (<paramref name="page"/>) to the dashboard: the owner (<paramref name="owner"/>), the first
+    /// region, its progress until it is ready, and "I'm in!". <paramref name="regionForm"/> picks the region form when the
+    /// page has more than one.
+    /// </summary>
+    private async Task FinishSetupFromAvatarAsync(SetupSession setup, string which, WebPage page, Dictionary<string, string> owner,
+        string regionName, string regionForm = "main form")
+    {
+        var web = setup.Web;
+        page = await web.SubmitAsync(page, owner);
+        Assert.Equal("/setup/region", page.Path);
+        page = await web.SubmitAsync(page, new() { ["RegionName"] = regionName, ["Content"] = "island" }, regionForm);
+        Assert.Equal("/setup/region?working=1", page.PathAndQuery);
+        await WaitForAsync(setup.Launcher, () => RegionReadyAsync(web), $"{which}: /api/setup/progress to reach \"Ready\"", () => "last progress: " + _lastProgress);
+        page = await web.FollowAsync("/setup");
+        Assert.Equal("/setup/connect", page.Path);
+        page = await web.SubmitAsync(page, new());
+        Assert.Equal("/", page.Path);
+    }
+
+    private async Task WaitForLoginsEnabledAsync(LauncherProcess launcher, LauncherSettings s, string which) =>
+        await WaitForAsync(launcher, async () =>
+        {
+            _lastStatus = await GetAsync(s, "api/status") ?? "";
+            if (_lastStatus == "") return false;
+            using var doc = JsonDocument.Parse(_lastStatus);
+            return doc.RootElement.GetProperty("grid").GetProperty("loginsEnabled").GetBoolean();
+        }, $"{which}: /api/status to report logins enabled", () => "last status: " + _lastStatus);
+
+    /// <summary>A fresh browser signs in to the website at <paramref name="s"/>'s port as the owner, "Test Owner".</summary>
+    private static async Task AssertWebsiteSignInAsync(LauncherSettings s)
+    {
+        using var signIn = new WebSession(s.WebPort);
+        var login = await signIn.FollowAsync("/login");
+        Assert.Equal("/login", login.Path);
+        login = await signIn.SubmitAsync(login, new() { ["Name"] = "Test Owner", ["Password"] = Password });
+        Assert.Equal("/", login.Path);
+    }
+
+    /// <summary>
+    /// Stops <paramref name="a"/>'s world (the grid <paramref name="b"/> depends on), stops <paramref name="b"/>'s too and
+    /// starts it again: the start fails, and the dashboard's details for the failed start contain
+    /// <paramref name="expectedInDetails"/>.
+    /// </summary>
+    private async Task AssertStartFailsWhileGridDownAsync(SetupSession a, SetupSession b, string expectedInDetails)
+    {
+        await GridActionAsync(a.Web, "stop");
+        await WaitForAsync(a.Launcher, async () => Stopped(await StatusAsync(a.Web), withGridService: true), "A's world to stop", () => "last status: " + _lastStatus);
+        await GridActionAsync(b.Web, "stop");
+        await WaitForAsync(b.Launcher, async () => Stopped(await StatusAsync(b.Web), withGridService: false), "B's world to stop", () => "last status: " + _lastStatus);
+        await GridActionAsync(b.Web, "start");
+        await WaitForAsync(b.Launcher, async () => (await StatusAsync(b.Web)).GetProperty("problem").GetString() == "Your world could not start.",
+            "B's start to fail", () => "last status: " + _lastStatus);
+
+        // /api/status gives only the plain sentence; the dashboard's details show the start failure itself.
+        var status = await StatusAsync(b.Web);
+        Assert.Equal("Failed", status.GetProperty("grid").GetProperty("robust").GetProperty("state").GetString());
+        var dashboard = await b.Web.FollowAsync("/");
+        var details = new HtmlParser().ParseDocument(dashboard.Html).QuerySelector(".failed-details")?.TextContent ?? "";
+        Assert.Contains(expectedInDetails, details);
     }
 
     /// <summary>Presses a dashboard control (<c>gridAction</c> <paramref name="action"/>) the way a browser without JavaScript does.</summary>
