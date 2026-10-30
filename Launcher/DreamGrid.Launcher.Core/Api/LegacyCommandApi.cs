@@ -85,14 +85,16 @@ public sealed class LegacyCommandApi(
         }
         try
         {
-            var account = await robust.GetAccountAsync(name.First, name.Last, ct);
+            // The strict lookup: a reply that isn't an account is Robust failing (level 0 below), never a wrong name.
+            var account = await robust.FindAccountAsync(name.First, name.Last, ct);
             if (account is null || !await robust.AuthenticateAsync(account.PrincipalId, r.Password, ct))
             {
                 throttle.RecordFailure(name.Key, caller);
                 return Nobody;
             }
-            throttle.RecordSuccess(name.Key); // the password was right, so whatever follows is not a failure
 
+            // The password was right, so a refusal below is not a failure; but it isn't a sign-in either, so it doesn't clear the
+            // name's failures: a known password must not reset the count between guesses at the two-factor code.
             // An avatar password is one factor. Anyone with two-factor on (or whose store cannot be read: fail closed) uses the
             // MachineId, and so does staff when the owner requires two-factor of them. The owner is never refused by the switch.
             var role = AdminRule.RoleOf(settings(), account);
@@ -108,6 +110,7 @@ public sealed class LegacyCommandApi(
                 return Nobody;
             }
 
+            throttle.RecordSuccess(name.Key);
             // A Region Server's or Connected Server's estate owner is level 0 on the other grid but administers here; on a
             // Connected Server a higher level on that grid counts for nothing.
             return new Caller(AdminRule.EffectiveLevel(settings(), account), $"{account.FirstName} {account.LastName}",
@@ -115,7 +118,8 @@ public sealed class LegacyCommandApi(
         }
         catch (Exception e) when (!ct.IsCancellationRequested)
         {
-            // Robust down, slow (HttpClient timeout) or answering garbage: nobody but the MachineId gets in.
+            // Robust down, slow (HttpClient timeout) or answering garbage (InvalidDataException): nobody but the MachineId gets
+            // in, and it is not counted as a failure.
             // Only the exception type is logged: messages could echo the request.
             log.LogWarning("Avatar check against Robust failed ({Error}); treating the caller as level 0.", e.GetType().Name);
             return Nobody;

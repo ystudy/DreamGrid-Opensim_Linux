@@ -548,6 +548,38 @@ public sealed class LegacyCommandApiTests : IDisposable
         Assert.Equal("ACK", await api.HandleAsync(Req("StopRobust", password: MachineId), null, Ct));
     }
 
+    [Theory]
+    [InlineData(TwoFactorState.On, false)]
+    [InlineData(TwoFactorState.Off, true)]
+    public async Task A_right_password_that_is_refused_does_not_clear_earlier_failures(TwoFactorState state, bool required)
+    {
+        // Otherwise a known password sent here would reset the name's count between guesses at the two-factor code.
+        KnownIds();
+        _twoFactor.Set(DivaId, state);
+        if (required) RequireTwoFactor();
+        var api = Api();
+        for (var i = 0; i < LoginThrottle.NameMaxFailures - 1; i++) _throttle.RecordFailure("Diva Admin", null);
+
+        Assert.StartsWith("NAK You do not have permission to StopRobust", await api.HandleAsync(Req("StopRobust", "Diva Admin", "divapw"), null, Ct));
+        _throttle.RecordFailure("Diva Admin", null);
+
+        Assert.True(_throttle.IsLocked("Diva Admin", null));
+    }
+
+    [Fact]
+    public async Task A_reply_that_is_not_an_account_is_level_0_and_never_a_failure()
+    {
+        _robust.FailureReply = true;
+        var api = Api();
+
+        for (var i = 0; i < LoginThrottle.NameMaxFailures + 1; i++)
+            Assert.StartsWith("NAK You do not have permission to StopRobust", await api.HandleAsync(Req("StopRobust", "God Owner", "godpw"), null, Ct));
+
+        Assert.Empty(_grid.Snapshot());
+        Assert.False(_throttle.IsLocked("God Owner", null));
+        Assert.Contains(_logs, l => l.Level == LogLevel.Warning && l.Message.Contains(nameof(InvalidDataException)));
+    }
+
     [Fact]
     public async Task A_refusal_for_two_factor_is_logged_by_first_name_only_and_never_the_password()
     {

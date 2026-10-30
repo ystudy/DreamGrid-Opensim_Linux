@@ -398,6 +398,31 @@ public sealed class TwoFactorSignInTests
     }
 
     [Fact]
+    public async Task A_right_password_on_port_8001_does_not_reset_the_count_of_wrong_codes()
+    {
+        await using var f = Factory();
+        var (secret, _) = Enrol(f, StaffRole.Admin);
+        var client = Client(f);
+        using (var r = await PasswordAsync(client, "Test Admin"))
+            Assert.Equal("/login/code", LocationPath(r));
+        for (var i = 0; i < LoginThrottle.NameMaxFailures - 1; i++)
+        {
+            using var wrong = await CodeAsync(client, WrongCode(f, secret));
+            Assert.Equal(WrongCodeMessage, await ErrorAsync(wrong));
+        }
+
+        // The password is right, but two-factor is on: refused, and the count of wrong codes stands.
+        using (var command = await Client(f).GetAsync($"/?command=StopRobust&avatar=Test%20Admin&password={Password}", Ct))
+            Assert.StartsWith("NAK", await command.Content.ReadAsStringAsync(Ct));
+        using (var fifth = await CodeAsync(client, WrongCode(f, secret)))
+            Assert.Equal(WrongCodeMessage, await ErrorAsync(fifth));
+
+        using var right = await CodeAsync(client, CodeNow(f, secret));
+        Assert.Equal(Locked, await ErrorAsync(right));
+        Assert.Equal(HttpStatusCode.Redirect, await DashboardAsync(client));
+    }
+
+    [Fact]
     public async Task Wrong_codes_on_the_two_factor_page_count_toward_lock()
     {
         await using var f = Factory();
