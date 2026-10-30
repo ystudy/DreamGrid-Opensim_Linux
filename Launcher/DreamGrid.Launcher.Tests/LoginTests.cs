@@ -1,6 +1,8 @@
 using System.Net;
 using AngleSharp.Html.Parser;
 using DreamGrid.Launcher.Core.Settings;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Xunit;
 
 namespace DreamGrid.Launcher.Tests;
@@ -11,17 +13,21 @@ public sealed class LoginTests
 
     private const string Wrong = "Name or password is wrong, or this avatar is not an administrator.";
     private const string Locked = "Too many attempts. Try again in a few minutes.";
+    private static readonly Guid OwnerId = Guid.NewGuid();
 
-    private static LauncherFactory Factory()
+    private static LauncherFactory Factory(Action<IApplicationBuilder>? before = null)
     {
         var f = new LauncherFactory(s => s with
         {
             GridName = "Avalon",
             SetupToken = null,
             Setup = new SetupState(WorldNamed: true, OwnerCreated: true, RegionCreated: true, Finished: true,
-                Owner: new OwnerInfo("Test", "Owner", Guid.NewGuid())),
-        });
-        f.Robust.Add("Test", "Owner", 200, "pass-word1").Add("Plain", "Person", 0, "pass-word1");
+                Owner: new OwnerInfo("Test", "Owner", OwnerId)),
+        })
+        {
+            Before = before,
+        };
+        f.Robust.Add("Test", "Owner", 200, "pass-word1", OwnerId).Add("Plain", "Person", 0, "pass-word1");
         return f;
     }
 
@@ -115,6 +121,45 @@ public sealed class LoginTests
     }
 
     [Fact]
+    public async Task Ip_lock_refuses_correct_password()
+    {
+        var remote = IPAddress.Parse("10.1.2.3");
+        await using var f = Factory(app => app.Use((ctx, next) =>
+        {
+            ctx.Connection.RemoteIpAddress = remote;
+            return next(ctx);
+        }));
+        var client = Client(f);
+        for (var i = 0; i < 20; i++)
+            Assert.Equal(Wrong, await ErrorAsync(await LoginAsync(client, $"Guess{i} Person", "bad-password")));
+        var lookups = f.Robust.Lookups;
+
+        var r = await LoginAsync(client, "Test Owner", "pass-word1");
+
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        Assert.Equal(Locked, await ErrorAsync(r));
+        Assert.Equal(lookups, f.Robust.Lookups);
+    }
+
+    [Fact]
+    public async Task Ip_lock_does_not_reach_other_addresses()
+    {
+        var remote = IPAddress.Parse("10.1.2.3");
+        await using var f = Factory(app => app.Use((ctx, next) =>
+        {
+            ctx.Connection.RemoteIpAddress = ctx.Request.Headers.ContainsKey("X-Test-Far") ? IPAddress.Parse("10.9.9.9") : remote;
+            return next(ctx);
+        }));
+        var client = Client(f);
+        for (var i = 0; i < 20; i++)
+            await LoginAsync(client, $"Guess{i} Person", "bad-password");
+
+        var far = Client(f);
+        far.DefaultRequestHeaders.Add("X-Test-Far", "1");
+        Assert.Equal(HttpStatusCode.Redirect, (await LoginAsync(far, "Test Owner", "pass-word1")).StatusCode);
+    }
+
+    [Fact]
     public async Task Different_spacings_of_one_name_share_one_lock()
     {
         await using var f = Factory();
@@ -139,6 +184,22 @@ public sealed class LoginTests
             Assert.Equal("Your world's sign-in service isn't running yet. Start your world, then try again.", await ErrorAsync(r));
         }
         f.Robust.Down = false;
+        Assert.Equal(HttpStatusCode.Redirect, (await LoginAsync(client, "Test Owner", "pass-word1")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Unusable_account_reply_is_a_service_failure_not_a_wrong_password()
+    {
+        await using var f = Factory();
+        f.Robust.FailureReply = true;
+        var client = Client(f);
+        for (var i = 0; i < 6; i++)
+        {
+            var r = await LoginAsync(client, "Test Owner", "pass-word1");
+            Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+            Assert.Equal("Your world's sign-in service isn't running yet. Start your world, then try again.", await ErrorAsync(r));
+        }
+        f.Robust.FailureReply = false;
         Assert.Equal(HttpStatusCode.Redirect, (await LoginAsync(client, "Test Owner", "pass-word1")).StatusCode);
     }
 
@@ -177,6 +238,104 @@ public sealed class LoginTests
         var after = await client.GetAsync("/logs", Ct);
         Assert.Equal(HttpStatusCode.Redirect, after.StatusCode);
         Assert.Equal("/login", after.Headers.Location?.AbsolutePath);
+    }
+
+    /// <summary>The audit log's text (the host keeps the file open for writing).</summary>
+    private static string AuditText(LauncherFactory f)
+    {
+        var path = Path.Combine(f.Paths.Logs, "audit.log");
+        if (!File.Exists(path)) return "";
+        using var s = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        return new StreamReader(s).ReadToEnd();
+    }
+
+    private static List<System.Text.Json.JsonElement> Audit(LauncherFactory f) =>
+        AuditText(f).Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(l => System.Text.Json.JsonDocument.Parse(l).RootElement.Clone()).ToList();
+
+    [Fact]
+    public async Task Sign_in_is_audited_without_password()
+    {
+        await using var f = Factory();
+        await LoginAsync(Client(f), "Test Owner", "pass-word1");
+        await LoginAsync(Client(f), "Te\u0007st Owner", "secret-pass-9");
+        await LoginAsync(Client(f), "my-secret-pw", "secret-pass-9"); // a password typed into the name field
+
+        var entries = Audit(f);
+        var ok = Assert.Single(entries, e => e.GetProperty("action").GetString() == "sign-in");
+        Assert.Equal("Test Owner", ok.GetProperty("actor").GetString());
+        Assert.Equal("owner", ok.GetProperty("role").GetString());
+        Assert.Equal(System.Text.Json.JsonValueKind.String, ok.GetProperty("actorId").ValueKind);
+
+        var refused = entries.Where(e => e.GetProperty("action").GetString() == "sign-in-refused").ToList();
+        Assert.Equal(2, refused.Count);
+        Assert.Equal("Te?st", refused[0].GetProperty("actor").GetString());
+        Assert.Equal(System.Text.Json.JsonValueKind.Null, refused[0].GetProperty("actorId").ValueKind);
+        Assert.Equal("(an incomplete name)", refused[1].GetProperty("actor").GetString());
+
+        var text = AuditText(f);
+        Assert.DoesNotContain("pass-word1", text);
+        Assert.DoesNotContain("secret-pass-9", text);
+        Assert.DoesNotContain("my-secret-pw", text);
+        Assert.DoesNotContain("Owner\"", string.Join('\n', refused.Select(e => e.GetRawText()))); // only the first name
+    }
+
+    [Fact]
+    public async Task Staff_post_is_audited_without_query()
+    {
+        await using var f = Factory();
+        var client = Client(f);
+        await LoginAsync(client, "Test Owner", "pass-word1");
+
+        await client.PostAsync("/dashboard?handler=Start&password=x", new FormUrlEncodedContent(new Dictionary<string, string>()), Ct);
+        await client.GetAsync("/logs?source=launcher&password=y", Ct); // a GET is not audited
+
+        var requests = Audit(f).Where(e => e.GetProperty("action").GetString() == "request").ToList();
+        var entry = Assert.Single(requests);
+        Assert.Equal("POST /dashboard", entry.GetProperty("target").GetString());
+        Assert.Equal("Test Owner", entry.GetProperty("actor").GetString());
+        Assert.Equal("owner", entry.GetProperty("role").GetString());
+        Assert.Matches("^[0-9]{3}$", entry.GetProperty("result").GetString()!);
+        var text = AuditText(f);
+        Assert.DoesNotContain("password=x", text);
+        Assert.DoesNotContain("password=y", text);
+    }
+
+    [Fact]
+    public async Task Logs_page_lists_and_shows_the_audit_log()
+    {
+        await using var f = Factory();
+        var client = Client(f);
+        await LoginAsync(client, "Test Owner", "pass-word1");
+
+        var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/logs?source=audit", Ct));
+
+        Assert.Contains(page.QuerySelectorAll("#log-source option"), o => o.GetAttribute("value") == "audit");
+        Assert.Contains("\"action\":\"sign-in\"", page.QuerySelector("#log-lines")!.TextContent);
+    }
+
+    [Fact]
+    public async Task An_admin_post_is_audited_with_the_role_from_the_cookie()
+    {
+        await using var f = Factory(TestAuth.Apply);
+        var client = Client(f);
+        await client.GetAsync("/__test/signin", Ct);
+
+        await client.PostAsync("/dashboard", new FormUrlEncodedContent(new Dictionary<string, string>()), Ct);
+
+        var entry = Assert.Single(Audit(f), e => e.GetProperty("action").GetString() == "request");
+        Assert.Equal("Test Admin", entry.GetProperty("actor").GetString());
+        Assert.Equal(TestAuth.AdminId.ToString(), entry.GetProperty("actorId").GetString());
+        Assert.Equal("admin", entry.GetProperty("role").GetString());
+    }
+
+    [Fact]
+    public async Task Anonymous_post_is_not_audited_as_staff()
+    {
+        await using var f = Factory();
+        await Client(f).PostAsync("/dashboard", new FormUrlEncodedContent(new Dictionary<string, string>()), Ct);
+
+        Assert.DoesNotContain(Audit(f), e => e.GetProperty("action").GetString() == "request");
     }
 
     [Fact]

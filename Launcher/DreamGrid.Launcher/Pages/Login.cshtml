@@ -3,12 +3,16 @@
 @{
     ViewData["Title"] = "Sign in";
 }
-<div class="card card-body shadow-sm mx-auto" style="max-width: 26rem">
+<div class="card card-body shadow-sm mx-auto sign-in-card">
 <h1>Sign in</h1>
 <p>Use the name and password of your administrator avatar.</p>
 @if (Model.Error is not null)
 {
     <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
+}
+@if (Model.TwoFactorUnknown)
+{
+    <div class="error-box error alert alert-danger" role="alert">Two-factor sign-in can't be checked on this computer. The grid owner can run <code>reset-two-factor</code> on the grid computer.</div>
 }
 <form method="post">
     <input type="hidden" name="ReturnUrl" value="@Model.ReturnUrl">

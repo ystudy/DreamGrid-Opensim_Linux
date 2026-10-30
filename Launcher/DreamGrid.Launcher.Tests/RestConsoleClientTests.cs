@@ -285,13 +285,83 @@ public class RestConsoleClientTests
             return (HttpStatusCode.OK, Lines(("old scrollback", "false", "false", "false")));
         });
 
-        var ex = await Assert.ThrowsAnyAsync<HttpRequestException>(() =>
+        // The command was accepted: its own type, so a caller can tell "may have run" from "never sent".
+        var ex = await Assert.ThrowsAsync<ConsoleCommandSentException>(() =>
             c.RunAsync("create user alice secret", TimeSpan.FromMilliseconds(50), CancellationToken.None));
 
         Assert.Contains("create user", ex.Message);
         Assert.DoesNotContain("secret", ex.Message);
         Assert.Single(h.Requests, r => r.Uri.AbsolutePath == "/SessionCommand/");
         Assert.Equal(1, starts);
+    }
+
+    [Theory]
+    [InlineData("500")]
+    [InlineData("refused")]
+    [InlineData("timeout")]
+    public async Task A_failed_read_after_an_accepted_command_says_the_command_was_sent(string failure)
+    {
+        var sent = false;
+        var (c, h) = Make(r =>
+        {
+            if (r.Uri.AbsolutePath == "/StartSession/") return (HttpStatusCode.OK, StartOk);
+            if (r.Uri.AbsolutePath == "/SessionCommand/") { sent = true; return (HttpStatusCode.OK, CmdOk); }
+            if (!sent) return (HttpStatusCode.OK, Empty); // the new session's scrollback
+            return failure switch
+            {
+                "500" => (HttpStatusCode.InternalServerError, ""),
+                "refused" => throw new HttpRequestException("Connection refused"),
+                _ => throw new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout of 100 seconds elapsing.",
+                    new TimeoutException()),
+            };
+        });
+
+        var ex = await Assert.ThrowsAsync<ConsoleCommandSentException>(() =>
+            c.RunAsync("set user level Gail Guest -1", TimeSpan.FromMilliseconds(50), CancellationToken.None));
+
+        Assert.Contains("set user", ex.Message);
+        Assert.NotNull(ex.InnerException);
+        Assert.Single(h.Requests, r => r.Uri.AbsolutePath == "/SessionCommand/");
+    }
+
+    [Theory]
+    [InlineData("500")]
+    [InlineData("refused")]
+    [InlineData("timeout")]
+    public async Task A_failed_command_post_is_not_reported_as_sent(string failure)
+    {
+        var (c, _) = Make(r =>
+        {
+            if (r.Uri.AbsolutePath == "/StartSession/") return (HttpStatusCode.OK, StartOk);
+            if (r.Uri.AbsolutePath == "/SessionCommand/")
+                return failure switch
+                {
+                    "500" => (HttpStatusCode.InternalServerError, ""),
+                    "refused" => throw new HttpRequestException("Connection refused"),
+                    _ => throw new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout of 100 seconds elapsing.",
+                        new TimeoutException()),
+                };
+            return (HttpStatusCode.OK, Empty);
+        });
+
+        var ex = await Record.ExceptionAsync(() => c.RunAsync("set user level Gail Guest -1", TimeSpan.FromMilliseconds(50), CancellationToken.None));
+
+        Assert.True(ex is HttpRequestException or TaskCanceledException, ex?.GetType().Name);
+        Assert.IsNotType<ConsoleCommandSentException>(ex);
+    }
+
+    [Fact]
+    public async Task Cancelling_while_the_output_is_read_is_still_a_cancellation()
+    {
+        using var cts = new CancellationTokenSource();
+        var (c, _) = Make(r =>
+        {
+            if (r.Uri.AbsolutePath == "/StartSession/") return (HttpStatusCode.OK, StartOk);
+            if (r.Uri.AbsolutePath == "/SessionCommand/") { cts.Cancel(); return (HttpStatusCode.OK, CmdOk); }
+            return (HttpStatusCode.OK, Empty);
+        });
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => c.RunAsync("x", TimeSpan.FromMilliseconds(200), cts.Token));
     }
 
     [Fact]

@@ -1,7 +1,9 @@
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using DreamGrid.Launcher.Core.Grid;
+using DreamGrid.Launcher.Core.Logs;
 using DreamGrid.Launcher.Core.Modules;
 using DreamGrid.Launcher.Core.OpenSim;
 using DreamGrid.Launcher.Core.Security;
@@ -14,7 +16,8 @@ namespace DreamGrid.Launcher.Core.Api;
 /// The port-8001 command API (spec 5, <c>API.txt</c>): <c>RegionStatus</c> and <c>regionlist</c> need no password,
 /// every process command needs level 200; module commands are appended. Replies are "ACK", data, or "NAK reason".
 /// <paramref name="settings"/> is read per request, so a changed MachineId or region is seen at once. Avatar password
-/// checks share the website's <see cref="LoginThrottle"/>: a locked name is refused without asking Robust.
+/// checks share the website's <see cref="LoginThrottle"/>: a locked name or caller address is refused without asking Robust.
+/// An avatar password alone is never enough for someone with two-factor on (or for staff when the owner requires it): they use the MachineId.
 /// </summary>
 public sealed class LegacyCommandApi(
     IGridController grid,
@@ -22,65 +25,104 @@ public sealed class LegacyCommandApi(
     Func<LauncherSettings> settings,
     IEnumerable<IFeatureModule> modules,
     LoginThrottle throttle,
+    AuditLog audit,
+    ITwoFactorStatus twoFactor,
     ILogger<LegacyCommandApi> log)
 {
     public const int MachineLevel = 1000;
-    private const int AdminLevel = AdminRule.AdminLevel;
+    /// <summary>A built-in command's <see cref="LegacyCommand.MinLevel"/> meaning "the admin level in settings" (200 unless changed).</summary>
+    private const int AdminLevel = 200;
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     private readonly Dictionary<string, LegacyCommand> _commands = BuildCommands(grid, settings, modules);
 
-    public async Task<string> HandleAsync(LegacyRequest r, CancellationToken ct)
+    public async Task<string> HandleAsync(LegacyRequest r, IPAddress? caller, CancellationToken ct)
     {
         if (!_commands.TryGetValue(r.Command, out var command))
             return $"NAK Unknown command {r.Command}";
 
-        if (command.MinLevel > 0 && await LevelAsync(r, ct) < command.MinLevel)
+        var needed = command.MinLevel == AdminLevel ? settings().Security.AdminLevel : command.MinLevel;
+        var who = command.MinLevel > 0 ? await CallerAsync(r, caller, ct) : null;
+        if (who is not null && who.Level < needed)
             return $"NAK You do not have permission to {command.Name}";
 
+        string reply;
         try
         {
-            return await command.Run(r, ct);
+            reply = await command.Run(r, ct);
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
-            return "NAK " + e.Message;
+            reply = "NAK " + e.Message;
         }
+
+        // A command that needed a level and ran: who, what, how it ended. The target is the command, never the request's own text.
+        if (who is not null)
+            audit.Write(new AuditEntry(who.Actor, who.ActorId, who.Role, caller?.ToString(), "command", command.Name,
+                reply.StartsWith("NAK", StringComparison.Ordinal) ? "NAK" : "ACK"));
+        return reply;
     }
 
+    /// <summary>Who made a command request: the level they get, and how the audit log names them.</summary>
+    private sealed record Caller(int Level, string Actor, Guid? ActorId, string Role);
+
+    private static readonly Caller Nobody = new(0, "", null, "none");
+
     /// <summary>1000 for the MachineId; else the level of the avatar ("First Last") whose password matches; else 0.</summary>
-    private async Task<int> LevelAsync(LegacyRequest r, CancellationToken ct)
+    private async Task<Caller> CallerAsync(LegacyRequest r, IPAddress? caller, CancellationToken ct)
     {
-        if (string.IsNullOrEmpty(r.Password)) return 0;
-        if (FixedEquals(r.Password, settings().MachineId)) return MachineLevel;
+        if (string.IsNullOrEmpty(r.Password)) return Nobody;
+        // The literal word, never the value.
+        if (FixedEquals(r.Password, settings().MachineId)) return new Caller(MachineLevel, "MachineId", null, "machine");
 
         var name = AvatarName.Parse(r.Avatar);
-        if (!name.IsComplete) return 0;
-        if (throttle.IsLocked(name.Key))
+        if (!name.IsComplete) return Nobody;
+        if (throttle.IsLocked(name.Key, caller))
         {
             log.LogInformation("Avatar check for first name {First} refused: too many failed attempts.", name.ForLog);
-            return 0;
+            return Nobody;
         }
         try
         {
-            var account = await robust.GetAccountAsync(name.First, name.Last, ct);
+            // The strict lookup: a reply that isn't an account is Robust failing (level 0 below), never a wrong name.
+            var account = await robust.FindAccountAsync(name.First, name.Last, ct);
             if (account is null || !await robust.AuthenticateAsync(account.PrincipalId, r.Password, ct))
             {
-                throttle.RecordFailure(name.Key);
-                return 0;
+                throttle.RecordFailure(name.Key, caller);
+                return Nobody;
             }
+
+            // The password was right, so a refusal below is not a failure; but it isn't a sign-in either, so it doesn't clear the
+            // name's failures: a known password must not reset the count between guesses at the two-factor code.
+            // An avatar password is one factor. Anyone with two-factor on (or whose store cannot be read: fail closed) uses the
+            // MachineId, and so does staff when the owner requires two-factor of them. The owner is never refused by the switch.
+            var role = AdminRule.RoleOf(settings(), account);
+            var state = twoFactor.StateOf(account.PrincipalId);
+            if (state != TwoFactorState.Off)
+            {
+                log.LogInformation("Avatar check for first name {First} refused: two-factor sign-in is on; use the MachineId.", name.ForLog);
+                return Nobody;
+            }
+            if (settings().Security.RequireTwoFactorForStaff && role is StaffRole.Admin or StaffRole.Supervisor)
+            {
+                log.LogInformation("Avatar check for first name {First} refused: two-factor sign-in is required for staff; use the MachineId.", name.ForLog);
+                return Nobody;
+            }
+
             throttle.RecordSuccess(name.Key);
             // A Region Server's or Connected Server's estate owner is level 0 on the other grid but administers here; on a
             // Connected Server a higher level on that grid counts for nothing.
-            return AdminRule.EffectiveLevel(settings(), account);
+            return new Caller(AdminRule.EffectiveLevel(settings(), account), $"{account.FirstName} {account.LastName}",
+                account.PrincipalId, role.AuditName());
         }
         catch (Exception e) when (!ct.IsCancellationRequested)
         {
-            // Robust down, slow (HttpClient timeout) or answering garbage: nobody but the MachineId gets in.
+            // Robust down, slow (HttpClient timeout) or answering garbage (InvalidDataException): nobody but the MachineId gets
+            // in, and it is not counted as a failure.
             // Only the exception type is logged: messages could echo the request.
             log.LogWarning("Avatar check against Robust failed ({Error}); treating the caller as level 0.", e.GetType().Name);
-            return 0;
+            return Nobody;
         }
     }
 

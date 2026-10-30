@@ -4,7 +4,9 @@
 @{
     var version = DreamGrid.Launcher.CommandLine.Version();
     var gridName = Settings().GridName;
+    var hasStaffPages = DreamGrid.Launcher.Core.Security.AdminRule.HasStaffPages(Settings());
     var path = Context.Request.Path.Value ?? "/";
+    var enrolOnly = DreamGrid.Launcher.Security.TwoFactorGate.MustEnrol(Context);
     string Active(string prefix) => (prefix == "/" ? path == "/" : path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) ? " active" : "";
 }
 <!DOCTYPE html>
@@ -13,15 +15,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>@(ViewData["Title"] is string t ? t + " - " : "")@gridName</title>
-    <script>
-    // Bootstrap's dark theme follows the computer's setting; without JavaScript the page stays light.
-    (function () {
-        var dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)");
-        function apply() { document.documentElement.setAttribute("data-bs-theme", dark && dark.matches ? "dark" : "light"); }
-        apply();
-        if (dark && dark.addEventListener) dark.addEventListener("change", apply);
-    })();
-    </script>
+    <script src="/js/theme.js"></script>
     <link rel="stylesheet" href="/lib/bootstrap/bootstrap.min.css">
     <link rel="stylesheet" href="/css/site.css">
     @await RenderSectionAsync("Head", required: false)
@@ -33,10 +27,36 @@
         @if (User.Identity?.IsAuthenticated == true)
         {
             <nav class="navbar-nav flex-wrap align-items-center">
-                <a class="nav-link@(Active("/"))" href="/">Home</a>
-                <a class="nav-link@(Active("/regions"))" href="/regions">Regions</a>
-                <a class="nav-link@(Active("/advanced"))" href="/advanced">Advanced</a>
-                <a class="nav-link@(Active("/logs"))" href="/logs">Logs</a>
+                @* Someone signed in only to set up two-factor can reach nothing else (TwoFactorGate). *@
+                @if (enrolOnly)
+                {
+                    <a class="nav-link@(Active("/profile/two-factor"))" href="/profile/two-factor">Two-factor</a>
+                }
+                else
+                {
+                    if (User.IsInRole(DreamGrid.Launcher.Security.AuthSchemes.AdminRole))
+                    {
+                        <a class="nav-link@(Active("/"))" href="/">Home</a>
+                        <a class="nav-link@(Active("/regions"))" href="/regions">Regions</a>
+                        <a class="nav-link@(Active("/advanced"))" href="/advanced">Advanced</a>
+                        <a class="nav-link@(Active("/logs"))" href="/logs">Logs</a>
+                    }
+                    // The Staff and People pages exist only where there are supervisors (not on a Region Server or a Connected Server).
+                    if (hasStaffPages)
+                    {
+                        <a class="nav-link@(Active("/people"))" href="/people">People</a>
+                        if (User.IsInRole(DreamGrid.Launcher.Security.AuthSchemes.OwnerRole))
+                        {
+                            <a class="nav-link@(Active("/staff"))" href="/staff">Staff</a>
+                        }
+                    }
+                    if (User.IsInRole(DreamGrid.Launcher.Security.AuthSchemes.OwnerRole))
+                    {
+                        <a class="nav-link@(Active("/security"))" href="/security">Security</a>
+                    }
+                    <a class="nav-link@(Active("/profile/sessions"))" href="/profile/sessions">Sessions</a>
+                    <a class="nav-link@(Active("/profile/two-factor"))" href="/profile/two-factor">Two-factor</a>
+                }
                 <form method="post" action="/logout" asp-antiforgery="true" class="signout"><button type="submit" class="btn btn-link nav-link">Sign out</button></form>
             </nav>
         }

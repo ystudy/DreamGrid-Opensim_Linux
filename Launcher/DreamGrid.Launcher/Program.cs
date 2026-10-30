@@ -20,7 +20,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.DataProtection;
 
-// Installer verbs (--version, admin-link, stop-grid, set-web-port) run instead of the host.
+// Installer and owner verbs (--version, admin-link, stop-grid, set-web-port, reset-two-factor) run instead of the host.
 var processEnv = new Dictionary<string, string?>
 {
     ["DREAMGRID_DATA"] = Environment.GetEnvironmentVariable("DREAMGRID_DATA"),
@@ -72,6 +72,7 @@ try
     }
     LauncherPaths.CreateOwnerOnly(paths.Data);
     LauncherPaths.CreateOwnerOnly(paths.DataProtectionKeys);
+    LauncherPaths.CreateOwnerOnly(paths.Security);
 }
 catch (Exception e) when (e is ArgumentException or SettingsCorruptException or IOException or UnauthorizedAccessException)
 {
@@ -108,21 +109,39 @@ builder.Services.AddAuthentication(AuthSchemes.Admin).AddCookie(AuthSchemes.Admi
     o.Cookie.HttpOnly = true;
     o.Cookie.SameSite = SameSiteMode.Strict;
     o.LoginPath = "/login";
-    o.ExpireTimeSpan = AdminSignIn.Expiry;
+    o.ExpireTimeSpan = StaffSignIn.Expiry;
     o.SlidingExpiration = true;
+    // The session, the stamp and (every 5 minutes) the level, on every request.
+    o.Events.OnValidatePrincipal = c => c.HttpContext.RequestServices.GetRequiredService<StaffPrincipalValidator>().ValidateAsync(c);
     // API callers get a status code, never a redirect to the login page.
     o.Events.OnRedirectToLogin = c => ApiOr(c, StatusCodes.Status401Unauthorized);
-    o.Events.OnRedirectToAccessDenied = c => ApiOr(c, StatusCodes.Status403Forbidden);
+    o.Events.OnRedirectToAccessDenied = Denied;
 });
 // Whatever has no decision of its own needs the admin role; the open routes say .AllowAnonymous() (or a page convention).
 builder.Services.AddAuthorizationBuilder()
+    .AddPolicy(AuthSchemes.OwnerPolicy, p => p.AddAuthenticationSchemes(AuthSchemes.Admin).RequireRole(AuthSchemes.OwnerRole))
     .AddPolicy(AuthSchemes.AdminPolicy, p => p.AddAuthenticationSchemes(AuthSchemes.Admin).RequireRole(AuthSchemes.AdminRole))
+    .AddPolicy(AuthSchemes.StaffPolicy, p => p.AddAuthenticationSchemes(AuthSchemes.Admin).RequireRole(AuthSchemes.StaffRole))
     .SetFallbackPolicy(new AuthorizationPolicyBuilder().AddAuthenticationSchemes(AuthSchemes.Admin).RequireRole(AuthSchemes.AdminRole).Build());
 builder.Services.AddRazorPages(o =>
 {
-    // Every page needs the admin role except these; the setup pages are guarded by SetupGate.
-    o.Conventions.AuthorizeFolder("/", AuthSchemes.AdminPolicy);
-    foreach (var open in new[] { "/Login", "/Logout", "/Welcome", "/Waiting", "/SetupDone", "/Setup" })
+    // Every page needs the admin role except these; the setup pages are guarded by SetupGate. A person's own pages under
+    // /Profile and the People page are for every staff member, and the Security and Staff pages are the owner's. (Two folder
+    // policies on one page would both have to pass, so those folders are left out of the admin one rather than given a second.)
+    // The Staff and People pages do not exist (404) where there are no supervisors.
+    string[] ownFolders = ["/Profile/", "/Security/", "/Staff/", "/People/"];
+    o.Conventions.AddFolderApplicationModelConvention("/", m =>
+    {
+        if (!ownFolders.Any(f => m.ViewEnginePath.StartsWith(f, StringComparison.OrdinalIgnoreCase)))
+            m.EndpointMetadata.Add(new AuthorizeAttribute(AuthSchemes.AdminPolicy));
+    });
+    o.Conventions.AuthorizeFolder("/Profile", AuthSchemes.StaffPolicy);
+    o.Conventions.AuthorizeFolder("/Security", AuthSchemes.OwnerPolicy);
+    o.Conventions.AuthorizeFolder("/Staff", AuthSchemes.OwnerPolicy);
+    o.Conventions.AuthorizeFolder("/People", AuthSchemes.StaffPolicy);
+    o.Conventions.AddFolderApplicationModelConvention("/Staff", m => m.Filters.Add(new StaffPagesOnly()));
+    o.Conventions.AddFolderApplicationModelConvention("/People", m => m.Filters.Add(new StaffPagesOnly()));
+    foreach (var open in new[] { "/Login", "/Login/Code", "/Logout", "/Welcome", "/Waiting", "/SetupDone", "/Setup" })
         o.Conventions.AllowAnonymousToPage(open);
     o.Conventions.AllowAnonymousToFolder("/Setup");
     // The dashboard's forms post here: a POST to "/" belongs to the port-8001 contract (LegacyRootPolicy).
@@ -134,7 +153,18 @@ builder.Services.AddGrid(paths, store);
 // Robust's map tiles, fetched on the browser's behalf (the browser never reaches Robust's port).
 builder.Services.AddHttpClient(RegionsApi.RobustMapClient, c => c.Timeout = TimeSpan.FromSeconds(5));
 builder.Services.AddSingleton<LogReader>();
-builder.Services.AddSingleton<LoginThrottle>();
+builder.Services.AddSingleton(sp => new AuditLog(Path.Combine(paths.Logs, "audit.log"), sp.GetRequiredService<TimeProvider>()));
+builder.Services.AddSingleton(sp => new LoginThrottle(sp.GetRequiredService<TimeProvider>(),
+    Path.Combine(paths.Security, "throttle.json"), sp.GetRequiredService<ILogger<LoginThrottle>>()));
+builder.Services.AddSingleton(sp => new StaffSessions(Path.Combine(paths.Security, "sessions.json"),
+    sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<StaffSessions>>()));
+builder.Services.AddSingleton(sp => new TwoFactorStore(Path.Combine(paths.Security, "twofactor.json"),
+    sp.GetRequiredService<IDataProtectionProvider>(), sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<TwoFactorStore>>()));
+builder.Services.AddSingleton<ITwoFactorStatus>(sp => sp.GetRequiredService<TwoFactorStore>());
+builder.Services.AddSingleton(sp => new SuspendedStore(Path.Combine(paths.Security, "suspended.json"), sp.GetRequiredService<ILogger<SuspendedStore>>()));
+builder.Services.AddSingleton<IStaffDirectory>(sp => new StaffDirectory(sp.GetRequiredService<Func<LauncherSettings>>()));
+builder.Services.AddSingleton<StaffActions>();
+builder.Services.AddSingleton<StaffPrincipalValidator>();
 builder.Services.AddSingleton<LegacyCommandApi>();
 builder.Services.AddSingleton<IOnlineUsers>(sp => new OnlineUsers(sp.GetRequiredService<Func<LauncherSettings>>(),
     sp.GetRequiredService<ILogger<OnlineUsers>>()));
@@ -156,8 +186,15 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<BackgroundWork>())
 builder.Services.AddSingleton<OarJobs>();
 
 var app = builder.Build();
+// First, so static files, API answers and the plain-text replies carry the browser security headers too.
+app.UseMiddleware<SecurityHeaders>();
 app.UseStaticFiles();
+// Callers outside the owner's allow-list get 404 before anything reads their cookie.
+app.UseMiddleware<AdminNetworkFilter>();
 app.UseAuthentication();
+app.UseMiddleware<AuditMiddleware>();
+// Someone signed in only to set up two-factor reaches nothing else (before SetupGate, which can send "/" onwards).
+app.UseMiddleware<TwoFactorGate>();
 app.UseMiddleware<SetupGate>();
 app.UseAuthorization();
 LegacyEndpoints.Map(app);
@@ -203,6 +240,34 @@ static Task ApiOr(RedirectContext<CookieAuthenticationOptions> c, int apiStatus)
     else
         c.Response.Redirect(c.RedirectUri);
     return Task.CompletedTask;
+}
+
+// A signed-in person whose role doesn't include the page: a 403 with a short page of its own (the sign-in page would
+// only send them back here).
+static Task Denied(RedirectContext<CookieAuthenticationOptions> c)
+{
+    c.Response.StatusCode = StatusCodes.Status403Forbidden;
+    if (ApiEndpoint.Is(c.HttpContext)) return Task.CompletedTask;
+    c.Response.ContentType = "text/html; charset=utf-8";
+    return c.Response.WriteAsync("""
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Not allowed</title>
+        <link rel="stylesheet" href="/lib/bootstrap/bootstrap.min.css">
+        <link rel="stylesheet" href="/css/site.css">
+        </head>
+        <body>
+        <main class="container py-4">
+        <h1>You can't open this page</h1>
+        <p>Your role doesn't include this page.</p>
+        <p><a href="/">Back to your start page</a></p>
+        </main>
+        </body>
+        </html>
+        """);
 }
 
 static bool IsAddressInUse(Exception? e)

@@ -1,0 +1,23 @@
+@page "/login/code"
+@model DreamGrid.Launcher.Pages.Login.CodeModel
+@{
+    ViewData["Title"] = "Two-factor code";
+}
+<div class="card card-body shadow-sm mx-auto sign-in-card">
+<h1>Two-factor code</h1>
+<p>Enter the 6-digit code from your authenticator app. If you don't have your phone, enter one of your backup codes.</p>
+@if (Model.Error is not null)
+{
+    <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
+}
+@if (Model.TwoFactorUnknown)
+{
+    <div class="error-box error alert alert-danger" role="alert">Two-factor sign-in can't be checked on this computer. The grid owner can run <code>reset-two-factor</code> on the grid computer.</div>
+}
+<form method="post">
+    <label class="form-label mt-3" asp-for="Code">Code</label>
+    <input class="form-control" asp-for="Code" value="" maxlength="32" autocomplete="one-time-code" inputmode="text" autofocus required>
+    <button type="submit" class="btn btn-primary w-100 mt-4">Sign in</button>
+</form>
+<p class="mt-3 mb-0"><a href="/login">Start again</a></p>
+</div>

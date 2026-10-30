@@ -23,6 +23,7 @@ public sealed partial class LogReader(LauncherPaths paths, Func<LauncherSettings
         var list = new List<string> { "launcher", "robust" };
         list.AddRange(settings().Programs.Select(p => "region-" + p.Instance));
         list.Add("database");
+        list.Add("audit");
         return list;
     }
 

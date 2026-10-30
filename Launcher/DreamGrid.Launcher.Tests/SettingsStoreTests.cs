@@ -210,14 +210,14 @@ public class SettingsStoreTests : IDisposable
 
         var s = new SettingsStore(path).LoadOrCreate();
 
-        Assert.Equal(4, s.SchemaVersion);
+        Assert.Equal(5, s.SchemaVersion);
         Assert.Null(s.Programs[0].Physics);
         // Schema 2's BulletSim ran with the prototype's UseSeparatePhysicsThread=true: it keeps running that way.
         Assert.Equal("BulletSimThreaded", s.Programs[1].Physics);
         Assert.Equal("ubODE", s.DefaultPhysics);
         Assert.True(s.DefaultScripts);
         var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
-        Assert.Equal(4, (int)node["schemaVersion"]!);
+        Assert.Equal(5, (int)node["schemaVersion"]!);
     }
 
     [Fact]
@@ -225,7 +225,7 @@ public class SettingsStoreTests : IDisposable
     {
         var s = new SettingsStore(WriteV1(V1Region.Replace("BulletSim", "ubODE"))).LoadOrCreate();
 
-        Assert.Equal(4, s.SchemaVersion);
+        Assert.Equal(5, s.SchemaVersion);
         Assert.Null(Assert.Single(s.Programs).Physics);
     }
 
@@ -242,7 +242,7 @@ public class SettingsStoreTests : IDisposable
 
         var loaded = new SettingsStore(path).LoadOrCreate();
 
-        Assert.Equal(4, loaded.SchemaVersion);
+        Assert.Equal(5, loaded.SchemaVersion);
         Assert.Equal(["ubODE", "BulletSim"], loaded.Programs.Select(p => p.Physics));
     }
 
@@ -286,7 +286,7 @@ public class SettingsStoreTests : IDisposable
     {
         var s = new SettingsStore(WriteV1(V1Region)).LoadOrCreate();
 
-        Assert.Equal(4, s.SchemaVersion);
+        Assert.Equal(5, s.SchemaVersion);
         Assert.Equal([new ProgramSettings("Welcome", 8004, 8011, "BulletSimThreaded")], s.Programs);
         Assert.Equal([new RegionSettings("Welcome", "Welcome", V1Uuid, 1000, 1000, "island", 1, 8004)], s.Regions);
         Assert.Null(s.LegacyRegion);
@@ -299,7 +299,7 @@ public class SettingsStoreTests : IDisposable
         new SettingsStore(path).LoadOrCreate();
 
         var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
-        Assert.Equal(4, (int)node["schemaVersion"]!);
+        Assert.Equal(5, (int)node["schemaVersion"]!);
         Assert.True(node.ContainsKey("programs"));
         Assert.False(node.ContainsKey("region"));
     }
@@ -309,7 +309,7 @@ public class SettingsStoreTests : IDisposable
     {
         var s = new SettingsStore(WriteV1(null)).LoadOrCreate();
 
-        Assert.Equal(4, s.SchemaVersion);
+        Assert.Equal(5, s.SchemaVersion);
         Assert.Empty(s.Programs);
         Assert.Empty(s.Regions);
     }
@@ -355,7 +355,7 @@ public class SettingsStoreTests : IDisposable
 
         var loaded = new SettingsStore(path).LoadOrCreate();
 
-        Assert.Equal(4, loaded.SchemaVersion);
+        Assert.Equal(5, loaded.SchemaVersion);
         Assert.Empty(loaded.CustomTypes);
         Assert.False(loaded.Regions[0].NeedsContent);
     }
@@ -400,7 +400,7 @@ public class SettingsStoreTests : IDisposable
 
         Assert.Equal(OwnerPlan.SimplePublic, s.Plan);
         Assert.True(s.Hypergrid);
-        Assert.Equal(4, s.SchemaVersion);
+        Assert.Equal(5, s.SchemaVersion);
     }
 
     [Theory]
@@ -412,6 +412,78 @@ public class SettingsStoreTests : IDisposable
 
         Assert.Equal(OwnerPlan.Local, s.Plan);
         Assert.False(s.Hypergrid);
+    }
+
+    [Fact]
+    public void Schema4_file_loads_with_default_security()
+    {
+        var path = Path.Combine(NewDir(), "settings.json");
+        new SettingsStore(path).LoadOrCreate();
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+        node["schemaVersion"] = 4;
+        node.Remove("security");
+        File.WriteAllText(path, node.ToJsonString());
+
+        var s = new SettingsStore(path).LoadOrCreate();
+
+        Assert.Equal(100, s.Security.SupervisorLevel);
+        Assert.Equal(200, s.Security.AdminLevel);
+        Assert.False(s.Security.RequireTwoFactorForStaff);
+        Assert.Null(s.Security.AdminNetworks);
+        Assert.Equal(5, s.SchemaVersion);
+    }
+
+    /// <summary>A saved settings file whose "security" object is <paramref name="security"/> (JSON), as a hand edit would leave it.</summary>
+    private string WithSecurity(string security)
+    {
+        var path = Path.Combine(NewDir(), "settings.json");
+        new SettingsStore(path).LoadOrCreate();
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+        node["security"] = System.Text.Json.Nodes.JsonNode.Parse(security);
+        File.WriteAllText(path, node.ToJsonString());
+        return path;
+    }
+
+    [Fact]
+    public void Null_security_reads_as_the_defaults()
+    {
+        var path = WithSecurity("null");
+
+        var s = new SettingsStore(path).LoadOrCreate();
+
+        Assert.Equal(100, s.Security.SupervisorLevel);
+        Assert.Equal(200, s.Security.AdminLevel);
+        Assert.False(s.Security.RequireTwoFactorForStaff);
+        Assert.Null(s.Security.AdminNetworks);
+        Assert.Equal(100, new SettingsStore(path).TryLoad()!.Security.SupervisorLevel);
+    }
+
+    [Theory]
+    [InlineData("""{ "supervisorLevel": 0 }""", "security.supervisorLevel", "Use a supervisor level of 1 or more.")]
+    [InlineData("""{ "supervisorLevel": -5, "adminLevel": 200 }""", "security.supervisorLevel", "Use a supervisor level of 1 or more.")]
+    [InlineData("""{ "adminLevel": 0 }""", "security.adminLevel", "The admin level must be higher than the supervisor level.")]
+    [InlineData("""{ "supervisorLevel": 150, "adminLevel": 150 }""", "security.adminLevel", "The admin level must be higher than the supervisor level.")]
+    [InlineData("""{ "adminLevel": 300 }""", "security.adminLevel", "Use an admin level of 255 or less.")]
+    public void Security_levels_that_are_not_allowed_refuse_to_load_and_leave_the_file_alone(string security, string key, string reason)
+    {
+        var path = WithSecurity(security);
+        var before = File.ReadAllBytes(path);
+
+        var ex = Assert.Throws<SettingsCorruptException>(() => new SettingsStore(path).LoadOrCreate());
+        Assert.Throws<SettingsCorruptException>(() => new SettingsStore(path).TryLoad());
+
+        Assert.Contains(path, ex.Message);
+        Assert.Contains($"{key}: {reason}", ex.Message);
+        Assert.Equal(before, File.ReadAllBytes(path));
+    }
+
+    [Fact]
+    public void Allowed_security_levels_load()
+    {
+        var s = new SettingsStore(WithSecurity("""{ "supervisorLevel": 1, "adminLevel": 255 }""")).LoadOrCreate();
+
+        Assert.Equal(1, s.Security.SupervisorLevel);
+        Assert.Equal(255, s.Security.AdminLevel);
     }
 
     [Fact]

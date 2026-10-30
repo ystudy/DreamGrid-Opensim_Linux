@@ -1,0 +1,34 @@
+@page "/profile/sessions"
+@model DreamGrid.Launcher.Pages.Profile.SessionsModel
+@{
+    ViewData["Title"] = "Sessions";
+    static string When(DateTimeOffset t) => t.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+}
+<h1>Sessions</h1>
+<p>These are the browsers signed in as you. If you don't recognise one, end it, or sign out everywhere and change your password.</p>
+<div class="table-responsive">
+    <table id="sessions" class="table align-middle">
+        <thead><tr><th>Started</th><th>Last seen</th><th>Address</th><th>Browser</th><th></th></tr></thead>
+        <tbody>
+        @foreach (var s in Model.Sessions)
+        {
+            var current = s.Id == Model.Current;
+            <tr data-session="@s.Id" class="@(current ? "this-session" : null)">
+                <td>@When(s.Started)</td>
+                <td>@(current ? "Now (this browser)" : When(s.LastSeen))</td>
+                <td>@(s.Ip ?? "Unknown")</td>
+                <td class="session-browser">@(s.Browser ?? "Unknown")</td>
+                <td>
+                    <form method="post" action="/profile/sessions?handler=End" asp-antiforgery="true">
+                        <input type="hidden" name="id" value="@s.Id">
+                        <button type="submit" class="btn btn-sm btn-outline-danger">End</button>
+                    </form>
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
+<form method="post" action="/profile/sessions?handler=EndAll" asp-antiforgery="true">
+    <button type="submit" class="btn btn-danger">Sign out everywhere</button>
+</form>

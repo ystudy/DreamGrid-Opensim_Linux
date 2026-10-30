@@ -836,6 +836,44 @@ public sealed partial class GridController(
         finally { _ops.Release(); }
     }
 
+    public async Task<RobustAccount> SetUserLevelAsync(string first, string last, int level, CancellationToken ct)
+    {
+        GridConsoleCommands.ValidateAvatarName(first, last);
+
+        await _ops.WaitAsync(ct);
+        try
+        {
+            ThrowIfNoGridService(LoadSettings());
+            var transcript = new List<string>();
+            try
+            {
+                transcript.AddRange(await _robust!.Console!.RunAsync($"set user level {first} {last} {level}", ConsoleSettle, ct));
+            }
+            catch (ConsoleCommandSentException e)
+            {
+                // Robust accepted the command, then its output was lost: it may have run.
+                throw new LevelNotConfirmedException(e.Message, e);
+            }
+            // From here the command was sent: a failure only means it isn't confirmed (Robust may still have made the change).
+            // Robust runs console commands on its own thread: the level shows only after the console output has settled.
+            RobustAccount? account;
+            try
+            {
+                account = await WaitForAccountAsync(first, last, a => a.UserLevel == level, ct);
+            }
+            catch (Exception e) when (e is HttpRequestException or TaskCanceledException or TimeoutException && !ct.IsCancellationRequested)
+            {
+                throw new LevelNotConfirmedException(
+                    $"Robust stopped answering while {first} {last}'s new level {level} was being checked. Console: {string.Join(" | ", transcript)}", e);
+            }
+            if (account is null || account.UserLevel != level)
+                throw new LevelNotConfirmedException(
+                    $"Robust did not give {first} {last} level {level} within {AccountWait.TotalSeconds:0} s. Console: {string.Join(" | ", transcript)}");
+            return account;
+        }
+        finally { _ops.Release(); }
+    }
+
     private static readonly string ContentError =
         $"Content must be starter, a built-in type ({string.Join(", ", RegionTypes.BuiltIn.Select(t => t.Id))}) or one of your region types.";
 

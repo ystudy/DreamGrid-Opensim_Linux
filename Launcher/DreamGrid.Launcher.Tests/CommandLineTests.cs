@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
+using System.Runtime.Versioning;
 using DreamGrid.Launcher.Core;
 using DreamGrid.Launcher.Core.Settings;
 using Xunit;
@@ -252,4 +253,372 @@ public class CommandLineTests : IDisposable
     [Fact]
     public async Task Wait_until_gone_with_no_children_returns_at_once() =>
         Assert.True(await CommandLine.WaitUntilGoneAsync([], TimeSpan.Zero, TestContext.Current.CancellationToken));
+
+    private static readonly Guid Owner = Guid.Parse("0e000000-0000-0000-0000-00000000000e");
+    private static readonly Guid Staff = Guid.Parse("0a000000-0000-0000-0000-00000000000a");
+    private string TwoFactorFile => Path.Combine(DataDir, "security", "twofactor.json");
+
+    private SettingsStore NewStoreWithOwner() => NewStore(s => s with
+    {
+        Setup = s.Setup with { OwnerCreated = true, Owner = new OwnerInfo("Olive", "Owner", Owner) },
+    });
+
+    /// <summary>Puts <paramref name="who"/> in the two-factor file, as the running launcher would (its own key ring).</summary>
+    private void Enrol(Guid who, string name)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(TwoFactorFile)!);
+        var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
+        var store = new DreamGrid.Launcher.Security.TwoFactorStore(TwoFactorFile,
+            new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider(), time);
+        var (secret, _) = store.BeginEnrol(who, name, "DreamGrid");
+        Assert.NotNull(store.ConfirmEnrol(who, DreamGrid.Launcher.Core.Security.Totp.Code(secret,
+            DreamGrid.Launcher.Core.Security.Totp.StepAt(time.GetUtcNow())), secret));
+    }
+
+    private bool IsEnrolled(Guid who)
+    {
+        // A new store, as the next sign-in would read the file (no decryption is needed to see who is on).
+        var store = new DreamGrid.Launcher.Security.TwoFactorStore(TwoFactorFile,
+            new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider(), TimeProvider.System);
+        return store.Enrolled().Any(e => e.Principal == who);
+    }
+
+    [Fact]
+    public async Task Reset_two_factor_turns_off_owner()
+    {
+        NewStoreWithOwner();
+        Enrol(Owner, "Olive Owner");
+        Enrol(Staff, "Test Admin");
+
+        var (code, output) = await RunAsync("reset-two-factor", "--data", DataDir);
+
+        Assert.Equal(0, code);
+        Assert.Equal("Two-factor sign-in is off for Olive Owner.", output);
+        Assert.False(IsEnrolled(Owner));
+        Assert.True(IsEnrolled(Staff)); // only the owner's
+    }
+
+    [Fact]
+    public async Task Reset_two_factor_when_owner_has_none_says_so()
+    {
+        NewStoreWithOwner();
+
+        var (code, output) = await RunAsync("reset-two-factor", "--data", DataDir);
+
+        Assert.Equal(0, code);
+        Assert.Equal("Two-factor sign-in is off for Olive Owner.", output);
+        Assert.False(File.Exists(TwoFactorFile));
+    }
+
+    [Fact]
+    public async Task Reset_two_factor_moves_damaged_file_aside()
+    {
+        NewStoreWithOwner();
+        Directory.CreateDirectory(Path.GetDirectoryName(TwoFactorFile)!);
+        File.WriteAllText(TwoFactorFile, "{ this is not json");
+
+        // Without the flag nothing is touched, and the reason names the flag.
+        var (refused, message) = await RunAsync("reset-two-factor", "--data", DataDir);
+        Assert.Equal(2, refused);
+        Assert.Contains("reset-two-factor --all-damaged", message);
+        Assert.Equal("{ this is not json", File.ReadAllText(TwoFactorFile));
+
+        var (code, output) = await RunAsync("reset-two-factor", "--all-damaged", "--data", DataDir);
+
+        Assert.Equal(0, code);
+        Assert.Contains("set aside", output);
+        Assert.False(File.Exists(TwoFactorFile));
+        Assert.Single(Directory.GetFiles(Path.GetDirectoryName(TwoFactorFile)!, "twofactor.json.damaged-*"));
+
+        // Run again: nothing to move.
+        var (again, text) = await RunAsync("reset-two-factor", "--all-damaged", "--data", DataDir);
+        Assert.Equal(0, again);
+        Assert.Contains("not damaged", text);
+    }
+
+    [Fact]
+    public async Task Reset_two_factor_all_damaged_leaves_a_good_file()
+    {
+        NewStoreWithOwner();
+        Enrol(Staff, "Test Admin");
+        var before = File.ReadAllText(TwoFactorFile);
+
+        var (code, output) = await RunAsync("reset-two-factor", "--all-damaged", "--data", DataDir);
+
+        Assert.Equal(0, code);
+        Assert.Contains("not damaged", output);
+        Assert.Equal(before, File.ReadAllText(TwoFactorFile));
+    }
+
+    [Fact]
+    public async Task Reset_two_factor_without_owner_exits_2()
+    {
+        NewStore(); // settings exist, no owner yet
+
+        var (code, output) = await RunAsync("reset-two-factor", "--data", DataDir);
+
+        Assert.Equal(2, code);
+        Assert.Contains("no owner", output);
+        Assert.False(File.Exists(TwoFactorFile));
+    }
+
+    [Fact]
+    public async Task Reset_two_factor_without_data_folder_exits_2()
+    {
+        var (code, output) = await RunAsync("reset-two-factor", "--data", Path.Combine(_root, "nowhere"));
+
+        Assert.Equal(2, code);
+        Assert.Contains("nowhere", output);
+        Assert.False(Directory.Exists(Path.Combine(_root, "nowhere")));
+    }
+
+    [Fact]
+    public async Task Security_levels_that_are_not_allowed_are_refused_like_corrupt_settings()
+    {
+        NewStore(s => s with { Security = s.Security with { SupervisorLevel = 0 } });
+
+        var (code, output) = await RunAsync("admin-link", "--data", DataDir);
+
+        Assert.Equal(2, code);
+        Assert.Contains("security.supervisorLevel: Use a supervisor level of 1 or more.", output);
+    }
+
+    private static async Task<(int? Code, string Output)> RunAsync(Func<string, string?> foreignOwner, params string[] args)
+    {
+        var output = new StringWriter();
+        var code = await CommandLine.RunVerbAsync(args, new Dictionary<string, string?>(), output, CancellationToken.None, foreignOwner);
+        return (code, output.ToString().Trim());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Reset_two_factor_refuses_to_run_as_another_account_than_the_data_folders_owner(bool allDamaged)
+    {
+        NewStoreWithOwner();
+        Enrol(Owner, "Olive Owner");
+        var before = File.ReadAllBytes(TwoFactorFile);
+        string? asked = null;
+        string[] args = allDamaged ? ["reset-two-factor", "--all-damaged", "--data", DataDir] : ["reset-two-factor", "--data", DataDir];
+
+        var (code, output) = await RunAsync(dir => { asked = dir; return "dreamgrid"; }, args);
+
+        Assert.Equal(2, code);
+        Assert.Equal(DataDir, asked);
+        Assert.Contains("sudo runuser -u dreamgrid -- ", output);
+        Assert.Contains(allDamaged ? "reset-two-factor --all-damaged" : "reset-two-factor", output);
+        Assert.Equal(before, File.ReadAllBytes(TwoFactorFile)); // nothing written, so nothing changes hands
+        Assert.True(IsEnrolled(Owner));
+    }
+
+    [Fact]
+    public async Task Reset_two_factor_runs_as_the_data_folders_owner()
+    {
+        NewStoreWithOwner();
+        Enrol(Owner, "Olive Owner");
+
+        var (code, output) = await RunAsync(_ => null, "reset-two-factor", "--data", DataDir);
+
+        Assert.Equal(0, code);
+        Assert.Equal("Two-factor sign-in is off for Olive Owner.", output);
+    }
+
+    [Fact]
+    public async Task Other_verbs_do_not_ask_who_owns_the_data_folder()
+    {
+        NewStore();
+        var asked = false;
+
+        var (code, _) = await RunAsync(_ => { asked = true; return "dreamgrid"; }, "admin-link", "--data", DataDir);
+
+        Assert.Equal(0, code);
+        Assert.False(asked);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Reset_two_factor_says_when_this_account_cannot_read_the_file(bool allDamaged)
+    {
+        NewStoreWithOwner();
+        Enrol(Owner, "Olive Owner");
+        string[] args = allDamaged ? ["reset-two-factor", "--all-damaged", "--data", DataDir] : ["reset-two-factor", "--data", DataDir];
+
+        using (NoAccess.Read(TwoFactorFile))
+        {
+            var (code, output) = await RunAsync(_ => null, args);
+
+            Assert.Equal(2, code);
+            Assert.Contains("This account can't read twofactor.json", output);
+            Assert.Contains(OperatingSystem.IsWindows() ? "Run this from an Administrator command prompt."
+                : "run the command as the account that owns the data folder.", output);
+            Assert.DoesNotContain("damaged", output.Replace("--all-damaged", ""));
+            Assert.DoesNotContain("Try again", output);
+        }
+        Assert.True(File.Exists(TwoFactorFile));
+        Assert.Empty(Directory.GetFiles(Path.GetDirectoryName(TwoFactorFile)!, "twofactor.json.damaged-*"));
+        Assert.True(IsEnrolled(Owner));
+    }
+
+    [Fact]
+    public async Task Reset_two_factor_says_how_to_run_it_when_the_file_cannot_be_written()
+    {
+        NewStoreWithOwner();
+        Enrol(Owner, "Olive Owner");
+
+        using (NoAccess.Write(Path.GetDirectoryName(TwoFactorFile)!, TwoFactorFile))
+        {
+            var (code, output) = await RunAsync(_ => null, "reset-two-factor", "--data", DataDir);
+
+            Assert.Equal(2, code);
+            Assert.Contains(OperatingSystem.IsWindows() ? "Run this from an Administrator command prompt."
+                : "run the command as the account that owns the data folder.", output);
+        }
+        Assert.True(IsEnrolled(Owner));
+    }
+
+    [Fact]
+    public void The_owner_check_finds_no_other_owner_for_this_accounts_own_folder()
+    {
+        Directory.CreateDirectory(DataDir);
+        Assert.Null(CommandLine.ForeignDataOwner(DataDir));
+    }
+
+    [Fact]
+    public void Root_refuses_when_the_folders_owner_cannot_be_read()
+    {
+        // Root is never the account that owns the data folder: not knowing the owner is no reason to write as root.
+        var e = Assert.Throws<DataOwnerUnknownException>(() => CommandLine.ForeignDataOwner("/var/lib/dreamgrid", _ => null, effectiveUid: 0));
+        Assert.Equal("/var/lib/dreamgrid", e.DataDir);
+    }
+
+    [Fact]
+    public void Another_account_goes_on_when_the_folders_owner_cannot_be_read()
+    {
+        Assert.Null(CommandLine.ForeignDataOwner("/var/lib/dreamgrid", _ => null, effectiveUid: 1000));
+    }
+
+    [Fact]
+    public void Without_the_uid_the_owner_check_compares_names()
+    {
+        Assert.Null(CommandLine.ForeignDataOwner("/data", _ => (999u, Environment.UserName), effectiveUid: null));
+        Assert.Equal("someone-else", CommandLine.ForeignDataOwner("/data", _ => (999u, "someone-else"), effectiveUid: null));
+    }
+
+    [Theory]
+    [InlineData(0u, 999u, "dreamgrid", "dreamgrid")]
+    [InlineData(999u, 999u, "dreamgrid", null)]
+    [InlineData(0u, 1234u, "UNKNOWN", "1234")]
+    public void The_owner_check_compares_uids(uint me, uint owner, string name, string? expected)
+    {
+        Assert.Equal(expected, CommandLine.ForeignDataOwner("/data", _ => (owner, name), me));
+    }
+
+    [Fact]
+    public async Task Reset_two_factor_refuses_when_the_folders_owner_cannot_be_read()
+    {
+        NewStoreWithOwner();
+        Enrol(Owner, "Olive Owner");
+        var before = File.ReadAllBytes(TwoFactorFile);
+
+        var (code, output) = await RunAsync(dir => throw new DataOwnerUnknownException(dir), "reset-two-factor", "--data", DataDir);
+
+        Assert.Equal(2, code);
+        Assert.Contains($"The owner of {DataDir} couldn't be read", output);
+        Assert.Contains("run the command as the account that owns the data folder", output);
+        Assert.Contains("sudo runuser -u dreamgrid -- ", output);
+        Assert.Equal(before, File.ReadAllBytes(TwoFactorFile));
+    }
+
+    [Fact]
+    [SupportedOSPlatform("linux")]
+    public void The_real_owner_check_finds_another_owner_through_a_symlink()
+    {
+        Assert.SkipUnless(OperatingSystem.IsLinux(), "Linux only");
+        Directory.CreateDirectory(_root);
+        string target;
+        string expected;
+        if (Environment.UserName == "root")
+        {
+            // CI runs as root: hand a folder to nobody (65534).
+            target = Path.Combine(_root, "theirs");
+            Directory.CreateDirectory(target);
+            using (var chown = Process.Start(new ProcessStartInfo("chown") { ArgumentList = { "65534", target } })!)
+            {
+                chown.WaitForExit();
+                Assert.Equal(0, chown.ExitCode);
+            }
+            expected = CommandLine.ForeignDataOwner(target) ?? "";
+            Assert.NotEqual("", expected);
+            Assert.NotEqual("root", expected);
+        }
+        else
+        {
+            target = "/";
+            expected = "root";
+            Assert.Equal("root", CommandLine.ForeignDataOwner(target));
+        }
+        // A symlinked --data is judged by the folder it points to, not by the link (which this account owns).
+        var link = Path.Combine(_root, "link");
+        Directory.CreateSymbolicLink(link, target);
+
+        Assert.Equal(expected, CommandLine.ForeignDataOwner(link));
+    }
+
+    /// <summary>Takes this account's read (or write) access away from a file or folder until disposed: an ACL deny rule on Windows, the mode on Unix.</summary>
+    private sealed class NoAccess : IDisposable
+    {
+        private readonly Action _undo;
+        private NoAccess(Action undo) => _undo = undo;
+        public void Dispose() => _undo();
+
+        public static NoAccess Read(string file)
+        {
+            if (OperatingSystem.IsWindows()) return Deny(file, System.Security.AccessControl.FileSystemRights.ReadData);
+            SkipIfRoot();
+            var mode = File.GetUnixFileMode(file);
+            File.SetUnixFileMode(file, UnixFileMode.None);
+            return new NoAccess(() => { if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(file, mode); });
+        }
+
+        /// <summary>No new files in <paramref name="dir"/> and no writing <paramref name="file"/>.</summary>
+        public static NoAccess Write(string dir, string file)
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                var a = Deny(dir, System.Security.AccessControl.FileSystemRights.CreateFiles);
+                var b = Deny(file, System.Security.AccessControl.FileSystemRights.WriteData | System.Security.AccessControl.FileSystemRights.Delete);
+                return new NoAccess(() => { b.Dispose(); a.Dispose(); });
+            }
+            SkipIfRoot();
+            var mode = File.GetUnixFileMode(dir);
+            File.SetUnixFileMode(dir, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+            return new NoAccess(() => { if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(dir, mode); });
+        }
+
+        private static void SkipIfRoot()
+        {
+            if (!OperatingSystem.IsWindows()) Assert.SkipWhen(Environment.UserName == "root", "root reads and writes everything");
+        }
+
+        [SupportedOSPlatform("windows")]
+        private static NoAccess Deny(string path, System.Security.AccessControl.FileSystemRights rights)
+        {
+            var me = System.Security.Principal.WindowsIdentity.GetCurrent().User!;
+            var rule = new System.Security.AccessControl.FileSystemAccessRule(me, rights, System.Security.AccessControl.AccessControlType.Deny);
+            if (Directory.Exists(path))
+            {
+                var info = new DirectoryInfo(path);
+                var acl = info.GetAccessControl();
+                acl.AddAccessRule(rule);
+                info.SetAccessControl(acl);
+                return new NoAccess(() => { var undo = info.GetAccessControl(); undo.RemoveAccessRule(rule); info.SetAccessControl(undo); });
+            }
+            var f = new FileInfo(path);
+            var facl = f.GetAccessControl();
+            facl.AddAccessRule(rule);
+            f.SetAccessControl(facl);
+            return new NoAccess(() => { var undo = f.GetAccessControl(); undo.RemoveAccessRule(rule); f.SetAccessControl(undo); });
+        }
+    }
 }

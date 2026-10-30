@@ -53,6 +53,8 @@ public sealed class GridControllerFirstLaunchTests : IDisposable
     private sealed class NoAccounts : IRobustClient
     {
         public Task<bool> IsReadyAsync(CancellationToken ct) => Task.FromResult(false);
+        public Task<RobustAccount?> FindAccountAsync(string first, string last, CancellationToken ct) => GetAccountAsync(first, last, ct);
+
         public Task<RobustAccount?> GetAccountAsync(string first, string last, CancellationToken ct) => Task.FromResult<RobustAccount?>(null);
         public Task<bool> AuthenticateAsync(Guid principal, string plainPassword, CancellationToken ct) => Task.FromResult(false);
         public Task<IReadOnlyList<MapRegion>> GetMapRegionsAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<MapRegion>>([]);

@@ -1,3 +1,4 @@
+using DreamGrid.Launcher.Core.Database;
 using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.OpenSim;
 using DreamGrid.Launcher.Core.Plans;
@@ -361,6 +362,27 @@ internal sealed class FakeGridController : IGridController
         return Task.FromResult(account);
     }
 
+    /// <summary>
+    /// Thrown by <see cref="SetUserLevelAsync"/> when set. A <see cref="LevelNotConfirmedException"/> is thrown after
+    /// <see cref="OnSetUserLevel"/> has run: the command was sent (Robust may have taken it), only the confirmation is missing.
+    /// </summary>
+    public Exception? SetUserLevelError { get; set; }
+
+    /// <summary>What <see cref="SetUserLevelAsync"/> does besides recording (the host's fake Robust takes the new level here).</summary>
+    public Func<string, string, int, RobustAccount?>? OnSetUserLevel { get; set; }
+
+    public Task<RobustAccount> SetUserLevelAsync(string first, string last, int level, CancellationToken ct)
+    {
+        Record($"SetUserLevel {first} {last} {level}");
+        if (SetUserLevelError is LevelNotConfirmedException sent)
+        {
+            OnSetUserLevel?.Invoke(first, last, level);
+            return Task.FromException<RobustAccount>(sent);
+        }
+        if (SetUserLevelError is { } e) return Task.FromException<RobustAccount>(e);
+        return Task.FromResult(OnSetUserLevel?.Invoke(first, last, level) ?? new RobustAccount(Guid.NewGuid(), first, last, level, ""));
+    }
+
     /// <summary>What <see cref="JoinedRegionCountAsync"/> returns; it throws <see cref="JoinedRegionError"/> instead when set.</summary>
     public int JoinedRegions { get; set; }
     public Exception? JoinedRegionError { get; set; }
@@ -446,11 +468,46 @@ internal sealed class FakeRobustAccounts : IRobustClient
 
     public Task<bool> IsReadyAsync(CancellationToken ct) => Task.FromResult(true);
 
+    /// <summary>Every account this fake holds.</summary>
+    public IReadOnlyList<RobustAccount> All => [.. _accounts.Values.Select(a => a.Account)];
+
+    /// <summary>Gives the account a new level (as Robust's console does); null when there is no such account.</summary>
+    public RobustAccount? SetLevel(string first, string last, int level)
+    {
+        if (!_accounts.TryGetValue((first, last), out var a)) return null;
+        var changed = a.Account with { UserLevel = level };
+        _accounts[(first, last)] = (changed, a.Password);
+        return changed;
+    }
+
+    /// <summary>
+    /// Simulates Robust answering with something that isn't an account (an error envelope, a proxy page): the strict lookup
+    /// throws, the lenient one reads it as no account, as <see cref="RobustClient"/> does.
+    /// </summary>
+    public bool FailureReply { get; set; }
+
+    public FakeRobustAccounts Remove(string first, string last)
+    {
+        _accounts.Remove((first, last));
+        return this;
+    }
+
     public Task<RobustAccount?> GetAccountAsync(string first, string last, CancellationToken ct)
     {
         Lookups++;
         if (Down) throw new HttpRequestException("Connection refused");
+        if (FailureReply) return Task.FromResult<RobustAccount?>(null);
         return Task.FromResult(_accounts.TryGetValue((first, last), out var a) ? a.Account : null);
+    }
+
+    public Task<RobustAccount?> FindAccountAsync(string first, string last, CancellationToken ct)
+    {
+        if (FailureReply)
+        {
+            Lookups++;
+            throw new InvalidDataException("The account service's reply has no result.");
+        }
+        return GetAccountAsync(first, last, ct);
     }
 
     public Task<bool> AuthenticateAsync(Guid principal, string plainPassword, CancellationToken ct) =>
@@ -465,6 +522,16 @@ internal sealed class FakeRobustAccounts : IRobustClient
     public Task<IReadOnlyList<MapRegion>> GetMapRegionsAsync(MapArea area, CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<MapRegion>>(MapRegions.Where(m => m.X <= area.XMax && m.X + m.Size - 1 >= area.XMin
             && m.Y <= area.YMax && m.Y + m.Size - 1 >= area.YMin).ToList());
+}
+
+/// <summary>The staff list without a database: the fake Robust's accounts at or above the level; <see cref="Down"/> is a database that isn't running.</summary>
+internal sealed class FakeStaffDirectory(FakeRobustAccounts robust) : IStaffDirectory
+{
+    public bool Down { get; set; }
+
+    public Task<IReadOnlyList<RobustAccount>> ListAtOrAboveAsync(int level, CancellationToken ct) =>
+        Down ? throw new StaffDirectoryUnavailableException("The database isn't running.")
+            : Task.FromResult<IReadOnlyList<RobustAccount>>([.. robust.All.Where(a => a.UserLevel >= level).OrderBy(a => a.LastName).ThenBy(a => a.FirstName)]);
 }
 
 /// <summary>Who's online without a database: returns <see cref="Result"/>.</summary>

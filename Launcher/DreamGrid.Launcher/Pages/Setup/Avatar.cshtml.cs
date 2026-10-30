@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.OpenSim;
 using DreamGrid.Launcher.Core.Plans;
+using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Security;
 using DreamGrid.Launcher.Setup;
@@ -134,7 +135,7 @@ public sealed partial class AvatarModel(
     {
         grid.UpdateSettings(s => s with { SetupToken = null }, writeConfig: false);
         Response.Cookies.Delete(SetupTokenCookie.Name, new CookieOptions { Path = "/" });
-        await AdminSignIn.SignInAsync(HttpContext, account.FirstName, account.LastName, account.PrincipalId);
+        await StaffSignIn.SignInAsync(HttpContext, account, StaffRole.Owner);
         return Redirect("/setup");
     }
 

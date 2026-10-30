@@ -1,0 +1,83 @@
+@page "/profile/two-factor"
+@model DreamGrid.Launcher.Pages.Profile.TwoFactorModel
+@using DreamGrid.Launcher.Core.Security
+@{
+    ViewData["Title"] = "Two-factor sign-in";
+}
+<h1>Two-factor sign-in</h1>
+<p>With two-factor sign-in, signing in needs a code from an authenticator app on your phone as well as your password.</p>
+@if (Model.Error is not null)
+{
+    <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
+}
+@if (Model.Notice is not null)
+{
+    <div class="alert alert-info" role="status">@Model.Notice</div>
+}
+@if (Model.State == TwoFactorState.Unknown)
+{
+    <div class="alert alert-danger" role="alert">Two-factor sign-in can't be checked on this computer. The grid owner can run <code>reset-two-factor</code> on the grid computer.</div>
+}
+else if (Model.BackupCodes is { } codes)
+{
+    <div class="alert alert-success" role="status">Two-factor sign-in is on.</div>
+    <h2>Your backup codes</h2>
+    <p>Each code works once, when you don't have your phone. Keep them somewhere safe. They won't be shown again.</p>
+    <ul id="backup-codes" class="backup-codes list-unstyled">
+        @foreach (var c in codes)
+        {
+            <li>@c</li>
+        }
+    </ul>
+    <p><a class="btn btn-primary" href="@Model.Home">Continue</a></p>
+}
+else if (Model.State == TwoFactorState.Off)
+{
+    @if (Model.MustEnrol)
+    {
+        <div class="alert alert-warning" role="status">@TwoFactorModel.RequiredText Set it up to continue.</div>
+    }
+    <p>Two-factor sign-in is off.</p>
+    @if (Model.QrSvg is not null)
+    {
+        <h2>Turn it on</h2>
+        <p>Scan this code with an authenticator app on your phone, then enter the 6-digit code the app shows.</p>
+        <div class="two-factor-qr mb-3" role="img" aria-label="QR code for your authenticator app">@Html.Raw(Model.QrSvg)</div>
+        <p>Can't scan it? Enter this key in the app instead: <code id="two-factor-secret">@Model.SecretText</code></p>
+        <form id="turn-on" method="post" asp-page-handler="TurnOn" class="mb-4">
+            <input type="hidden" name="Shown" value="@Model.Shown">
+            <label class="form-label" for="turn-on-code">Code</label>
+            <input class="form-control mb-3 code-input" id="turn-on-code" name="Code" value="" maxlength="32" autocomplete="one-time-code" inputmode="numeric" required>
+            <button type="submit" class="btn btn-primary">Turn on</button>
+        </form>
+    }
+}
+else
+{
+    <div class="alert alert-success" role="status">Two-factor sign-in is on.</div>
+    @if (Model.MustEnrol)
+    {
+        <p>Sign out, then sign in again with a code from your app.</p>
+    }
+    <h2>New backup codes</h2>
+    <p>This replaces all your backup codes. Enter a code from your authenticator app.</p>
+    <form id="new-codes" method="post" asp-page-handler="NewCodes" class="mb-4">
+        <label class="form-label" for="new-codes-code">Code</label>
+        <input class="form-control mb-3 code-input" id="new-codes-code" name="Code" value="" maxlength="32" autocomplete="one-time-code" inputmode="numeric" required>
+        <button type="submit" class="btn btn-outline-primary">New backup codes</button>
+    </form>
+    <h2>Turn off</h2>
+    @if (Model.Required)
+    {
+        <p>@TwoFactorModel.RequiredText</p>
+    }
+    else
+    {
+        <p>Enter a code from your authenticator app, or a backup code.</p>
+        <form id="turn-off" method="post" asp-page-handler="TurnOff">
+            <label class="form-label" for="turn-off-code">Code</label>
+            <input class="form-control mb-3 code-input" id="turn-off-code" name="Code" value="" maxlength="32" autocomplete="one-time-code" required>
+            <button type="submit" class="btn btn-danger">Turn off</button>
+        </form>
+    }
+}

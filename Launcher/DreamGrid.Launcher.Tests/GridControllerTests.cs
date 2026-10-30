@@ -103,6 +103,8 @@ public sealed class GridControllerTests : IDisposable
     private sealed class NoRobust : IRobustClient
     {
         public Task<bool> IsReadyAsync(CancellationToken ct) => throw new InvalidOperationException("not expected");
+        public Task<RobustAccount?> FindAccountAsync(string first, string last, CancellationToken ct) => GetAccountAsync(first, last, ct);
+
         public Task<RobustAccount?> GetAccountAsync(string first, string last, CancellationToken ct) => throw new InvalidOperationException("not expected");
         public Task<bool> AuthenticateAsync(Guid principal, string plainPassword, CancellationToken ct) => throw new InvalidOperationException("not expected");
         public Task<IReadOnlyList<MapRegion>> GetMapRegionsAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<MapRegion>>([]);

@@ -278,6 +278,8 @@ public sealed class AccessTests
             // Guarded by SetupGate, like the setup pages.
             "route /api/setup/progress",
             "page login",
+            // The two-factor code step: only does anything with the pending cookie the password step leaves.
+            "page login/code",
             "page logout",
             "page setup",
             "page setup-done",

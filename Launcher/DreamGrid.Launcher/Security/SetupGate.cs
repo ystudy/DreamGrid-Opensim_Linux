@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authentication;
+using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Core.Settings;
 
 namespace DreamGrid.Launcher.Security;
@@ -61,12 +62,18 @@ public sealed class SetupGate(RequestDelegate next, Func<LauncherSettings> setti
             return;
         }
 
-        // The legacy root handler has no authorization of its own; the bare "/" is the admin home.
+        // The legacy root handler has no authorization of its own; the bare "/" is the admin home. Other staff (a supervisor)
+        // are sent to their own start page rather than to the sign-in page.
         if (path == "/")
         {
             if (!await IsAdminAsync(ctx))
             {
-                await ctx.ChallengeAsync(AuthSchemes.Admin);
+                var user = (await ctx.AuthenticateAsync(AuthSchemes.Admin)).Principal;
+                var role = user is null ? StaffRole.None : StaffSignIn.RoleOf(user);
+                if (role != StaffRole.None)
+                    ctx.Response.Redirect(StaffSignIn.Home(role));
+                else
+                    await ctx.ChallengeAsync(AuthSchemes.Admin);
                 return;
             }
             if (!s.Setup.Finished)

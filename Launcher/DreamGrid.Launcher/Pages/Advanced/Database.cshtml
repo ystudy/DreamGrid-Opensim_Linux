@@ -28,7 +28,7 @@
     <div class="d-flex flex-wrap gap-2">
         @if (!Model.Revealed)
         {
-            <form method="post" asp-page-handler="Show" onsubmit="return confirm('Show the database passwords on this screen?');" class="m-0">
+            <form method="post" asp-page-handler="Show" data-confirm="Show the database passwords on this screen?" class="m-0">
                 <button type="submit" class="btn btn-outline-primary">Show passwords</button>
             </form>
         }
@@ -51,4 +51,8 @@
             <pre>@Model.Test.Error</pre>
         </div>
     }
+}
+
+@section Scripts {
+<script src="/js/confirm.js"></script>
 }

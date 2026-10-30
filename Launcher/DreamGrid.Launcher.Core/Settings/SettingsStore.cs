@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using System.Text.Json;
 using DreamGrid.Launcher.Core.Config;
 
@@ -34,13 +33,14 @@ public sealed class SettingsStore(string path)
     {
         try
         {
-            // ReadWrite | Delete sharing keeps the read from blocking writers longer than it must (see ReplaceWithRetry).
+            // ReadWrite | Delete sharing keeps the read from blocking writers longer than it must (see AtomicFile).
             string json;
             using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
             using (var reader = new StreamReader(fs))
                 json = reader.ReadToEnd();
             var loaded = JsonSerializer.Deserialize<LauncherSettings>(json, Options)
                 ?? throw new JsonException("settings file contains null");
+            Validate(loaded);
             if (loaded.SchemaVersion >= LauncherSettings.CurrentSchema) return loaded;
             var migrated = Migrate(loaded);
             Save(migrated);
@@ -50,6 +50,18 @@ public sealed class SettingsStore(string path)
         {
             throw new SettingsCorruptException(path, e);
         }
+    }
+
+    /// <summary>
+    /// The values a hand edit could make unsafe are checked as the Security page checks them: a supervisor level of 0 would make
+    /// every guest a supervisor. Settings that fail refuse to load, like a file that doesn't parse.
+    /// </summary>
+    private void Validate(LauncherSettings s)
+    {
+        var security = SettingsValidator.Security(s.Security);
+        if (!security.Ok)
+            throw new SettingsCorruptException(path,
+                security.Errors.Select(e => $"security.{JsonNamingPolicy.CamelCase.ConvertName(e.Key)}: {e.Value}"));
     }
 
     /// <summary>
@@ -75,6 +87,7 @@ public sealed class SettingsStore(string path)
             var plan = HostAddress.IsPublic(s.Hostname) ? OwnerPlan.SimplePublic : OwnerPlan.Local;
             s = s with { Plan = plan, Hypergrid = plan == OwnerPlan.SimplePublic };
         }
+        // Schema 4 to 5: security settings arrive with their defaults; only the version changes.
         return s with { SchemaVersion = LauncherSettings.CurrentSchema };
     }
 
@@ -94,73 +107,8 @@ public sealed class SettingsStore(string path)
     {
         var dir = Path.GetDirectoryName(Path.GetFullPath(path));
         if (!string.IsNullOrEmpty(dir)) LauncherPaths.CreateOwnerOnly(dir); // <data>: it holds the secrets
-
-        var tmp = path + ".tmp";
-        using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
-        {
-            if (!OperatingSystem.IsWindows())
-                File.SetUnixFileMode(tmp, UnixFileMode.UserRead | UnixFileMode.UserWrite);
-            JsonSerializer.Serialize(fs, s, Options);
-            fs.Flush(true);
-        }
-        try
-        {
-            ReplaceWithRetry(tmp, path);
-        }
-        catch
-        {
-            try { File.Delete(tmp); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
-            throw;
-        }
-        if (!OperatingSystem.IsWindows()) SyncDirectory(dir);
+        AtomicFile.WriteAllText(path, JsonSerializer.Serialize(s, Options));
     }
-
-    /// <summary>Best effort: makes the rename itself durable. Errors are ignored.</summary>
-    private static void SyncDirectory(string? dir)
-    {
-        if (string.IsNullOrEmpty(dir)) return;
-        try
-        {
-            var fd = Open(dir, 0 /* O_RDONLY */);
-            if (fd < 0) return;
-            try { Fsync(fd); }
-            finally { Close(fd); }
-        }
-        catch (Exception e) when (e is DllNotFoundException or EntryPointNotFoundException) { }
-    }
-
-    [DllImport("libc", EntryPoint = "open")] private static extern int Open(string path, int flags);
-    [DllImport("libc", EntryPoint = "fsync")] private static extern int Fsync(int fd);
-    [DllImport("libc", EntryPoint = "close")] private static extern int Close(int fd);
-
-    /// <summary>
-    /// Atomic replace. On Windows the overwrite fails while another handle has the target open (even with delete
-    /// sharing), so a short read elsewhere is waited out: up to ~2 s, then the last error is thrown. Only sharing and
-    /// lock violations (HResult 32 and 33) are retried, plus access denied on an existing file: that is how an open
-    /// handle on the target shows up on Windows. Anything else (a directory in the way, say) fails at once.
-    /// </summary>
-    private static void ReplaceWithRetry(string tmp, string path)
-    {
-        for (var attempt = 1; ; attempt++)
-        {
-            try
-            {
-                File.Move(tmp, path, overwrite: true);
-                return;
-            }
-            catch (Exception e) when (attempt < 40 && OperatingSystem.IsWindows() && IsSharingError(e, path))
-            {
-                Thread.Sleep(50);
-            }
-        }
-    }
-
-    private static bool IsSharingError(Exception e, string path) => e switch
-    {
-        UnauthorizedAccessException => File.Exists(path),
-        IOException io => (io.HResult & 0xFFFF) is 32 or 33,
-        _ => false,
-    };
 
     private static LauncherSettings NewSettings() => new()
     {

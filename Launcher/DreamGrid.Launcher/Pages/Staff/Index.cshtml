@@ -1,0 +1,73 @@
+@page "/staff"
+@model DreamGrid.Launcher.Pages.Staff.IndexModel
+@using DreamGrid.Launcher.Core.Security
+@{
+    ViewData["Title"] = "Staff";
+    static string RoleName(StaffRole role) => role switch
+    {
+        StaffRole.Owner => "Owner",
+        StaffRole.Admin => "Admin",
+        StaffRole.Supervisor => "Supervisor",
+        _ => "Guest",
+    };
+}
+<h1>Staff</h1>
+<p>Admins can use every page. Supervisors can only look people up and suspend guests. Changes here take effect at once, and a person who loses their role is signed out.</p>
+@if (Model.Error is not null)
+{
+    <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
+}
+@if (Model.Notice is not null)
+{
+    <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
+}
+@if (Model.Unavailable)
+{
+    <p id="staff-unavailable">Start your world to see and change staff.</p>
+}
+else
+{
+    <div class="table-responsive">
+        <table id="staff-people" class="table align-middle">
+            <thead><tr><th>Name</th><th>Role</th><th>Level</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var p in Model.Rows)
+            {
+                <tr data-person="@p.Name">
+                    <td>@p.Name</td>
+                    <td>@RoleName(p.Role)</td>
+                    <td>@p.Level</td>
+                    <td>
+                        @if (p.Role != StaffRole.Owner)
+                        {
+                            <form method="post" action="/staff?handler=Change" asp-antiforgery="true" class="d-flex flex-wrap gap-2">
+                                <input type="hidden" name="name" value="@p.Name">
+                                @if (p.Role != StaffRole.Admin)
+                                {
+                                    <button type="submit" name="change" value="MakeAdmin" class="btn btn-sm btn-outline-primary">Make admin</button>
+                                }
+                                @if (p.Role != StaffRole.Supervisor)
+                                {
+                                    <button type="submit" name="change" value="MakeSupervisor" class="btn btn-sm btn-outline-primary">Make supervisor</button>
+                                }
+                                <button type="submit" name="change" value="MakeGuest" class="btn btn-sm btn-outline-danger">Make guest</button>
+                            </form>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+
+    <h2 class="mt-4">Add someone</h2>
+    <form id="staff-add" method="post" action="/staff?handler=Change" asp-antiforgery="true">
+        <label class="form-label" for="Name">Avatar name</label>
+        <input class="form-control" id="Name" name="name" value="@Model.Typed" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="First Last">
+        <p class="hint form-text">Type the first and last name of an avatar on your grid.</p>
+        <div class="d-flex flex-wrap gap-2">
+            <button type="submit" name="change" value="MakeSupervisor" class="btn btn-primary">Make supervisor</button>
+            <button type="submit" name="change" value="MakeAdmin" class="btn btn-primary">Make admin</button>
+        </div>
+    </form>
+}

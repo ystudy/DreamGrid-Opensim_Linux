@@ -57,14 +57,5 @@
     </div>
     <button type="submit" class="btn btn-primary mt-3">Look up this grid</button>
 </form>
-<noscript><style>[hidden] { display: block !important; }</style></noscript>
-<script>
-    // Show the addresses only for another grid; the server enforces it either way.
-    (function () {
-        function update() {
-            document.getElementById('other-part').hidden = !document.getElementById('Grid-other').checked;
-        }
-        document.querySelectorAll('input[name=Grid]').forEach(function (k) { k.addEventListener('change', update); });
-        update();
-    })();
-</script>
+<noscript><link rel="stylesheet" href="/css/noscript.css"></noscript>
+<script src="/js/other-grid.js"></script>

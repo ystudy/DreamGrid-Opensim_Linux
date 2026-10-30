@@ -1304,8 +1304,8 @@ public sealed class SetupFlowTests
         Assert.NotNull(page.QuerySelector("input[name=AddressKind][value=public]"));
         Assert.NotNull(page.QuerySelector("#public-part input[name=PublicAddress]"));
         Assert.NotNull(page.QuerySelector("#switch-part input[name=Hypergrid]"));
-        Assert.NotNull(page.QuerySelector("noscript style"));
-        Assert.Contains(page.QuerySelectorAll("script"), x => x.TextContent.Contains("advisories-public"));
+        Assert.NotNull(page.QuerySelector("noscript link[href=\"/css/noscript.css\"]"));
+        Assert.NotNull(page.QuerySelector("script[src=\"/js/network.js\"]"));
     }
 
     // ---- Region Server (plan 6b) ----

@@ -1,0 +1,61 @@
+@page "/people"
+@model DreamGrid.Launcher.Pages.People.IndexModel
+@{
+    ViewData["Title"] = "People";
+}
+<h1>People</h1>
+<p>Find an avatar on your grid by name.</p>
+@if (Model.Error is not null)
+{
+    <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
+}
+@if (Model.Notice is not null)
+{
+    <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
+}
+<form id="people-find" method="get" action="/people" class="mb-4">
+    <label class="form-label" for="Name">Avatar name</label>
+    <div class="input-group">
+        <input class="form-control" id="Name" name="name" value="@Model.Name" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="First Last">
+        <button type="submit" class="btn btn-primary">Find</button>
+    </div>
+</form>
+@if (Model.Found is { } p)
+{
+    <div id="person" class="card">
+        <div class="card-body">
+            <h2 class="card-title h4">
+                @p.FullName
+                @if (p.Suspended)
+                {
+                    <span class="badge text-bg-danger ms-2">Suspended</span>
+                }
+            </h2>
+            <dl class="row mb-0">
+                <dt class="col-sm-3">Role</dt>
+                <dd class="col-sm-9">@p.RoleName</dd>
+                <dt class="col-sm-3">Level</dt>
+                <dd class="col-sm-9">@p.Account.UserLevel</dd>
+                <dt class="col-sm-3">Email</dt>
+                <dd class="col-sm-9">@(string.IsNullOrWhiteSpace(p.Account.Email) ? "None" : p.Account.Email)</dd>
+                <dt class="col-sm-3">Created</dt>
+                <dd class="col-sm-9">@p.CreatedText</dd>
+            </dl>
+            @if (p.CanSuspend || p.CanUnsuspend)
+            {
+                <form method="post" action="@(p.CanSuspend ? "/people?handler=Suspend" : "/people?handler=Unsuspend")" asp-antiforgery="true" class="mt-3">
+                    <input type="hidden" name="name" value="@p.FullName">
+                    @if (p.CanSuspend)
+                    {
+                        <button type="submit" class="btn btn-outline-danger">Suspend</button>
+                        <span class="hint form-text ms-2">They get their level back when you unsuspend them.</span>
+                    }
+                    else
+                    {
+                        <button type="submit" class="btn btn-outline-primary">Unsuspend</button>
+                    }
+                </form>
+            }
+        </div>
+    </div>
+}

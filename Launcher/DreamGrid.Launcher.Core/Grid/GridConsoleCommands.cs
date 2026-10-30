@@ -24,6 +24,13 @@ public static partial class GridConsoleCommands
             throw new ArgumentException("The e-mail address must not contain spaces or double quotes, or start with \"--\".", nameof(email));
     }
 
+    /// <summary>Rejects an avatar name the console would split or rewrite (see <see cref="ValidateOwner"/>).</summary>
+    public static void ValidateAvatarName(string first, string last)
+    {
+        ValidateName(first, nameof(first));
+        ValidateName(last, nameof(last));
+    }
+
     private static void ValidateName(string name, string param)
     {
         if (string.IsNullOrEmpty(name) || name.StartsWith("--", StringComparison.Ordinal)

@@ -52,19 +52,8 @@
         </ul>
         <button type="submit" class="btn btn-primary mt-3">Continue</button>
     </form>
-    <noscript><style>[hidden] { display: block !important; }</style></noscript>
-    <script>
-        // Show the part that matches the address choice; the server enforces it either way.
-        (function () {
-            function update() {
-                var pub = document.getElementById('AddressKind-public').checked;
-                document.getElementById('lan-part').hidden = pub;
-                document.getElementById('public-part').hidden = !pub;
-            }
-            document.querySelectorAll('input[name=AddressKind]').forEach(function (k) { k.addEventListener('change', update); });
-            update();
-        })();
-    </script>
+    <noscript><link rel="stylesheet" href="/css/noscript.css"></noscript>
+    <script src="/js/network.js"></script>
     return;
 }
 <form method="post">
@@ -120,21 +109,6 @@
 </form>
 @if (gridAsset)
 {
-    <noscript><style>[hidden] { display: block !important; }</style></noscript>
-    <script>
-        // Show the part that matches the address choice; the server enforces it either way.
-        (function () {
-            function update() {
-                var pub = document.getElementById('AddressKind-public').checked;
-                document.getElementById('lan-part').hidden = pub;
-                document.getElementById('public-part').hidden = !pub;
-                document.getElementById('switch-part').hidden = !pub;
-                document.getElementById('lan-hypergrid').hidden = pub;
-                document.getElementById('advisories-lan').hidden = pub;
-                document.getElementById('advisories-public').hidden = !pub;
-            }
-            document.querySelectorAll('input[name=AddressKind]').forEach(function (k) { k.addEventListener('change', update); });
-            update();
-        })();
-    </script>
+    <noscript><link rel="stylesheet" href="/css/noscript.css"></noscript>
+    <script src="/js/network.js"></script>
 }
