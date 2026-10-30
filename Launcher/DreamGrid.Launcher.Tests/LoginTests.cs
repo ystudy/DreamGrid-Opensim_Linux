@@ -299,7 +299,7 @@ public sealed class LoginTests
     }
 
     [Fact]
-    public async Task A_cookie_without_a_principal_claim_is_audited_with_no_actor_id()
+    public async Task An_admin_post_is_audited_with_the_role_from_the_cookie()
     {
         await using var f = Factory(TestAuth.Apply);
         var client = Client(f);
@@ -308,8 +308,8 @@ public sealed class LoginTests
         await client.PostAsync("/dashboard", new FormUrlEncodedContent(new Dictionary<string, string>()), Ct);
 
         var entry = Assert.Single(Audit(f), e => e.GetProperty("action").GetString() == "request");
-        Assert.Equal("owner", entry.GetProperty("actor").GetString());
-        Assert.Equal(System.Text.Json.JsonValueKind.Null, entry.GetProperty("actorId").ValueKind);
+        Assert.Equal("Test Admin", entry.GetProperty("actor").GetString());
+        Assert.Equal(TestAuth.AdminId.ToString(), entry.GetProperty("actorId").GetString());
         Assert.Equal("admin", entry.GetProperty("role").GetString());
     }
 

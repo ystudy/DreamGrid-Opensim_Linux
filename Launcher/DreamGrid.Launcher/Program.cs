@@ -109,20 +109,31 @@ builder.Services.AddAuthentication(AuthSchemes.Admin).AddCookie(AuthSchemes.Admi
     o.Cookie.HttpOnly = true;
     o.Cookie.SameSite = SameSiteMode.Strict;
     o.LoginPath = "/login";
-    o.ExpireTimeSpan = AdminSignIn.Expiry;
+    o.ExpireTimeSpan = StaffSignIn.Expiry;
     o.SlidingExpiration = true;
+    // The session, the stamp and (every 5 minutes) the level, on every request.
+    o.Events.OnValidatePrincipal = c => c.HttpContext.RequestServices.GetRequiredService<StaffPrincipalValidator>().ValidateAsync(c);
     // API callers get a status code, never a redirect to the login page.
     o.Events.OnRedirectToLogin = c => ApiOr(c, StatusCodes.Status401Unauthorized);
-    o.Events.OnRedirectToAccessDenied = c => ApiOr(c, StatusCodes.Status403Forbidden);
+    o.Events.OnRedirectToAccessDenied = Denied;
 });
 // Whatever has no decision of its own needs the admin role; the open routes say .AllowAnonymous() (or a page convention).
 builder.Services.AddAuthorizationBuilder()
+    .AddPolicy(AuthSchemes.OwnerPolicy, p => p.AddAuthenticationSchemes(AuthSchemes.Admin).RequireRole(AuthSchemes.OwnerRole))
     .AddPolicy(AuthSchemes.AdminPolicy, p => p.AddAuthenticationSchemes(AuthSchemes.Admin).RequireRole(AuthSchemes.AdminRole))
+    .AddPolicy(AuthSchemes.StaffPolicy, p => p.AddAuthenticationSchemes(AuthSchemes.Admin).RequireRole(AuthSchemes.StaffRole))
     .SetFallbackPolicy(new AuthorizationPolicyBuilder().AddAuthenticationSchemes(AuthSchemes.Admin).RequireRole(AuthSchemes.AdminRole).Build());
 builder.Services.AddRazorPages(o =>
 {
-    // Every page needs the admin role except these; the setup pages are guarded by SetupGate.
-    o.Conventions.AuthorizeFolder("/", AuthSchemes.AdminPolicy);
+    // Every page needs the admin role except these; the setup pages are guarded by SetupGate. A person's own pages under
+    // /Profile are for every staff member. (Two folder policies on one page would both have to pass, so /Profile is left
+    // out of the admin one rather than given a second.)
+    o.Conventions.AddFolderApplicationModelConvention("/", m =>
+    {
+        if (!m.ViewEnginePath.StartsWith("/Profile/", StringComparison.OrdinalIgnoreCase))
+            m.EndpointMetadata.Add(new AuthorizeAttribute(AuthSchemes.AdminPolicy));
+    });
+    o.Conventions.AuthorizeFolder("/Profile", AuthSchemes.StaffPolicy);
     foreach (var open in new[] { "/Login", "/Logout", "/Welcome", "/Waiting", "/SetupDone", "/Setup" })
         o.Conventions.AllowAnonymousToPage(open);
     o.Conventions.AllowAnonymousToFolder("/Setup");
@@ -138,6 +149,9 @@ builder.Services.AddSingleton<LogReader>();
 builder.Services.AddSingleton(sp => new AuditLog(Path.Combine(paths.Logs, "audit.log"), sp.GetRequiredService<TimeProvider>()));
 builder.Services.AddSingleton(sp => new LoginThrottle(sp.GetRequiredService<TimeProvider>(),
     Path.Combine(paths.Security, "throttle.json"), sp.GetRequiredService<ILogger<LoginThrottle>>()));
+builder.Services.AddSingleton(sp => new StaffSessions(Path.Combine(paths.Security, "sessions.json"),
+    sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<StaffSessions>>()));
+builder.Services.AddSingleton<StaffPrincipalValidator>();
 builder.Services.AddSingleton<LegacyCommandApi>();
 builder.Services.AddSingleton<IOnlineUsers>(sp => new OnlineUsers(sp.GetRequiredService<Func<LauncherSettings>>(),
     sp.GetRequiredService<ILogger<OnlineUsers>>()));
@@ -207,6 +221,34 @@ static Task ApiOr(RedirectContext<CookieAuthenticationOptions> c, int apiStatus)
     else
         c.Response.Redirect(c.RedirectUri);
     return Task.CompletedTask;
+}
+
+// A signed-in person whose role doesn't include the page: a 403 with a short page of its own (the sign-in page would
+// only send them back here).
+static Task Denied(RedirectContext<CookieAuthenticationOptions> c)
+{
+    c.Response.StatusCode = StatusCodes.Status403Forbidden;
+    if (ApiEndpoint.Is(c.HttpContext)) return Task.CompletedTask;
+    c.Response.ContentType = "text/html; charset=utf-8";
+    return c.Response.WriteAsync("""
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Not allowed</title>
+        <link rel="stylesheet" href="/lib/bootstrap/bootstrap.min.css">
+        <link rel="stylesheet" href="/css/site.css">
+        </head>
+        <body>
+        <main class="container py-4">
+        <h1>You can't open this page</h1>
+        <p>Your role doesn't include this page.</p>
+        <p><a href="/">Back to your start page</a></p>
+        </main>
+        </body>
+        </html>
+        """);
 }
 
 static bool IsAddressInUse(Exception? e)

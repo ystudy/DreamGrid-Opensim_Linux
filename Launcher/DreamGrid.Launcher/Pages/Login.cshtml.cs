@@ -9,8 +9,10 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 namespace DreamGrid.Launcher.Pages;
 
 /// <summary>
-/// Signs in with the avatar name and password. Only an administrator gets in (<see cref="AdminRule"/>: the admin level or more (200 unless changed), or the estate owner on a Region Server; only the estate owner on a Connected Server), and every
-/// failure shows the same message so the page does not reveal which names exist. The password is never logged.
+/// Signs in with the avatar name and password. Only staff get in (<see cref="AdminRule.RoleOf"/>: the supervisor level or more
+/// (100 unless changed), or the owner named in setup; on a Region Server only the admin level and the owner; on a Connected
+/// Server only the owner), and every failure shows the same message so the page does not reveal which names exist. A
+/// supervisor lands on their own page; everyone else on the return URL or the dashboard. The password is never logged.
 /// </summary>
 public sealed class LoginModel(IRobustClient robust, Func<LauncherSettings> settings, LoginThrottle throttle, AuditLog audit, ILogger<LoginModel> log) : PageModel
 {
@@ -41,13 +43,13 @@ public sealed class LoginModel(IRobustClient robust, Func<LauncherSettings> sett
         if (!name.IsComplete)
             return Fail(name);
 
-        bool ok;
+        var role = StaffRole.None;
         RobustAccount? account;
         try
         {
             account = await robust.GetAccountAsync(name.First, name.Last, ct);
-            ok = account is not null && await robust.AuthenticateAsync(account.PrincipalId, password, ct)
-                && AdminRule.MayAdminister(settings(), account);
+            if (account is not null && await robust.AuthenticateAsync(account.PrincipalId, password, ct))
+                role = AdminRule.RoleOf(settings(), account);
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException
             && !ct.IsCancellationRequested)
@@ -57,14 +59,14 @@ public sealed class LoginModel(IRobustClient robust, Func<LauncherSettings> sett
             return Page();
         }
 
-        if (!ok) return Fail(name);
+        if (role == StaffRole.None) return Fail(name);
 
         throttle.RecordSuccess(name.Key);
-        audit.Write(new AuditEntry($"{account!.FirstName} {account.LastName}", account.PrincipalId,
-            AdminRule.RoleOf(settings(), account).AuditName(), HttpContext.Connection.RemoteIpAddress?.ToString(),
-            "sign-in", null, "ok"));
-        await AdminSignIn.SignInAsync(HttpContext, account!.FirstName, account.LastName, account.PrincipalId);
-        return LocalRedirect(Url.IsLocalUrl(ReturnUrl) ? ReturnUrl! : "/");
+        await StaffSignIn.SignInAsync(HttpContext, account!, role);
+        audit.Write(new AuditEntry($"{account!.FirstName} {account.LastName}", account.PrincipalId, role.AuditName(),
+            HttpContext.Connection.RemoteIpAddress?.ToString(), "sign-in", null, "ok"));
+        if (role == StaffRole.Supervisor) return LocalRedirect(StaffSignIn.Home(role));
+        return LocalRedirect(Url.IsLocalUrl(ReturnUrl) ? ReturnUrl! : StaffSignIn.Home(role));
     }
 
     private IActionResult Fail(AvatarName name)

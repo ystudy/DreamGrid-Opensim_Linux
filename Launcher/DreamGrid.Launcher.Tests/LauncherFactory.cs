@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Time.Testing;
 
 namespace DreamGrid.Launcher.Tests;
 
@@ -36,6 +37,8 @@ internal sealed class LauncherFactory : WebApplicationFactory<Program>
     public FakeGridController Grid { get; } = new();
     public FakeRobustAccounts Robust { get; } = new();
     public FakeOnlineUsers OnlineUsers { get; } = new();
+    /// <summary>The host's clock: starts at the real time and moves only when a test advances it.</summary>
+    public FakeTimeProvider Time { get; } = new(DateTimeOffset.UtcNow);
     /// <summary>The Grid Asset Server's join information the host reads (no network).</summary>
     public FakeGridJoin Join { get; } = new();
     /// <summary>The other grid's information the host reads (no network).</summary>
@@ -65,6 +68,8 @@ internal sealed class LauncherFactory : WebApplicationFactory<Program>
             services.AddSingleton<IGridJoinClient>(Join);
             services.RemoveAll<IOtherGridClient>();
             services.AddSingleton<IOtherGridClient>(OtherGrid);
+            services.RemoveAll<TimeProvider>();
+            services.AddSingleton<TimeProvider>(Time);
             if (Before is { } before)
                 services.AddSingleton<Microsoft.AspNetCore.Hosting.IStartupFilter>(new BeforeFilter(before));
             ExtraServices?.Invoke(services);
