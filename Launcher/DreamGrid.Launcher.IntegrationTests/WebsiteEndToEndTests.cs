@@ -74,10 +74,14 @@ public sealed partial class LauncherEndToEndTests
             Assert.Contains("Your world is running", page.Html);
             Assert.Contains("Avalon", page.Html);
 
-            // 8. Sign out; the dashboard then asks to sign in, and signing in leads back to it.
+            // 8. Sign out; "/" is then the public front page with its staff sign-in link, and signing in leads back to the dashboard.
             page = await web.SubmitAsync(page, new(), "form.signout");
             Assert.Equal("/login", page.Path);
             page = await web.FollowAsync("/");
+            Assert.Equal("/", page.Path);
+            Assert.Contains("href=\"/login\"", page.Html);
+            Assert.DoesNotContain("Your world is running", page.Html);
+            page = await web.FollowAsync("/login");
             Assert.Equal("/login", page.Path);
             page = await web.SubmitAsync(page, new() { ["Name"] = "Test Owner", ["Password"] = Password });
             Assert.Equal("/", page.Path);
