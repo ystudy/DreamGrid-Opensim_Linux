@@ -7,18 +7,17 @@ namespace DreamGrid.Launcher.Guests;
 
 /// <summary>
 /// Makes the guest pages not exist (404) on a Region Server and a Connected Server, which have no guest side
-/// (<see cref="AdminRule.HasStaffPages"/>). A resource filter, so it runs after the page's policy and before anything is
-/// bound or posted.
+/// (<see cref="AdminRule.HasStaffPages"/>). The page's policy (the authorization middleware) runs first. An authorization
+/// filter ordered first, so it also runs before the antiforgery check: a post without a token answers 404 too, not 400,
+/// and nothing is bound or posted.
 /// </summary>
-public sealed class GuestSideOnly : IResourceFilter
+public sealed class GuestSideOnly : IAuthorizationFilter, IOrderedFilter
 {
-    public void OnResourceExecuting(ResourceExecutingContext context)
+    public int Order => int.MinValue;
+
+    public void OnAuthorization(AuthorizationFilterContext context)
     {
         if (!AdminRule.HasStaffPages(context.HttpContext.RequestServices.GetRequiredService<Func<LauncherSettings>>()()))
             context.Result = new NotFoundResult();
-    }
-
-    public void OnResourceExecuted(ResourceExecutedContext context)
-    {
     }
 }

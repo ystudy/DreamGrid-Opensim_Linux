@@ -184,20 +184,32 @@ public sealed class GuestAccessTests
             Hypergrid = false,
         });
         var guest = await GuestAsync(f);
+        var wrong = new List<string>();
+        string[] gets = ["/guest", "/guest/sign-in", "/guest/sign-out", "/guest/terms", "/guest/regions"];
+        string[] posts = ["/guest/sign-in", "/guest/sign-out", "/guest/terms", $"/guest/regions?handler=restart&id={Guid.NewGuid()}"];
 
-        foreach (var url in new[] { "/guest", "/guest/sign-in", "/guest/sign-out" })
+        foreach (var url in gets)
         {
             using var r = await guest.GetAsync(url, Ct);
-            Assert.Equal(HttpStatusCode.NotFound, r.StatusCode);
+            if (r.StatusCode != HttpStatusCode.NotFound) wrong.Add($"GET {url} signed in: {r.StatusCode}");
+        }
+        foreach (var url in posts)
+        {
+            using var r = await guest.PostAsync(url, new FormUrlEncodedContent(new Dictionary<string, string> { ["Version"] = "1" }), Ct);
+            if (r.StatusCode != HttpStatusCode.NotFound) wrong.Add($"POST {url} signed in: {r.StatusCode}");
         }
         // Not signed in: the policy challenges first, and that answers 404 too, not a redirect.
         var anonymousClient = Client(f);
-        foreach (var url in new[] { "/guest", "/guest/sign-in", "/guest/sign-out" })
+        foreach (var url in gets)
         {
             using var r = await anonymousClient.GetAsync(url, Ct);
-            Assert.Equal(HttpStatusCode.NotFound, r.StatusCode);
+            if (r.StatusCode != HttpStatusCode.NotFound) wrong.Add($"GET {url} anonymous: {r.StatusCode}");
         }
-        using var signOut = await anonymousClient.PostAsync("/guest/sign-out", new FormUrlEncodedContent(new Dictionary<string, string>()), Ct);
-        Assert.Equal(HttpStatusCode.NotFound, signOut.StatusCode);
+        foreach (var url in posts)
+        {
+            using var r = await anonymousClient.PostAsync(url, new FormUrlEncodedContent(new Dictionary<string, string> { ["Version"] = "1" }), Ct);
+            if (r.StatusCode != HttpStatusCode.NotFound) wrong.Add($"POST {url} anonymous: {r.StatusCode}");
+        }
+        Assert.Empty(wrong);
     }
 }
