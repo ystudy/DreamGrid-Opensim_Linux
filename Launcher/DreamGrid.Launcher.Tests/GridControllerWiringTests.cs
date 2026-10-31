@@ -290,6 +290,7 @@ public sealed class GridControllerWiringTests : IDisposable
         var auditFile = Path.Combine(_root, "audit.log");
         var target = new RobustAccount(Guid.NewGuid(), "Gail", "Guest", 150, "");
         sessions.Start(target.PrincipalId, null, null);
+        var guestStamps = new DreamGrid.Launcher.Guests.GuestStamps(Path.Combine(_root, "guests", "stamps.json"));
         var owner = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(
             [new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Name, "Test Owner"),
              .. DreamGrid.Launcher.Security.StaffSignIn.RoleClaims(Core.Security.StaffRole.Owner)
@@ -299,7 +300,7 @@ public sealed class GridControllerWiringTests : IDisposable
         DreamGrid.Launcher.Security.ChangeOutcome outcome;
         using (var audit = new Core.Logs.AuditLog(auditFile, TimeProvider.System))
         {
-            var actions = new DreamGrid.Launcher.Security.StaffActions(_grid, () => _store.LoadOrCreate(), suspended, sessions, audit,
+            var actions = new DreamGrid.Launcher.Security.StaffActions(_grid, () => _store.LoadOrCreate(), suspended, sessions, guestStamps, audit,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<DreamGrid.Launcher.Security.StaffActions>.Instance);
             outcome = await actions.ApplyAsync(owner, null, target, Core.Security.StaffChange.Suspend, ct);
         }
@@ -308,6 +309,7 @@ public sealed class GridControllerWiringTests : IDisposable
         Assert.Equal(DreamGrid.Launcher.Security.StaffActions.Unconfirmed, outcome.Message);
         Assert.Equal(150, suspended.PreviousLevel(target.PrincipalId)); // kept
         Assert.Empty(sessions.List(target.PrincipalId));                // signed out
+        Assert.NotEqual("0", guestStamps.StampOf(target.PrincipalId));  // and off the guest pages
         Assert.Contains("\"unconfirmed\"", File.ReadAllText(auditFile));
     }
 
@@ -2564,11 +2566,156 @@ public sealed class GridControllerWiringTests : IDisposable
         Assert.Equal([0], own.Options.Cores);
     }
 
-    /// <summary>Records each call as "Deregister|Erase|Space &lt;ids&gt;"; space comes from <see cref="Space"/>.</summary>
+    // ---- estates (plan 7b) ------------------------------------------------------------------------
+
+    private static readonly Guid AnnGuest = Guid.Parse("a0000000-0000-0000-0000-00000000000a");
+
+    [Fact]
+    public async Task CreateEstate_parses_id()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var fakes = await RunningHomeAndBeach(_grid, shared: false);
+        _console = (_, command) => command.StartsWith("estate create ", StringComparison.Ordinal)
+            ? ["12:00:00 - [ESTATE]: something else the region logged", "Estate 7 created as \"Ann Guest Estate\""] : [];
+        try
+        {
+            var estate = await _grid.CreateEstateAsync(Beach, AnnGuest, "Ann Guest Estate", ct);
+
+            Assert.Equal((7, "Ann Guest Estate"), estate);
+            // On Beach's own program; estate create needs no change region.
+            Assert.Equal([$"estate create {AnnGuest} Ann Guest Estate"], _http.Commands(_secondConsole).Where(c => c.StartsWith("estate", StringComparison.Ordinal)));
+        }
+        finally { await EndAllAsync(_grid, fakes); }
+    }
+
+    [Fact]
+    public async Task CreateEstate_numbers_taken_name()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var fakes = await RunningHomeAndBeach(_grid, shared: false);
+        var free = "Ann Guest Estate 3";
+        _console = (_, command) =>
+        {
+            if (!command.StartsWith($"estate create {AnnGuest} ", StringComparison.Ordinal)) return [];
+            var name = command[$"estate create {AnnGuest} ".Length..];
+            return name == free ? ["Estate 9 created as \"" + name + "\""] : ["An estate named \"" + name + "\" already exists."];
+        };
+        try
+        {
+            Assert.Equal((9, "Ann Guest Estate 3"), await _grid.CreateEstateAsync(Beach, AnnGuest, "Ann Guest Estate", ct));
+            Assert.Equal(["Ann Guest Estate", "Ann Guest Estate 2", "Ann Guest Estate 3"],
+                _http.Commands(_secondConsole).Where(c => c.StartsWith("estate create", StringComparison.Ordinal)).Select(c => c[$"estate create {AnnGuest} ".Length..]));
+
+            // Every name up to "<name> 20" taken: it gives up.
+            free = "none";
+            var e = await Assert.ThrowsAsync<InvalidOperationException>(() => _grid.CreateEstateAsync(Beach, AnnGuest, "Bob Guest Estate", ct));
+            Assert.Contains("Bob Guest Estate 20", e.Message);
+            var bob = _http.Commands(_secondConsole).Where(c => c.Contains("Bob Guest Estate", StringComparison.Ordinal)).ToList();
+            Assert.Equal(20, bob.Count);
+            Assert.EndsWith("Bob Guest Estate 20", bob[^1]);
+        }
+        finally { await EndAllAsync(_grid, fakes); }
+    }
+
+    [Fact]
+    public async Task CreateEstate_unexpected_output_throws_with_transcript()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var fakes = await RunningHomeAndBeach(_grid, shared: false);
+        _console = (_, command) => command.StartsWith("estate create ", StringComparison.Ordinal) ? [$"Could not find user {AnnGuest}"] : [];
+        try
+        {
+            var e = await Assert.ThrowsAsync<InvalidOperationException>(() => _grid.CreateEstateAsync(Beach, AnnGuest, "Ann Guest Estate", ct));
+
+            Assert.Contains("Console:", e.Message);
+            Assert.Contains($"Could not find user {AnnGuest}", e.Message);
+        }
+        finally { await EndAllAsync(_grid, fakes); }
+    }
+
+    [Fact]
+    public async Task LinkEstate_accepts_already_part()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var fakes = await RunningHomeAndBeach(_grid, shared: true);
+        var reply = "\"Beach\" is already part of estate 5";
+        _console = (_, command) => command.StartsWith("estate link region ", StringComparison.Ordinal) ? [reply] : [];
+        try
+        {
+            await _grid.LinkEstateAsync(Beach, 5, ct);
+
+            reply = $"Region {Beach} is now attached to estate 5";
+            await _grid.LinkEstateAsync(Beach, 5, ct);
+
+            reply = "No estate found with ID 5";
+            var e = await Assert.ThrowsAsync<InvalidOperationException>(() => _grid.LinkEstateAsync(Beach, 5, ct));
+            Assert.Contains("No estate found with ID 5", e.Message);
+
+            // In a shared program too the console stays at root: estate link region names the region itself.
+            var port = _store.LoadOrCreate().RegionConsolePort;
+            Assert.Equal(Enumerable.Repeat($"estate link region 5 {Beach}", 3),
+                _http.Commands(port).Where(c => c.StartsWith("estate", StringComparison.Ordinal) || c.StartsWith("change region", StringComparison.Ordinal)));
+        }
+        finally { await EndAllAsync(_grid, fakes); }
+    }
+
+    [Fact]
+    public async Task Estate_calls_need_a_running_region_and_the_database()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        HomeAndBeach(shared: false);
+
+        var create = await Assert.ThrowsAsync<InvalidOperationException>(() => _grid.CreateEstateAsync(Beach, AnnGuest, "Ann Guest Estate", ct));
+        var link = await Assert.ThrowsAsync<InvalidOperationException>(() => _grid.LinkEstateAsync(Beach, 5, ct));
+        var read = await Assert.ThrowsAsync<InvalidOperationException>(() => _grid.EstateOfAsync(Beach, ct));
+
+        Assert.Equal("Start Beach first.", create.Message);
+        Assert.Equal("Start Beach first.", link.Message);
+        Assert.Equal("Start the database first.", read.Message);
+        Assert.Empty(_http.CommandPorts);
+
+        _databaseUp = true;
+        _regionStore.Estates[Beach] = 3;
+        Assert.Equal(3, await _grid.EstateOfAsync(Beach, ct));
+        Assert.Null(await _grid.EstateOfAsync(Home, ct));
+    }
+
+    [Theory]
+    [InlineData(OwnerPlan.RegionServer)]
+    [InlineData(OwnerPlan.Connected)]
+    public async Task Estate_calls_refused_on_region_server(OwnerPlan plan)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        HomeAndBeach(shared: false);
+        _store.Save(_store.LoadOrCreate() with { Plan = plan });
+        _databaseUp = true;
+
+        foreach (var call in new Func<Task>[]
+                 {
+                     () => _grid.EstateOfAsync(Beach, ct),
+                     () => _grid.CreateEstateAsync(Beach, AnnGuest, "Ann Guest Estate", ct),
+                     () => _grid.LinkEstateAsync(Beach, 5, ct),
+                 })
+        {
+            var e = await Assert.ThrowsAsync<InvalidOperationException>(call);
+            Assert.Contains("doesn't run a grid service", e.Message);
+        }
+        Assert.Empty(_http.CommandPorts);
+        Assert.Empty(_regionStore.Snapshot());
+    }
+
+    /// <summary>Records each call as "Deregister|Erase|Space|EstateOf &lt;ids&gt;"; space comes from <see cref="Space"/>, estates from <see cref="Estates"/>.</summary>
     private sealed class FakeRegionStore : IRegionStore
     {
         private readonly List<string> _calls = new();
         public Dictionary<Guid, long> Space { get; } = new();
+        public Dictionary<Guid, int> Estates { get; } = new();
+
+        public Task<int?> EstateOfAsync(Guid id, CancellationToken ct)
+        {
+            Record($"EstateOf {id}");
+            return Task.FromResult<int?>(Estates.TryGetValue(id, out var estate) ? estate : null);
+        }
 
         public string[] Snapshot() { lock (_calls) return _calls.ToArray(); }
         public void Clear() { lock (_calls) _calls.Clear(); }

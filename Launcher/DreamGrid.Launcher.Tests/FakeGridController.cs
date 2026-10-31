@@ -383,6 +383,36 @@ internal sealed class FakeGridController : IGridController
         return Task.FromResult(OnSetUserLevel?.Invoke(first, last, level) ?? new RobustAccount(Guid.NewGuid(), first, last, level, ""));
     }
 
+    /// <summary>What <see cref="EstateOfAsync"/> answers for a region (it may throw); the grid's estate, 1, by default.</summary>
+    public Func<Guid, int?> OnEstateOf { get; set; } = _ => 1;
+
+    /// <summary>What <see cref="CreateEstateAsync"/> answers for (region, owner, name) (it may throw); estate 100 with the name by default.</summary>
+    public Func<Guid, Guid, string, (int Id, string Name)> OnCreateEstate { get; set; } = (_, _, name) => (100, name);
+
+    /// <summary>Runs inside <see cref="LinkEstateAsync"/> with (region, estate); it may throw.</summary>
+    public Action<Guid, int> OnLinkEstate { get; set; } = (_, _) => { };
+
+    public Task<int?> EstateOfAsync(Guid regionId, CancellationToken ct)
+    {
+        Record($"EstateOf {regionId}");
+        try { return Task.FromResult(OnEstateOf(regionId)); }
+        catch (Exception e) { return Task.FromException<int?>(e); }
+    }
+
+    public Task<(int Id, string Name)> CreateEstateAsync(Guid regionId, Guid owner, string name, CancellationToken ct)
+    {
+        Record($"CreateEstate {regionId} {owner} {name}");
+        try { return Task.FromResult(OnCreateEstate(regionId, owner, name)); }
+        catch (Exception e) { return Task.FromException<(int, string)>(e); }
+    }
+
+    public Task LinkEstateAsync(Guid regionId, int estateId, CancellationToken ct)
+    {
+        Record($"LinkEstate {regionId} {estateId}");
+        try { OnLinkEstate(regionId, estateId); return Task.CompletedTask; }
+        catch (Exception e) { return Task.FromException(e); }
+    }
+
     /// <summary>What <see cref="JoinedRegionCountAsync"/> returns; it throws <see cref="JoinedRegionError"/> instead when set.</summary>
     public int JoinedRegions { get; set; }
     public Exception? JoinedRegionError { get; set; }

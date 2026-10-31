@@ -90,7 +90,13 @@
                 @foreach (var r in Model.Rows)
                 {
                     <tr class="@(r.Id == Model.Selected ? "table-active" : "")" data-region="@r.Id">
-                        <td><a class="fw-semibold" href="/regions/region/@r.Id">@r.Name</a></td>
+                        <td>
+                            <a class="fw-semibold" href="/regions/region/@r.Id">@r.Name</a>
+                            @if (r.Owner is not null)
+                            {
+                                <small class="region-owner-mark form-text d-block m-0">Owner: @r.Owner</small>
+                            }
+                        </td>
                         <td><span class="badge state-@r.StateText.ToLowerInvariant()">@r.StateText</span></td>
                         <td>@r.RunsWithText</td>
                         <td>@r.X, @r.Y@(r.Size > 1 ? $" ({r.Size}×{r.Size})" : "")</td>

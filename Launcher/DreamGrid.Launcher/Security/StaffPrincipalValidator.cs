@@ -32,6 +32,14 @@ public sealed class StaffPrincipalValidator(StaffSessions sessions, IRobustClien
 
     public async Task ValidateAsync(CookieValidatePrincipalContext c)
     {
+        // A caller outside the owner's networks on a page that is open to every address (the front page): the staff cookie is
+        // invisible to them, but not removed, so it keeps working from inside the list.
+        if (c.HttpContext.Items.ContainsKey(AdminNetworkFilter.OutsideKey))
+        {
+            c.RejectPrincipal();
+            return;
+        }
+
         if (c.Principal is not { } user || StaffSignIn.Read(user) is not { Role: not StaffRole.None } claims
             || !sessions.IsValid(claims.Principal, claims.SessionId, claims.Stamp))
         {

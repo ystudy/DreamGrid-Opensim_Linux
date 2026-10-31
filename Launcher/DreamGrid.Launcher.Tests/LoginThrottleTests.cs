@@ -27,16 +27,16 @@ public sealed class LoginThrottleTests : IDisposable
     {
         var time = new FakeTimeProvider();
         var throttle = new LoginThrottle(time, null);
-        for (var i = 0; i < 4; i++) throttle.RecordFailure("Test Owner", null);
-        Assert.False(throttle.IsLocked("Test Owner", null));
-        throttle.RecordFailure("Test Owner", null);
-        Assert.True(throttle.IsLocked("test owner", null));
-        Assert.False(throttle.IsLocked("Someone Else", null));
+        for (var i = 0; i < 4; i++) throttle.RecordFailure(SignInDoor.Staff, "Test Owner", null);
+        Assert.False(throttle.IsLocked(SignInDoor.Staff, "Test Owner", null));
+        throttle.RecordFailure(SignInDoor.Staff, "Test Owner", null);
+        Assert.True(throttle.IsLocked(SignInDoor.Staff, "test owner", null));
+        Assert.False(throttle.IsLocked(SignInDoor.Staff, "Someone Else", null));
 
         time.Advance(TimeSpan.FromMinutes(9));
-        Assert.True(throttle.IsLocked("Test Owner", null));
+        Assert.True(throttle.IsLocked(SignInDoor.Staff, "Test Owner", null));
         time.Advance(TimeSpan.FromMinutes(1));
-        Assert.False(throttle.IsLocked("Test Owner", null));
+        Assert.False(throttle.IsLocked(SignInDoor.Staff, "Test Owner", null));
     }
 
     [Fact]
@@ -44,33 +44,33 @@ public sealed class LoginThrottleTests : IDisposable
     {
         var time = new FakeTimeProvider();
         var throttle = new LoginThrottle(time, null);
-        for (var i = 0; i < 4; i++) throttle.RecordFailure("Test Owner", null);
+        for (var i = 0; i < 4; i++) throttle.RecordFailure(SignInDoor.Staff, "Test Owner", null);
         time.Advance(TimeSpan.FromMinutes(11));
-        throttle.RecordFailure("Test Owner", null);
-        Assert.False(throttle.IsLocked("Test Owner", null));
+        throttle.RecordFailure(SignInDoor.Staff, "Test Owner", null);
+        Assert.False(throttle.IsLocked(SignInDoor.Staff, "Test Owner", null));
     }
 
     [Fact]
     public void Success_clears_the_failures()
     {
         var throttle = new LoginThrottle(new FakeTimeProvider(), null);
-        for (var i = 0; i < 4; i++) throttle.RecordFailure("Test Owner", null);
-        throttle.RecordSuccess("Test Owner");
-        throttle.RecordFailure("Test Owner", null);
-        Assert.False(throttle.IsLocked("Test Owner", null));
+        for (var i = 0; i < 4; i++) throttle.RecordFailure(SignInDoor.Staff, "Test Owner", null);
+        throttle.RecordSuccess(SignInDoor.Staff, "Test Owner");
+        throttle.RecordFailure(SignInDoor.Staff, "Test Owner", null);
+        Assert.False(throttle.IsLocked(SignInDoor.Staff, "Test Owner", null));
     }
 
     [Fact]
     public void Ip_locks_after_20_failures_across_names()
     {
         var throttle = new LoginThrottle(new FakeTimeProvider(), null);
-        for (var i = 0; i < 19; i++) throttle.RecordFailure("Guesser " + i, Ip5);
-        Assert.False(throttle.IsLocked("Someone Else", Ip5));
-        throttle.RecordFailure("Guesser 19", Ip5);
+        for (var i = 0; i < 19; i++) throttle.RecordFailure(SignInDoor.Staff, "Guesser " + i, Ip5);
+        Assert.False(throttle.IsLocked(SignInDoor.Staff, "Someone Else", Ip5));
+        throttle.RecordFailure(SignInDoor.Staff, "Guesser 19", Ip5);
 
-        Assert.True(throttle.IsLocked("Someone Else", Ip5));
-        Assert.False(throttle.IsLocked("Someone Else", Ip6));
-        Assert.False(throttle.IsLocked("Someone Else", null));
+        Assert.True(throttle.IsLocked(SignInDoor.Staff, "Someone Else", Ip5));
+        Assert.False(throttle.IsLocked(SignInDoor.Staff, "Someone Else", Ip6));
+        Assert.False(throttle.IsLocked(SignInDoor.Staff, "Someone Else", null));
     }
 
     [Fact]
@@ -78,40 +78,40 @@ public sealed class LoginThrottleTests : IDisposable
     {
         var time = new FakeTimeProvider();
         var throttle = new LoginThrottle(time, null);
-        for (var i = 0; i < LoginThrottle.IpMaxFailures; i++) throttle.RecordFailure("Guesser " + i, Ip5);
+        for (var i = 0; i < LoginThrottle.IpMaxFailures; i++) throttle.RecordFailure(SignInDoor.Staff, "Guesser " + i, Ip5);
 
         time.Advance(TimeSpan.FromMinutes(9));
-        Assert.True(throttle.IsLocked("Someone Else", Ip5));
+        Assert.True(throttle.IsLocked(SignInDoor.Staff, "Someone Else", Ip5));
         time.Advance(TimeSpan.FromMinutes(1));
-        Assert.False(throttle.IsLocked("Someone Else", Ip5));
+        Assert.False(throttle.IsLocked(SignInDoor.Staff, "Someone Else", Ip5));
     }
 
     [Fact]
     public void A_locked_name_is_locked_from_any_address()
     {
         var throttle = new LoginThrottle(new FakeTimeProvider(), null);
-        for (var i = 0; i < LoginThrottle.NameMaxFailures; i++) throttle.RecordFailure("Test Owner", Ip5);
+        for (var i = 0; i < LoginThrottle.NameMaxFailures; i++) throttle.RecordFailure(SignInDoor.Staff, "Test Owner", Ip5);
 
-        Assert.True(throttle.IsLocked("Test Owner", Ip6));
-        Assert.True(throttle.IsLocked("Test Owner", null));
-        Assert.False(throttle.IsLocked("Someone Else", Ip5));
+        Assert.True(throttle.IsLocked(SignInDoor.Staff, "Test Owner", Ip6));
+        Assert.True(throttle.IsLocked(SignInDoor.Staff, "Test Owner", null));
+        Assert.False(throttle.IsLocked(SignInDoor.Staff, "Someone Else", Ip5));
     }
 
     [Fact]
     public void Success_clears_name_not_ip()
     {
         var throttle = new LoginThrottle(new FakeTimeProvider(), null);
-        for (var i = 0; i < 4; i++) throttle.RecordFailure("Test Owner", Ip5);
-        for (var i = 0; i < 15; i++) throttle.RecordFailure("Guesser " + i, Ip5);
-        throttle.RecordSuccess("Test Owner");
+        for (var i = 0; i < 4; i++) throttle.RecordFailure(SignInDoor.Staff, "Test Owner", Ip5);
+        for (var i = 0; i < 15; i++) throttle.RecordFailure(SignInDoor.Staff, "Guesser " + i, Ip5);
+        throttle.RecordSuccess(SignInDoor.Staff, "Test Owner");
 
         // The name starts again from zero...
-        throttle.RecordFailure("Test Owner", Ip6);
-        Assert.False(throttle.IsLocked("Test Owner", Ip6));
+        throttle.RecordFailure(SignInDoor.Staff, "Test Owner", Ip6);
+        Assert.False(throttle.IsLocked(SignInDoor.Staff, "Test Owner", Ip6));
         // ...but the 4 + 15 failures from the address stay: the 20th locks it.
-        Assert.False(throttle.IsLocked("Someone Else", Ip5));
-        throttle.RecordFailure("Another One", Ip5);
-        Assert.True(throttle.IsLocked("Someone Else", Ip5));
+        Assert.False(throttle.IsLocked(SignInDoor.Staff, "Someone Else", Ip5));
+        throttle.RecordFailure(SignInDoor.Staff, "Another One", Ip5);
+        Assert.True(throttle.IsLocked(SignInDoor.Staff, "Someone Else", Ip5));
     }
 
     [Fact]
@@ -119,10 +119,10 @@ public sealed class LoginThrottleTests : IDisposable
     {
         var throttle = new LoginThrottle(new FakeTimeProvider(), null);
         var mapped = IPAddress.Parse("::ffff:10.0.0.5");
-        for (var i = 0; i < LoginThrottle.IpMaxFailures; i++) throttle.RecordFailure("Guesser " + i, mapped);
+        for (var i = 0; i < LoginThrottle.IpMaxFailures; i++) throttle.RecordFailure(SignInDoor.Staff, "Guesser " + i, mapped);
 
-        Assert.True(throttle.IsLocked("Someone Else", Ip5));
-        Assert.True(throttle.IsLocked("Someone Else", mapped));
+        Assert.True(throttle.IsLocked(SignInDoor.Staff, "Someone Else", Ip5));
+        Assert.True(throttle.IsLocked(SignInDoor.Staff, "Someone Else", mapped));
     }
 
     [Fact]
@@ -130,15 +130,15 @@ public sealed class LoginThrottleTests : IDisposable
     {
         var time = new FakeTimeProvider();
         var first = new LoginThrottle(time, StateFile);
-        for (var i = 0; i < LoginThrottle.NameMaxFailures; i++) first.RecordFailure("Test Owner", Ip5);
-        Assert.True(first.IsLocked("Test Owner", null));
+        for (var i = 0; i < LoginThrottle.NameMaxFailures; i++) first.RecordFailure(SignInDoor.Staff, "Test Owner", Ip5);
+        Assert.True(first.IsLocked(SignInDoor.Staff, "Test Owner", null));
 
         var second = new LoginThrottle(time, StateFile);
-        Assert.True(second.IsLocked("Test Owner", null));
-        Assert.True(second.IsLocked("test owner", Ip6));
+        Assert.True(second.IsLocked(SignInDoor.Staff, "Test Owner", null));
+        Assert.True(second.IsLocked(SignInDoor.Staff, "test owner", Ip6));
 
         time.Advance(TimeSpan.FromMinutes(10));
-        Assert.False(second.IsLocked("Test Owner", null));
+        Assert.False(second.IsLocked(SignInDoor.Staff, "Test Owner", null));
     }
 
     [Fact]
@@ -146,15 +146,15 @@ public sealed class LoginThrottleTests : IDisposable
     {
         var time = new FakeTimeProvider();
         var first = new LoginThrottle(time, StateFile);
-        for (var i = 0; i < LoginThrottle.IpMaxFailures; i++) first.RecordFailure("Guesser " + i, Ip5);
-        for (var i = 0; i < 4; i++) first.RecordFailure("Test Owner", Ip6);
+        for (var i = 0; i < LoginThrottle.IpMaxFailures; i++) first.RecordFailure(SignInDoor.Staff, "Guesser " + i, Ip5);
+        for (var i = 0; i < 4; i++) first.RecordFailure(SignInDoor.Staff, "Test Owner", Ip6);
 
         var second = new LoginThrottle(time, StateFile);
-        Assert.True(second.IsLocked("Someone Else", Ip5));
+        Assert.True(second.IsLocked(SignInDoor.Staff, "Someone Else", Ip5));
         // Four earlier failures were kept: one more locks the name.
-        Assert.False(second.IsLocked("Test Owner", null));
-        second.RecordFailure("Test Owner", null);
-        Assert.True(second.IsLocked("Test Owner", null));
+        Assert.False(second.IsLocked(SignInDoor.Staff, "Test Owner", null));
+        second.RecordFailure(SignInDoor.Staff, "Test Owner", null);
+        Assert.True(second.IsLocked(SignInDoor.Staff, "Test Owner", null));
     }
 
     [Fact]
@@ -162,12 +162,12 @@ public sealed class LoginThrottleTests : IDisposable
     {
         var time = new FakeTimeProvider();
         var first = new LoginThrottle(time, StateFile);
-        for (var i = 0; i < 4; i++) first.RecordFailure("Test Owner", null);
-        first.RecordSuccess("Test Owner");
+        for (var i = 0; i < 4; i++) first.RecordFailure(SignInDoor.Staff, "Test Owner", null);
+        first.RecordSuccess(SignInDoor.Staff, "Test Owner");
 
         var second = new LoginThrottle(time, StateFile);
-        second.RecordFailure("Test Owner", null);
-        Assert.False(second.IsLocked("Test Owner", null));
+        second.RecordFailure(SignInDoor.Staff, "Test Owner", null);
+        Assert.False(second.IsLocked(SignInDoor.Staff, "Test Owner", null));
     }
 
     [Fact]
@@ -175,9 +175,9 @@ public sealed class LoginThrottleTests : IDisposable
     {
         var time = new FakeTimeProvider();
         var throttle = new LoginThrottle(time, StateFile);
-        throttle.RecordFailure("Old Failure", Ip5);
+        throttle.RecordFailure(SignInDoor.Staff, "Old Failure", Ip5);
         time.Advance(TimeSpan.FromMinutes(11));
-        throttle.RecordFailure("New Failure", Ip6);
+        throttle.RecordFailure(SignInDoor.Staff, "New Failure", Ip6);
 
         var json = File.ReadAllText(StateFile);
         Assert.DoesNotContain("10.0.0.5", json);
@@ -194,17 +194,17 @@ public sealed class LoginThrottleTests : IDisposable
         var throttle = new LoginThrottle(new FakeTimeProvider(), StateFile);
         var typed = "hunter2-my-real-password and more";
         var huge = new string('x', 100_000);
-        throttle.RecordFailure(typed, Ip5);
-        throttle.RecordFailure("Test Owner", Ip5);
-        throttle.RecordFailure(huge, Ip5);
+        throttle.RecordFailure(SignInDoor.Staff, typed, Ip5);
+        throttle.RecordFailure(SignInDoor.Staff, "Test Owner", Ip5);
+        throttle.RecordFailure(SignInDoor.Staff, huge, Ip5);
 
         var json = File.ReadAllText(StateFile);
         Assert.DoesNotContain("hunter2", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Owner", json, StringComparison.OrdinalIgnoreCase);
         Assert.True(json.Length < 5_000, "the file does not grow with the length of the typed name");
         // Names still match case-insensitively through the hash.
-        for (var i = 0; i < LoginThrottle.NameMaxFailures - 1; i++) throttle.RecordFailure("TEST owner", null);
-        Assert.True(throttle.IsLocked("test OWNER", null));
+        for (var i = 0; i < LoginThrottle.NameMaxFailures - 1; i++) throttle.RecordFailure(SignInDoor.Staff, "TEST owner", null);
+        Assert.True(throttle.IsLocked(SignInDoor.Staff, "test OWNER", null));
     }
 
     [Fact]
@@ -212,11 +212,11 @@ public sealed class LoginThrottleTests : IDisposable
     {
         var time = new FakeTimeProvider();
         var throttle = new LoginThrottle(time, StateFile);
-        throttle.RecordFailure("Test Owner", Ip5);
+        throttle.RecordFailure(SignInDoor.Staff, "Test Owner", Ip5);
         Assert.Contains("10.0.0.5", File.ReadAllText(StateFile));
 
         time.Advance(TimeSpan.FromMinutes(11));
-        Assert.False(throttle.IsLocked("Test Owner", Ip5));
+        Assert.False(throttle.IsLocked(SignInDoor.Staff, "Test Owner", Ip5));
 
         Assert.DoesNotContain("10.0.0.5", File.ReadAllText(StateFile));
     }
@@ -228,14 +228,14 @@ public sealed class LoginThrottleTests : IDisposable
         var logs = new List<(LogLevel Level, string Message)>();
         var throttle = new LoginThrottle(new FakeTimeProvider(), file, new ListLogger(logs));
 
-        for (var i = 0; i < LoginThrottle.NameMaxFailures; i++) throttle.RecordFailure("Test Owner", Ip5);
+        for (var i = 0; i < LoginThrottle.NameMaxFailures; i++) throttle.RecordFailure(SignInDoor.Staff, "Test Owner", Ip5);
 
-        Assert.True(throttle.IsLocked("Test Owner", Ip5));
+        Assert.True(throttle.IsLocked(SignInDoor.Staff, "Test Owner", Ip5));
         Assert.Single(logs, l => l.Level == LogLevel.Warning);
 
         // Once the folder is back, saving works again and the next failure to save would be logged afresh.
         Directory.CreateDirectory(Path.GetDirectoryName(file)!);
-        throttle.RecordFailure("Someone Else", Ip5);
+        throttle.RecordFailure(SignInDoor.Staff, "Someone Else", Ip5);
         Assert.True(File.Exists(file));
     }
 
@@ -249,13 +249,13 @@ public sealed class LoginThrottleTests : IDisposable
 
         var throttle = new LoginThrottle(time, StateFile, new ListLogger(logs));
 
-        Assert.False(throttle.IsLocked("Test Owner", Ip5));
+        Assert.False(throttle.IsLocked(SignInDoor.Staff, "Test Owner", Ip5));
         var warning = Assert.Single(logs, l => l.Level == LogLevel.Warning);
         Assert.DoesNotContain("not json", warning.Message);
         // And it works from there on: the next save replaces the damaged file.
-        for (var i = 0; i < LoginThrottle.NameMaxFailures; i++) throttle.RecordFailure("Test Owner", Ip5);
-        Assert.True(throttle.IsLocked("Test Owner", Ip5));
-        Assert.True(new LoginThrottle(time, StateFile).IsLocked("Test Owner", null));
+        for (var i = 0; i < LoginThrottle.NameMaxFailures; i++) throttle.RecordFailure(SignInDoor.Staff, "Test Owner", Ip5);
+        Assert.True(throttle.IsLocked(SignInDoor.Staff, "Test Owner", Ip5));
+        Assert.True(new LoginThrottle(time, StateFile).IsLocked(SignInDoor.Staff, "Test Owner", null));
     }
 
     [Fact]
@@ -264,8 +264,94 @@ public sealed class LoginThrottleTests : IDisposable
         var logs = new List<(LogLevel Level, string Message)>();
         var throttle = new LoginThrottle(new FakeTimeProvider(), StateFile, new ListLogger(logs));
 
-        Assert.False(throttle.IsLocked("Test Owner", Ip5));
+        Assert.False(throttle.IsLocked(SignInDoor.Staff, "Test Owner", Ip5));
         Assert.Empty(logs);
+    }
+
+    [Theory]
+    [InlineData(SignInDoor.Guest, SignInDoor.Staff)]
+    [InlineData(SignInDoor.Staff, SignInDoor.Guest)]
+    public void Each_door_has_its_own_count_for_a_name(SignInDoor door, SignInDoor other)
+    {
+        var throttle = new LoginThrottle(new FakeTimeProvider(), null);
+        for (var i = 0; i < LoginThrottle.NameMaxFailures; i++) throttle.RecordFailure(door, "Test Owner", null);
+
+        Assert.True(throttle.IsLocked(door, "Test Owner", null));
+        Assert.False(throttle.IsLocked(other, "Test Owner", null));
+    }
+
+    [Fact]
+    public void A_success_at_the_guest_door_does_not_clear_the_staff_count()
+    {
+        var throttle = new LoginThrottle(new FakeTimeProvider(), null);
+        for (var i = 0; i < LoginThrottle.NameMaxFailures - 1; i++) throttle.RecordFailure(SignInDoor.Staff, "Test Owner", null);
+        throttle.RecordFailure(SignInDoor.Guest, "Test Owner", null);
+
+        throttle.RecordSuccess(SignInDoor.Guest, "Test Owner");
+        throttle.RecordFailure(SignInDoor.Staff, "Test Owner", null);
+
+        Assert.True(throttle.IsLocked(SignInDoor.Staff, "Test Owner", null));
+        Assert.False(throttle.IsLocked(SignInDoor.Guest, "Test Owner", null));
+    }
+
+    [Fact]
+    public void The_address_count_is_shared_by_both_doors()
+    {
+        var throttle = new LoginThrottle(new FakeTimeProvider(), null);
+        for (var i = 0; i < LoginThrottle.IpMaxFailures / 2; i++) throttle.RecordFailure(SignInDoor.Guest, "Guesser " + i, Ip5);
+        for (var i = 0; i < LoginThrottle.IpMaxFailures / 2 - 1; i++) throttle.RecordFailure(SignInDoor.Staff, "Guesser " + i, Ip5);
+        Assert.False(throttle.IsLocked(SignInDoor.Staff, "Someone Else", Ip5));
+
+        throttle.RecordFailure(SignInDoor.Staff, "Last Guess", Ip5);
+
+        Assert.True(throttle.IsLocked(SignInDoor.Staff, "Someone Else", Ip5));
+        Assert.True(throttle.IsLocked(SignInDoor.Guest, "Someone Else", Ip5));
+    }
+
+    [Fact]
+    public void Guest_door_lock_survives_new_instance_in_its_own_table()
+    {
+        var time = new FakeTimeProvider();
+        var first = new LoginThrottle(time, StateFile);
+        for (var i = 0; i < LoginThrottle.NameMaxFailures; i++) first.RecordFailure(SignInDoor.Guest, "Test Owner", null);
+
+        var second = new LoginThrottle(time, StateFile);
+        Assert.True(second.IsLocked(SignInDoor.Guest, "Test Owner", null));
+        Assert.False(second.IsLocked(SignInDoor.Staff, "Test Owner", null));
+        using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(StateFile));
+        Assert.Empty(doc.RootElement.GetProperty("names").EnumerateObject());
+        Assert.Single(doc.RootElement.GetProperty("guestNames").EnumerateObject());
+    }
+
+    [Fact]
+    public void A_file_from_before_the_guest_door_loads_as_the_staff_count()
+    {
+        var time = new FakeTimeProvider();
+        var key = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes("test owner")));
+        var until = (time.GetUtcNow() + TimeSpan.FromMinutes(5)).ToString("O");
+        var now = time.GetUtcNow().ToString("O");
+        // The shape plan 7a wrote: one name table and the address table.
+        File.WriteAllText(StateFile, $$"""
+            {
+              "names": {
+                "{{key}}": { "failures": [], "lockedUntil": "{{until}}" }
+              },
+              "ips": {
+                "10.0.0.5": { "failures": ["{{now}}"], "lockedUntil": null }
+              }
+            }
+            """);
+        var logs = new List<(LogLevel Level, string Message)>();
+
+        var throttle = new LoginThrottle(time, StateFile, new ListLogger(logs));
+
+        Assert.Empty(logs);
+        Assert.True(throttle.IsLocked(SignInDoor.Staff, "Test Owner", null));
+        Assert.False(throttle.IsLocked(SignInDoor.Guest, "Test Owner", null));
+        for (var i = 0; i < LoginThrottle.IpMaxFailures - 2; i++) throttle.RecordFailure(SignInDoor.Guest, "Guesser " + i, Ip5);
+        Assert.False(throttle.IsLocked(SignInDoor.Guest, "Someone Else", Ip5));
+        throttle.RecordFailure(SignInDoor.Guest, "Last Guess", Ip5);
+        Assert.True(throttle.IsLocked(SignInDoor.Guest, "Someone Else", Ip5));
     }
 
     private sealed class ListLogger(List<(LogLevel, string)> sink) : ILogger<LoginThrottle>

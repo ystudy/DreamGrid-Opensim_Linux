@@ -5,6 +5,7 @@ using DreamGrid.Launcher.Core.Api;
 using DreamGrid.Launcher.Core.Config;
 using DreamGrid.Launcher.Core.Database;
 using DreamGrid.Launcher.Core.Grid;
+using DreamGrid.Launcher.Core.Guests;
 using DreamGrid.Launcher.Core.Logs;
 using DreamGrid.Launcher.Endpoints;
 using DreamGrid.Launcher.Core.Modules;
@@ -13,6 +14,7 @@ using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Core.Setup;
 using DreamGrid.Launcher.Security;
+using DreamGrid.Launcher.Guests;
 using DreamGrid.Launcher.Setup;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -73,6 +75,7 @@ try
     LauncherPaths.CreateOwnerOnly(paths.Data);
     LauncherPaths.CreateOwnerOnly(paths.DataProtectionKeys);
     LauncherPaths.CreateOwnerOnly(paths.Security);
+    LauncherPaths.CreateOwnerOnly(paths.Guests);
 }
 catch (Exception e) when (e is ArgumentException or SettingsCorruptException or IOException or UnauthorizedAccessException)
 {
@@ -116,20 +119,44 @@ builder.Services.AddAuthentication(AuthSchemes.Admin).AddCookie(AuthSchemes.Admi
     // API callers get a status code, never a redirect to the login page.
     o.Events.OnRedirectToLogin = c => ApiOr(c, StatusCodes.Status401Unauthorized);
     o.Events.OnRedirectToAccessDenied = Denied;
+})
+// The guest door's own cookie: a session cookie (no persistent expiry), 8 hours sliding, never read by the staff pages. The
+// stamp and (every 5 minutes) the level are checked on every request to a guest page. No API takes it, so it only redirects.
+.AddCookie(AuthSchemes.Guest, o =>
+{
+    o.Cookie.Name = "dg-guest";
+    o.Cookie.HttpOnly = true;
+    o.Cookie.SameSite = SameSiteMode.Strict;
+    o.LoginPath = "/guest/sign-in";
+    o.ExpireTimeSpan = StaffSignIn.Expiry;
+    o.SlidingExpiration = true;
+    o.Events.OnValidatePrincipal = c => c.HttpContext.RequestServices.GetRequiredService<GuestPrincipalValidator>().ValidateAsync(c);
+    // Where there is no guest side the pages do not exist: a caller who isn't signed in gets 404, not a redirect to a sign-in
+    // page that doesn't exist either (the policy challenges before GuestSideOnly runs).
+    o.Events.OnRedirectToLogin = c =>
+    {
+        if (!AdminRule.HasStaffPages(c.HttpContext.RequestServices.GetRequiredService<Func<LauncherSettings>>()()))
+            c.Response.StatusCode = StatusCodes.Status404NotFound;
+        else
+            c.Response.Redirect(c.RedirectUri);
+        return Task.CompletedTask;
+    };
 });
 // Whatever has no decision of its own needs the admin role; the open routes say .AllowAnonymous() (or a page convention).
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy(AuthSchemes.OwnerPolicy, p => p.AddAuthenticationSchemes(AuthSchemes.Admin).RequireRole(AuthSchemes.OwnerRole))
     .AddPolicy(AuthSchemes.AdminPolicy, p => p.AddAuthenticationSchemes(AuthSchemes.Admin).RequireRole(AuthSchemes.AdminRole))
     .AddPolicy(AuthSchemes.StaffPolicy, p => p.AddAuthenticationSchemes(AuthSchemes.Admin).RequireRole(AuthSchemes.StaffRole))
+    // Only the guest cookie: a staff cookie opens no guest page, and a guest cookie opens no staff page.
+    .AddPolicy(AuthSchemes.GuestPolicy, p => p.AddAuthenticationSchemes(AuthSchemes.Guest).RequireRole(AuthSchemes.GuestRole))
     .SetFallbackPolicy(new AuthorizationPolicyBuilder().AddAuthenticationSchemes(AuthSchemes.Admin).RequireRole(AuthSchemes.AdminRole).Build());
 builder.Services.AddRazorPages(o =>
 {
     // Every page needs the admin role except these; the setup pages are guarded by SetupGate. A person's own pages under
     // /Profile and the People page are for every staff member, and the Security and Staff pages are the owner's. (Two folder
     // policies on one page would both have to pass, so those folders are left out of the admin one rather than given a second.)
-    // The Staff and People pages do not exist (404) where there are no supervisors.
-    string[] ownFolders = ["/Profile/", "/Security/", "/Staff/", "/People/"];
+    // The Staff and People pages do not exist (404) where there are no supervisors, nor do the Guest pages (the guest side).
+    string[] ownFolders = ["/Profile/", "/Security/", "/Staff/", "/People/", "/Guest/"];
     o.Conventions.AddFolderApplicationModelConvention("/", m =>
     {
         if (!ownFolders.Any(f => m.ViewEnginePath.StartsWith(f, StringComparison.OrdinalIgnoreCase)))
@@ -141,14 +168,33 @@ builder.Services.AddRazorPages(o =>
     o.Conventions.AuthorizeFolder("/People", AuthSchemes.StaffPolicy);
     o.Conventions.AddFolderApplicationModelConvention("/Staff", m => m.Filters.Add(new StaffPagesOnly()));
     o.Conventions.AddFolderApplicationModelConvention("/People", m => m.Filters.Add(new StaffPagesOnly()));
-    foreach (var open in new[] { "/Login", "/Login/Code", "/Logout", "/Welcome", "/Waiting", "/SetupDone", "/Setup" })
+    o.Conventions.AuthorizeFolder("/Guest", AuthSchemes.GuestPolicy);
+    o.Conventions.AddFolderApplicationModelConvention("/Guest", m => m.Filters.Add(new GuestSideOnly()));
+    // A guest accepts the current Terms before any other guest page (the Terms page, sign-out and sign-in excepted, see TermsGate).
+    o.Conventions.AddFolderApplicationModelConvention("/Guest", m => m.Filters.Add(new TermsGate()));
+    // The public front page ("/" shows it to anyone not signed in as staff, see SetupGate); like the guest pages it is not there
+    // on a Region Server or a Connected Server.
+    // The operator's legal pages and the sign-up page are public in the same way.
+    foreach (var publicPage in new[] { "/Home", "/Legal", "/SignUp" })
+        o.Conventions.AddPageApplicationModelConvention(publicPage, m => m.Filters.Add(new GuestSideOnly()));
+    // The owner's legal editor: the Security folder's owner policy, and not there where there is no guest side.
+    o.Conventions.AddPageApplicationModelConvention("/Security/Legal", m => m.Filters.Add(new GuestSideOnly()));
+    // The same for the bot-protection page.
+    o.Conventions.AddPageApplicationModelConvention("/Security/Bots", m => m.Filters.Add(new GuestSideOnly()));
+    foreach (var open in new[] { "/Login", "/Login/Code", "/Logout", "/Welcome", "/Waiting", "/SetupDone", "/Setup", "/Home", "/Legal", "/SignUp", "/Guest/SignIn" })
         o.Conventions.AllowAnonymousToPage(open);
     o.Conventions.AllowAnonymousToFolder("/Setup");
     // The dashboard's forms post here: a POST to "/" belongs to the port-8001 contract (LegacyRootPolicy).
     o.Conventions.AddPageRoute("/Index", "dashboard");
 });
 // The dashboard's script sends the token in this header to /api/grid/*.
-builder.Services.AddAntiforgery(o => o.HeaderName = "RequestVerificationToken");
+// The site's cookies have short names of their own (SiteFacts.Cookies lists them all).
+builder.Services.AddAntiforgery(o =>
+{
+    o.HeaderName = "RequestVerificationToken";
+    o.Cookie.Name = "dg-af";
+});
+builder.Services.Configure<Microsoft.AspNetCore.Mvc.CookieTempDataProviderOptions>(o => o.Cookie.Name = "dg-notice");
 builder.Services.AddGrid(paths, store);
 // Robust's map tiles, fetched on the browser's behalf (the browser never reaches Robust's port).
 builder.Services.AddHttpClient(RegionsApi.RobustMapClient, c => c.Timeout = TimeSpan.FromSeconds(5));
@@ -165,11 +211,26 @@ builder.Services.AddSingleton(sp => new SuspendedStore(Path.Combine(paths.Securi
 builder.Services.AddSingleton<IStaffDirectory>(sp => new StaffDirectory(sp.GetRequiredService<Func<LauncherSettings>>()));
 builder.Services.AddSingleton<StaffActions>();
 builder.Services.AddSingleton<StaffPrincipalValidator>();
+builder.Services.AddSingleton(sp => new GuestStamps(Path.Combine(paths.Guests, "stamps.json"), sp.GetRequiredService<ILogger<GuestStamps>>()));
+builder.Services.AddSingleton<GuestPrincipalValidator>();
+builder.Services.AddSingleton(sp => new TermsAcceptances(Path.Combine(paths.Guests, "terms.json"), sp.GetRequiredService<TimeProvider>(),
+    sp.GetRequiredService<ILogger<TermsAcceptances>>()));
+builder.Services.AddSingleton(sp => new RegionRights(Path.Combine(paths.Guests, "region-rights.json"), sp.GetRequiredService<TimeProvider>(),
+    sp.GetRequiredService<ILogger<RegionRights>>()));
+builder.Services.AddSingleton(sp => new EmailTokens(Path.Combine(paths.Guests, "email-tokens.json"), sp.GetRequiredService<TimeProvider>(),
+    sp.GetRequiredService<ILogger<EmailTokens>>()));
+// The proof-of-work key lives in the owner-only security folder; one key for the life of the install. The image CAPTCHA signs with
+// the same key (its signatures carry a label of their own), so it is read once, when the first of the two is needed.
+var powKey = new Lazy<byte[]>(() => ProofOfWork.LoadOrCreateKey(Path.Combine(paths.Security, "pow.key")));
+builder.Services.AddSingleton(sp => new ProofOfWork(powKey.Value, sp.GetRequiredService<TimeProvider>()));
+builder.Services.AddSingleton(sp => new ImageCaptcha(powKey.Value, sp.GetRequiredService<TimeProvider>()));
+builder.Services.AddSingleton<BotGuard>();
 builder.Services.AddSingleton<LegacyCommandApi>();
 builder.Services.AddSingleton<IOnlineUsers>(sp => new OnlineUsers(sp.GetRequiredService<Func<LauncherSettings>>(),
     sp.GetRequiredService<ILogger<OnlineUsers>>()));
 builder.Services.AddSingleton<GridActions>();
 builder.Services.AddSingleton<RegionActions>();
+builder.Services.AddSingleton<RegionRestarts>();
 builder.Services.AddSingleton<SetupProgress>();
 builder.Services.AddSingleton<SetupRunner>();
 builder.Services.AddSingleton<RegionJob>();
@@ -180,12 +241,18 @@ builder.Services.AddSingleton<Func<long?>>(_ => SystemMemory.AvailableBytes);
 // The reason a CPU priority can't be chosen on this computer; tests swap it.
 builder.Services.AddSingleton<Func<CpuPriority, string?>>(_ => RegionSettingsRules.PriorityUnavailable);
 builder.Services.AddHostedService<GridHostedService>();
+// Moves regions into their owner's estate and back while they run; registered after GridHostedService, so it stops first.
+builder.Services.AddHostedService<RegionEstateSync>();
 // Registered after GridHostedService, so it stops first: running work is awaited before the controller detaches.
 builder.Services.AddSingleton<BackgroundWork>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<BackgroundWork>());
 builder.Services.AddSingleton<OarJobs>();
 
 var app = builder.Build();
+// Routing is stated twice, so the endpoint is known to everything below (ApiEndpoint.Is) and picked again once SetupGate has
+// shown the front page at "/" (it changes the path to /home and drops the endpoint chosen for "/"). A request that already has
+// an endpoint is not matched again.
+app.UseRouting();
 // First, so static files, API answers and the plain-text replies carry the browser security headers too.
 app.UseMiddleware<SecurityHeaders>();
 app.UseStaticFiles();
@@ -196,9 +263,11 @@ app.UseMiddleware<AuditMiddleware>();
 // Someone signed in only to set up two-factor reaches nothing else (before SetupGate, which can send "/" onwards).
 app.UseMiddleware<TwoFactorGate>();
 app.UseMiddleware<SetupGate>();
+app.UseRouting();
 app.UseAuthorization();
 LegacyEndpoints.Map(app);
 LogsApi.Map(app);
+BotsApi.Map(app);
 RegionsApi.Map(app);
 LibraryApi.Map(app);
 StatusApi.Map(app);

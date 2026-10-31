@@ -1,0 +1,41 @@
+@page "/guest/regions"
+@model DreamGrid.Launcher.Pages.Guest.MyRegionsModel
+@{
+    ViewData["Title"] = "My regions";
+}
+<h1>My regions</h1>
+@if (Model.Notice is not null)
+{
+    <p class="notice alert alert-info py-2" role="status">@Model.Notice</p>
+}
+@if (Model.Regions.Count == 0)
+{
+    <p>You don't have any regions.</p>
+}
+else
+{
+    <p class="text-body-secondary">Normal restarts are done in-world from the viewer's Region/Estate window.</p>
+    @foreach (var region in Model.Regions)
+    {
+        <section class="card mb-3" id="region-@region.Id">
+            <div class="card-body">
+                <h2 class="h5 card-title">@region.Name</h2>
+                <p class="mb-1 region-state">This region is @region.State.</p>
+                <p class="mb-1">People here now: @region.PeopleHere</p>
+                <p class="mb-2">@region.LastStarted</p>
+                @if (region.Restart.Shown)
+                {
+                    <form method="post" action="/guest/regions?handler=restart" asp-antiforgery="true">
+                        <input type="hidden" name="id" value="@region.Id">
+                        <button type="submit" class="btn btn-outline-primary" disabled="@(!region.Restart.Allowed)">@(region.Restart.Action == DreamGrid.Launcher.Core.Grid.RegionPower.Start ? "Start this region" : "Restart this region")</button>
+                    </form>
+                    @if (region.Restart.Reason is not null)
+                    {
+                        <p class="restart-reason text-body-secondary mt-2 mb-0">@region.Restart.Reason</p>
+                    }
+                }
+            </div>
+        </section>
+    }
+}
+<p><a href="/guest">Back to your account</a></p>
