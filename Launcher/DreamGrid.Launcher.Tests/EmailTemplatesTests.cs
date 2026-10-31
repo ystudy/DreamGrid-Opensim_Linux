@@ -12,7 +12,7 @@ public sealed class EmailTemplatesTests
     [Fact]
     public void Defaults_contain_their_required_words()
     {
-        Assert.Equal(["test", "confirm-email", "reset-password", "account-approved"], EmailTemplates.All);
+        Assert.Equal(["test", "confirm-email", "reset-password", "account-approved", "password-changed"], EmailTemplates.All);
         foreach (var id in EmailTemplates.All)
         {
             var d = EmailTemplates.Default(id);
@@ -105,5 +105,16 @@ public sealed class EmailTemplatesTests
                 Assert.True(sample.ContainsKey(word.Trim('{', '}')), $"{id} {word}");
             Assert.Equal("Avalon", sample["GridName"]);
         }
+    }
+
+    [Fact]
+    public void Password_changed_default_has_no_link()
+    {
+        var d = EmailTemplates.Default(EmailTemplates.PasswordChanged);
+        Assert.Equal("password-changed", EmailTemplates.PasswordChanged);
+        Assert.Empty(EmailTemplates.Required(EmailTemplates.PasswordChanged));
+        Assert.DoesNotContain("{Link}", d.Body);
+        Assert.Contains("{GridName}", d.Subject);
+        Assert.Contains("{AvatarName}", d.Body);
     }
 }

@@ -192,4 +192,29 @@ public sealed class EmailTokensTests : IDisposable
         Assert.False(tokens.TryRedeem(Verify, _alice, "anything"));
         Assert.True(tokens.Issue(Verify, _alice, Hour).Length > 0);
     }
+
+    [Fact]
+    public void Find_does_not_spend()
+    {
+        var tokens = New();
+        var token = tokens.Issue(Reset, _alice, Hour);
+
+        Assert.Equal(_alice, tokens.Find(Reset, token));
+        Assert.Equal(_alice, New().Find(Reset, token));
+        Assert.True(tokens.TryRedeem(Reset, _alice, token));
+        Assert.Null(tokens.Find(Reset, token));
+    }
+
+    [Fact]
+    public void Find_refuses_other_purpose_expired_and_nonsense()
+    {
+        var tokens = New();
+        var token = tokens.Issue(Reset, _alice, Hour);
+
+        Assert.Null(tokens.Find(Verify, token));
+        Assert.Null(tokens.Find(Reset, null));
+        Assert.Null(tokens.Find(Reset, "not-a-token"));
+        _time.Advance(Hour + TimeSpan.FromSeconds(1));
+        Assert.Null(tokens.Find(Reset, token));
+    }
 }
