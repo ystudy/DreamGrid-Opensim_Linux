@@ -478,6 +478,24 @@ public class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public void Email_templates_survive_a_save_and_load()
+    {
+        var path = Path.Combine(NewDir(), "settings.json");
+        var store = new SettingsStore(path);
+        Assert.Null(store.LoadOrCreate().Email.Templates);
+        var saved = new DateTimeOffset(2026, 10, 31, 12, 0, 0, TimeSpan.Zero);
+        var templates = new Dictionary<string, IReadOnlyDictionary<string, Core.Email.EmailTemplateText>>
+        {
+            ["en"] = new Dictionary<string, Core.Email.EmailTemplateText> { ["test"] = new("Hi", "Test body.", saved) },
+        };
+        store.Save(store.LoadOrCreate() with { Email = new EmailSettings(templates) });
+
+        var s = new SettingsStore(path).LoadOrCreate();
+
+        Assert.Equal(new Core.Email.EmailTemplateText("Hi", "Test body.", saved), s.Email.Templates!["en"]["test"]);
+    }
+
+    [Fact]
     public void Null_legal_and_bots_read_as_the_defaults()
     {
         var path = Path.Combine(NewDir(), "settings.json");
