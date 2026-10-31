@@ -5,6 +5,7 @@ using DreamGrid.Launcher.Core.Api;
 using DreamGrid.Launcher.Core.Config;
 using DreamGrid.Launcher.Core.Database;
 using DreamGrid.Launcher.Core.Grid;
+using DreamGrid.Launcher.Core.Guests;
 using DreamGrid.Launcher.Core.Logs;
 using DreamGrid.Launcher.Endpoints;
 using DreamGrid.Launcher.Core.Modules;
@@ -212,6 +213,8 @@ builder.Services.AddSingleton(sp => new GuestStamps(Path.Combine(paths.Guests, "
 builder.Services.AddSingleton<GuestPrincipalValidator>();
 builder.Services.AddSingleton(sp => new TermsAcceptances(Path.Combine(paths.Guests, "terms.json"), sp.GetRequiredService<TimeProvider>(),
     sp.GetRequiredService<ILogger<TermsAcceptances>>()));
+builder.Services.AddSingleton(sp => new EmailTokens(Path.Combine(paths.Guests, "email-tokens.json"), sp.GetRequiredService<TimeProvider>(),
+    sp.GetRequiredService<ILogger<EmailTokens>>()));
 builder.Services.AddSingleton<LegacyCommandApi>();
 builder.Services.AddSingleton<IOnlineUsers>(sp => new OnlineUsers(sp.GetRequiredService<Func<LauncherSettings>>(),
     sp.GetRequiredService<ILogger<OnlineUsers>>()));
