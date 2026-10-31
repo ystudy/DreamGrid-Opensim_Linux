@@ -255,6 +255,20 @@ public sealed class EmailSenderTests : IDisposable
         Assert.DoesNotContain(_log.Lines, l => l.Contains("ann@example.com", StringComparison.Ordinal) || l.Contains("SECRETTOKEN", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task Transport_that_throws_rests_account_and_moves_on()
+    {
+        var a = Add("a");
+        var b = Add("b");
+        _transport.Throws.Add(a.Id);
+        var s = Sender();
+        QueueReset(s, "ann@example.com");
+        await s.DrainAsync(Ct);
+        Assert.Equal(b.Id, Assert.Single(_transport.Sent).Account);
+        Assert.Equal(0, s.Status().Waiting);
+        Assert.NotNull(s.Status().Accounts.Single(x => x.Account.Id == a.Id).RestingUntil);
+    }
+
     /// <summary>Answers each account's sends with its scripted results in turn, then <see cref="SendResult.Sent"/>.</summary>
     private sealed class ScriptedTransport : IMailTransport
     {
@@ -264,8 +278,12 @@ public sealed class EmailSenderTests : IDisposable
 
         public void Script(Guid account, params SendResult[] results) => _script[account] = new Queue<SendResult>(results);
 
+        /// <summary>Accounts whose sends throw instead of answering.</summary>
+        public HashSet<Guid> Throws { get; } = [];
+
         public Task<SendOutcome> SendAsync(EmailAccount account, string password, string to, RenderedEmail email, CancellationToken ct)
         {
+            if (Throws.Contains(account.Id)) throw new InvalidOperationException("boom");
             var result = _script.TryGetValue(account.Id, out var q) && q.Count > 0 ? q.Dequeue() : SendResult.Sent;
             Sent.Add((account.Id, to, email, result));
             return Task.FromResult(new SendOutcome(result, result switch

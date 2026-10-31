@@ -102,4 +102,44 @@ public sealed class MailTransportTests
             Assert.DoesNotContain("Secret-Pass-77", outcome.Plain);
         }
     }
+
+    private static SmtpResponse Reply(int code, string text) => new((SmtpReplyCode)code, text);
+
+    [Fact]
+    public async Task Quota_reply_at_rcpt_is_account_full()
+    {
+        await using var smtp = new FakeSmtp { RcptReply = Reply(550, "Domain example.com has exceeded the max emails per hour (100/100 (100%)) allowed. Message discarded.") };
+        var outcome = await Transport().SendAsync(Account(smtp.Port), FakeSmtp.Password, "ann@example.com", Email, Ct);
+        Assert.Equal(SendResult.AccountFull, outcome.Result);
+        await using var gmail = new FakeSmtp { RcptReply = Reply(550, "5.4.5 Daily user sending limit exceeded.") };
+        Assert.Equal(SendResult.AccountFull, (await Transport().SendAsync(Account(gmail.Port), FakeSmtp.Password, "ann@example.com", Email, Ct)).Result);
+    }
+
+    [Fact]
+    public async Task Temporary_reply_at_mail_from_is_temporary()
+    {
+        await using var smtp = new FakeSmtp { MailFromReply = Reply(451, "4.3.0 Temporary local problem, try again later") };
+        var outcome = await Transport().SendAsync(Account(smtp.Port), FakeSmtp.Password, "ann@example.com", Email, Ct);
+        Assert.Equal(SendResult.Temporary, outcome.Result);
+    }
+
+    [Fact]
+    public async Task Recipient_mailbox_full_or_message_too_big_is_not_account_full()
+    {
+        await using var full = new FakeSmtp { RcptReply = Reply(452, "4.2.2 The email account that you tried to reach is over quota.") };
+        Assert.Equal(SendResult.Temporary, (await Transport().SendAsync(Account(full.Port), FakeSmtp.Password, "ann@example.com", Email, Ct)).Result);
+        await using var big = new FakeSmtp { DataReply = Reply(552, "5.3.4 Message size exceeds fixed limit") };
+        Assert.NotEqual(SendResult.AccountFull, (await Transport().SendAsync(Account(big.Port), FakeSmtp.Password, "ann@example.com", Email, Ct)).Result);
+        await using var word = new FakeSmtp { DataReply = Reply(554, "Could not generate a separate copy") };
+        Assert.NotEqual(SendResult.AccountFull, (await Transport().SendAsync(Account(word.Port), FakeSmtp.Password, "ann@example.com", Email, Ct)).Result);
+    }
+
+    [Fact]
+    public async Task Server_without_starttls_needs_attention_and_does_not_throw()
+    {
+        await using var smtp = new FakeSmtp();
+        var outcome = await Transport().SendAsync(Account(smtp.Port) with { Security = MailSecurity.StartTls }, FakeSmtp.Password, "ann@example.com", Email, Ct);
+        Assert.Equal(SendResult.AuthFailed, outcome.Result);
+        Assert.Equal("The server doesn't offer the chosen security (STARTTLS or SSL/TLS)", outcome.Plain);
+    }
 }

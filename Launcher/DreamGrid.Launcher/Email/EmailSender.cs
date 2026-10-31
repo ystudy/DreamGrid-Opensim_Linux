@@ -174,7 +174,17 @@ public sealed class EmailSender(
                 continue;
             }
 
-            var outcome = await transport.SendAsync(account, password, message.To, new RenderedEmail(message.Subject, message.Text, message.Html), ct);
+            SendOutcome outcome;
+            try
+            {
+                outcome = await transport.SendAsync(account, password, message.To, new RenderedEmail(message.Subject, message.Text, message.Html), ct);
+            }
+            catch (Exception e) when (!ct.IsCancellationRequested)
+            {
+                // A transport that throws must not stop the outbox: the account rests like any temporary failure.
+                log.LogWarning("Sending through {Provider} failed: {Type}", account.Provider, e.GetType().Name);
+                outcome = new SendOutcome(SendResult.Temporary, "Sending failed");
+            }
             log.LogInformation("Email {Template} to {To} via {Provider}: {Result}", entry.Template, EmailMask.Of(message.To), account.Provider, outcome.Result);
             switch (outcome.Result)
             {

@@ -24,6 +24,7 @@ public sealed class EmailModel(EmailAccounts accounts, EmailSender sender, Email
     public const string NotReadyText = "Email isn't set up yet. Sign-up and password reset stay hidden until it is.";
     public const string NoneWarning = "Mail and password go over the network unencrypted. Use only for a mail server on your own network.";
     public const string TooManyTests = "You can send 5 test emails a minute. Wait a moment and try again.";
+    public const string RetypePassword = "The server or username changed: type the password again.";
 
     [BindProperty] public Guid? Id { get; set; }
     [BindProperty] public string? Provider { get; set; }
@@ -72,6 +73,7 @@ public sealed class EmailModel(EmailAccounts accounts, EmailSender sender, Email
     {
         var (account, error) = Build(requirePassword: !(Id is { } id && accounts.Find(id)?.ProtectedPassword is not null) && string.IsNullOrEmpty(Password));
         if (account is null) return Reopen(error, null);
+        if (ChangedWithoutPassword(account)) return Reopen(RetypePassword, null);
         if (!accounts.Save(account, Password))
             return Reopen("The email settings couldn't be saved. Try again.", null);
         Write("email-account-saved", Target(account), "ok");
@@ -84,7 +86,9 @@ public sealed class EmailModel(EmailAccounts accounts, EmailSender sender, Email
         var stored = Id is { } id ? accounts.Find(id) : null;
         var (account, error) = Build(requirePassword: stored?.ProtectedPassword is null && string.IsNullOrEmpty(Password));
         if (account is null) return Reopen(error, null);
-        var password = string.IsNullOrEmpty(Password) && stored is not null ? accounts.PasswordOf(stored) : Password;
+        if (ChangedWithoutPassword(account)) return Reopen(RetypePassword, null);
+        var usesStored = string.IsNullOrEmpty(Password) && stored is not null;
+        var password = usesStored ? accounts.PasswordOf(stored!) : Password;
         if (string.IsNullOrEmpty(password)) return Reopen("Type the password.", null);
 
         var to = string.IsNullOrWhiteSpace(TestTo) ? await OwnerEmailAsync(ct) : TestTo.Trim();
@@ -97,6 +101,9 @@ public sealed class EmailModel(EmailAccounts accounts, EmailSender sender, Email
         var email = EmailTemplates.Render(EmailTemplates.Test, EmailTemplates.Current(s, EmailTemplates.Test), EmailTemplates.Sample(EmailTemplates.Test, s.GridName));
         var outcome = await sender.SendTestAsync(account, password, to, email, ct);
         Write("email-test-sent", Target(account), outcome.Result == SendResult.Sent ? "ok" : outcome.Result.ToString());
+        // A test of the saved account, as saved, that went through shows the account works again.
+        if (outcome.Result == SendResult.Sent && usesStored && stored!.Problem is not null)
+            accounts.MarkProblem(stored.Id, null, DateTimeOffset.UtcNow);
         return Reopen(null, outcome.Result == SendResult.Sent ? $"{outcome.Plain}. Look for it at {to}." : outcome.Plain);
     }
 
@@ -128,9 +135,11 @@ public sealed class EmailModel(EmailAccounts accounts, EmailSender sender, Email
     public static string Ordinal(int n) => n + ((n % 100) is 11 or 12 or 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
 
     /// <summary>The state line on a saved card.</summary>
-    public static string StateOf(AccountStatus s) =>
+    public string StateOf(AccountStatus s) =>
         s.Account.Paused ? "Paused"
         : s.Account.Problem is { } p ? "Needs attention: " + p
+        : s.Account.ProtectedPassword is null ? "Needs attention: No password is saved. Type it again."
+        : accounts.PasswordOf(s.Account) is null ? "Needs attention: " + EmailSender.PasswordUnreadable
         : s.FullUntil is { } until ? "Full until " + until.ToLocalTime().ToString("HH:mm")
         : s.RestingUntil is { } rest ? "Trying again at " + rest.ToLocalTime().ToString("HH:mm")
         : "In use";
@@ -228,6 +237,14 @@ public sealed class EmailModel(EmailAccounts accounts, EmailSender sender, Email
             return null;
         }
     }
+
+    /// <summary>
+    /// Whether the posted account would use the stored password (none typed) with a different server, port, security or
+    /// username: the password could then be sent somewhere it was never meant for.
+    /// </summary>
+    private bool ChangedWithoutPassword(EmailAccount posted) =>
+        string.IsNullOrEmpty(Password) && Id is { } id && accounts.Find(id) is { } stored
+        && (stored.Host != posted.Host || stored.Port != posted.Port || stored.Security != posted.Security || stored.UserName != posted.UserName);
 
     private static bool IsAddress(string? text) =>
         !string.IsNullOrWhiteSpace(text) && MailboxAddress.TryParse(text.Trim(), out var m) && m.Address.Contains('@') && !m.Address.EndsWith('@');

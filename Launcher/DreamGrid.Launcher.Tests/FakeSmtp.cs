@@ -31,7 +31,7 @@ internal sealed class FakeSmtp : IAsyncDisposable
         var services = new SmtpServer.ComponentModel.ServiceProvider();
         services.Add(new Store(this));
         services.Add(new Auth());
-        services.Add(new Filter());
+        services.Add(new Filter(this));
         _running = new SmtpServer.SmtpServer(options, services).StartAsync(_stop.Token);
     }
 
@@ -40,6 +40,12 @@ internal sealed class FakeSmtp : IAsyncDisposable
     public List<MimeMessage> Received { get; } = [];
 
     public SmtpResponse? DataReply { get; set; }
+
+    /// <summary>When set, the reply to every RCPT TO (a quota refusal there, say).</summary>
+    public SmtpResponse? RcptReply { get; set; }
+
+    /// <summary>When set, the reply to MAIL FROM.</summary>
+    public SmtpResponse? MailFromReply { get; set; }
 
     public async ValueTask DisposeAsync()
     {
@@ -66,11 +72,14 @@ internal sealed class FakeSmtp : IAsyncDisposable
             Task.FromResult(user == User && password == Password);
     }
 
-    private sealed class Filter : IMailboxFilter
+    private sealed class Filter(FakeSmtp owner) : IMailboxFilter
     {
-        public Task<bool> CanAcceptFromAsync(ISessionContext context, IMailbox from, int size, CancellationToken ct) => Task.FromResult(true);
+        public Task<bool> CanAcceptFromAsync(ISessionContext context, IMailbox from, int size, CancellationToken ct) =>
+            owner.MailFromReply is { } reply ? throw new SmtpResponseException(reply) : Task.FromResult(true);
 
         public Task<bool> CanDeliverToAsync(ISessionContext context, IMailbox to, IMailbox from, CancellationToken ct) =>
-            Task.FromResult(!string.Equals(to.Host, "nowhere.example", StringComparison.OrdinalIgnoreCase));
+            owner.RcptReply is { } reply
+                ? throw new SmtpResponseException(reply)
+                : Task.FromResult(!string.Equals(to.Host, "nowhere.example", StringComparison.OrdinalIgnoreCase));
     }
 }

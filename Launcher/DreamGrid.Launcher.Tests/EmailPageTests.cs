@@ -329,6 +329,55 @@ public sealed class EmailPageTests
         Assert.Contains("Turn on 2-Step Verification", dialog.TextContent);
     }
 
+    [Fact]
+    public async Task Successful_test_of_saved_account_clears_needs_attention()
+    {
+        await using var f = Factory();
+        var owner = await SignedInAsync(f);
+        (await PostAsync(owner, "Save", Gmail())).Dispose();
+        var id = Accounts(f).All()[0].Id;
+        Accounts(f).MarkProblem(id, "The server refused the password", DateTimeOffset.UtcNow);
+        var form = Gmail(password: "");
+        form["Id"] = id.ToString();
+        form["TestTo"] = "me@example.com";
+        (await PostAsync(owner, "Test", form)).Dispose();
+        Assert.Null(Accounts(f).Find(id)!.Problem);
+    }
+
+    [Fact]
+    public async Task Changed_server_details_need_the_password_again()
+    {
+        var transport = new FakeTransport();
+        await using var f = Factory(transport: transport);
+        var owner = await SignedInAsync(f);
+        (await PostAsync(owner, "Save", Custom(host: "mail.example"))).Dispose();
+        var id = Accounts(f).All()[0].Id;
+        foreach (var handler in new[] { "Test", "Save" })
+        {
+            var form = Custom(host: "attacker.example");
+            form["Password"] = "";
+            form["Id"] = id.ToString();
+            form["TestTo"] = "me@example.com";
+            using var r = await PostAsync(owner, handler, form);
+            Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+            Assert.Contains("The server or username changed: type the password again.", await r.Content.ReadAsStringAsync(Ct));
+        }
+        Assert.Empty(transport.Sent);
+        Assert.Equal("mail.example", Accounts(f).Find(id)!.Host);
+    }
+
+    [Fact]
+    public async Task Account_without_readable_password_needs_attention()
+    {
+        await using var f = Factory();
+        var a = new EmailAccount(Guid.NewGuid(), "gmail", "smtp.gmail.com", 587, MailSecurity.StartTls, "grid@gmail.com", null, "Avalon",
+            "grid@gmail.com", null, 500, null, false, 0, null, null);
+        Accounts(f).Save(a, null);
+        var owner = await SignedInAsync(f);
+        var page = new HtmlParser().ParseDocument(await owner.GetStringAsync("/security/email", Ct));
+        Assert.Contains("Needs attention: No password is saved. Type it again.", page.QuerySelector($".email-card[data-dialog='{a.Id:N}']")!.TextContent);
+    }
+
     internal sealed class FakeTransport : IMailTransport
     {
         public List<(EmailAccount Account, string Password, string To, RenderedEmail Email)> Sent { get; } = [];

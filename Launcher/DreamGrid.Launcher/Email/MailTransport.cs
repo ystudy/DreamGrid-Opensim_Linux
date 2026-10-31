@@ -42,10 +42,8 @@ public interface IMailTransport
 /// text; certificates are checked), a 30-second timeout, and a multipart text-and-HTML message. Names and the subject are put in
 /// through MimeKit's types with line breaks taken out, so nothing can add a header.
 /// </summary>
-public sealed class SmtpMailTransport(ILogger<SmtpMailTransport> log) : IMailTransport
+public sealed partial class SmtpMailTransport(ILogger<SmtpMailTransport> log) : IMailTransport
 {
-    private static readonly string[] FullWords = ["quota", "limit", "rate", "too many", "5.4.5", "4.7.0"];
-
     public async Task<SendOutcome> SendAsync(EmailAccount account, string password, string to, RenderedEmail email, CancellationToken ct)
     {
         if (!MailboxAddress.TryParse(to, out var recipient))
@@ -75,15 +73,16 @@ public sealed class SmtpMailTransport(ILogger<SmtpMailTransport> log) : IMailTra
         {
             return new(SendResult.AuthFailed, "The server refused the password");
         }
-        catch (SmtpCommandException e) when (e.ErrorCode == SmtpErrorCode.RecipientNotAccepted && (int)e.StatusCode >= 500)
-        {
-            return new(SendResult.RecipientRefused, "The server refused this address");
-        }
         catch (SmtpCommandException e) when (IsFull(e))
         {
             return new(SendResult.AccountFull, "The account has reached its sending limit");
         }
-        catch (SmtpCommandException e) when (e.StatusCode == SmtpStatusCode.AuthenticationRequired || e.ErrorCode == SmtpErrorCode.SenderNotAccepted)
+        catch (SmtpCommandException e) when (e.ErrorCode == SmtpErrorCode.RecipientNotAccepted && (int)e.StatusCode >= 500)
+        {
+            return new(SendResult.RecipientRefused, "The server refused this address");
+        }
+        catch (SmtpCommandException e) when ((int)e.StatusCode >= 500
+            && (e.StatusCode == SmtpStatusCode.AuthenticationRequired || e.ErrorCode == SmtpErrorCode.SenderNotAccepted))
         {
             return new(SendResult.AuthFailed, "The server didn't accept this account as the sender");
         }
@@ -104,6 +103,21 @@ public sealed class SmtpMailTransport(ILogger<SmtpMailTransport> log) : IMailTra
         {
             return new(SendResult.Temporary, $"{account.Host} didn't answer in time");
         }
+        catch (NotSupportedException) when (account.Security == MailSecurity.StartTls && !client.Capabilities.HasFlag(SmtpCapabilities.StartTLS))
+        {
+            // MailKit refuses to go on in plain text: the owner has to pick another security setting.
+            return new(SendResult.AuthFailed, "The server doesn't offer the chosen security (STARTTLS or SSL/TLS)");
+        }
+        catch (Exception e) when (e is NotSupportedException or SaslException or ServiceNotAuthenticatedException)
+        {
+            return new(SendResult.AuthFailed, "The server doesn't support a way of signing in that DreamGrid can use");
+        }
+        catch (Exception e) when (!ct.IsCancellationRequested)
+        {
+            // Anything else must not stop the outbox: it counts as temporary, and only its type is logged.
+            log.LogWarning("Sending through {Host} failed: {Type}", account.Host, e.GetType().Name);
+            return new(SendResult.Temporary, $"Sending through {account.Host} failed");
+        }
     }
 
     private static SecureSocketOptions Options(MailSecurity security) => security switch
@@ -113,10 +127,25 @@ public sealed class SmtpMailTransport(ILogger<SmtpMailTransport> log) : IMailTra
         _ => SecureSocketOptions.None,
     };
 
-    /// <summary>A quota or rate reply: a 4xx or 5xx whose text says so (Gmail: 550 5.4.5, 421 4.7.0).</summary>
-    private static bool IsFull(SmtpCommandException e) =>
-        (int)e.StatusCode is 421 or 450 or 451 or 452 or 454 or 550 or 552 or 554
-        && FullWords.Any(w => e.Message.Contains(w, StringComparison.OrdinalIgnoreCase));
+    /// <summary>
+    /// A quota or rate reply: a 4xx or 5xx (at any stage) that says so in words, or Gmail's 5.4.5 / 4.7.0. A recipient's own
+    /// mailbox being full (X.2.2) or the message being too big (X.3.4) is not the account's limit.
+    /// </summary>
+    private static bool IsFull(SmtpCommandException e)
+    {
+        if ((int)e.StatusCode is not (421 or 450 or 451 or 452 or 454 or 550 or 552 or 554)) return false;
+        var enhanced = EnhancedCode().Match(e.Message);
+        if (enhanced.Success && (enhanced.Groups[1].Value is "2.2" or "3.4")) return false;
+        if (enhanced.Success && (enhanced.Value is "5.4.5" or "4.7.0")) return true;
+        return FullWords().IsMatch(e.Message);
+    }
+
+    /// <summary>An enhanced status code like <c>5.4.5</c>; group 1 is its subject and detail (<c>4.5</c>).</summary>
+    [System.Text.RegularExpressions.GeneratedRegex(@"\b[245]\.(\d{1,3}\.\d{1,3})\b")]
+    private static partial System.Text.RegularExpressions.Regex EnhancedCode();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"\b(quota|limits?|rate|too many|per hour|per day)\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
+    private static partial System.Text.RegularExpressions.Regex FullWords();
 
     private static string OneLine(string? text) => (text ?? "").Replace("\r", " ").Replace("\n", " ").Trim();
 }
