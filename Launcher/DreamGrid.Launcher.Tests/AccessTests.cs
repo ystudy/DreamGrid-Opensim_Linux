@@ -278,6 +278,8 @@ public sealed class AccessTests
             "route /dreamgrid/regionready",
             // Names and states only; avatar names only for an admin.
             "route /api/status",
+            // A proof-of-work challenge for the sign-up form: made for anyone, and 404 where there is no guest side.
+            "route /api/bots/challenge",
             // Guarded by SetupGate, like the setup pages.
             "route /api/setup/progress",
             // The public front page: SetupGate shows it at "/" to anyone not signed in as staff, where there is a guest side.

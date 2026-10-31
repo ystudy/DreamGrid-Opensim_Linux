@@ -179,6 +179,8 @@ builder.Services.AddRazorPages(o =>
         o.Conventions.AddPageApplicationModelConvention(publicPage, m => m.Filters.Add(new GuestSideOnly()));
     // The owner's legal editor: the Security folder's owner policy, and not there where there is no guest side.
     o.Conventions.AddPageApplicationModelConvention("/Security/Legal", m => m.Filters.Add(new GuestSideOnly()));
+    // The same for the bot-protection page.
+    o.Conventions.AddPageApplicationModelConvention("/Security/Bots", m => m.Filters.Add(new GuestSideOnly()));
     foreach (var open in new[] { "/Login", "/Login/Code", "/Logout", "/Welcome", "/Waiting", "/SetupDone", "/Setup", "/Home", "/Legal", "/SignUp", "/Guest/SignIn" })
         o.Conventions.AllowAnonymousToPage(open);
     o.Conventions.AllowAnonymousToFolder("/Setup");
@@ -215,6 +217,10 @@ builder.Services.AddSingleton(sp => new TermsAcceptances(Path.Combine(paths.Gues
     sp.GetRequiredService<ILogger<TermsAcceptances>>()));
 builder.Services.AddSingleton(sp => new EmailTokens(Path.Combine(paths.Guests, "email-tokens.json"), sp.GetRequiredService<TimeProvider>(),
     sp.GetRequiredService<ILogger<EmailTokens>>()));
+// The proof-of-work key lives in the owner-only security folder; one key for the life of the install.
+builder.Services.AddSingleton(sp => new ProofOfWork(ProofOfWork.LoadOrCreateKey(Path.Combine(paths.Security, "pow.key")),
+    sp.GetRequiredService<TimeProvider>()));
+builder.Services.AddSingleton<BotGuard>();
 builder.Services.AddSingleton<LegacyCommandApi>();
 builder.Services.AddSingleton<IOnlineUsers>(sp => new OnlineUsers(sp.GetRequiredService<Func<LauncherSettings>>(),
     sp.GetRequiredService<ILogger<OnlineUsers>>()));
@@ -254,6 +260,7 @@ app.UseRouting();
 app.UseAuthorization();
 LegacyEndpoints.Map(app);
 LogsApi.Map(app);
+BotsApi.Map(app);
 RegionsApi.Map(app);
 LibraryApi.Map(app);
 StatusApi.Map(app);

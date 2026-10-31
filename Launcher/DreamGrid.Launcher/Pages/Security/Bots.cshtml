@@ -1,0 +1,76 @@
+@page "/security/bots"
+@model DreamGrid.Launcher.Pages.Security.BotsModel
+@{
+    ViewData["Title"] = "Bot protection";
+}
+<h1>Bot protection</h1>
+<p>These layers guard the forms that anyone on the internet can send, like the sign-up form. Each one you switch on makes it harder for a program to create accounts.</p>
+@if (Model.Error is not null)
+{
+    <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
+}
+@if (Model.Notice is not null)
+{
+    <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
+}
+@if (Model.AllOff)
+{
+    <div id="all-off-warning" class="alert alert-warning" role="alert">Every protection is off. Once sign-ups are open, bots can create accounts freely.</div>
+}
+
+<div class="row g-4">
+<div class="col-lg-8">
+<form id="bots" method="post" action="/security/bots?handler=Save" asp-antiforgery="true">
+    <div class="form-check form-switch mt-3">
+        <input class="form-check-input" type="checkbox" role="switch" id="Honeypot" name="Honeypot" value="true" checked="@Model.Honeypot">
+        <label class="form-check-label" for="Honeypot">Hidden field (honeypot)</label>
+    </div>
+    <p class="hint form-text">A field people never see. A program that fills in every field gives itself away.</p>
+
+    <div class="form-check form-switch mt-3">
+        <input class="form-check-input" type="checkbox" role="switch" id="RateLimit" name="RateLimit" value="true" checked="@Model.RateLimit">
+        <label class="form-check-label" for="RateLimit">Limit sign-ups from one address</label>
+    </div>
+    <label class="form-label mt-2" for="PerHourPerIp">Most sign-ups from one address in an hour</label>
+    <input class="form-control w-auto" type="number" id="PerHourPerIp" name="PerHourPerIp" min="1" max="1000" value="@Model.PerHourPerIp" autocomplete="off">
+    <p class="hint form-text">From 1 to 1000. Counted in memory, so a restart starts the count again.</p>
+
+    <div class="form-check form-switch mt-3">
+        <input class="form-check-input" type="checkbox" role="switch" id="ProofOfWork" name="ProofOfWork" value="true" checked="@Model.ProofOfWork">
+        <label class="form-check-label" for="ProofOfWork">Proof of work</label>
+    </div>
+    <label class="form-label mt-2" for="Difficulty">Difficulty</label>
+    <input class="form-control w-auto" type="number" id="Difficulty" name="Difficulty" min="1000" max="1000000" value="@Model.Difficulty" autocomplete="off">
+    <p class="hint form-text">From 1000 to 1000000. The visitor's browser does a small calculation before the form is sent. A higher number is harder on bots and takes a little longer on a slow phone.</p>
+
+    <div class="form-check form-switch mt-3">
+        <input class="form-check-input" type="checkbox" role="switch" id="ImageCaptcha" name="ImageCaptcha" value="true" checked="@Model.ImageCaptcha">
+        <label class="form-check-label" for="ImageCaptcha">Picture puzzle (image CAPTCHA)</label>
+    </div>
+    <p class="hint form-text">The visitor types the letters in a picture. It is off by default.</p>
+
+    <div class="form-check form-switch mt-3">
+        <input class="form-check-input" type="checkbox" role="switch" id="AdminApproval" name="AdminApproval" value="true" checked="@Model.AdminApproval">
+        <label class="form-check-label" for="AdminApproval">An admin approves each new account</label>
+    </div>
+    <p class="hint form-text">Used once sign-ups exist.</p>
+
+    <button type="submit" class="btn btn-primary mt-3">Save</button>
+</form>
+</div>
+
+<div class="col-lg-4">
+<section id="try-it" class="card card-body">
+    <h2 class="h5">Try it</h2>
+    <p class="small">Send a test form through the layers that are on. It creates nothing. Each try counts toward the limit for this address.</p>
+    @if (Model.TryResult is not null)
+    {
+        <p id="try-result" class="fw-semibold">@Model.TryResult</p>
+    }
+    <form id="try-form" method="post" action="/security/bots?handler=Try" asp-antiforgery="true">
+        <partial name="_BotFields" />
+        <button type="submit" class="btn btn-outline-primary btn-sm">Try it</button>
+    </form>
+</section>
+</div>
+</div>

@@ -1,0 +1,20 @@
+@using DreamGrid.Launcher.Core.Settings
+@using DreamGrid.Launcher.Guests
+@inject Func<LauncherSettings> Settings
+@* The fields BotGuard.Check reads, for the layers that are on: put this inside a form that posts to a handler that calls Check. *@
+@{
+    var bots = Settings().Bots;
+}
+@if (bots.Honeypot)
+{
+    <div class="dg-hp" aria-hidden="true">
+        <label for="dg-website">Leave this empty</label>
+        <input type="text" id="dg-website" name="@BotGuard.HoneypotField" value="" autocomplete="off" tabindex="-1">
+    </div>
+}
+@if (bots.ProofOfWork)
+{
+    <input type="hidden" name="@BotGuard.ProofField" value="" data-challenge-url="/api/bots/challenge">
+    <noscript><p class="form-text">This form needs JavaScript to prove you are not a bot.</p></noscript>
+    <script src="/js/pow.js" defer></script>
+}
