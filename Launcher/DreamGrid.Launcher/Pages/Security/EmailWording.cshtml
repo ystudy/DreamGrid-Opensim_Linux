@@ -1,0 +1,58 @@
+@page "/security/email/wording"
+@model DreamGrid.Launcher.Pages.Security.EmailWordingModel
+@{
+    ViewData["Title"] = "Email wording";
+}
+<h1>Email wording</h1>
+<p>The words the grid's emails use. Each one starts with wording that works as it is. Fill-in words in curly brackets are
+    replaced when the email is sent. You can use simple formatting: <code>*italic*</code>, <code>**bold**</code> and lists.</p>
+<p><a href="/security/email">Back to Email</a></p>
+@if (Model.Notice is not null)
+{
+    <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
+}
+
+@foreach (var t in Model.Sections)
+{
+    <section id="tpl-@t.Id" class="card card-body mt-3">
+        <h2 class="h4">@t.Title@(t.IsDefault ? "" : " (changed)")</h2>
+        @if (t.Error is not null)
+        {
+            <div class="error alert alert-danger" role="alert">@t.Error</div>
+        }
+        @if (t.Outcome is not null)
+        {
+            <div class="test-outcome alert alert-info" role="status">@t.Outcome</div>
+        }
+        <p class="hint form-text mb-1">Fill-in words:
+            @string.Join(", ", t.Words.Select(w => t.Required.Contains(w) ? w + " (needed)" : w))</p>
+        <form method="post" action="/security/email/wording?handler=Save" asp-antiforgery="true">
+            <input type="hidden" name="id" value="@t.Id">
+            <label class="form-label" for="subj-@t.Id">Subject</label>
+            <input class="form-control" id="subj-@t.Id" name="Subject" value="@t.Subject" autocomplete="off">
+            <label class="form-label mt-2" for="body-@t.Id">Message</label>
+            <textarea class="form-control" id="body-@t.Id" name="Body" rows="8">@t.Body</textarea>
+            <label class="form-label mt-2" for="to-@t.Id">Send the test to (optional)</label>
+            <input class="form-control" id="to-@t.Id" name="TestTo" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Your own email">
+            <div class="d-flex flex-wrap gap-2 mt-3">
+                <button type="submit" class="btn btn-primary">Save</button>
+                <button type="submit" class="btn btn-outline-secondary" formaction="/security/email/wording?handler=Preview">Preview</button>
+                <button type="submit" class="btn btn-outline-secondary" formaction="/security/email/wording?handler=Test">Send test</button>
+                @if (!t.IsDefault)
+                {
+                    <button type="submit" class="btn btn-outline-danger" formaction="/security/email/wording?handler=Reset">Reset to default</button>
+                }
+            </div>
+        </form>
+        @if (t.Preview is { } p)
+        {
+            <div class="preview mt-3">
+                <h3 class="h6">Preview with sample values</h3>
+                <p><strong>Subject:</strong> @p.Subject</p>
+                <div class="border rounded p-2">@Html.Raw(p.Html)</div>
+                <h3 class="h6 mt-2">Plain-text version</h3>
+                <pre class="border rounded p-2 text-wrap">@p.Text</pre>
+            </div>
+        }
+    </section>
+}
