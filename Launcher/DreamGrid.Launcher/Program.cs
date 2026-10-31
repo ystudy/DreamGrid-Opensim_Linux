@@ -183,6 +183,9 @@ builder.Services.AddRazorPages(o =>
     o.Conventions.AddPageApplicationModelConvention("/Security/Legal", m => m.Filters.Add(new GuestSideOnly()));
     // The same for the bot-protection page.
     o.Conventions.AddPageApplicationModelConvention("/Security/Bots", m => m.Filters.Add(new GuestSideOnly()));
+    // The same for the Email pages: email is for the guest side's sign-up and password reset.
+    foreach (var emailPage in new[] { "/Security/Email", "/Security/EmailWording" })
+        o.Conventions.AddPageApplicationModelConvention(emailPage, m => m.Filters.Add(new GuestSideOnly()));
     foreach (var open in new[] { "/Login", "/Login/Code", "/Logout", "/Welcome", "/Waiting", "/SetupDone", "/Setup", "/Home", "/Legal", "/SignUp", "/Guest/SignIn" })
         o.Conventions.AllowAnonymousToPage(open);
     o.Conventions.AllowAnonymousToFolder("/Setup");
@@ -229,6 +232,7 @@ builder.Services.AddSingleton(sp => new EmailOutbox(paths.Email, sp.GetRequiredS
     log: sp.GetRequiredService<ILogger<EmailOutbox>>()));
 builder.Services.AddSingleton<IMailTransport, SmtpMailTransport>();
 builder.Services.AddSingleton<EmailSender>();
+builder.Services.AddSingleton<EmailTestLimiter>();
 builder.Services.AddHostedService<EmailWorker>();
 // The proof-of-work key lives in the owner-only security folder; one key for the life of the install. The image CAPTCHA signs with
 // the same key (its signatures carry a label of their own), so it is read once, when the first of the two is needed.

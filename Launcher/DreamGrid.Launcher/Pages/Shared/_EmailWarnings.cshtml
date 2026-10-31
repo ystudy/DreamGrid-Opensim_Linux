@@ -1,0 +1,5 @@
+@model IReadOnlyList<string>
+@foreach (var warning in Model)
+{
+    <div class="email-warning alert alert-warning" role="alert">@warning</div>
+}
