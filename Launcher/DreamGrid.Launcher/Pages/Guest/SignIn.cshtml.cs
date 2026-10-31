@@ -28,6 +28,9 @@ public sealed class SignInModel(IRobustClient robust, LoginThrottle throttle, Au
 
     public string? Error { get; private set; }
 
+    /// <summary>The guest pages exist only with a guest side, so the link always is.</summary>
+    public bool ShowForgot => true;
+
     public void OnGet()
     {
     }

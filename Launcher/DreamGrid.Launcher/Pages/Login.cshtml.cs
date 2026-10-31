@@ -33,6 +33,9 @@ public sealed class LoginModel(IRobustClient robust, Func<LauncherSettings> sett
 
     public string? Error { get; private set; }
 
+    /// <summary>Password recovery lives on the guest side, so the link is shown only where there is one.</summary>
+    public bool ShowForgot => AdminRule.HasStaffPages(settings());
+
     public void OnGet()
     {
     }

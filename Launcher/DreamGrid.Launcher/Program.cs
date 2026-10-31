@@ -186,7 +186,7 @@ builder.Services.AddRazorPages(o =>
     // The same for the Email pages: email is for the guest side's sign-up and password reset.
     foreach (var emailPage in new[] { "/Security/Email", "/Security/EmailWording" })
         o.Conventions.AddPageApplicationModelConvention(emailPage, m => m.Filters.Add(new GuestSideOnly()));
-    foreach (var open in new[] { "/Login", "/Login/Code", "/Logout", "/Welcome", "/Waiting", "/SetupDone", "/Setup", "/Home", "/Legal", "/SignUp", "/Guest/SignIn", "/Guest/SignInCode" })
+    foreach (var open in new[] { "/Login", "/Login/Code", "/Logout", "/Welcome", "/Waiting", "/SetupDone", "/Setup", "/Home", "/Legal", "/SignUp", "/Guest/SignIn", "/Guest/SignInCode", "/Guest/ForgotPassword" })
         o.Conventions.AllowAnonymousToPage(open);
     o.Conventions.AllowAnonymousToFolder("/Setup");
     // The dashboard's forms post here: a POST to "/" belongs to the port-8001 contract (LegacyRootPolicy).
@@ -227,6 +227,9 @@ builder.Services.AddSingleton(sp => new RegionRights(Path.Combine(paths.Guests, 
     sp.GetRequiredService<ILogger<RegionRights>>()));
 builder.Services.AddSingleton(sp => new EmailTokens(Path.Combine(paths.Guests, "email-tokens.json"), sp.GetRequiredService<TimeProvider>(),
     sp.GetRequiredService<ILogger<EmailTokens>>()));
+builder.Services.AddSingleton(sp => new ResetLimits(sp.GetRequiredService<TimeProvider>(), Path.Combine(paths.Guests, "reset-limits.json"),
+    sp.GetRequiredService<ILogger<ResetLimits>>()));
+builder.Services.AddSingleton<PasswordResets>();
 // Email (plan 8a): the mail accounts, passwords protected by data protection.
 builder.Services.AddSingleton(sp => new EmailAccounts(Path.Combine(paths.Email, "accounts.json"), sp.GetRequiredService<IDataProtectionProvider>(),
     sp.GetRequiredService<ILogger<EmailAccounts>>()));
