@@ -7,6 +7,20 @@
 }
 <h1>Your world</h1>
 <partial name="_PlainHttpWarning" />
+@if (Model.EmailWarnings.Count > 0)
+{
+    <div id="email-warnings">
+    @if (Model.IsOwner)
+    {
+        <partial name="_EmailWarnings" model="Model.EmailWarnings" />
+        <p><a href="/security/email">Open the Email page</a></p>
+    }
+    else
+    {
+        <div class="alert alert-warning" role="alert">Email has a problem — the grid owner can fix it on the Email page.</div>
+    }
+    </div>
+}
 
 <section class="card card-body shadow-sm mb-3">
     <p id="headline" class="headline@(Model.Status.Problem is null ? "" : " problem")">@Model.Status.Headline</p>

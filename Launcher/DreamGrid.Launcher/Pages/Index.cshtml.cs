@@ -1,6 +1,7 @@
 using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.Logs;
 using DreamGrid.Launcher.Core.Modules;
+using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Endpoints;
 using Microsoft.AspNetCore.Mvc;
@@ -13,8 +14,16 @@ namespace DreamGrid.Launcher.Pages;
 /// <see cref="IDashboardSwitch"/> (spec 6.9).
 /// </summary>
 public sealed class IndexModel(IGridController grid, IOnlineUsers online, GridActions actions, LogReader logs, Func<LauncherSettings> settings,
-    IEnumerable<IDashboardSwitch> switches) : PageModel
+    IEnumerable<IDashboardSwitch> switches, DreamGrid.Launcher.Email.EmailSender email) : PageModel
 {
+    /// <summary>
+    /// Email's warnings (empty where there is no guest side). The owner sees each one and a link to the Email page; other staff
+    /// only that email has a problem, with no account details.
+    /// </summary>
+    public IReadOnlyList<string> EmailWarnings { get; private set; } = [];
+
+    public bool IsOwner => User.IsInRole(DreamGrid.Launcher.Security.AuthSchemes.OwnerRole);
+
     private const int DetailLines = 20;
 
     public StatusView Status { get; private set; } = null!;
@@ -34,6 +43,7 @@ public sealed class IndexModel(IGridController grid, IOnlineUsers online, GridAc
     {
         var raw = grid.GetStatus();
         RunsRobust = raw.RunsRobust;
+        if (AdminRule.HasStaffPages(settings())) EmailWarnings = email.Status().Warnings;
         Status = await StatusApi.BuildAsync(grid, online, withOnline: true, HttpContext.RequestAborted, settings());
         var g = Status.Grid;
         var details = new List<(string Label, IReadOnlyList<string> Lines)>();
