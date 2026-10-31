@@ -153,6 +153,44 @@ public sealed class LegalEditorTests
         Assert.Equal(count, LegalEntries(f).Count);
     }
 
+    [Fact]
+    public async Task Clearing_a_page_never_lets_its_version_numbers_be_used_again()
+    {
+        await using var f = Factory();
+        var owner = await SignedInAsync(f);
+        using var one = await SaveAsync(owner, "terms", "Test terms one.");
+        using var two = await SaveAsync(owner, "terms", "Test terms two.");
+
+        using var clear = await SaveAsync(owner, "terms", "");
+        using var clearAgain = await SaveAsync(owner, "terms", "  ");
+        Assert.Null(Stored(f, "terms"));
+        Assert.Equal(2, f.Store.LoadOrCreate().Legal.Texts![LegalPages.DefaultLanguage]["terms"].Version); // kept as an empty record
+        Assert.Single(LegalEntries(f), e => e.GetProperty("target").GetString() == "terms cleared"); // the second clear changed nothing
+
+        using var again = await SaveAsync(owner, "terms", "Test terms three.");
+
+        Assert.Equal(3, Stored(f, "terms")!.Version);
+        Assert.Contains(LegalEntries(f), e => e.GetProperty("target").GetString() == "terms v3");
+    }
+
+    [Fact]
+    public async Task A_text_that_starts_with_a_newline_keeps_its_version_when_the_editor_posts_it_back()
+    {
+        await using var f = Factory();
+        var owner = await SignedInAsync(f);
+        const string Text = "\nTest terms one.";
+        using var one = await SaveAsync(owner, "terms", Text);
+        Assert.Equal(Text, Stored(f, "terms")!.Markdown);
+
+        // A browser drops the one newline straight after the opening tag, so the page must put one there.
+        var page = new HtmlParser().ParseDocument(await owner.GetStringAsync("/security/legal", Ct));
+        var shown = page.QuerySelector("#text-terms")!.TextContent;
+        Assert.Equal(Text, shown);
+        using var back = await SaveAsync(owner, "terms", shown);
+
+        Assert.Equal(1, Stored(f, "terms")!.Version);
+    }
+
     [Theory]
     [InlineData("admin")]
     [InlineData("supervisor")]

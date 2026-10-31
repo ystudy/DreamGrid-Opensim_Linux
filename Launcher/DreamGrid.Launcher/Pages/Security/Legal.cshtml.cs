@@ -57,8 +57,12 @@ public sealed class LegalModel(IGridController grid, Func<LauncherSettings> sett
                 pages.TryGetValue(id, out var before);
                 if (string.IsNullOrWhiteSpace(markdown))
                 {
-                    if (before is not null && pages.Remove(id))
+                    // A cleared page keeps its version as an empty record, so the next text gets a number nobody has accepted yet.
+                    if (before is not null && !string.IsNullOrWhiteSpace(before.Markdown))
+                    {
+                        pages[id] = new LegalText("", before.Version, now);
                         changes.Add(($"{id} cleared", "ok"));
+                    }
                 }
                 else if (before is null || Normalize(before.Markdown) != markdown)
                 {
@@ -68,12 +72,8 @@ public sealed class LegalModel(IGridController grid, Func<LauncherSettings> sett
                 }
             }
             if (changes.Count == 0) return s;
-            if (pages.Count == 0) all.Remove(LegalPages.DefaultLanguage);
-            else all[LegalPages.DefaultLanguage] = pages;
-            return s with
-            {
-                Legal = s.Legal with { Texts = all.Count == 0 ? null : all },
-            };
+            all[LegalPages.DefaultLanguage] = pages;
+            return s with { Legal = s.Legal with { Texts = all } };
         }, writeConfig: false);
 
         foreach (var (target, result) in changes)
