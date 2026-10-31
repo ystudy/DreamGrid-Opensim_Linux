@@ -169,7 +169,10 @@ builder.Services.AddRazorPages(o =>
     o.Conventions.AddFolderApplicationModelConvention("/People", m => m.Filters.Add(new StaffPagesOnly()));
     o.Conventions.AuthorizeFolder("/Guest", AuthSchemes.GuestPolicy);
     o.Conventions.AddFolderApplicationModelConvention("/Guest", m => m.Filters.Add(new GuestSideOnly()));
-    foreach (var open in new[] { "/Login", "/Login/Code", "/Logout", "/Welcome", "/Waiting", "/SetupDone", "/Setup", "/Guest/SignIn" })
+    // The public front page ("/" shows it to anyone not signed in as staff, see SetupGate); like the guest pages it is not there
+    // on a Region Server or a Connected Server.
+    o.Conventions.AddPageApplicationModelConvention("/Home", m => m.Filters.Add(new GuestSideOnly()));
+    foreach (var open in new[] { "/Login", "/Login/Code", "/Logout", "/Welcome", "/Waiting", "/SetupDone", "/Setup", "/Home", "/Guest/SignIn" })
         o.Conventions.AllowAnonymousToPage(open);
     o.Conventions.AllowAnonymousToFolder("/Setup");
     // The dashboard's forms post here: a POST to "/" belongs to the port-8001 contract (LegacyRootPolicy).
@@ -216,6 +219,10 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<BackgroundWork>())
 builder.Services.AddSingleton<OarJobs>();
 
 var app = builder.Build();
+// Routing is stated twice, so the endpoint is known to everything below (ApiEndpoint.Is) and picked again once SetupGate has
+// shown the front page at "/" (it changes the path to /home and drops the endpoint chosen for "/"). A request that already has
+// an endpoint is not matched again.
+app.UseRouting();
 // First, so static files, API answers and the plain-text replies carry the browser security headers too.
 app.UseMiddleware<SecurityHeaders>();
 app.UseStaticFiles();
@@ -226,6 +233,7 @@ app.UseMiddleware<AuditMiddleware>();
 // Someone signed in only to set up two-factor reaches nothing else (before SetupGate, which can send "/" onwards).
 app.UseMiddleware<TwoFactorGate>();
 app.UseMiddleware<SetupGate>();
+app.UseRouting();
 app.UseAuthorization();
 LegacyEndpoints.Map(app);
 LogsApi.Map(app);

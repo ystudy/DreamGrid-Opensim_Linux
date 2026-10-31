@@ -20,11 +20,11 @@
     </div>
     <p class="hint form-text">They must set it up the next time they sign in, or when they next open a page. You are never asked.</p>
 
-    <h2 class="mt-4">Who can open this website</h2>
+    <h2 class="mt-4">Who can open the staff pages</h2>
     <label class="form-label" for="Networks">Allowed networks</label>
     <textarea class="form-control" id="Networks" name="Networks" rows="5" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="192.168.1.0/24">@Model.Networks</textarea>
     <p class="hint form-text">One address or range on each line, like 203.0.113.7 or 192.168.1.0/24. Leave it empty to allow every address.
-        Any other address gets a "Not found" answer for the whole website, including the sign-in page. This computer is always allowed.</p>
+        Any other address gets a "Not found" answer, including on the sign-in page. Guests and the public pages are reachable from any address; this list covers the staff pages. This computer is always allowed.</p>
     <button type="submit" class="btn btn-primary mt-2">Save</button>
 </form>
 

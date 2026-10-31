@@ -159,13 +159,16 @@ public sealed class AccessTests
     }
 
     [Fact]
-    public async Task After_owner_exists_root_requires_sign_in()
+    public async Task After_owner_exists_root_shows_the_front_page_and_staff_pages_require_sign_in()
     {
         await using var f = AfterOwner();
-        using var resp = await NoRedirect(f).GetAsync("/", Ct);
+        using var root = await NoRedirect(f).GetAsync("/", Ct);
+        using var dashboard = await NoRedirect(f).GetAsync("/dashboard", Ct);
 
-        Assert.Equal(HttpStatusCode.Redirect, resp.StatusCode);
-        Assert.Equal("/login", LocationPath(resp));
+        Assert.Equal(HttpStatusCode.OK, root.StatusCode);
+        Assert.Contains("href=\"/guest/sign-in\"", await root.Content.ReadAsStringAsync(Ct));
+        Assert.Equal(HttpStatusCode.Redirect, dashboard.StatusCode);
+        Assert.Equal("/login", LocationPath(dashboard));
     }
 
     [Fact]
@@ -277,6 +280,8 @@ public sealed class AccessTests
             "route /api/status",
             // Guarded by SetupGate, like the setup pages.
             "route /api/setup/progress",
+            // The public front page: SetupGate shows it at "/" to anyone not signed in as staff, where there is a guest side.
+            "page home",
             // The guest door: any account at level 0 or more signs in here, to the guest pages only.
             "page guest/sign-in",
             "page login",

@@ -158,27 +158,114 @@ public sealed class SecurityPageTests
     }
 
     [Fact]
-    public async Task Outside_caller_gets_404_on_login_and_api_and_command_api()
+    public async Task Outside_caller_still_404_on_login_and_api()
     {
         await using var f = Factory(["10.0.0.0/8"]);
         var outside = Client(f, "203.0.113.5");
 
-        foreach (var url in new[] { "/login", "/", "/dashboard", "/api/status", "/api/grid/status", "/security", "/?alt=Region&type=Command&command=help", "/dreamgrid/regionready" })
+        foreach (var url in new[] { "/login", "/login/code", "/dashboard", "/api/status", "/api/grid/status", "/security", "/regions", "/profile/sessions" })
         {
             using var get = await outside.GetAsync(url, Ct);
             Assert.True(HttpStatusCode.NotFound == get.StatusCode, $"GET {url} gave {(int)get.StatusCode}");
             Assert.Equal("", await get.Content.ReadAsStringAsync(Ct)); // nothing that says what this site is
         }
-        using var post = await outside.PostAsync("/?alt=Region&type=Command&command=help", new StringContent(""), Ct);
-        Assert.Equal(HttpStatusCode.NotFound, post.StatusCode);
         using var login = await outside.PostAsync("/login", new FormUrlEncodedContent(new Dictionary<string, string>()), Ct);
         Assert.Equal(HttpStatusCode.NotFound, login.StatusCode);
+        using var api = await outside.PostAsync("/api/grid/start", new FormUrlEncodedContent(new Dictionary<string, string>()), Ct);
+        Assert.Equal(HttpStatusCode.NotFound, api.StatusCode);
 
         // Static files are served before the list is asked; the setup pages are never hidden by it.
         using var css = await outside.GetAsync("/css/site.css", Ct);
         Assert.Equal(HttpStatusCode.OK, css.StatusCode);
         using var setup = await outside.GetAsync("/setup", Ct);
         Assert.NotEqual(HttpStatusCode.NotFound, setup.StatusCode);
+    }
+
+    [Fact]
+    public async Task Outside_legacy_command_still_404()
+    {
+        await using var f = Factory(["10.0.0.0/8"]);
+        var outside = Client(f, "203.0.113.5");
+
+        foreach (var url in new[] { "/?alt=Region&type=Command&command=help", "/?type=Booted", "/?command=RegionStatus", "/dreamgrid/regionready" })
+        {
+            using var get = await outside.GetAsync(url, Ct);
+            Assert.True(HttpStatusCode.NotFound == get.StatusCode, $"GET {url} gave {(int)get.StatusCode}");
+            Assert.Equal("", await get.Content.ReadAsStringAsync(Ct));
+        }
+        using var post = await outside.PostAsync("/?alt=Region&type=Command&command=help", new StringContent(""), Ct);
+        Assert.Equal(HttpStatusCode.NotFound, post.StatusCode);
+        using var plain = await outside.PostAsync("/", new FormUrlEncodedContent(new Dictionary<string, string>()), Ct);
+        Assert.Equal(HttpStatusCode.NotFound, plain.StatusCode);
+    }
+
+    [Fact]
+    public async Task Outside_caller_reaches_front_and_guest_sign_in()
+    {
+        await using var f = Factory(["10.0.0.0/8"]);
+        var outside = Client(f, "203.0.113.5");
+
+        foreach (var url in new[] { "/", "/home", "/guest/sign-in" })
+        {
+            using var get = await outside.GetAsync(url, Ct);
+            Assert.True(HttpStatusCode.OK == get.StatusCode, $"GET {url} gave {(int)get.StatusCode}");
+        }
+        // Not signed in, so the guest home sends on to the guest door (and does not hide).
+        using var guest = await outside.GetAsync("/guest", Ct);
+        Assert.Equal(HttpStatusCode.Redirect, guest.StatusCode);
+        Assert.Equal("/guest/sign-in", guest.Headers.Location?.AbsolutePath);
+    }
+
+    [Theory]
+    [InlineData(OwnerPlan.RegionServer)]
+    [InlineData(OwnerPlan.Connected)]
+    public async Task Outside_caller_gets_404_everywhere_without_a_guest_side(OwnerPlan plan)
+    {
+        await using var f = new LauncherFactory(s => s with
+        {
+            Plan = plan,
+            SetupToken = null,
+            Setup = s.Setup with { OwnerCreated = true, Finished = true, Owner = new OwnerInfo("Test", "Owner", TestAuth.OwnerId) },
+            Security = s.Security with { AdminNetworks = ["10.0.0.0/8"] },
+        })
+        {
+            Before = app => app.Use((ctx, next) =>
+            {
+                if (ctx.Request.Headers.TryGetValue(Header, out var ip)) ctx.Connection.RemoteIpAddress = IPAddress.Parse(ip.ToString());
+                return next(ctx);
+            }),
+        };
+        var outside = Client(f, "203.0.113.5");
+
+        foreach (var url in new[] { "/", "/home", "/guest", "/guest/sign-in", "/signup", "/terms", "/api/bots/challenge" })
+        {
+            using var get = await outside.GetAsync(url, Ct);
+            Assert.True(HttpStatusCode.NotFound == get.StatusCode, $"GET {url} gave {(int)get.StatusCode}");
+        }
+    }
+
+    [Fact]
+    public async Task Outside_caller_with_staff_cookie_gets_front_page()
+    {
+        await using var f = Factory(["10.0.0.0/8"]);
+        var owner = await SignedInAsync(f, "owner", "10.2.2.2");
+        using (var inside = await owner.GetAsync("/", Ct))
+            Assert.Contains("Your world", await inside.Content.ReadAsStringAsync(Ct));
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/");
+        request.Headers.Add(Header, "203.0.113.5");
+        owner.DefaultRequestHeaders.Remove(Header);
+        using var outside = await owner.SendAsync(request, Ct);
+        Assert.Equal(HttpStatusCode.OK, outside.StatusCode);
+        var html = await outside.Content.ReadAsStringAsync(Ct);
+        Assert.Contains("Create an account", html);
+        Assert.DoesNotContain("Your world", html);
+        // Hidden from outside, not removed: no Set-Cookie deletes it, and it still works from inside the list.
+        Assert.False(outside.Headers.TryGetValues("Set-Cookie", out var cookies) && cookies.Any(c => c.StartsWith("dg-auth=", StringComparison.Ordinal)));
+        using var back = new HttpRequestMessage(HttpMethod.Get, "/security");
+        back.Headers.Add(Header, "10.2.2.2");
+        using var again = await owner.SendAsync(back, Ct);
+        Assert.Equal(HttpStatusCode.OK, again.StatusCode);
     }
 
     [Fact]
