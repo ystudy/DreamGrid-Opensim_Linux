@@ -367,6 +367,8 @@ public sealed class LegalEditorTests
         // The Security page stays, without the link to the editor.
         var security = new HtmlParser().ParseDocument(await owner.GetStringAsync("/security", Ct));
         Assert.Null(security.QuerySelector("#legal-editor-link"));
+        // Nor does the allow-list help speak of guests and public pages there are none of.
+        Assert.DoesNotContain("Guests and the public pages", security.Body!.TextContent);
     }
 
     [Fact]
@@ -378,5 +380,6 @@ public sealed class LegalEditorTests
         var security = new HtmlParser().ParseDocument(await owner.GetStringAsync("/security", Ct));
 
         Assert.Equal("/security/legal", security.QuerySelector("#legal-editor-link")!.GetAttribute("href"));
+        Assert.Contains("Guests and the public pages are reachable from any address; this list covers the staff pages.", security.Body!.TextContent);
     }
 }

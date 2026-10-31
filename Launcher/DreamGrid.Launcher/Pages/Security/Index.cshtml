@@ -5,6 +5,8 @@
 @inject Func<LauncherSettings> Settings
 @{
     ViewData["Title"] = "Security";
+    // Guests, the public pages, the legal editor and the bot page exist only on a plan with a guest side.
+    var guestSide = AdminRule.HasStaffPages(Settings());
 }
 <h1>Security</h1>
 @if (Model.Error is not null)
@@ -27,11 +29,11 @@
     <label class="form-label" for="Networks">Allowed networks</label>
     <textarea class="form-control" id="Networks" name="Networks" rows="5" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="192.168.1.0/24">@Model.Networks</textarea>
     <p class="hint form-text">One address or range on each line, like 203.0.113.7 or 192.168.1.0/24. Leave it empty to allow every address.
-        Any other address gets a "Not found" answer, including on the sign-in page. Guests and the public pages are reachable from any address; this list covers the staff pages. This computer is always allowed.</p>
+        Any other address gets a "Not found" answer, including on the sign-in page.@(guestSide ? " Guests and the public pages are reachable from any address; this list covers the staff pages." : "") This computer is always allowed.</p>
     <button type="submit" class="btn btn-primary mt-2">Save</button>
 </form>
 
-@if (AdminRule.HasStaffPages(Settings()))
+@if (guestSide)
 {
     <h2 class="mt-4">Pages for guests</h2>
     <p><a id="legal-editor-link" href="/security/legal">Write the Terms, Privacy, Cookies and Contact pages</a></p>

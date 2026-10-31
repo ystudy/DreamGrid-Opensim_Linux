@@ -21,8 +21,14 @@ public static class SiteFacts
     public static IReadOnlyList<(string What, string Where)> Stored { get; } =
     [
         ("Avatar name and email", "The grid's account service."),
-        ("Sign-in times", "audit.log, and the staff sessions."),
-        ("IP addresses", "audit.log, security/throttle.json and the staff sessions."),
+        ("Sign-in times", "audit.log, and the staff sessions (security/sessions.json)."),
+        ("IP addresses", "audit.log, security/throttle.json and the staff sessions (security/sessions.json)."),
+        ("The browser each staff session was started from, as the browser names itself", "security/sessions.json."),
+        ("Two-factor sign-in: the avatar name, the authenticator secret (encrypted) and the backup codes (only as hashes)",
+            "security/twofactor.json."),
+        ("The level a suspended account had before, by account id", "security/suspended.json."),
+        ("Guests' account ids, with a value that signs them out everywhere when it changes", "guests/stamps.json."),
+        ("Account ids, with the email links sent to them (only as hashes) and when they expire", "guests/email-tokens.json."),
         ("Terms acceptances, with the IP address", "guests/terms.json."),
         ("Region rights", "guests/region-rights.json."),
     ];

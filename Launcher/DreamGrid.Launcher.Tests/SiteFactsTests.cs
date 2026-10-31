@@ -139,4 +139,17 @@ public sealed class SiteFactsTests
         Assert.Equal(SiteFacts.Cookies.Count, SiteFacts.Cookies.Select(c => c.Name).Distinct().Count());
         Assert.All(SiteFacts.Stored, s => Assert.False(string.IsNullOrWhiteSpace(s.What) || string.IsNullOrWhiteSpace(s.Where)));
     }
+
+    [Theory]
+    [InlineData("audit.log")]
+    [InlineData("security/throttle.json")]
+    [InlineData("security/sessions.json")]
+    [InlineData("security/twofactor.json")]
+    [InlineData("security/suspended.json")]
+    [InlineData("guests/terms.json")]
+    [InlineData("guests/region-rights.json")]
+    [InlineData("guests/stamps.json")]
+    [InlineData("guests/email-tokens.json")]
+    public void Every_file_that_holds_something_about_people_is_listed(string file) =>
+        Assert.Contains(SiteFacts.Stored, s => s.Where.Contains(file, StringComparison.Ordinal));
 }
