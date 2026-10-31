@@ -215,6 +215,8 @@ builder.Services.AddSingleton(sp => new GuestStamps(Path.Combine(paths.Guests, "
 builder.Services.AddSingleton<GuestPrincipalValidator>();
 builder.Services.AddSingleton(sp => new TermsAcceptances(Path.Combine(paths.Guests, "terms.json"), sp.GetRequiredService<TimeProvider>(),
     sp.GetRequiredService<ILogger<TermsAcceptances>>()));
+builder.Services.AddSingleton(sp => new RegionRights(Path.Combine(paths.Guests, "region-rights.json"), sp.GetRequiredService<TimeProvider>(),
+    sp.GetRequiredService<ILogger<RegionRights>>()));
 builder.Services.AddSingleton(sp => new EmailTokens(Path.Combine(paths.Guests, "email-tokens.json"), sp.GetRequiredService<TimeProvider>(),
     sp.GetRequiredService<ILogger<EmailTokens>>()));
 // The proof-of-work key lives in the owner-only security folder; one key for the life of the install.

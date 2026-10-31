@@ -2,6 +2,7 @@ using System.Data.Common;
 using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Endpoints;
+using DreamGrid.Launcher.Guests;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
@@ -14,7 +15,7 @@ public sealed record DeletedRow(Guid Id, string Name, int X, int Y, int Size, st
 /// Recently deleted (spec 5.6): every deleted region with the space it still holds, to restore (back, stopped) or to
 /// delete forever. Restore and Delete forever run in the background; Delete forever asks first and needs the database.
 /// </summary>
-public sealed class DeletedModel(IGridController grid, RegionActions actions, ILogger<DeletedModel> log) : PageModel
+public sealed class DeletedModel(IGridController grid, RegionActions actions, RegionRights rights, ILogger<DeletedModel> log) : PageModel
 {
     public const string SpaceUnknown = "Unknown while the database is stopped";
     /// <summary>The space of a region whose query failed although the database runs (the failure is in the launcher log).</summary>
@@ -55,6 +56,8 @@ public sealed class DeletedModel(IGridController grid, RegionActions actions, IL
             return Page();
         }
         if (!actions.TryErase(id)) return NotFound();
+        // The region is going away for good, and whoever owned it with it.
+        rights.Forget(id);
         Notice = $"Deleting {region.Name} forever…";
         return Redirect("/regions/deleted");
     }

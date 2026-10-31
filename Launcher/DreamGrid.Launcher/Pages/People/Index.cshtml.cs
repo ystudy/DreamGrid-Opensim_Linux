@@ -2,6 +2,8 @@ using System.Globalization;
 using DreamGrid.Launcher.Core;
 using DreamGrid.Launcher.Core.OpenSim;
 using DreamGrid.Launcher.Core.Security;
+using DreamGrid.Launcher.Core.Settings;
+using DreamGrid.Launcher.Guests;
 using DreamGrid.Launcher.Security;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -15,9 +17,10 @@ namespace DreamGrid.Launcher.Pages.People;
 /// the owner, an admin for supervisors and guests, a supervisor for guests. A level below 0 is a suspension. The rules are
 /// checked again on every post (<see cref="StaffActions"/>), so a post for someone the buttons were not drawn for is refused and
 /// audited. The spec's "last login" needs Robust's GridUser service, which the launcher doesn't call yet (the 2.5 user admin
-/// pages bring it); region rights come with plan 7b.
+/// pages bring it). The regions the person has rights over are listed under the facts.
 /// </summary>
-public sealed class IndexModel(IRobustClient robust, StaffActions actions, ILogger<IndexModel> log) : PageModel
+public sealed class IndexModel(IRobustClient robust, StaffActions actions, RegionRights rights, Func<LauncherSettings> settings,
+    ILogger<IndexModel> log) : PageModel
 {
     /// <summary>The name to look up, as typed (a GET, so a person can be linked to).</summary>
     [BindProperty(SupportsGet = true)] public string? Name { get; set; }
@@ -28,7 +31,8 @@ public sealed class IndexModel(IRobustClient robust, StaffActions actions, ILogg
     public string? Error { get; private set; }
     public string? Notice { get; private set; }
 
-    public sealed record Person(RobustAccount Account, StaffRole Role, bool Suspended, bool CanSuspend, bool CanUnsuspend)
+    public sealed record Person(RobustAccount Account, StaffRole Role, bool Suspended, bool CanSuspend, bool CanUnsuspend,
+        IReadOnlyList<string> Regions)
     {
         public string FullName => $"{Account.FirstName} {Account.LastName}";
 
@@ -40,6 +44,9 @@ public sealed class IndexModel(IRobustClient robust, StaffActions actions, ILogg
             StaffRole.Supervisor => "Supervisor",
             _ => "Guest",
         };
+
+        /// <summary>"Region rights: " and the region names, or "none".</summary>
+        public string RegionsText => "Region rights: " + (Regions.Count == 0 ? "none" : string.Join(", ", Regions));
 
         public string CreatedText => Account.Created is { } c ? c.UtcDateTime.ToString("d MMMM yyyy", CultureInfo.InvariantCulture) : "Unknown";
     }
@@ -97,6 +104,14 @@ public sealed class IndexModel(IRobustClient robust, StaffActions actions, ILogg
         }
     }
 
+    /// <summary>The names of the regions the person has rights over (regions in Recently deleted don't count).</summary>
+    private IReadOnlyList<string> RegionsOf(RobustAccount account)
+    {
+        var owned = rights.OwnedBy(account.PrincipalId).Select(r => r.Region).ToHashSet();
+        return settings().Regions.Where(r => r.DeletedAt is null && owned.Contains(r.Uuid)).Select(r => r.Name)
+            .Order(StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
     private void Show(RobustAccount account)
     {
         var suspended = account.UserLevel < 0;
@@ -105,13 +120,14 @@ public sealed class IndexModel(IRobustClient robust, StaffActions actions, ILogg
             var view = actions.RoleOf(account);
             Found = new Person(account, view.Current, suspended,
                 CanSuspend: !suspended && actions.Refusal(User, account, StaffChange.Suspend) is null,
-                CanUnsuspend: suspended && actions.Refusal(User, account, StaffChange.Unsuspend) is null);
+                CanUnsuspend: suspended && actions.Refusal(User, account, StaffChange.Unsuspend) is null,
+                RegionsOf(account));
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             // Who may unsuspend depends on the level they get back, which can't be read: shown, but no buttons.
             log.LogWarning("People: the suspended list could not be read ({Error}).", e.GetType().Name);
-            Found = new Person(account, StaffRole.None, suspended, CanSuspend: false, CanUnsuspend: false);
+            Found = new Person(account, StaffRole.None, suspended, CanSuspend: false, CanUnsuspend: false, RegionsOf(account));
             Error ??= "The list of suspended people couldn't be read, so this person can't be changed here now.";
         }
         Name = Found.FullName;

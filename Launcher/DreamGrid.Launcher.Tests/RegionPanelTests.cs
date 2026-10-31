@@ -427,7 +427,10 @@ public sealed class RegionPanelTests : IAsyncLifetime
     {
         foreach (var id in new[] { HomeId, SunsetId, IsleId })
         {
-            var text = Text(await PageAsync(id)).ToLowerInvariant();
+            var doc = await PageAsync(id);
+            // The Region owner card says "program" on purpose: a guest's restart depends on who shares it (RegionOwnerCardTests).
+            doc.QuerySelector("#region-owner")!.Remove();
+            var text = Text(doc).ToLowerInvariant();
             Assert.DoesNotContain("program", text);
             Assert.DoesNotContain("instance", text);
         }

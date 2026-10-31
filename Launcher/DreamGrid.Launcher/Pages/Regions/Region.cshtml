@@ -161,6 +161,44 @@
         </details>
     </form>
 
+    <section id="region-owner" class="region-owner mb-3">
+        <h3 class="h6">Region owner</h3>
+        @if (Model.Error is not null)
+        {
+            <p class="error-box error alert alert-danger py-2" role="alert">@Model.Error</p>
+        }
+        @if (Model.Right is { Held: true } owner)
+        {
+            <p class="mb-2">@owner.OwnerName has region rights since @Model.RightSince.</p>
+            <form method="post" action="/regions/region/@Model.Id?handler=revoke" asp-antiforgery="true" class="mb-2"
+                  data-confirm="Remove @(owner.OwnerName)'s region rights for @(Model.Name)?">
+                <button type="submit" class="btn btn-outline-danger btn-sm">Remove region rights</button>
+            </form>
+        }
+        else
+        {
+            <form method="post" action="/regions/region/@Model.Id?handler=grant" asp-antiforgery="true" class="mb-2">
+                <label class="form-label" for="region-owner-name">Avatar name</label>
+                <div class="input-group input-group-sm">
+                    <input class="form-control" id="region-owner-name" name="owner" value="@Model.OwnerName" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="First Last">
+                    <button type="submit" class="btn btn-primary">Give region rights</button>
+                </div>
+            </form>
+        }
+        @if (Model.MoveText is not null)
+        {
+            <p class="form-text">@Model.MoveText</p>
+        }
+        @if (Model.SharedText is not null)
+        {
+            <p class="form-text">@Model.SharedText</p>
+            <form method="post" action="/regions/region/@Model.Id?handler=ownprogram" asp-antiforgery="true" class="mb-2"
+                  data-confirm="@Model.OwnProgramAsk">
+                <button type="submit" class="btn btn-outline-secondary btn-sm">Give @Model.Name its own program</button>
+            </form>
+        }
+    </section>
+
     <div class="d-flex flex-wrap gap-3 mb-3">
         <a href="/regions/region/@Model.Id/move">Move…</a>
         <a href="/regions/region/@Model.Id/runs">How it runs…</a>
@@ -170,3 +208,7 @@
     </div>
     <p class="mb-0"><a class="region-settings-link" href="/regions/region/@Model.Id/settings">Settings…</a></p>
 </div>
+
+@section Scripts {
+<script src="/js/confirm.js"></script>
+}

@@ -1,16 +1,17 @@
 using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Endpoints;
+using DreamGrid.Launcher.Guests;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace DreamGrid.Launcher.Pages.Regions;
 
-/// <summary>One row of the page's plain region list (the page works without JavaScript).</summary>
-public sealed record RegionRow(Guid Id, string Name, string StateText, string RunsWithText, int X, int Y, int Size);
+/// <summary>One row of the page's plain region list (the page works without JavaScript); <c>Owner</c> is the guest who has region rights over it.</summary>
+public sealed record RegionRow(Guid Id, string Name, string StateText, string RunsWithText, int X, int Y, int Size, string? Owner = null);
 
 /// <summary>The Regions page (spec 5.2): region types, the map (drawn by map.js) and a plain list of the regions.</summary>
-public sealed class IndexModel(IGridController grid) : PageModel
+public sealed class IndexModel(IGridController grid, RegionRights rights) : PageModel
 {
     public IReadOnlyList<RegionType> Types { get; private set; } = [];
 
@@ -43,7 +44,8 @@ public sealed class IndexModel(IGridController grid) : PageModel
             live.TryGetValue(r.Uuid, out var status);
             var others = status?.RunsWith ?? [];
             return new RegionRow(r.Uuid, r.Name, StatusApi.RegionStateText(status?.State ?? RegionState.Stopped),
-                others.Count == 0 ? "Runs on its own" : "Runs with " + string.Join(", ", others), r.X, r.Y, r.Size);
+                others.Count == 0 ? "Runs on its own" : "Runs with " + string.Join(", ", others), r.X, r.Y, r.Size,
+                rights.Of(r.Uuid) is { Held: true } right ? right.OwnerName : null);
         }).ToList();
     }
 }
