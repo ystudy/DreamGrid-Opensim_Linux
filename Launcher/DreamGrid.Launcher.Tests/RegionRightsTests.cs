@@ -154,6 +154,24 @@ public sealed class RegionRightsTests : IDisposable
     }
 
     [Fact]
+    public void BeginMove_keeps_the_home_only_for_the_same_right()
+    {
+        var rights = New();
+        rights.Grant(Beach, Ann, "Ann Guest");
+        var stale = rights.Of(Beach)!;
+        rights.Remove(Beach); // never moved: dropped at once
+
+        Assert.False(rights.BeginMove(stale, 1));
+        Assert.Null(rights.HomeEstateOf(Beach));
+
+        rights.Grant(Beach, Ann, "Ann Guest");
+        Assert.True(rights.BeginMove(rights.Of(Beach)!, 1));
+        Assert.Equal(1, rights.HomeEstateOf(Beach));
+        rights.Remove(Beach); // moving: it has to go back now
+        Assert.Equal(EstateMove.ToGrid, rights.Of(Beach)!.Pending);
+    }
+
+    [Fact]
     public void Owner_estate_keeps_its_name()
     {
         var rights = New();

@@ -155,6 +155,65 @@ public sealed class RegionEstateSyncTests : IDisposable
     }
 
     [Fact]
+    public async Task Remove_before_the_first_move_began_stops_it()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        _rights.Grant(Beach, Ann, "Ann Guest");
+        // Taken away while the sync reads where the region is now: it never moved, so the right just goes.
+        _grid.OnEstateOf = region => { _rights.Remove(region); return 1; };
+
+        await New().SyncOnceAsync(ct);
+
+        Assert.Equal([$"EstateOf {Beach}"], EstateCalls());
+        Assert.Null(_rights.Of(Beach));
+        Assert.Null(_rights.HomeEstateOf(Beach));
+        Assert.Null(_rights.EstateOf(Ann));
+        Assert.False(File.Exists(AuditFile) && File.ReadAllText(AuditFile).Length > 0, "a move was audited");
+    }
+
+    [Fact]
+    public async Task A_right_removed_while_another_region_moves_is_not_moved()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        _rights.Grant(Beach, Ann, "Ann Guest");
+        _rights.Grant(Isle, Ann, "Ann Guest");
+        _grid.OnLinkEstate = (region, _) => { if (region == Beach) _rights.Remove(Isle); };
+
+        await New().SyncOnceAsync(ct);
+
+        Assert.DoesNotContain(EstateCalls(), c => c.Contains(Isle.ToString(), StringComparison.Ordinal));
+        Assert.Null(_rights.Of(Isle));
+        Assert.Null(_rights.HomeEstateOf(Isle));
+    }
+
+    [Fact]
+    public async Task Regrant_during_a_move_back_keeps_the_new_move()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var bob = Guid.Parse("b0000000-0000-0000-0000-00000000000b");
+        var sync = New();
+        _rights.Grant(Beach, Ann, "Ann Guest");
+        await sync.SyncOnceAsync(ct);
+        _rights.Remove(Beach);
+        _grid.OnLinkEstate = (region, estate) => { if (estate == 1) _rights.Grant(region, bob, "Bob Guest"); };
+
+        await sync.SyncOnceAsync(ct);
+
+        // Back in the grid's estate, and handed to Bob meanwhile: his move is still to do, from the same home.
+        var r = _rights.Of(Beach)!;
+        Assert.Equal((bob, EstateMove.ToOwner), (r.Owner, r.Pending));
+        Assert.Equal(1, _rights.HomeEstateOf(Beach));
+
+        _grid.OnLinkEstate = (_, _) => { };
+        await sync.SyncOnceAsync(ct);
+
+        Assert.Equal([$"CreateEstate {Beach} {bob} Bob Guest Estate", $"LinkEstate {Beach} 101"], EstateCalls()[^2..]);
+        Assert.Single(EstateCalls(), c => c.StartsWith("EstateOf ", StringComparison.Ordinal)); // the home was kept, not read again
+        Assert.Null(_rights.Of(Beach)!.Pending);
+        Assert.Equal(1, _rights.HomeEstateOf(Beach));
+    }
+
+    [Fact]
     public async Task Failure_keeps_move_pending_and_warns_once()
     {
         var ct = TestContext.Current.CancellationToken;

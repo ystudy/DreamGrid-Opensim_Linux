@@ -145,6 +145,24 @@ public sealed class RegionRights
     }
 
     /// <summary>
+    /// Starts the first move of <paramref name="right"/>'s region into its owner's estate: remembers <paramref name="home"/>, the
+    /// estate it leaves, when the region's right is still that one, and returns whether it is. From then on a
+    /// <see cref="Remove"/> sends the region back instead of dropping the right. False (nothing kept) when the right was taken
+    /// away or handed on meanwhile; then the move must not go ahead.
+    /// </summary>
+    public bool BeginMove(RegionRight right, int home)
+    {
+        lock (_gate)
+        {
+            if (_data.Rights.FirstOrDefault(r => r.Region == right.Region) != right) return false;
+            _data.Homes.RemoveAll(h => h.Region == right.Region);
+            _data.Homes.Add(new HomeEstate(right.Region, home));
+            Save();
+            return true;
+        }
+    }
+
+    /// <summary>
     /// The pending move is done. A region that moved into its owner's estate has nothing left to do; one that moved back to the
     /// grid's loses its entry and the estate it came from.
     /// </summary>

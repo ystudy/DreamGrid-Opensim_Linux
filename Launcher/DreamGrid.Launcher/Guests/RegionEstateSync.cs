@@ -43,9 +43,17 @@ public sealed class RegionEstateSync(IGridController grid, RegionRights rights, 
         foreach (var right in pending)
         {
             if (regions.GetValueOrDefault(right.Region) is not { State: RegionState.Running } region) continue;
+            // Taken away or handed on since the pass began: the right as it is now waits for the next pass.
+            if (rights.Of(right.Region) != right) continue;
             try
             {
-                var estate = right.Pending == EstateMove.ToOwner ? await IntoOwnersAsync(right, ct) : await BackAsync(right, region, ct);
+                string? estate;
+                if (right.Pending == EstateMove.ToOwner)
+                {
+                    if (await IntoOwnersAsync(right, ct) is not { } owners) continue;
+                    estate = owners;
+                }
+                else estate = await BackAsync(right, region, ct);
                 if (estate is not null)
                     audit.Write(new AuditEntry("DreamGrid", null, "system", null, "estate-move", $"{region.Name} → {estate}", "ok"));
                 rights.MoveDone(right);
@@ -60,13 +68,19 @@ public sealed class RegionEstateSync(IGridController grid, RegionRights rights, 
         }
     }
 
-    /// <summary>Moves the region into its owner's estate, making it when they have none (or it is gone); returns its name.</summary>
-    private async Task<string> IntoOwnersAsync(RegionRight right, CancellationToken ct)
+    /// <summary>
+    /// Moves the region into its owner's estate, making it when they have none (or it is gone); returns its name, or null
+    /// (nothing moved) when the right was taken away or handed on before the first move began.
+    /// </summary>
+    private async Task<string?> IntoOwnersAsync(RegionRight right, CancellationToken ct)
     {
-        // Remembered before the region leaves, so a right taken away meanwhile still knows where it goes back to.
+        // Remembered before the region leaves, and only while the right is still this one, so a right taken away meanwhile
+        // either never moves or knows where it goes back to.
         if (rights.HomeEstateOf(right.Region) is null)
-            rights.SetHomeEstate(right.Region, await grid.EstateOfAsync(right.Region, ct)
-                ?? throw new InvalidOperationException("The region is in no estate yet."));
+        {
+            var home = await grid.EstateOfAsync(right.Region, ct) ?? throw new InvalidOperationException("The region is in no estate yet.");
+            if (!rights.BeginMove(right, home)) return null;
+        }
 
         if (rights.OwnerEstateOf(right.Owner) is { } owned)
         {
