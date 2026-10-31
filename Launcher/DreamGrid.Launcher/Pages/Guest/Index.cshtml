@@ -14,6 +14,11 @@
     <li>Pick @Model.GridName on the login screen and sign in with your avatar name and password.</li>
 </ol>
 
+@if (Model.OwnsRegions)
+{
+    <p><a href="/guest/regions">My regions</a></p>
+}
+
 <form method="post" action="/guest/sign-out" asp-antiforgery="true">
     <button type="submit" class="btn btn-outline-secondary">Sign out</button>
 </form>

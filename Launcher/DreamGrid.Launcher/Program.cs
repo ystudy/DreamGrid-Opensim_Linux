@@ -228,6 +228,7 @@ builder.Services.AddSingleton<IOnlineUsers>(sp => new OnlineUsers(sp.GetRequired
     sp.GetRequiredService<ILogger<OnlineUsers>>()));
 builder.Services.AddSingleton<GridActions>();
 builder.Services.AddSingleton<RegionActions>();
+builder.Services.AddSingleton<RegionRestarts>();
 builder.Services.AddSingleton<SetupProgress>();
 builder.Services.AddSingleton<SetupRunner>();
 builder.Services.AddSingleton<RegionJob>();
