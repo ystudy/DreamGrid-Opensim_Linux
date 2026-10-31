@@ -224,6 +224,12 @@ builder.Services.AddSingleton(sp => new EmailTokens(Path.Combine(paths.Guests, "
 // Email (plan 8a): the mail accounts, passwords protected by data protection.
 builder.Services.AddSingleton(sp => new EmailAccounts(Path.Combine(paths.Email, "accounts.json"), sp.GetRequiredService<IDataProtectionProvider>(),
     sp.GetRequiredService<ILogger<EmailAccounts>>()));
+// The outbox, send counts and recent problems; one sender is the only way in, and the worker sends in the background.
+builder.Services.AddSingleton(sp => new EmailOutbox(paths.Email, sp.GetRequiredService<IDataProtectionProvider>(), sp.GetRequiredService<TimeProvider>(),
+    log: sp.GetRequiredService<ILogger<EmailOutbox>>()));
+builder.Services.AddSingleton<IMailTransport, SmtpMailTransport>();
+builder.Services.AddSingleton<EmailSender>();
+builder.Services.AddHostedService<EmailWorker>();
 // The proof-of-work key lives in the owner-only security folder; one key for the life of the install. The image CAPTCHA signs with
 // the same key (its signatures carry a label of their own), so it is read once, when the first of the two is needed.
 var powKey = new Lazy<byte[]>(() => ProofOfWork.LoadOrCreateKey(Path.Combine(paths.Security, "pow.key")));
