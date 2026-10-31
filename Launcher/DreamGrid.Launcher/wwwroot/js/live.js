@@ -40,3 +40,21 @@ function copyButton(source, button) {
         }
     });
 }
+
+// The Power and OAR menus are <details> elements, which stay open until their button is clicked again. A click
+// outside an open menu closes it, and so does Escape (which puts the focus back on that menu's button).
+function openMenus() {
+    return document.querySelectorAll("details.power-menu[open], details.oar-menu[open]");
+}
+document.addEventListener("click", function (e) {
+    openMenus().forEach(function (menu) {
+        if (!menu.contains(e.target)) menu.open = false;
+    });
+});
+document.addEventListener("keydown", function (e) {
+    if (e.key !== "Escape") return;
+    openMenus().forEach(function (menu) {
+        menu.open = false;
+        menu.querySelector("summary").focus();
+    });
+});
