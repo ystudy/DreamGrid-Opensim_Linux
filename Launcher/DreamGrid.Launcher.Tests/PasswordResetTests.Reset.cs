@@ -292,4 +292,54 @@ public sealed partial class PasswordResetTests
         Assert.DoesNotContain(NewPassword, logs);
         Assert.DoesNotContain(token, logs);
     }
+
+    [Fact]
+    public async Task Right_code_survives_a_bad_password()
+    {
+        await using var rig = Factory(CodeForStaff);
+        GiveEmails(rig);
+        var (secret, _) = Enrol(rig, rig.F.Services.GetRequiredService<TwoFactorStore>(), TestAuth.AdminId, "Test Admin");
+        var token = await LinkTokenAsync(rig, "Test Admin", "admin@example.com");
+        var code = CodeNow(rig, secret);
+
+        Assert.Equal("That password is too common. Choose another.", Error(await ResetAsync(Client(rig), token, "password123", code: code)));
+        Assert.NotNull(Done(await ResetAsync(Client(rig), token, code: code)));
+        Assert.Equal(0, Actions(rig.F, "reset-code-wrong"));
+    }
+
+    [Fact]
+    public async Task Right_code_survives_a_failed_write()
+    {
+        await using var rig = Factory(CodeForStaff);
+        GiveEmails(rig);
+        var (_, backup) = Enrol(rig, rig.F.Services.GetRequiredService<TwoFactorStore>(), TestAuth.AdminId, "Test Admin");
+        var token = await LinkTokenAsync(rig, "Test Admin", "admin@example.com");
+        rig.F.Robust.PasswordsDown = true;
+
+        Assert.Equal("Couldn't change the password right now. Try again in a few minutes.", Error(await ResetAsync(Client(rig), token, code: backup[0])));
+
+        rig.F.Robust.PasswordsDown = false;
+        Assert.NotNull(Done(await ResetAsync(Client(rig), token, code: backup[0])));
+        // Spent now that the reset worked.
+        Assert.False(rig.F.Services.GetRequiredService<TwoFactorStore>().VerifyCode(TestAuth.AdminId, backup[0], out _));
+    }
+
+    [Fact]
+    public async Task A_written_password_always_ends_sessions_even_if_the_link_ran_out_meanwhile()
+    {
+        await using var rig = Factory();
+        GiveEmails(rig);
+        var guest = Client(rig);
+        await guest.GetAsync("/__test/guest-signin", Ct);
+        var token = await LinkTokenAsync(rig, "Test Guest", "guest@example.com");
+        // The write is slow: the link's 30 minutes run out while it happens.
+        rig.F.Robust.OnSetPassword = () => rig.F.Time.Advance(TimeSpan.FromMinutes(31));
+
+        var page = await ResetAsync(Client(rig), token);
+
+        Assert.NotNull(Done(page));
+        Assert.NotEqual(HttpStatusCode.OK, (await guest.GetAsync("/guest", Ct)).StatusCode);
+        Assert.Equal(1, Actions(rig.F, "password-reset"));
+        Assert.Equal(Expired, (await PageAsync(Client(rig), "/guest/reset-password?token=" + token)).QuerySelector("#reset-expired")?.TextContent.Trim());
+    }
 }

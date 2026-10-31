@@ -30,11 +30,12 @@ public enum ResetResult { Done, Expired, WrongCode, Locked, BadPassword, WriteFa
 /// <see cref="Purpose"/>), built from the grid's own address in the settings, never the request's Host header. The audit log
 /// gets the outcome, never the typed email or the token.
 /// <para>The link: <see cref="OpenAsync"/> reads whose it is without spending it (<see cref="EmailTokens.Find"/>), and refuses it
-/// when the account is gone, suspended or its rule is now off. <see cref="ResetAsync"/> checks, in order, the two-factor code (when
-/// the rule asks and the person has it on: staff and owner from the staff file, residents from theirs; a wrong one counts in the
-/// sign-in throttle at that person's door), the password rules, then writes the password (<see cref="IRobustPasswords"/>) and only
-/// then spends the link, so a failed write leaves it working and of two tabs only one changes anything. Afterwards every session
-/// the person had ends (staff and guest) and they get a short "password changed" email.</para>
+/// when the account is gone, suspended or its rule is now off. <see cref="ResetAsync"/> (one at a time) checks, in order, the
+/// password rules and the two-factor code (when the rule asks and the person has it on: staff and owner from the staff file,
+/// residents from theirs; a wrong one counts in the sign-in throttle at that person's door), then writes the password
+/// (<see cref="IRobustPasswords"/>). Only a written password spends the link and the code, so a failed write or a weak password
+/// costs nothing, and of two tabs only one changes anything. Once it is written, every session the person had ends (staff and
+/// guest), the change is audited and they get a short "password changed" email, even if the link ran out during the write.</para>
 /// </summary>
 public sealed class PasswordResets(Func<LauncherSettings> settings, IRobustClient robust, ResetLimits limits, EmailTokens tokens,
     EmailSender sender, AuditLog audit, IRobustPasswords passwords, TwoFactorStore staffTwoFactor, ResidentTwoFactor residents,
@@ -153,33 +154,24 @@ public sealed class PasswordResets(Func<LauncherSettings> settings, IRobustClien
         if (await OpenAsync(token, ct) is not { } link) return (ResetResult.Expired, null, null);
         var a = link.Account;
         var full = $"{a.FirstName} {a.LastName}";
+        var door = link.Role == StaffRole.None ? SignInDoor.Guest : SignInDoor.Staff;
+        var key = AvatarName.Parse(full).Key;
+        var store = StoreFor(link.Role);
+
+        // The password first, and the code only checked here: a right code is used up only once the password is written, so a
+        // weak password or a failed write never costs the person their code (or a backup code).
+        if (PasswordRules.Problem(password, again, a.FirstName, a.LastName) is { } problem) return (ResetResult.BadPassword, link, problem);
         if (link.NeedsCode)
         {
-            var door = link.Role == StaffRole.None ? SignInDoor.Guest : SignInDoor.Staff;
-            var key = AvatarName.Parse(full).Key;
             if (throttle.IsLocked(door, key, ip)) return (ResetResult.Locked, link, null);
-            var store = StoreFor(link.Role);
             if (store.StateOf(link.Principal) == TwoFactorState.Unknown) return (ResetResult.CodeUnknown, link, null);
-            bool right;
-            try
-            {
-                right = store.VerifyCode(link.Principal, code ?? "", out _);
-            }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-            {
-                log.LogWarning("Password reset: a two-factor code for first name {First} couldn't be marked used: {Message}",
-                    LogText.Clean(a.FirstName, 32), e.Message);
-                return (ResetResult.WriteFailed, link, null);
-            }
-            if (!right)
+            if (!store.CheckCode(link.Principal, code ?? ""))
             {
                 throttle.RecordFailure(door, key, ip);
                 audit.Write(new AuditEntry(full, link.Principal, link.Role.AuditName(), ip?.ToString(), "reset-code-wrong", null, "refused"));
                 return (ResetResult.WrongCode, link, null);
             }
         }
-
-        if (PasswordRules.Problem(password, again, a.FirstName, a.LastName) is { } problem) return (ResetResult.BadPassword, link, problem);
 
         try
         {
@@ -191,12 +183,26 @@ public sealed class PasswordResets(Func<LauncherSettings> settings, IRobustClien
                 LogText.Clean(a.FirstName, 32), e.InnerException?.Message ?? e.Message);
             return (ResetResult.WriteFailed, link, null);
         }
-        // Spent only now, so a failed write keeps the link working.
-        if (!tokens.TryRedeem(Purpose, link.Principal, token)) return (ResetResult.Expired, null, null);
 
+        // The password is changed now, so everything below happens whatever else does: the link is spent (it may have run out,
+        // or been replaced by a newer one, while the write took its time), the code is used up, sessions end, the change is
+        // audited and the person told.
+        tokens.TryRedeem(Purpose, link.Principal, token);
+        if (link.NeedsCode)
+        {
+            try
+            {
+                store.VerifyCode(link.Principal, code ?? "", out _);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException)
+            {
+                log.LogWarning("Password reset: a two-factor code for first name {First} couldn't be marked used: {Message}",
+                    LogText.Clean(a.FirstName, 32), e.Message);
+            }
+            throttle.RecordSuccess(door, key);
+        }
         sessions.EndAll(link.Principal);
         guestStamps.Rotate(link.Principal);
-        if (link.NeedsCode) throttle.RecordSuccess(link.Role == StaffRole.None ? SignInDoor.Guest : SignInDoor.Staff, AvatarName.Parse(full).Key);
         if (a.Email.Trim() is { Length: > 0 } to)
             sender.Queue(EmailTemplates.PasswordChanged, to, full, new Dictionary<string, string> { ["AvatarName"] = full });
         audit.Write(new AuditEntry(full, link.Principal, link.Role.AuditName(), ip?.ToString(), "password-reset", null, "ok"));

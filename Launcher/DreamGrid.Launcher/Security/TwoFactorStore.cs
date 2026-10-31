@@ -114,7 +114,15 @@ public sealed class TwoFactorStore(string file, IDataProtectionProvider dp, Time
     /// <see cref="IOException"/> or <see cref="UnauthorizedAccessException"/>, so callers can tell it from a wrong code, and nothing
     /// is used up.
     /// </summary>
-    public bool VerifyCode(Guid principal, string codeOrBackup, out bool usedBackup)
+    public bool VerifyCode(Guid principal, string codeOrBackup, out bool usedBackup) => Match(principal, codeOrBackup, spend: true, out usedBackup);
+
+    /// <summary>
+    /// Whether <paramref name="codeOrBackup"/> is right now, as <see cref="VerifyCode"/> would say, without using it up: for a step
+    /// that can still fail afterwards (a password reset checks the code, writes the password, then calls VerifyCode).
+    /// </summary>
+    public bool CheckCode(Guid principal, string codeOrBackup) => Match(principal, codeOrBackup, spend: false, out _);
+
+    private bool Match(Guid principal, string codeOrBackup, bool spend, out bool usedBackup)
     {
         usedBackup = false;
         lock (_gate)
@@ -127,6 +135,7 @@ public sealed class TwoFactorStore(string file, IDataProtectionProvider dp, Time
             {
                 var secret = Unprotect(protectedSecret);
                 if (secret is null || !Totp.Verify(secret, typed, time.GetUtcNow(), e.LastStep, out var step)) return false;
+                if (!spend) return true;
                 state[principal] = e with { LastStep = step };
                 Save(state);
                 return true;
@@ -139,11 +148,12 @@ public sealed class TwoFactorStore(string file, IDataProtectionProvider dp, Time
             for (var i = 0; i < backup.Count; i++) // every hash is compared, so the time does not say which matched
                 if (CryptographicOperations.FixedTimeEquals(hash, Encoding.ASCII.GetBytes(backup[i] ?? ""))) at = i;
             if (at < 0) return false;
+            usedBackup = true;
+            if (!spend) return true;
             var rest = new List<string>(backup);
             rest.RemoveAt(at);
             state[principal] = e with { Backup = rest };
             Save(state);
-            usedBackup = true;
             return true;
         }
     }

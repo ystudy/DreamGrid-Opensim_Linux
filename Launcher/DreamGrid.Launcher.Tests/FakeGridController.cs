@@ -499,9 +499,13 @@ internal sealed class FakeRobustAccounts : IRobustClient, IRobustPasswords
         return this;
     }
 
+    /// <summary>Runs inside <see cref="SetAsync"/> before the password is stored (e.g. to let the clock move during a slow write).</summary>
+    public Action? OnSetPassword { get; set; }
+
     public Task SetAsync(Guid principal, string password, CancellationToken ct)
     {
         if (PasswordsDown) throw new RobustPasswordsUnavailableException("The password could not be written.", new TimeoutException());
+        OnSetPassword?.Invoke();
         foreach (var (key, a) in _accounts.ToList())
             if (a.Account.PrincipalId == principal) _accounts[key] = (a.Account, password);
         return Task.CompletedTask;
