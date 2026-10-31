@@ -1,5 +1,8 @@
 @page "/security"
 @model DreamGrid.Launcher.Pages.Security.IndexModel
+@using DreamGrid.Launcher.Core.Security
+@using DreamGrid.Launcher.Core.Settings
+@inject Func<LauncherSettings> Settings
 @{
     ViewData["Title"] = "Security";
 }
@@ -27,6 +30,12 @@
         Any other address gets a "Not found" answer, including on the sign-in page. Guests and the public pages are reachable from any address; this list covers the staff pages. This computer is always allowed.</p>
     <button type="submit" class="btn btn-primary mt-2">Save</button>
 </form>
+
+@if (AdminRule.HasStaffPages(Settings()))
+{
+    <h2 class="mt-4">Pages for guests</h2>
+    <p><a id="legal-editor-link" href="/security/legal">Write the Terms, Privacy, Cookies and Contact pages</a></p>
+}
 
 <h2 class="mt-4">People with two-factor sign-in</h2>
 @if (Model.TwoFactorDamaged)

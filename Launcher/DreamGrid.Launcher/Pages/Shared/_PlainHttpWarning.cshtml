@@ -1,0 +1,12 @@
+@using DreamGrid.Launcher.Core.Config
+@using DreamGrid.Launcher.Core.Security
+@using DreamGrid.Launcher.Core.Settings
+@inject Func<LauncherSettings> Settings
+@{
+    // A public grid with a guest side, reached over plain HTTP: passwords typed on the site cross the internet unencrypted.
+    var s = Settings();
+}
+@if (HostAddress.IsPublic(s.Hostname) && AdminRule.HasStaffPages(s) && !Context.Request.IsHttps)
+{
+    <div id="plain-http-warning" class="alert alert-warning" role="alert">This website uses plain HTTP. On a public grid, passwords typed here cross the internet unencrypted and could be read on the way.</div>
+}

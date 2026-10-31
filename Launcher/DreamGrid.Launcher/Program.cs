@@ -174,6 +174,8 @@ builder.Services.AddRazorPages(o =>
     // The operator's legal pages and the sign-up page are public in the same way.
     foreach (var publicPage in new[] { "/Home", "/Legal", "/SignUp" })
         o.Conventions.AddPageApplicationModelConvention(publicPage, m => m.Filters.Add(new GuestSideOnly()));
+    // The owner's legal editor: the Security folder's owner policy, and not there where there is no guest side.
+    o.Conventions.AddPageApplicationModelConvention("/Security/Legal", m => m.Filters.Add(new GuestSideOnly()));
     foreach (var open in new[] { "/Login", "/Login/Code", "/Logout", "/Welcome", "/Waiting", "/SetupDone", "/Setup", "/Home", "/Legal", "/SignUp", "/Guest/SignIn" })
         o.Conventions.AllowAnonymousToPage(open);
     o.Conventions.AllowAnonymousToFolder("/Setup");
@@ -181,7 +183,13 @@ builder.Services.AddRazorPages(o =>
     o.Conventions.AddPageRoute("/Index", "dashboard");
 });
 // The dashboard's script sends the token in this header to /api/grid/*.
-builder.Services.AddAntiforgery(o => o.HeaderName = "RequestVerificationToken");
+// The site's cookies have short names of their own (SiteFacts.Cookies lists them all).
+builder.Services.AddAntiforgery(o =>
+{
+    o.HeaderName = "RequestVerificationToken";
+    o.Cookie.Name = "dg-af";
+});
+builder.Services.Configure<Microsoft.AspNetCore.Mvc.CookieTempDataProviderOptions>(o => o.Cookie.Name = "dg-notice");
 builder.Services.AddGrid(paths, store);
 // Robust's map tiles, fetched on the browser's behalf (the browser never reaches Robust's port).
 builder.Services.AddHttpClient(RegionsApi.RobustMapClient, c => c.Timeout = TimeSpan.FromSeconds(5));

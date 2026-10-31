@@ -1,0 +1,74 @@
+@page "/security/legal"
+@model DreamGrid.Launcher.Pages.Security.LegalModel
+@using DreamGrid.Launcher.Core.Guests
+@using DreamGrid.Launcher.Guests
+@{
+    ViewData["Title"] = "Legal pages";
+}
+<h1>Legal pages</h1>
+<partial name="_PlainHttpWarning" />
+@if (Model.Notice is not null)
+{
+    <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
+}
+<p>Guests see these pages on your website. You write them: DreamGrid supplies no wording. Use Markdown. Leave a page empty to remove it.</p>
+<p id="gate-state" class="fw-semibold">@Model.GateText</p>
+
+<div class="row g-4">
+<div class="col-lg-8">
+<form id="legal-texts" method="post" action="/security/legal" asp-antiforgery="true">
+    @foreach (var id in LegalPages.All)
+    {
+        <div class="mb-3">
+            <label class="form-label" for="text-@id">@LegalPages.Title(id)@(id == LegalPages.Contact ? " (optional)" : "")</label>
+            <textarea class="form-control" id="text-@id" name="Texts[@id]" rows="10" autocomplete="off" spellcheck="true">@(Model.Texts.GetValueOrDefault(id))</textarea>
+        </div>
+    }
+    <button type="submit" formaction="/security/legal?handler=Save" class="btn btn-primary">Save</button>
+    <button type="submit" formaction="/security/legal?handler=Preview" class="btn btn-outline-secondary">Preview</button>
+</form>
+
+<form id="legal-responsibility" class="mt-4" method="post" action="/security/legal?handler=Responsibility" asp-antiforgery="true">
+    <div class="form-check">
+        <input class="form-check-input" type="checkbox" id="Responsible" name="Responsible" value="true" checked="@Model.Responsible">
+        <label class="form-check-label" for="Responsible">I wrote these notices and I am responsible for them.</label>
+    </div>
+    <button type="submit" class="btn btn-outline-primary btn-sm mt-2">Save this</button>
+</form>
+
+@if (Model.Previews.Count > 0)
+{
+    <section id="previews" class="mt-4">
+        <h2>Preview</h2>
+        <p class="hint form-text">Nothing is saved yet.</p>
+        @foreach (var (title, html) in Model.Previews)
+        {
+            <article class="card card-body mb-3">
+                <h3>@title</h3>
+                @Html.Raw(html)
+            </article>
+        }
+    </section>
+}
+</div>
+
+<div class="col-lg-4">
+<aside id="site-facts" class="card card-body">
+    <h2 class="h5">Facts about this software, not legal text</h2>
+    <h3 class="h6 mt-2">Cookies this website sets</h3>
+    <ul class="small">
+        @foreach (var (name, purpose) in SiteFacts.Cookies)
+        {
+            <li><code>@name</code>: @purpose</li>
+        }
+    </ul>
+    <h3 class="h6 mt-2">What is stored, and where</h3>
+    <ul class="small mb-0">
+        @foreach (var (what, where) in SiteFacts.Stored)
+        {
+            <li>@what: @where</li>
+        }
+    </ul>
+</aside>
+</div>
+</div>
