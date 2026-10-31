@@ -399,10 +399,95 @@ public sealed class GridBootTests : IDisposable
         }
     }
 
+    // ---- estates (plan 7b) --------------------------------------------------------------------------
+
+    [Fact]
+    public async Task Region_moves_to_owner_estate_and_back()
+    {
+        var (grid, paths, s, robust) = Make();
+        var ct = TestContext.Current.CancellationToken;
+        try
+        {
+            await grid.StartAsync(ct);
+            await grid.CreateOwnerAsync("Test", "Owner", "pass-word1", null, ct);
+            using var alerts = new AlertListener(s.WebPort, grid.OnRegionAlert);
+            await grid.CreateRegionAsync("Welcome", "island", ct);
+            var beach = await grid.AddRegionAsync(new NewRegion("Beach", 1001, 1000, 1, "island", "Welcome"), ct);
+            var gridEstate = await EstateIdAsync(grid, beach.Uuid, ct);
+
+            // A guest: a second avatar on the grid.
+            var annId = Guid.NewGuid();
+            var robustConsole = new RestConsoleClient(_http, new Uri($"http://127.0.0.1:{s.RobustConsolePort}"), s.Console.User, s.Console.Password);
+            try { await GridConsoleCommands.CreateUserAsync(robustConsole, "Ann", "Guest", "pass-word2", null, annId, TimeSpan.FromSeconds(2), ct); }
+            finally { await robustConsole.CloseAsync(); }
+            await WaitUntilAsync(() => robust.GetAccountAsync("Ann", "Guest", ct).GetAwaiter().GetResult() is not null, TimeSpan.FromSeconds(30), ct);
+
+            var rights = new DreamGrid.Launcher.Guests.RegionRights(Path.Combine(paths.Data, "guests", "region-rights.json"), TimeProvider.System);
+            using var audit = new Core.Logs.AuditLog(Path.Combine(paths.Logs, "audit.log"), TimeProvider.System);
+            var sync = new DreamGrid.Launcher.Guests.RegionEstateSync(grid, rights, audit, TimeProvider.System,
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<DreamGrid.Launcher.Guests.RegionEstateSync>.Instance);
+
+            // Granted: it moves into Ann's own estate the next time the sync looks.
+            rights.Grant(beach.Uuid, annId, "Ann Guest");
+            await sync.SyncOnceAsync(ct);
+            Assert.Null(rights.Of(beach.Uuid)!.Pending);
+            var annEstate = rights.EstateOf(annId);
+            Assert.NotNull(annEstate);
+            Assert.NotEqual(gridEstate, annEstate);
+            Assert.Equal(gridEstate, rights.HomeEstateOf(beach.Uuid));
+            Assert.Equal("Ann Guest Estate", await EstateNameAsync(grid, beach.Uuid, ct));
+            var console = ConsoleOf(grid, beach.Uuid);
+            try
+            {
+                var shown = await console.RunAsync("estate show", TimeSpan.FromSeconds(2), ct);
+                Assert.Contains(shown, l => l.Contains("Ann Guest Estate", StringComparison.Ordinal) && l.Contains($" {annEstate} ", StringComparison.Ordinal)
+                    && l.TrimEnd().EndsWith("Ann Guest", StringComparison.Ordinal));
+            }
+            finally { await console.CloseAsync(); }
+
+            // It stays there through a restart and a change of how it runs.
+            await grid.RegionPowerAsync(beach.Uuid, RegionPower.Restart, ct);
+            await WaitUntilAsync(() => grid.GetStatus().Regions.All(r => r.State == RegionState.Running), TimeSpan.FromMinutes(5), ct);
+            Assert.Equal(annEstate, await EstateIdAsync(grid, beach.Uuid, ct));
+            await grid.ChangeRunsWithAsync(beach.Uuid, null, ct);
+            await WaitUntilAsync(() => grid.GetStatus().Regions.All(r => r.State == RegionState.Running), TimeSpan.FromMinutes(5), ct);
+            Assert.Empty(grid.GetStatus().Regions.Single(r => r.Id == beach.Uuid).RunsWith);
+            Assert.Equal(annEstate, await EstateIdAsync(grid, beach.Uuid, ct));
+
+            // Rights taken away: back in the grid's estate; Ann's estate stays.
+            rights.Remove(beach.Uuid);
+            await sync.SyncOnceAsync(ct);
+            Assert.Null(rights.Of(beach.Uuid));
+            Assert.Equal(gridEstate, await EstateIdAsync(grid, beach.Uuid, ct));
+            Assert.Equal(1L, await ScalarAsync(grid, "SELECT COUNT(*) FROM `opensim`.`estate_settings` WHERE `EstateID` = @id", annEstate!.Value, ct));
+
+            await grid.StopAllAsync(ct);
+        }
+        catch (Exception e) when (e is not Xunit.Sdk.XunitException)
+        {
+            throw new Exception(e.Message + Environment.NewLine + LogTail(paths), e);
+        }
+        finally
+        {
+            await grid.DetachAsync();
+        }
+    }
+
+    private static async Task<int?> EstateIdAsync(GridController grid, Guid region, CancellationToken ct) =>
+        await ScalarAsync(grid, "SELECT `EstateID` FROM `opensim`.`estate_map` WHERE `RegionID` = @id", region.ToString(), ct) is { } id ? Convert.ToInt32(id) : null;
+
+    private static async Task<string?> EstateNameAsync(GridController grid, Guid region, CancellationToken ct) =>
+        (string?)await ScalarAsync(grid, "SELECT s.`EstateName` FROM `opensim`.`estate_map` m JOIN `opensim`.`estate_settings` s " +
+            "ON s.`EstateID` = m.`EstateID` WHERE m.`RegionID` = @id", region.ToString(), ct);
+
     private const string Terrain = "SELECT COUNT(*) FROM `opensim`.`terrain` WHERE `RegionUUID` = @id";
 
     /// <summary>Runs a COUNT(*) query with <c>@id</c> as the region's id, as root on the grid's own MariaDB.</summary>
-    private static async Task<long> CountAsync(GridController grid, string sql, Guid id, CancellationToken ct)
+    private static async Task<long> CountAsync(GridController grid, string sql, Guid id, CancellationToken ct) =>
+        Convert.ToInt64(await ScalarAsync(grid, sql, id.ToString(), ct));
+
+    /// <summary>Runs a query with <c>@id</c> as <paramref name="id"/>, as root on the grid's own MariaDB; null for no row.</summary>
+    private static async Task<object?> ScalarAsync(GridController grid, string sql, object id, CancellationToken ct)
     {
         var s = grid.CurrentSettings();
         var root = new MySqlConnector.MySqlConnectionStringBuilder
@@ -413,8 +498,8 @@ public sealed class GridBootTests : IDisposable
         await using var conn = new MySqlConnector.MySqlConnection(root);
         await conn.OpenAsync(ct);
         await using var cmd = new MySqlConnector.MySqlCommand(sql, conn);
-        cmd.Parameters.AddWithValue("@id", id.ToString());
-        return Convert.ToInt64(await cmd.ExecuteScalarAsync(ct));
+        cmd.Parameters.AddWithValue("@id", id);
+        return await cmd.ExecuteScalarAsync(ct) is { } value and not DBNull ? value : null;
     }
 
     private static async Task WaitUntilAsync(Func<bool> done, TimeSpan timeout, CancellationToken ct)

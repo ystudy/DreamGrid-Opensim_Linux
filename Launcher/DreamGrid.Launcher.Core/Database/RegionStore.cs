@@ -3,7 +3,7 @@ using MySqlConnector;
 
 namespace DreamGrid.Launcher.Core.Database;
 
-/// <summary>A region's rows in the grid's databases: how much space they hold, its map entry, and erasing them.</summary>
+/// <summary>A region's rows in the grid's databases: how much space they hold, its map entry, its estate, and erasing them.</summary>
 public interface IRegionStore
 {
     /// <summary>An estimate of the bytes each region's rows hold, for every id asked (0 when it has none).</summary>
@@ -14,6 +14,9 @@ public interface IRegionStore
 
     /// <summary>Deletes every row the region has in the opensim database, and its Robust row, in one transaction.</summary>
     Task EraseAsync(Guid id, CancellationToken ct);
+
+    /// <summary>The estate the region is in (<c>opensim.estate_map</c>), or null when it is in none yet.</summary>
+    Task<int?> EstateOfAsync(Guid id, CancellationToken ct);
 }
 
 /// <summary>
@@ -109,6 +112,15 @@ public sealed class RegionStore(LauncherSettings s) : IRegionStore
         if (existing.Contains((Robust, "regions")))
             await RunAsync(conn, tx, Deregister, id, ct);
         await tx.CommitAsync(ct);
+    }
+
+    public async Task<int?> EstateOfAsync(Guid id, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        if (!(await ExistingTablesAsync(conn, ct)).Contains((OpenSim, "estate_map"))) return null;
+        await using var cmd = new MySqlCommand("SELECT `EstateID` FROM `opensim`.`estate_map` WHERE `RegionID` = @id", conn);
+        cmd.Parameters.AddWithValue("@id", id.ToString());
+        return await cmd.ExecuteScalarAsync(ct) is { } estate and not DBNull ? Convert.ToInt32(estate) : null;
     }
 
     private async Task<MySqlConnection> OpenAsync(CancellationToken ct)

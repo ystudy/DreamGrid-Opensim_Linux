@@ -110,6 +110,12 @@ public sealed class RegionRights
         lock (_gate) return _data.Estates.FirstOrDefault(e => e.Owner == owner)?.EstateId;
     }
 
+    /// <summary>The estate the person owns on this grid with its name, or null before their first region moved.</summary>
+    public OwnerEstate? OwnerEstateOf(Guid owner)
+    {
+        lock (_gate) return _data.Estates.FirstOrDefault(e => e.Owner == owner);
+    }
+
     /// <summary>Remembers the estate the person owns; their later regions go into it.</summary>
     public void SetEstate(Guid owner, int estateId, string name)
     {
@@ -142,12 +148,21 @@ public sealed class RegionRights
     /// The pending move is done. A region that moved into its owner's estate has nothing left to do; one that moved back to the
     /// grid's loses its entry and the estate it came from.
     /// </summary>
-    public void MoveDone(Guid region)
+    public void MoveDone(Guid region) => MoveDone(region, null);
+
+    /// <summary>
+    /// As <see cref="MoveDone(Guid)"/> for the move <paramref name="right"/> asked for, when the region's right is still that one;
+    /// a right taken away or handed on meanwhile keeps its own move.
+    /// </summary>
+    public void MoveDone(RegionRight right) => MoveDone(right.Region, right);
+
+    private void MoveDone(Guid region, RegionRight? expected)
     {
         lock (_gate)
         {
             var at = _data.Rights.FindIndex(r => r.Region == region);
             if (at < 0 || _data.Rights[at].Pending is null) return;
+            if (expected is not null && _data.Rights[at] != expected) return;
             if (_data.Rights[at].Pending == EstateMove.ToGrid)
             {
                 _data.Rights.RemoveAt(at);

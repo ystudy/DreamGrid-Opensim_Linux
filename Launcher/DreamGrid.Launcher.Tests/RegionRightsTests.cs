@@ -128,6 +128,43 @@ public sealed class RegionRightsTests : IDisposable
     }
 
     [Fact]
+    public void A_move_done_for_a_right_that_changed_meanwhile_changes_nothing()
+    {
+        var rights = New();
+        rights.Grant(Beach, Ann, "Ann Guest");
+        rights.SetHomeEstate(Beach, 1);
+        var moving = rights.Of(Beach)!;
+
+        // Taken away while it moved into Ann's estate: it must still go back.
+        rights.Remove(Beach);
+        rights.MoveDone(moving);
+        Assert.Equal(EstateMove.ToGrid, rights.Of(Beach)!.Pending);
+        Assert.Equal(1, rights.HomeEstateOf(Beach));
+
+        // Handed to Bob while it moved back: it goes into Bob's estate next.
+        var back = rights.Of(Beach)!;
+        _time.Advance(TimeSpan.FromMinutes(1));
+        rights.Grant(Beach, Bob, "Bob Guest");
+        rights.MoveDone(back);
+        Assert.Equal((Bob, EstateMove.ToOwner), (rights.Of(Beach)!.Owner, rights.Of(Beach)!.Pending));
+        Assert.Equal(1, rights.HomeEstateOf(Beach));
+
+        rights.MoveDone(rights.Of(Beach)!);
+        Assert.Null(rights.Of(Beach)!.Pending);
+    }
+
+    [Fact]
+    public void Owner_estate_keeps_its_name()
+    {
+        var rights = New();
+        Assert.Null(rights.OwnerEstateOf(Ann));
+
+        rights.SetEstate(Ann, 101, "Ann Guest Estate 2");
+
+        Assert.Equal(new OwnerEstate(Ann, 101, "Ann Guest Estate 2"), rights.OwnerEstateOf(Ann));
+    }
+
+    [Fact]
     public void Estate_per_owner_reused_across_regions()
     {
         var rights = New();
