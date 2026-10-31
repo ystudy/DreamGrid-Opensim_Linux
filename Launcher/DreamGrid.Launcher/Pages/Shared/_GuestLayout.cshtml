@@ -1,0 +1,34 @@
+@using DreamGrid.Launcher.Core.Settings
+@inject Func<LauncherSettings> Settings
+@{
+    var gridName = Settings().GridName;
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>@(ViewData["Title"] is string t ? t + " - " : "")@gridName</title>
+    <script src="/js/theme.js"></script>
+    <link rel="stylesheet" href="/lib/bootstrap/bootstrap.min.css">
+    <link rel="stylesheet" href="/css/site.css">
+    @await RenderSectionAsync("Head", required: false)
+</head>
+<body>
+@* The guest pages: the grid's name and nothing of the staff side. *@
+<header class="navbar navbar-expand bg-body border-bottom shadow-sm">
+    <div class="container">
+        <strong class="navbar-brand grid-name me-auto">@gridName</strong>
+    </div>
+</header>
+<main class="container py-4">
+    @RenderBody()
+</main>
+@* Links that belong at the foot of every guest page go in a "Footer" section. *@
+@if (IsSectionDefined("Footer"))
+{
+    <footer>@await RenderSectionAsync("Footer")</footer>
+}
+@await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

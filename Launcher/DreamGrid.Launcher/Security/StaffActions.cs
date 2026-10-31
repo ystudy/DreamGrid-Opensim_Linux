@@ -5,6 +5,7 @@ using DreamGrid.Launcher.Core.Logs;
 using DreamGrid.Launcher.Core.OpenSim;
 using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Core.Settings;
+using DreamGrid.Launcher.Guests;
 
 namespace DreamGrid.Launcher.Security;
 
@@ -24,7 +25,8 @@ public readonly record struct RoleView(StaffRole Current, StaffRole Restored, bo
 /// <summary>
 /// The one place that changes someone's level for the Staff and People pages. For each change it asks <see cref="StaffChanges"/>
 /// (on the post, not only when the buttons were drawn), sets the level through the grid controller (Robust's console), ends the
-/// person's sessions when they lose rights (suspended, made a guest, or an admin made a supervisor), remembers the level a
+/// person's sessions when they lose rights (suspended, made a guest, or an admin made a supervisor; a suspension also ends their
+/// guest-page session at once, by rotating their <see cref="GuestStamps"/> stamp), remembers the level a
 /// suspended person had (<see cref="SuspendedStore"/>) and audits the result: <c>level-changed</c>, <c>suspended</c> or
 /// <c>unsuspended</c>; a refused change is audited with the result <c>refused</c>, and one that could not be made (Robust not
 /// running, or the suspended list can't be read) is not audited. A change that was sent but that Robust didn't confirm may have
@@ -32,7 +34,7 @@ public readonly record struct RoleView(StaffRole Current, StaffRole Restored, bo
 /// the result <c>unconfirmed</c>.
 /// </summary>
 public sealed class StaffActions(IGridController grid, Func<LauncherSettings> settings, SuspendedStore suspended, StaffSessions sessions,
-    AuditLog audit, ILogger<StaffActions> log)
+    GuestStamps guestStamps, AuditLog audit, ILogger<StaffActions> log)
 {
     public const string RobustDown = "Your world's sign-in service isn't running yet. Start your world, then try again.";
 
@@ -123,6 +125,7 @@ public sealed class StaffActions(IGridController grid, Func<LauncherSettings> se
             // be gone are taken at once, and the audit says so.
             log.LogWarning("Staff: a level change was sent but not confirmed: {Message}", LogText.Clean(e.Message, 300));
             if (losesRights) sessions.EndAll(target.PrincipalId);
+            if (change == StaffChange.Suspend) guestStamps.Rotate(target.PrincipalId);
             Write(actor, ip, action, detail, "unconfirmed");
             return new ChangeOutcome(false, Unconfirmed);
         }
@@ -145,6 +148,8 @@ public sealed class StaffActions(IGridController grid, Func<LauncherSettings> se
         }
 
         if (losesRights) sessions.EndAll(target.PrincipalId);
+        // A suspended guest is signed out of the guest pages at once too, not at the next level recheck.
+        if (change == StaffChange.Suspend) guestStamps.Rotate(target.PrincipalId);
         if (change == StaffChange.Unsuspend) Forget(target.PrincipalId);
 
         Write(actor, ip, action, detail, "ok");

@@ -277,6 +277,8 @@ public sealed class AccessTests
             "route /api/status",
             // Guarded by SetupGate, like the setup pages.
             "route /api/setup/progress",
+            // The guest door: any account at level 0 or more signs in here, to the guest pages only.
+            "page guest/sign-in",
             "page login",
             // The two-factor code step: only does anything with the pending cookie the password step leaves.
             "page login/code",

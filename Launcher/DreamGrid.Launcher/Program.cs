@@ -13,6 +13,7 @@ using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Core.Setup;
 using DreamGrid.Launcher.Security;
+using DreamGrid.Launcher.Guests;
 using DreamGrid.Launcher.Setup;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -73,6 +74,7 @@ try
     LauncherPaths.CreateOwnerOnly(paths.Data);
     LauncherPaths.CreateOwnerOnly(paths.DataProtectionKeys);
     LauncherPaths.CreateOwnerOnly(paths.Security);
+    LauncherPaths.CreateOwnerOnly(paths.Guests);
 }
 catch (Exception e) when (e is ArgumentException or SettingsCorruptException or IOException or UnauthorizedAccessException)
 {
@@ -116,20 +118,34 @@ builder.Services.AddAuthentication(AuthSchemes.Admin).AddCookie(AuthSchemes.Admi
     // API callers get a status code, never a redirect to the login page.
     o.Events.OnRedirectToLogin = c => ApiOr(c, StatusCodes.Status401Unauthorized);
     o.Events.OnRedirectToAccessDenied = Denied;
+})
+// The guest door's own cookie: a session cookie (no persistent expiry), 8 hours sliding, never read by the staff pages. The
+// stamp and (every 5 minutes) the level are checked on every request to a guest page. No API takes it, so it only redirects.
+.AddCookie(AuthSchemes.Guest, o =>
+{
+    o.Cookie.Name = "dg-guest";
+    o.Cookie.HttpOnly = true;
+    o.Cookie.SameSite = SameSiteMode.Strict;
+    o.LoginPath = "/guest/sign-in";
+    o.ExpireTimeSpan = StaffSignIn.Expiry;
+    o.SlidingExpiration = true;
+    o.Events.OnValidatePrincipal = c => c.HttpContext.RequestServices.GetRequiredService<GuestPrincipalValidator>().ValidateAsync(c);
 });
 // Whatever has no decision of its own needs the admin role; the open routes say .AllowAnonymous() (or a page convention).
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy(AuthSchemes.OwnerPolicy, p => p.AddAuthenticationSchemes(AuthSchemes.Admin).RequireRole(AuthSchemes.OwnerRole))
     .AddPolicy(AuthSchemes.AdminPolicy, p => p.AddAuthenticationSchemes(AuthSchemes.Admin).RequireRole(AuthSchemes.AdminRole))
     .AddPolicy(AuthSchemes.StaffPolicy, p => p.AddAuthenticationSchemes(AuthSchemes.Admin).RequireRole(AuthSchemes.StaffRole))
+    // Only the guest cookie: a staff cookie opens no guest page, and a guest cookie opens no staff page.
+    .AddPolicy(AuthSchemes.GuestPolicy, p => p.AddAuthenticationSchemes(AuthSchemes.Guest).RequireRole(AuthSchemes.GuestRole))
     .SetFallbackPolicy(new AuthorizationPolicyBuilder().AddAuthenticationSchemes(AuthSchemes.Admin).RequireRole(AuthSchemes.AdminRole).Build());
 builder.Services.AddRazorPages(o =>
 {
     // Every page needs the admin role except these; the setup pages are guarded by SetupGate. A person's own pages under
     // /Profile and the People page are for every staff member, and the Security and Staff pages are the owner's. (Two folder
     // policies on one page would both have to pass, so those folders are left out of the admin one rather than given a second.)
-    // The Staff and People pages do not exist (404) where there are no supervisors.
-    string[] ownFolders = ["/Profile/", "/Security/", "/Staff/", "/People/"];
+    // The Staff and People pages do not exist (404) where there are no supervisors, nor do the Guest pages (the guest side).
+    string[] ownFolders = ["/Profile/", "/Security/", "/Staff/", "/People/", "/Guest/"];
     o.Conventions.AddFolderApplicationModelConvention("/", m =>
     {
         if (!ownFolders.Any(f => m.ViewEnginePath.StartsWith(f, StringComparison.OrdinalIgnoreCase)))
@@ -141,7 +157,9 @@ builder.Services.AddRazorPages(o =>
     o.Conventions.AuthorizeFolder("/People", AuthSchemes.StaffPolicy);
     o.Conventions.AddFolderApplicationModelConvention("/Staff", m => m.Filters.Add(new StaffPagesOnly()));
     o.Conventions.AddFolderApplicationModelConvention("/People", m => m.Filters.Add(new StaffPagesOnly()));
-    foreach (var open in new[] { "/Login", "/Login/Code", "/Logout", "/Welcome", "/Waiting", "/SetupDone", "/Setup" })
+    o.Conventions.AuthorizeFolder("/Guest", AuthSchemes.GuestPolicy);
+    o.Conventions.AddFolderApplicationModelConvention("/Guest", m => m.Filters.Add(new GuestSideOnly()));
+    foreach (var open in new[] { "/Login", "/Login/Code", "/Logout", "/Welcome", "/Waiting", "/SetupDone", "/Setup", "/Guest/SignIn" })
         o.Conventions.AllowAnonymousToPage(open);
     o.Conventions.AllowAnonymousToFolder("/Setup");
     // The dashboard's forms post here: a POST to "/" belongs to the port-8001 contract (LegacyRootPolicy).
@@ -165,6 +183,8 @@ builder.Services.AddSingleton(sp => new SuspendedStore(Path.Combine(paths.Securi
 builder.Services.AddSingleton<IStaffDirectory>(sp => new StaffDirectory(sp.GetRequiredService<Func<LauncherSettings>>()));
 builder.Services.AddSingleton<StaffActions>();
 builder.Services.AddSingleton<StaffPrincipalValidator>();
+builder.Services.AddSingleton(sp => new GuestStamps(Path.Combine(paths.Guests, "stamps.json"), sp.GetRequiredService<ILogger<GuestStamps>>()));
+builder.Services.AddSingleton<GuestPrincipalValidator>();
 builder.Services.AddSingleton<LegacyCommandApi>();
 builder.Services.AddSingleton<IOnlineUsers>(sp => new OnlineUsers(sp.GetRequiredService<Func<LauncherSettings>>(),
     sp.GetRequiredService<ILogger<OnlineUsers>>()));

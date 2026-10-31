@@ -290,6 +290,7 @@ public sealed class GridControllerWiringTests : IDisposable
         var auditFile = Path.Combine(_root, "audit.log");
         var target = new RobustAccount(Guid.NewGuid(), "Gail", "Guest", 150, "");
         sessions.Start(target.PrincipalId, null, null);
+        var guestStamps = new DreamGrid.Launcher.Guests.GuestStamps(Path.Combine(_root, "guests", "stamps.json"));
         var owner = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(
             [new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Name, "Test Owner"),
              .. DreamGrid.Launcher.Security.StaffSignIn.RoleClaims(Core.Security.StaffRole.Owner)
@@ -299,7 +300,7 @@ public sealed class GridControllerWiringTests : IDisposable
         DreamGrid.Launcher.Security.ChangeOutcome outcome;
         using (var audit = new Core.Logs.AuditLog(auditFile, TimeProvider.System))
         {
-            var actions = new DreamGrid.Launcher.Security.StaffActions(_grid, () => _store.LoadOrCreate(), suspended, sessions, audit,
+            var actions = new DreamGrid.Launcher.Security.StaffActions(_grid, () => _store.LoadOrCreate(), suspended, sessions, guestStamps, audit,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<DreamGrid.Launcher.Security.StaffActions>.Instance);
             outcome = await actions.ApplyAsync(owner, null, target, Core.Security.StaffChange.Suspend, ct);
         }
@@ -308,6 +309,7 @@ public sealed class GridControllerWiringTests : IDisposable
         Assert.Equal(DreamGrid.Launcher.Security.StaffActions.Unconfirmed, outcome.Message);
         Assert.Equal(150, suspended.PreviousLevel(target.PrincipalId)); // kept
         Assert.Empty(sessions.List(target.PrincipalId));                // signed out
+        Assert.NotEqual("0", guestStamps.StampOf(target.PrincipalId));  // and off the guest pages
         Assert.Contains("\"unconfirmed\"", File.ReadAllText(auditFile));
     }
 
