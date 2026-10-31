@@ -73,3 +73,28 @@ else
         </table>
     </div>
 }
+
+@if (Model.Residents.Count > 0)
+{
+    <h2 class="mt-4">Residents with two-factor sign-in</h2>
+    <p>If a resident loses their phone and their backup codes, reset their two-factor sign-in. They are signed out and sign in with their password again.</p>
+    <div class="table-responsive">
+        <table id="resident-two-factor" class="table align-middle">
+            <thead><tr><th>Name</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var p in Model.Residents)
+            {
+                <tr data-person="@p.Principal">
+                    <td>@p.Name</td>
+                    <td>
+                        <form method="post" action="/security?handler=ResetResident" asp-antiforgery="true">
+                            <input type="hidden" name="id" value="@p.Principal">
+                            <button type="submit" class="btn btn-sm btn-outline-danger">Reset</button>
+                        </form>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}

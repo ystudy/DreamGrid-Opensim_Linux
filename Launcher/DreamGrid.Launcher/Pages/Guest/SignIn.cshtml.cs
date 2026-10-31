@@ -10,13 +10,16 @@ namespace DreamGrid.Launcher.Pages.Guest;
 
 /// <summary>
 /// The guest door: signs in with the avatar name and password. Any account at level 0 or more gets in (a staff member too, but
-/// only to the guest pages: this door opens nothing on the staff side, so two-factor, which guards that side, is not asked).
+/// only to the guest pages: this door opens nothing on the staff side, so staff two-factor, which guards that side, is not asked).
+/// Someone who set up two-factor as a resident (<see cref="ResidentTwoFactor"/>) goes on to <c>/guest/sign-in/code</c>, and so does
+/// anyone while the residents' two-factor file can't be read (that page says to contact the owner).
 /// Every failure (wrong name or password, a suspended account) shows the same message. It uses the staff door's
 /// <see cref="LoginThrottle"/> with its own name count (<see cref="SignInDoor.Guest"/>): guesses here can't lock a name out of
 /// the staff door, and a right password here can't clear the staff count of wrong two-factor codes; the address count is shared,
 /// so an address gets 20 failures in all, whichever door. The password is never logged; only the cleaned first name is.
 /// </summary>
-public sealed class SignInModel(IRobustClient robust, LoginThrottle throttle, AuditLog audit, ILogger<SignInModel> log) : PageModel
+public sealed class SignInModel(IRobustClient robust, LoginThrottle throttle, AuditLog audit, ResidentTwoFactor residents,
+    ILogger<SignInModel> log) : PageModel
 {
     private const string Generic = "Name or password is wrong.";
 
@@ -56,6 +59,13 @@ public sealed class SignInModel(IRobustClient robust, LoginThrottle throttle, Au
             return Page();
         }
         if (!allowed) return Fail(name);
+
+        // The code next, for a resident with two-factor on; the name's failures are kept until the code is right.
+        if (residents.Store.StateOf(account!.PrincipalId) != TwoFactorState.Off)
+        {
+            GuestTwoFactorPending.Issue(HttpContext, account);
+            return LocalRedirect("/guest/sign-in/code");
+        }
 
         throttle.RecordSuccess(SignInDoor.Guest, name.Key);
         await GuestSignIn.SignInAsync(HttpContext, account!);

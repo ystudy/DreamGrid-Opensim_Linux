@@ -18,6 +18,10 @@
 {
     <p><a href="/guest/regions">My regions</a></p>
 }
+@if (Model.TwoFactorLink)
+{
+    <p><a href="/guest/two-factor">Two-factor sign-in</a></p>
+}
 
 <form method="post" action="/guest/sign-out" asp-antiforgery="true">
     <button type="submit" class="btn btn-outline-secondary">Sign out</button>

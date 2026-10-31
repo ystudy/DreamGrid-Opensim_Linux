@@ -12,7 +12,7 @@ namespace DreamGrid.Launcher.Guests;
 /// </summary>
 public sealed class TermsGate : IAsyncPageFilter
 {
-    private static readonly string[] Open = ["/Guest/Terms", "/Guest/SignOut", "/Guest/SignIn"];
+    private static readonly string[] Open = ["/Guest/Terms", "/Guest/SignOut", "/Guest/SignIn", "/Guest/SignInCode"];
 
     public Task OnPageHandlerSelectionAsync(PageHandlerSelectedContext context) => Task.CompletedTask;
 
