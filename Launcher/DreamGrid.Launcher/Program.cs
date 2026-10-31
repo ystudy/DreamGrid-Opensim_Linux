@@ -232,6 +232,9 @@ builder.Services.AddSingleton(sp => new EmailTokens(Path.Combine(paths.Guests, "
     sp.GetRequiredService<ILogger<EmailTokens>>()));
 builder.Services.AddSingleton(sp => new ResetLimits(sp.GetRequiredService<TimeProvider>(), Path.Combine(paths.Guests, "reset-limits.json"),
     sp.GetRequiredService<ILogger<ResetLimits>>()));
+builder.Services.AddSingleton<ResetWorker>();
+builder.Services.AddSingleton<IResetWork>(sp => sp.GetRequiredService<ResetWorker>());
+builder.Services.AddHostedService(sp => sp.GetRequiredService<ResetWorker>());
 builder.Services.AddSingleton<PasswordResets>();
 // Email (plan 8a): the mail accounts, passwords protected by data protection.
 builder.Services.AddSingleton(sp => new EmailAccounts(Path.Combine(paths.Email, "accounts.json"), sp.GetRequiredService<IDataProtectionProvider>(),

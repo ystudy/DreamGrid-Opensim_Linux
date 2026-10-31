@@ -30,7 +30,7 @@ public sealed partial class PasswordResetTests
     }
 
     private static Rig Factory(RecoverySettings? rules = null, OwnerPlan plan = OwnerPlan.Local, bool email = true,
-        IReadOnlyList<string>? adminNetworks = null, Func<LauncherSettings, LauncherSettings>? also = null)
+        IReadOnlyList<string>? adminNetworks = null, Func<LauncherSettings, LauncherSettings>? also = null, Guests.IResetWork? work = null)
     {
         var transport = new EmailPageTests.FakeTransport();
         var f = new LauncherFactory(s =>
@@ -57,7 +57,11 @@ public sealed partial class PasswordResetTests
                 });
                 TestAuth.Apply(app);
             },
-            ExtraServices = services => services.AddSingleton<IMailTransport>(transport),
+            ExtraServices = services =>
+            {
+                services.AddSingleton<IMailTransport>(transport);
+                if (work is not null) services.AddSingleton(work);
+            },
         };
         TestAuth.AddStaff(f.Robust);
         f.Robust.Add("Ann", "Smith", 0, "old-password-1", AnnId, email: "ann@example.com");
@@ -124,6 +128,13 @@ public sealed partial class PasswordResetTests
     private static int Actions(LauncherFactory f, string action) =>
         Audit(f).Count(e => e.GetProperty("action").GetString() == action);
 
+    /// <summary>Waits until the background work has audited <paramref name="requests"/> requests (as requested or refused).</summary>
+    private static async Task SettledAsync(Rig rig, int requests)
+    {
+        for (var i = 0; i < 200 && Actions(rig.F, "reset-requested") + Actions(rig.F, "reset-refused") < requests; i++)
+            await Task.Delay(25, Ct);
+    }
+
     [Fact]
     public async Task Match_sends_one_email_with_a_link()
     {
@@ -136,7 +147,41 @@ public sealed partial class PasswordResetTests
         Assert.Equal("Reset your Avalon password", sent.Email.Subject);
         Assert.Matches(@"http://[^/\s]+:8001/guest/reset-password\?token=[A-Za-z0-9_-]{43}", sent.Email.Text);
         Assert.Contains("30 minutes", sent.Email.Text);
+        await SettledAsync(rig, 1);
         Assert.Equal(1, Actions(rig.F, "reset-requested"));
+    }
+
+    /// <summary>Holds the work a request hands on until the test lets it run.</summary>
+    private sealed class HeldWork : Guests.IResetWork
+    {
+        private readonly List<Func<Task>> _held = [];
+        public void Post(Func<Task> work) { lock (_held) _held.Add(work); }
+        public int Count { get { lock (_held) return _held.Count; } }
+        public async Task RunAllAsync()
+        {
+            List<Func<Task>> now;
+            lock (_held) { now = [.. _held]; _held.Clear(); }
+            foreach (var w in now) await w();
+        }
+    }
+
+    [Fact]
+    public async Task A_match_and_a_miss_do_the_same_work_before_the_reply()
+    {
+        var held = new HeldWork();
+        await using var rig = Factory(work: held);
+        var client = Client(rig);
+
+        await AskAsync(client, "Ann Smith", "ann@example.com");
+        await AskAsync(client, "Ann Smith", "wrong@example.com");
+
+        // Before the reply nothing tells the two apart: no link made, nothing queued or audited for either; both handed on.
+        Assert.Equal(2, held.Count);
+        Assert.Equal(0, Actions(rig.F, "reset-requested") + Actions(rig.F, "reset-refused"));
+        await held.RunAllAsync();
+        Assert.Equal(1, Actions(rig.F, "reset-requested"));
+        Assert.Equal(1, Actions(rig.F, "reset-refused"));
+        Assert.Single(await SentAsync(rig, 1));
     }
 
     [Fact]
@@ -167,6 +212,7 @@ public sealed partial class PasswordResetTests
         Assert.Equal(Reply, ReplyOf(staffOff));
         await Task.Delay(200, Ct);
         lock (rig.Transport.Sent) Assert.Empty(rig.Transport.Sent);
+        await SettledAsync(rig, 3);
         Assert.Equal(3, Actions(rig.F, "reset-refused"));
     }
 
@@ -194,6 +240,7 @@ public sealed partial class PasswordResetTests
         for (var i = 0; i < 4; i++)
             Assert.Equal(Reply, ReplyOf(await AskAsync(client, "Ann Smith", "ann@example.com")));
 
+        await SettledAsync(rig, 4);
         Assert.Equal(3, Actions(rig.F, "reset-requested"));
         Assert.Equal(1, Actions(rig.F, "reset-refused"));
     }
@@ -210,6 +257,7 @@ public sealed partial class PasswordResetTests
 
         Assert.Equal(Reply, ReplyOf(page));
         Assert.Equal(before, rig.F.Robust.Lookups);
+        await SettledAsync(rig, ResetLimits.PerAddress + 1);
         Assert.Equal(0, Actions(rig.F, "reset-requested"));
     }
 
@@ -243,6 +291,8 @@ public sealed partial class PasswordResetTests
     {
         await using var rig = Factory();
         Assert.Equal(Reply, ReplyOf(await AskAsync(Client(rig), "Sue Spended", "sue@example.com")));
+        await SettledAsync(rig, 1);
+        Assert.Equal(1, Actions(rig.F, "reset-refused"));
         Assert.Equal(0, Actions(rig.F, "reset-requested"));
     }
 
@@ -309,6 +359,7 @@ public sealed partial class PasswordResetTests
         await using var rig = Factory();
         await AskAsync(Client(rig), "Ann Smith", "ann@example.com");
         await AskAsync(Client(rig), "Ann Smith", "secret-typed@example.com");
+        await SettledAsync(rig, 2);
         var sent = Assert.Single(await SentAsync(rig, 1));
         var token = System.Text.RegularExpressions.Regex.Match(sent.Email.Text, "token=([A-Za-z0-9_-]+)").Groups[1].Value;
 

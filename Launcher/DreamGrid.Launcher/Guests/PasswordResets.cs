@@ -25,8 +25,8 @@ public enum ResetResult { Done, Expired, WrongCode, Locked, BadPassword, WriteFa
 /// Password recovery for everyone (residents, staff and the owner), behind the two guest-side pages. The owner's rule that
 /// applies is the one for the account found (<see cref="Recovery.RuleFor"/>), never the page asked on. A request always gets
 /// the same reply, whether or not the name and email match, the account's rule is off or a limit was reached
-/// (<see cref="ResetLimits"/>); the account is looked up on every request that gets that far, so the time taken gives nothing
-/// away either. A match gets a single-use link for <see cref="LinkLifetime"/> (<see cref="EmailTokens"/>, purpose
+/// (<see cref="ResetLimits"/>); the account is looked up on every request that gets that far and everything after the lookup runs
+/// after the reply (<see cref="IResetWork"/>), so the time taken gives nothing away either. A match gets a single-use link for <see cref="LinkLifetime"/> (<see cref="EmailTokens"/>, purpose
 /// <see cref="Purpose"/>), built from the grid's own address in the settings, never the request's Host header. The audit log
 /// gets the outcome, never the typed email or the token.
 /// <para>The link: <see cref="OpenAsync"/> reads whose it is without spending it (<see cref="EmailTokens.Find"/>), and refuses it
@@ -39,7 +39,7 @@ public enum ResetResult { Done, Expired, WrongCode, Locked, BadPassword, WriteFa
 /// </summary>
 public sealed class PasswordResets(Func<LauncherSettings> settings, IRobustClient robust, ResetLimits limits, EmailTokens tokens,
     EmailSender sender, AuditLog audit, IRobustPasswords passwords, TwoFactorStore staffTwoFactor, ResidentTwoFactor residents,
-    LoginThrottle throttle, StaffSessions sessions, GuestStamps guestStamps, ILogger<PasswordResets> log)
+    LoginThrottle throttle, StaffSessions sessions, GuestStamps guestStamps, IResetWork work, ILogger<PasswordResets> log)
 {
     public const string Purpose = "reset-password";
     public static readonly TimeSpan LinkLifetime = TimeSpan.FromMinutes(30);
@@ -78,19 +78,27 @@ public sealed class PasswordResets(Func<LauncherSettings> settings, IRobustClien
             return ResetAsk.Sent;
         }
 
-        var s = settings();
+        // Whether it matches, and the link and email if it does, are worked out after the reply, so a match takes no longer to
+        // answer than a miss (spec §5.2). The work runs one item at a time, so the limits' check and count can't interleave.
         var typedEmail = (email ?? "").Trim();
+        work.Post(() => DecideAsync(typed, typedEmail, account, ip));
+        return ResetAsk.Sent;
+    }
+
+    private Task DecideAsync(AvatarName typed, string typedEmail, RobustAccount? account, IPAddress? ip)
+    {
+        var s = settings();
         if (account is null || account.UserLevel < 0 || typedEmail.Length == 0
             || !string.Equals(account.Email.Trim(), typedEmail, StringComparison.OrdinalIgnoreCase)
             || Recovery.RuleFor(s, AdminRule.RoleOf(s, account)) == RecoveryRule.Off)
         {
             Refused(typed, ip, null);
-            return ResetAsk.Sent;
+            return Task.CompletedTask;
         }
         if (!limits.SendAllowed(account.PrincipalId, typedEmail))
         {
             Refused(typed, ip, "account limit");
-            return ResetAsk.Sent;
+            return Task.CompletedTask;
         }
 
         limits.CountSend(account.PrincipalId, typedEmail);
@@ -103,7 +111,7 @@ public sealed class PasswordResets(Func<LauncherSettings> settings, IRobustClien
             log.LogWarning("Password reset: the email for first name {First} couldn't be queued: {Result}", typed.ForLog, queued);
         audit.Write(new AuditEntry(full, account.PrincipalId, AdminRule.RoleOf(s, account).AuditName(), ip?.ToString(),
             "reset-requested", null, queued == QueueResult.Queued ? "ok" : "failed"));
-        return ResetAsk.Sent;
+        return Task.CompletedTask;
     }
 
     /// <summary>The live link behind <paramref name="token"/>, or null (used, expired, unknown, the account gone or its rule off).</summary>
