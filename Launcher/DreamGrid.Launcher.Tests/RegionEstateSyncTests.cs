@@ -84,6 +84,29 @@ public sealed class RegionEstateSyncTests : IDisposable
         Assert.Equal(3, EstateCalls().Length);
     }
 
+    [Theory]
+    [InlineData(OwnerPlan.RegionServer)]
+    [InlineData(OwnerPlan.Connected)]
+    public async Task Nothing_moves_on_region_server_and_connected(OwnerPlan plan)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var settings = _grid.SettingsSource!() with { Plan = plan };
+        _grid.SettingsSource = () => settings;
+        // Rights left over from when the plan had a guest side: one waiting to move in, one to move back.
+        _rights.Grant(Beach, Ann, "Ann Guest");
+        _rights.Grant(Isle, Ann, "Ann Guest");
+        _rights.SetHomeEstate(Isle, 1);
+        _rights.MoveDone(Isle);
+        _rights.Remove(Isle);
+
+        await New().SyncOnceAsync(ct);
+
+        Assert.Empty(EstateCalls());
+        Assert.Equal(EstateMove.ToOwner, _rights.Of(Beach)!.Pending);
+        Assert.Equal(EstateMove.ToGrid, _rights.Of(Isle)!.Pending);
+        Assert.False(File.Exists(AuditFile) && File.ReadAllText(AuditFile).Contains("estate-move"));
+    }
+
     [Fact]
     public async Task Second_region_reuses_owners_estate()
     {

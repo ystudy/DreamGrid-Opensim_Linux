@@ -1,4 +1,5 @@
 using DreamGrid.Launcher.Core.Grid;
+using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Endpoints;
 using DreamGrid.Launcher.Guests;
@@ -38,6 +39,8 @@ public sealed class IndexModel(IGridController grid, RegionRights rights) : Page
         Moving = Move is { } id && RegionModel.Find(grid.CurrentSettings(), id) is { DeletedAt: null } r ? r : null;
         DeletedCount = grid.CurrentSettings().Regions.Count(r => r.DeletedAt is not null);
         var live = grid.GetStatus().Regions.ToDictionary(r => r.Id);
+        // Region rights exist only on a plan with a guest side.
+        var showOwners = AdminRule.HasStaffPages(grid.CurrentSettings());
         Rows = grid.CurrentSettings().Regions.Where(r => r.DeletedAt is null).Select(r =>
         {
             // A live region the status does not know yet counts as stopped.
@@ -45,7 +48,7 @@ public sealed class IndexModel(IGridController grid, RegionRights rights) : Page
             var others = status?.RunsWith ?? [];
             return new RegionRow(r.Uuid, r.Name, StatusApi.RegionStateText(status?.State ?? RegionState.Stopped),
                 others.Count == 0 ? "Runs on its own" : "Runs with " + string.Join(", ", others), r.X, r.Y, r.Size,
-                rights.Of(r.Uuid) is { Held: true } right ? right.OwnerName : null);
+                showOwners && rights.Of(r.Uuid) is { Held: true } right ? right.OwnerName : null);
         }).ToList();
     }
 }

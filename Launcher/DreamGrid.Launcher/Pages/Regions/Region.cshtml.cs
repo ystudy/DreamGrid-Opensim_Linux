@@ -19,7 +19,8 @@ public sealed record PowerItem(string Action, string Label, string Help);
 
 /// <summary>
 /// One region's info panel (spec 5.4): state, who's here, running time and memory, place on the map, how it runs and its
-/// power menu, and who owns it (a guest with region rights, given and taken away here by an admin; every post is audited).
+/// power menu, and who owns it (a guest with region rights, given and taken away here by an admin; every post is audited; only
+/// on a plan with a guest side).
 /// <c>?partial=1</c> renders only the fragment, which the map puts in its side panel.
 /// </summary>
 public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, RegionActions actions, LogReader logs, OarJobs oarJobs,
@@ -76,6 +77,10 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
     /// <summary>True while the page asks whether to delete the region; <see cref="DeletingText"/> is the question.</summary>
     public bool Deleting { get; private set; }
     public string? DeletingText { get; private set; }
+
+    /// <summary>Whether the plan has a guest side (<see cref="AdminRule.HasStaffPages"/>). Without one there are no region rights:
+    /// the "Region owner" section isn't shown and its posts answer 404.</summary>
+    public bool HasGuestSide { get; private set; }
 
     /// <summary>The region's region-rights entry; <see cref="RegionRight.Held"/> is false while it only waits to move back.</summary>
     public RegionRight? Right { get; private set; }
@@ -199,13 +204,13 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
     }
 
     /// <summary>
-    /// Gives the avatar called <paramref name="owner"/> rights over the region (replacing any earlier owner). The name must be an
-    /// account on this grid that isn't suspended; the account's own spelling is kept. The region moves into their estate the
-    /// next time it runs (the move itself is not done here).
+    /// Gives the avatar called <paramref name="owner"/> rights over the region (replacing any earlier owner, whose right is
+    /// audited as removed first). The name must be an account on this grid that isn't suspended; the account's own spelling is
+    /// kept. The region moves into their estate the next time it runs (the move itself is not done here).
     /// </summary>
     public async Task<IActionResult> OnPostGrantAsync(Guid id, string? owner, CancellationToken ct)
     {
-        if (!await LoadAsync(id)) return NotFound();
+        if (!await LoadAsync(id) || !HasGuestSide) return NotFound();
         OwnerName = owner;
         var who = AvatarName.Parse(owner);
         if (!who.IsComplete)
@@ -239,12 +244,14 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
             return Page();
         }
 
-        if (rights.Of(id) is { Held: true } current && current.Owner == account.PrincipalId)
+        var previous = rights.Of(id) is { Held: true } held ? held : null;
+        if (previous?.Owner == account.PrincipalId)
         {
             Notice = $"{name} already has region rights for {Name}.";
             return Redirect("/regions/region/" + id);
         }
         rights.Grant(id, account.PrincipalId, name);
+        if (previous is not null) Audit("region-rights-removed", previous.OwnerName);
         Audit("region-rights-granted", name);
         Notice = $"{name} has region rights for {Name}.";
         return Redirect("/regions/region/" + id);
@@ -253,7 +260,7 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
     /// <summary>Takes the region's rights away; the region goes back to the grid's estate the next time it runs.</summary>
     public async Task<IActionResult> OnPostRevokeAsync(Guid id)
     {
-        if (!await LoadAsync(id)) return NotFound();
+        if (!await LoadAsync(id) || !HasGuestSide) return NotFound();
         if (rights.Of(id) is { Held: true } right)
         {
             rights.Remove(id);
@@ -265,11 +272,12 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
 
     /// <summary>
     /// Lets the region run on its own, as the Runs page does (the same action). Others restart with it, so without a posted yes the
-    /// page asks first (like the power menu), however the post was made. A program that runs a job refuses.
+    /// page asks first (like the power menu), however the post was made. A program that runs a job refuses. The button is in the
+    /// "Region owner" section, so without a guest side this answers 404 (the Runs page does the same there).
     /// </summary>
     public async Task<IActionResult> OnPostOwnProgramAsync(Guid id, bool confirmed)
     {
-        if (!await LoadAsync(id)) return NotFound();
+        if (!await LoadAsync(id) || !HasGuestSide) return NotFound();
         if (BusyText is not null)
         {
             Notice = $"{BusyText} is still running. Try again when it finishes.";
@@ -338,6 +346,8 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
         (CanOar, NeedsContent) = (State == RegionState.Running, r.NeedsContent);
         BusyText = grid.BusyWith(r.Instance) ?? (oarJobs.For(id) is { Running: true } job ? job.Text : null);
 
+        HasGuestSide = AdminRule.HasStaffPages(settings);
+        if (!HasGuestSide) return true;
         Right = rights.Of(id);
         RightSince = Right?.Since.UtcDateTime.ToString("d MMMM yyyy", CultureInfo.InvariantCulture);
         MoveText = Right is { } mine

@@ -2,6 +2,7 @@ using System.Net;
 using System.Text.Json;
 using AngleSharp.Html.Dom;
 using AngleSharp.Html.Parser;
+using DreamGrid.Launcher.Core;
 using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Guests;
 using Microsoft.Extensions.DependencyInjection;
@@ -72,14 +73,16 @@ public sealed class RegionOwnerCardTests : IAsyncLifetime
 
     private static string Text(IHtmlDocument doc) => doc.Body!.TextContent;
 
-    private List<JsonElement> Audit(string action)
+    private List<JsonElement> Audit(string action) => AuditLines().Where(e => e.GetProperty("action").GetString() == action).ToList();
+
+    /// <summary>Every audit line, in the order written.</summary>
+    private List<JsonElement> AuditLines()
     {
         var path = Path.Combine(_f.Paths.Logs, "audit.log");
         if (!File.Exists(path)) return [];
         using var s = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         return new StreamReader(s).ReadToEnd().Split('\n', StringSplitOptions.RemoveEmptyEntries)
-            .Select(l => JsonDocument.Parse(l).RootElement.Clone())
-            .Where(e => e.GetProperty("action").GetString() == action).ToList();
+            .Select(l => JsonDocument.Parse(l).RootElement.Clone()).ToList();
     }
 
     private async Task<bool> WaitForCallAsync(string call)
@@ -148,6 +151,74 @@ public sealed class RegionOwnerCardTests : IAsyncLifetime
         var right = Rights.Of(SunsetId)!;
         Assert.Equal(("Other Guest", EstateMove.ToOwner), (right.OwnerName, right.Pending));
         Assert.Empty(Rights.OwnedBy(TestAuth.GuestId));
+        // The previous owner's right is audited as taken away, before the new one is audited as given.
+        var lines = AuditLines().Where(e => e.GetProperty("action").GetString() is "region-rights-granted" or "region-rights-removed")
+            .Select(e => (e.GetProperty("action").GetString(), e.GetProperty("target").GetString())).ToList();
+        Assert.Equal(
+        [
+            ("region-rights-granted", "Sunset Shore → Test Guest"),
+            ("region-rights-removed", "Sunset Shore → Test Guest"),
+            ("region-rights-granted", "Sunset Shore → Other Guest"),
+        ], lines);
+    }
+
+    [Theory]
+    [InlineData(OwnerPlan.RegionServer)]
+    [InlineData(OwnerPlan.Connected)]
+    public async Task Region_owner_card_absent_on_region_server_and_connected(OwnerPlan plan)
+    {
+        await using var f = new LauncherFactory(s => s with
+        {
+            SetupToken = null,
+            Setup = s.Setup with { OwnerCreated = true, Finished = true },
+            Plan = plan,
+            Join = plan == OwnerPlan.RegionServer
+                ? new JoinedGrid("192.168.1.5", 8002, 8003, "Avalon", "http://192.168.1.5:8002/", LauncherVersion.Current, false, 8004, 8006) : null,
+            Connected = plan == OwnerPlan.Connected
+                ? new ConnectedGrid("osgrid", "OSGrid", "http://login.osgrid.org/", "http://login.osgrid.org/", "http://grid.osgrid.org/", null) : null,
+            Hypergrid = false,
+            Programs = [new ProgramSettings("Home", 8004, 8011, "ubODE"), new ProgramSettings("Sunset", 8005, 8012, "ubODE")],
+            Regions =
+            [
+                new RegionSettings("Home", "Home", HomeId, UdpPort: 8004),
+                new RegionSettings("Home", "Beach", BeachId, X: 1001, UdpPort: 8004),
+                new RegionSettings("Sunset", "Sunset Shore", SunsetId, X: 1002, UdpPort: 8005),
+            ],
+        })
+        {
+            Before = TestAuth.Apply,
+        };
+        TestAuth.AddStaff(f.Robust);
+        var rights = f.Services.GetRequiredService<RegionRights>();
+        // A right left over from when the plan had a guest side.
+        rights.Grant(SunsetId, TestAuth.GuestId, "Test Guest");
+        var client = f.CreateClient(new() { AllowAutoRedirect = false });
+        (await client.GetAsync("/__test/signin?role=owner", Ct)).Dispose();
+
+        var held = await DocAsync(client, $"/regions/region/{SunsetId}");
+        var shared = await DocAsync(client, $"/regions/region/{HomeId}");
+        var list = await DocAsync(client, "/regions");
+
+        Assert.Null(held.QuerySelector("#region-owner"));
+        Assert.DoesNotContain("Region owner", Text(held));
+        Assert.DoesNotContain("region rights", Text(held));
+        Assert.Null(shared.QuerySelector("#region-owner"));
+        Assert.DoesNotContain("Its owner can restart it", Text(shared));
+        // Letting a region run on its own stays where it always was: the Runs page.
+        Assert.NotNull(shared.QuerySelector($"a[href='/regions/region/{HomeId}/runs']"));
+        Assert.Empty(list.QuerySelectorAll(".region-owner-mark"));
+        Assert.DoesNotContain("Owner:", Text(list));
+
+        using var grant = await PostAsync(client, HomeId, "grant", ("owner", "Test Guest"));
+        using var revoke = await PostAsync(client, SunsetId, "revoke");
+        using var ownProgram = await PostAsync(client, HomeId, "ownprogram");
+
+        Assert.Equal(HttpStatusCode.NotFound, grant.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, revoke.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, ownProgram.StatusCode);
+        Assert.Null(rights.Of(HomeId));
+        Assert.Equal(EstateMove.ToOwner, rights.Of(SunsetId)!.Pending);
+        Assert.True(rights.Of(SunsetId)!.Held);
     }
 
     [Fact]

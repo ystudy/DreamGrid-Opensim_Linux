@@ -1,5 +1,6 @@
 using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.Logs;
+using DreamGrid.Launcher.Core.Security;
 
 namespace DreamGrid.Launcher.Guests;
 
@@ -34,9 +35,12 @@ public sealed class RegionEstateSync(IGridController grid, RegionRights rights, 
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
     }
 
-    /// <summary>One pass over the pending moves (the loop's work; tests call it directly).</summary>
+    /// <summary>One pass over the pending moves (the loop's work; tests call it directly). Nothing moves on a plan without a
+    /// guest side (a Region Server or a Connected Server, see <see cref="AdminRule.HasStaffPages"/>): rights left from before
+    /// the plan changed wait.</summary>
     public async Task SyncOnceAsync(CancellationToken ct)
     {
+        if (!AdminRule.HasStaffPages(grid.CurrentSettings())) return;
         var pending = rights.PendingMoves();
         if (pending.Count == 0) return;
         var regions = grid.GetStatus().Regions.ToDictionary(r => r.Id);
