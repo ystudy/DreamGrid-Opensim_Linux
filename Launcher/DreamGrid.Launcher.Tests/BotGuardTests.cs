@@ -132,6 +132,29 @@ public sealed class BotGuardTests
     }
 
     [Fact]
+    public void A_solved_challenge_is_used_once_however_the_answer_is_written()
+    {
+        var rig = new Rig(Off with { ProofOfWork = true });
+        var c = rig.Work.Create(1000);
+        var n = ProofOfWorkTests.Solve(c.Salt, c.ChallengeHex, c.MaxNumber);
+        var answer = ProofOfWorkTests.Answer(c);
+        Assert.True(rig.Guard.Check(Post(pow: answer), "signup").Passed);
+
+        // The same answer with whitespace in the base64 (which the decoder ignores), with the JSON fields reordered and spaced, and
+        // with both: each reaches the same solved challenge and is refused.
+        var spaced = answer[..10] + " \r\n\t" + answer[10..];
+        var json = "{ \"signature\": \"" + c.Signature + "\", \"salt\": \"" + c.Salt + "\", \"number\": " + n
+            + ", \"challenge\": \"" + c.ChallengeHex + "\", \"algorithm\": \"SHA-256\" }";
+        var reordered = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(json));
+        var both = reordered[..7] + "\n" + reordered[7..];
+        foreach (var variant in new[] { spaced, reordered, both })
+            Assert.Equal(new BotCheck(false, "proof-of-work"), rig.Guard.Check(Post(pow: variant), "signup"));
+        // They were refused as used, not as invalid: on their own they are good answers.
+        foreach (var variant in new[] { spaced, reordered, both })
+            Assert.True(new Rig(Off with { ProofOfWork = true }).Guard.Check(Post(pow: variant), "signup").Passed);
+    }
+
+    [Fact]
     public void An_expired_pow_payload_is_forgotten_and_still_refused()
     {
         var rig = new Rig(Off with { ProofOfWork = true });

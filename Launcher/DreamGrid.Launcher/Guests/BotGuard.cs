@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using DreamGrid.Launcher.Core.Guests;
 using DreamGrid.Launcher.Core.Settings;
 
@@ -75,14 +73,13 @@ public sealed class BotGuard(Func<LauncherSettings> settings, ProofOfWork work, 
                 if (posts.Count >= bots.PerHourPerIp) return Stopped(BotLayers.RateLimit, form);
             }
 
-            string? used = null;
             if (bots.ProofOfWork)
             {
-                var payload = fields?[ProofField].ToString();
-                if (!work.TryVerify(payload, out var expires)) return Stopped(BotLayers.ProofOfWork, form);
-                used = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload!)));
-                if (_used.ContainsKey(used)) return Stopped(BotLayers.ProofOfWork, form);
-                _used[used] = expires;
+                if (!work.TryVerify(fields?[ProofField].ToString(), out var expires, out var solved))
+                    return Stopped(BotLayers.ProofOfWork, form);
+                // A solved challenge is used once, however its answer is written (spaces in the base64, JSON order): the key is the
+                // verified challenge, which the signature binds, not the text that was posted.
+                if (!_used.TryAdd(solved, expires)) return Stopped(BotLayers.ProofOfWork, form);
             }
 
             posts?.Enqueue(now);

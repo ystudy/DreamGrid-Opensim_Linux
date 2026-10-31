@@ -66,12 +66,17 @@ public sealed class ProofOfWork(byte[] key, TimeProvider time)
     /// a signature this server made, a salt that has not expired, and a number that really solves the challenge. Anything else,
     /// however malformed, is false.
     /// </summary>
-    public bool Verify(string? payloadBase64) => TryVerify(payloadBase64, out _);
+    public bool Verify(string? payloadBase64) => TryVerify(payloadBase64, out _, out _);
 
-    /// <summary>As <see cref="Verify"/>; <paramref name="expires"/> is when the accepted payload stops being valid.</summary>
-    public bool TryVerify(string? payloadBase64, out DateTimeOffset expires)
+    /// <summary>
+    /// As <see cref="Verify"/>; <paramref name="expires"/> is when the accepted payload stops being valid and <paramref name="challenge"/>
+    /// the challenge it solved (lower-case hex, bound by the signature). The challenge, not the payload text, is what identifies an
+    /// answer: the same answer can be written many ways (spaces in the base64, other JSON spacing or key order).
+    /// </summary>
+    public bool TryVerify(string? payloadBase64, out DateTimeOffset expires, out string challenge)
     {
         expires = default;
+        challenge = "";
         if (string.IsNullOrEmpty(payloadBase64) || payloadBase64.Length > MaxPayloadChars) return false;
         try
         {
@@ -79,13 +84,13 @@ public sealed class ProofOfWork(byte[] key, TimeProvider time)
             var root = doc.RootElement;
             if (root.ValueKind != JsonValueKind.Object) return false;
             if (Text(root, "algorithm") != Algorithm) return false;
-            if (Text(root, "challenge") is not { } challenge || Text(root, "salt") is not { } salt || Text(root, "signature") is not { } signature)
+            if (Text(root, "challenge") is not { } claimed || Text(root, "salt") is not { } salt || Text(root, "signature") is not { } signature)
                 return false;
             if (!root.TryGetProperty("number", out var n) || n.ValueKind != JsonValueKind.Number || !n.TryGetInt32(out var number) || number < 0)
                 return false;
 
-            if (!Same(signature, SignatureOf(challenge))) return false;
-            if (!Same(challenge, ChallengeOf(salt, number))) return false;
+            if (!Same(signature, SignatureOf(claimed))) return false;
+            if (!Same(claimed, ChallengeOf(salt, number))) return false;
 
             var at = salt.LastIndexOf(ExpiresMark, StringComparison.Ordinal);
             if (at < 0 || !long.TryParse(salt.AsSpan(at + ExpiresMark.Length), System.Globalization.NumberStyles.None,
@@ -95,7 +100,9 @@ public sealed class ProofOfWork(byte[] key, TimeProvider time)
             // The signature covers the challenge, not the salt's expiry, and "salt + number" can be cut in another place (a digit of the
             // number moved onto the end of the expiry). That can only make the expiry far larger, so one beyond the lifetime is refused.
             var now = time.GetUtcNow();
-            return expires > now && expires <= now + Lifetime;
+            if (expires <= now || expires > now + Lifetime) return false;
+            challenge = claimed;
+            return true;
         }
         catch (Exception e) when (e is FormatException or JsonException or ArgumentOutOfRangeException)
         {
