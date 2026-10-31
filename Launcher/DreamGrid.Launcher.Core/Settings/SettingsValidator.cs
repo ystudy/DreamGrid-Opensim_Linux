@@ -62,6 +62,22 @@ public static partial class SettingsValidator
         return new ValidationResult(errors);
     }
 
+    public const int MinDifficulty = 1_000;
+    public const int MaxDifficulty = 1_000_000;
+    public const int MinPerHourPerIp = 1;
+    public const int MaxPerHourPerIp = 1_000;
+
+    /// <summary>The proof-of-work difficulty 1 000 to 1 000 000 and the sign-ups per hour per address 1 to 1 000.</summary>
+    public static ValidationResult Bots(BotSettings bots)
+    {
+        var errors = new Dictionary<string, string>();
+        if (bots.Difficulty is < MinDifficulty or > MaxDifficulty)
+            errors["Difficulty"] = "Use a difficulty from 1000 to 1000000.";
+        if (bots.PerHourPerIp is < MinPerHourPerIp or > MaxPerHourPerIp)
+            errors["PerHourPerIp"] = "Use a number from 1 to 1000 sign-ups per hour.";
+        return new ValidationResult(errors);
+    }
+
     /// <summary>Null when <paramref name="hostname"/> is empty (automatic), a DNS name or an IPv4 address.</summary>
     public static string? HostnameError(string? hostname)
     {

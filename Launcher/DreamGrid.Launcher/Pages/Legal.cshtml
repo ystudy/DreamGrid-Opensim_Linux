@@ -1,0 +1,9 @@
+@page "/{slug:regex(^(terms|privacy|cookies|contact)$)}"
+@model DreamGrid.Launcher.Pages.LegalModel
+@{
+    Layout = "_GuestLayout";
+    ViewData["Title"] = Model.PageTitle;
+}
+<h1>@Model.PageTitle</h1>
+<p class="text-body-secondary">Version @Model.Version, @Model.Saved</p>
+<article>@Html.Raw(Model.Html)</article>

@@ -24,11 +24,11 @@
 <main class="container py-4">
     @RenderBody()
 </main>
-@* Links that belong at the foot of every guest page go in a "Footer" section. *@
-@if (IsSectionDefined("Footer"))
-{
-    <footer>@await RenderSectionAsync("Footer")</footer>
-}
+@* The legal pages the operator has written, then anything a page puts in a "Footer" section. *@
+<footer class="container pb-4">
+    <partial name="_LegalLinks" />
+    @await RenderSectionAsync("Footer", required: false)
+</footer>
 @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

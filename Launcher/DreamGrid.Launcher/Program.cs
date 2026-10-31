@@ -171,8 +171,10 @@ builder.Services.AddRazorPages(o =>
     o.Conventions.AddFolderApplicationModelConvention("/Guest", m => m.Filters.Add(new GuestSideOnly()));
     // The public front page ("/" shows it to anyone not signed in as staff, see SetupGate); like the guest pages it is not there
     // on a Region Server or a Connected Server.
-    o.Conventions.AddPageApplicationModelConvention("/Home", m => m.Filters.Add(new GuestSideOnly()));
-    foreach (var open in new[] { "/Login", "/Login/Code", "/Logout", "/Welcome", "/Waiting", "/SetupDone", "/Setup", "/Home", "/Guest/SignIn" })
+    // The operator's legal pages and the sign-up page are public in the same way.
+    foreach (var publicPage in new[] { "/Home", "/Legal", "/SignUp" })
+        o.Conventions.AddPageApplicationModelConvention(publicPage, m => m.Filters.Add(new GuestSideOnly()));
+    foreach (var open in new[] { "/Login", "/Login/Code", "/Logout", "/Welcome", "/Waiting", "/SetupDone", "/Setup", "/Home", "/Legal", "/SignUp", "/Guest/SignIn" })
         o.Conventions.AllowAnonymousToPage(open);
     o.Conventions.AllowAnonymousToFolder("/Setup");
     // The dashboard's forms post here: a POST to "/" belongs to the port-8001 contract (LegacyRootPolicy).

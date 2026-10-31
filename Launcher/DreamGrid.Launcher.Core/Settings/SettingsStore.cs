@@ -59,9 +59,11 @@ public sealed class SettingsStore(string path)
     private void Validate(LauncherSettings s)
     {
         var security = SettingsValidator.Security(s.Security);
-        if (!security.Ok)
-            throw new SettingsCorruptException(path,
-                security.Errors.Select(e => $"security.{JsonNamingPolicy.CamelCase.ConvertName(e.Key)}: {e.Value}"));
+        var bots = SettingsValidator.Bots(s.Bots);
+        var reasons = security.Errors.Select(e => $"security.{JsonNamingPolicy.CamelCase.ConvertName(e.Key)}: {e.Value}")
+            .Concat(bots.Errors.Select(e => $"bots.{JsonNamingPolicy.CamelCase.ConvertName(e.Key)}: {e.Value}")).ToList();
+        if (reasons.Count > 0)
+            throw new SettingsCorruptException(path, reasons);
     }
 
     /// <summary>
@@ -87,7 +89,7 @@ public sealed class SettingsStore(string path)
             var plan = HostAddress.IsPublic(s.Hostname) ? OwnerPlan.SimplePublic : OwnerPlan.Local;
             s = s with { Plan = plan, Hypergrid = plan == OwnerPlan.SimplePublic };
         }
-        // Schema 4 to 5: security settings arrive with their defaults; only the version changes.
+        // Schema 4 to 5 (security settings) and 5 to 6 (legal pages, bot protection) arrive with their defaults; only the version changes.
         return s with { SchemaVersion = LauncherSettings.CurrentSchema };
     }
 

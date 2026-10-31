@@ -284,6 +284,8 @@ public sealed class AccessTests
             "page home",
             // The guest door: any account at level 0 or more signs in here, to the guest pages only.
             "page guest/sign-in",
+            // The operator's legal pages (terms, privacy, cookies, contact) and the sign-up page: public, and 404 until written / where there is no guest side.
+            "page {slug:regex(^(terms|privacy|cookies|contact)$)}",
             "page login",
             // The two-factor code step: only does anything with the pending cookie the password step leaves.
             "page login/code",
@@ -300,6 +302,7 @@ public sealed class AccessTests
             "page setup/region",
             "page setup/world",
             "page waiting",
+            "page signup",
             "page welcome",
         ];
         Assert.Equal(allowlist.Order(StringComparer.Ordinal), open);
