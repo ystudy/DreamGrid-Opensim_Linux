@@ -115,6 +115,12 @@ public sealed record SecuritySettings(
     bool RequireTwoFactorForStaff = false,
     IReadOnlyList<string>? AdminNetworks = null);
 
+/// <summary>How someone who forgot their password gets back in: not by themselves, by an email link, or by the link and their two-factor code.</summary>
+public enum RecoveryRule { Off, EmailLink, EmailLinkAndCode }
+
+/// <summary>The password-recovery rule for each group (see <see cref="Security.Recovery"/>).</summary>
+public sealed record RecoverySettings(RecoveryRule Residents, RecoveryRule Staff, RecoveryRule Owner);
+
 /// <summary>One legal page's text as the operator wrote it (Markdown), how many times it was saved and when.</summary>
 public sealed record LegalText(string Markdown, int Version, DateTimeOffset Saved);
 
@@ -194,6 +200,9 @@ public sealed record LauncherSettings
     /// <summary>Sign-in security; a missing or null value (a hand edit) reads as the defaults.</summary>
     [AllowNull]
     public SecuritySettings Security { get => _security; init => _security = value ?? new(); }
+
+    /// <summary>The password-recovery rules; null until the owner chooses a level (read as all off).</summary>
+    public RecoverySettings? Recovery { get; init; }
 
     private readonly LegalSettings _legal = new();
 

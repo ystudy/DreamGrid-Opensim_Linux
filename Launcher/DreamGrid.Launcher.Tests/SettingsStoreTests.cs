@@ -1,5 +1,6 @@
 using System.Runtime.Versioning;
 using System.Text.RegularExpressions;
+using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Core.Settings;
 using Xunit;
 
@@ -112,6 +113,19 @@ public class SettingsStoreTests : IDisposable
         Assert.Contains(path, ex.Message);
         Assert.NotNull(ex.InnerException);
         Assert.Equal(before, File.ReadAllBytes(path));
+    }
+
+    [Fact]
+    public void Recovery_rules_round_trip_and_a_missing_value_reads_null()
+    {
+        var store = new SettingsStore(Path.Combine(NewDir(), "settings.json"));
+        var s = store.LoadOrCreate();
+        Assert.Null(s.Recovery);
+
+        var rules = new RecoverySettings(RecoveryRule.EmailLink, RecoveryRule.EmailLinkAndCode, RecoveryRule.Off);
+        store.Save(s with { Recovery = rules });
+
+        Assert.Equal(rules, store.LoadOrCreate().Recovery);
     }
 
     [Fact]
