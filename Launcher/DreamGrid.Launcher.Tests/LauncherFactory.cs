@@ -72,6 +72,8 @@ internal sealed class LauncherFactory : WebApplicationFactory<Program>
             services.AddSingleton<IOnlineUsers>(OnlineUsers);
             services.RemoveAll<IStaffDirectory>();
             services.AddSingleton<IStaffDirectory>(Staff);
+            services.RemoveAll<IRobustPasswords>();
+            services.AddSingleton<IRobustPasswords>(Robust);
             services.RemoveAll<IGridJoinClient>();
             services.AddSingleton<IGridJoinClient>(Join);
             services.RemoveAll<IOtherGridClient>();

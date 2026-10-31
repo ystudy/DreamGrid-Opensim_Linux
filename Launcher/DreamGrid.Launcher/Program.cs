@@ -214,6 +214,7 @@ builder.Services.AddSingleton(sp => new TwoFactorStore(Path.Combine(paths.Securi
 builder.Services.AddSingleton<ITwoFactorStatus>(sp => sp.GetRequiredService<TwoFactorStore>());
 builder.Services.AddSingleton(sp => new SuspendedStore(Path.Combine(paths.Security, "suspended.json"), sp.GetRequiredService<ILogger<SuspendedStore>>()));
 builder.Services.AddSingleton<IStaffDirectory>(sp => new StaffDirectory(sp.GetRequiredService<Func<LauncherSettings>>()));
+builder.Services.AddSingleton<IRobustPasswords>(sp => new RobustPasswords(sp.GetRequiredService<Func<LauncherSettings>>()));
 builder.Services.AddSingleton<StaffActions>();
 builder.Services.AddSingleton<StaffPrincipalValidator>();
 builder.Services.AddSingleton(sp => new GuestStamps(Path.Combine(paths.Guests, "stamps.json"), sp.GetRequiredService<ILogger<GuestStamps>>()));

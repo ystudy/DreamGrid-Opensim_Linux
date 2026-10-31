@@ -481,7 +481,7 @@ internal sealed class FakeOtherGrid : IOtherGridClient
 }
 
 /// <summary>Robust with a fixed set of avatars: (first, last) → (level, password).</summary>
-internal sealed class FakeRobustAccounts : IRobustClient
+internal sealed class FakeRobustAccounts : IRobustClient, IRobustPasswords
 {
     private readonly Dictionary<(string, string), (RobustAccount Account, string Password)> _accounts = new();
 
@@ -490,10 +490,21 @@ internal sealed class FakeRobustAccounts : IRobustClient
     /// <summary>Simulates Robust not running: lookups and sign-in checks fail like a refused connection.</summary>
     public bool Down { get; set; }
 
-    public FakeRobustAccounts Add(string first, string last, int level, string password, Guid? id = null)
+    /// <summary>Simulates the database being down: <see cref="SetAsync"/> throws as <see cref="RobustPasswords"/> does.</summary>
+    public bool PasswordsDown { get; set; }
+
+    public FakeRobustAccounts Add(string first, string last, int level, string password, Guid? id = null, string email = "")
     {
-        _accounts[(first, last)] = (new RobustAccount(id ?? Guid.NewGuid(), first, last, level, ""), password);
+        _accounts[(first, last)] = (new RobustAccount(id ?? Guid.NewGuid(), first, last, level, email), password);
         return this;
+    }
+
+    public Task SetAsync(Guid principal, string password, CancellationToken ct)
+    {
+        if (PasswordsDown) throw new RobustPasswordsUnavailableException("The password could not be written.", new TimeoutException());
+        foreach (var (key, a) in _accounts.ToList())
+            if (a.Account.PrincipalId == principal) _accounts[key] = (a.Account, password);
+        return Task.CompletedTask;
     }
 
     public Task<bool> IsReadyAsync(CancellationToken ct) => Task.FromResult(true);
