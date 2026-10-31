@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.RegularExpressions;
 using DreamGrid.Launcher.Core.Ini;
 using DreamGrid.Launcher.Core.Plans;
+using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Core.Settings;
 
 namespace DreamGrid.Launcher.Core.Config;
@@ -55,6 +56,10 @@ public sealed class GridConfigWriter(LauncherPaths paths)
         SetSmartStartAndWifi(robust, s);
         robust.Set("GatekeeperService", "ForeignAgentsAllowed", Bool(hypergrid));
         robust.Set("GridInfoService", "welcome", $"http://{host}:{s.WebPort}/welcome");
+        // The viewer's "forgot password" link: the website's page, not Wifi's. Robust's own setpassword (AllowSetPassword) stays
+        // off: the website writes the new password itself.
+        if (AdminRule.HasStaffPages(s))
+            robust.Set("GridInfoService", "password", $"http://{host}:{s.WebPort}/guest/forgot-password");
         robust.Set("GridInfoService", "gridname", s.GridName);
         // What a Region Server reads to join this grid.
         robust.Set("GridInfoService", GridInfoKeys.Version, LauncherVersion.Current);

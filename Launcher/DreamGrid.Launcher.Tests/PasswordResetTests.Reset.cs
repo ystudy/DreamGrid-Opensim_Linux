@@ -20,14 +20,20 @@ public sealed partial class PasswordResetTests
     /// <summary>Asks for a reset for <paramref name="name"/> and returns the token from the email it gets.</summary>
     private static async Task<string> LinkTokenAsync(Rig rig, string name, string email)
     {
-        int before;
-        lock (rig.Transport.Sent) before = rig.Transport.Sent.Count;
+        // Other emails (a "password changed" notice from an earlier reset) may arrive meanwhile: count only reset links to this address.
+        List<string> Links()
+        {
+            lock (rig.Transport.Sent)
+                return [.. rig.Transport.Sent.Where(m => m.To == email)
+                    .Select(m => System.Text.RegularExpressions.Regex.Match(m.Email.Text, @"/guest/reset-password\?token=([A-Za-z0-9_-]+)"))
+                    .Where(m => m.Success).Select(m => m.Groups[1].Value)];
+        }
+        var before = Links().Count;
         await AskAsync(Client(rig), name, email);
-        var sent = await SentAsync(rig, before + 1);
-        Assert.True(sent.Count > before, "no reset email was sent");
-        var m = System.Text.RegularExpressions.Regex.Match(sent[before].Email.Text, @"/guest/reset-password\?token=([A-Za-z0-9_-]+)");
-        Assert.True(m.Success);
-        return m.Groups[1].Value;
+        for (var i = 0; i < 200 && Links().Count <= before; i++) await Task.Delay(25, Ct);
+        var links = Links();
+        Assert.True(links.Count > before, "no reset email was sent");
+        return links[^1];
     }
 
     private static async Task<IHtmlDocument> ResetAsync(HttpClient client, string token, string password = NewPassword,
