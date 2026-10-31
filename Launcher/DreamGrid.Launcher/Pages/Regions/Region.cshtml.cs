@@ -86,11 +86,14 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
     /// <summary>What the region still has to do about its estate when it next runs; null when nothing.</summary>
     public string? MoveText { get; private set; }
 
-    /// <summary>Said when the region shares its program: why its owner may not be able to restart it.</summary>
+    /// <summary>Said when the region runs with others: why its owner may not be able to restart it.</summary>
     public string? SharedText { get; private set; }
 
-    /// <summary>The question before the region leaves a shared program; null when no other region is running in it.</summary>
+    /// <summary>The question before the region stops running with the others; null when no other region is running with it.</summary>
     public string? OwnProgramAsk { get; private set; }
+
+    /// <summary>True while the page shows <see cref="OwnProgramAsk"/> and waits for the yes.</summary>
+    public bool AskingOwnProgram { get; private set; }
 
     /// <summary>The name typed in the region-rights form, kept when it is refused; and why it was.</summary>
     public string? OwnerName { get; private set; }
@@ -261,10 +264,10 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
     }
 
     /// <summary>
-    /// Gives the region a program of its own, as the Runs page does (the same action; the yes is the browser's question).
-    /// A program that runs a job refuses.
+    /// Lets the region run on its own, as the Runs page does (the same action). Others restart with it, so without a posted yes the
+    /// page asks first (like the power menu), however the post was made. A program that runs a job refuses.
     /// </summary>
-    public async Task<IActionResult> OnPostOwnProgramAsync(Guid id)
+    public async Task<IActionResult> OnPostOwnProgramAsync(Guid id, bool confirmed)
     {
         if (!await LoadAsync(id)) return NotFound();
         if (BusyText is not null)
@@ -276,6 +279,11 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
         {
             Notice = $"{Name} already runs on its own.";
             return Redirect("/regions/region/" + id);
+        }
+        if (OwnProgramAsk is not null && !confirmed)
+        {
+            AskingOwnProgram = true;
+            return Page();
         }
         if (!actions.TryChangeRunsWith(id, null)) return NotFound();
         Notice = $"Changing how {Name} runs. This can take a few minutes.";
@@ -342,9 +350,9 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
             : null;
         if (RunsWith.Count > 0)
         {
-            SharedText = $"{Name} shares its program with {RegionAdvice.Join(RunsWith)}. Its owner can restart it from the website only when every region in that program is theirs.";
+            SharedText = $"{Name} runs with {RegionAdvice.Join(RunsWith)}. Its owner can restart it from the website only when every region it runs with is theirs.";
             if (RegionActions.SharingProgram(status, id) is { Count: > 0 } affected)
-                OwnProgramAsk = $"This restarts {RegionAdvice.Join([Name, .. affected])}, and drops everyone in them. Go ahead?";
+                OwnProgramAsk = $"Letting {Name} run on its own restarts {RegionAdvice.Join([Name, .. affected])}, and drops everyone in them. Go ahead?";
         }
         return true;
     }

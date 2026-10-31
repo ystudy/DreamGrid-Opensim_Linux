@@ -192,10 +192,22 @@
         @if (Model.SharedText is not null)
         {
             <p class="form-text">@Model.SharedText</p>
-            <form method="post" action="/regions/region/@Model.Id?handler=ownprogram" asp-antiforgery="true" class="mb-2"
-                  data-confirm="@Model.OwnProgramAsk">
-                <button type="submit" class="btn btn-outline-secondary btn-sm">Give @Model.Name its own program</button>
-            </form>
+            @* The question is the server's (a post without the yes shows it), so it holds without JavaScript too. *@
+            @if (Model.AskingOwnProgram)
+            {
+                <form method="post" action="/regions/region/@Model.Id?handler=ownprogram" asp-antiforgery="true" class="alert alert-warning">
+                    <p>@Model.OwnProgramAsk</p>
+                    <input type="hidden" name="confirmed" value="true">
+                    <button type="submit" class="btn btn-warning btn-sm">Yes, let @Model.Name run on its own</button>
+                    <a class="btn btn-outline-secondary btn-sm" href="/regions/region/@Model.Id">Cancel</a>
+                </form>
+            }
+            else
+            {
+                <form method="post" action="/regions/region/@Model.Id?handler=ownprogram" asp-antiforgery="true" class="mb-2">
+                    <button type="submit" class="btn btn-outline-secondary btn-sm">Let @Model.Name run on its own</button>
+                </form>
+            }
         }
     </section>
 

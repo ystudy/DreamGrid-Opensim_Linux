@@ -287,15 +287,26 @@ public sealed class RegionOwnerCardTests : IAsyncLifetime
         var shared = await DocAsync(client, $"/regions/region/{HomeId}");
         var alone = await DocAsync(client, $"/regions/region/{SunsetId}");
 
-        Assert.Contains("Home shares its program with Beach. Its owner can restart it from the website only when every region in that program is theirs.", Text(shared));
+        Assert.Contains("Home runs with Beach. Its owner can restart it from the website only when every region it runs with is theirs.", Text(shared));
         var button = shared.QuerySelector("#region-owner form[action$='handler=ownprogram']")!;
-        Assert.Equal("Give Home its own program", button.QuerySelector("button")!.TextContent.Trim());
-        // Beach runs in the program, so leaving it restarts Beach and the page asks first.
-        Assert.Contains("Beach", button.GetAttribute("data-confirm"));
-        Assert.DoesNotContain("shares its program", Text(alone));
+        Assert.Equal("Let Home run on its own", button.QuerySelector("button")!.TextContent.Trim());
+        Assert.Null(button.QuerySelector("input[name=confirmed]"));
+        Assert.DoesNotContain("every region it runs with", Text(alone));
         Assert.Null(alone.QuerySelector("form[action$='handler=ownprogram']"));
 
-        using var posted = await PostAsync(client, HomeId, "ownprogram");
+        // Beach runs with Home, so a post without a yes (no JavaScript, or made by hand) shows the question and changes nothing.
+        using var asked = await PostAsync(client, HomeId, "ownprogram");
+
+        Assert.Equal(HttpStatusCode.OK, asked.StatusCode);
+        var question = new HtmlParser().ParseDocument(await asked.Content.ReadAsStringAsync(Ct));
+        Assert.Contains("Letting Home run on its own restarts Home and Beach, and drops everyone in them. Go ahead?", Text(question));
+        var yes = question.QuerySelector("#region-owner form[action$='handler=ownprogram'] input[name=confirmed]")!;
+        Assert.Equal("true", yes.GetAttribute("value"));
+        Assert.Equal("Yes, let Home run on its own", yes.ParentElement!.QuerySelector("button")!.TextContent.Trim());
+        await Task.Delay(150, Ct);
+        Assert.DoesNotContain(_f.Grid.Snapshot(), c => c.StartsWith("ChangeRunsWith"));
+
+        using var posted = await PostAsync(client, HomeId, "ownprogram", ("confirmed", "true"));
 
         Assert.Equal(HttpStatusCode.Redirect, posted.StatusCode);
         // The same action as the Runs page.
