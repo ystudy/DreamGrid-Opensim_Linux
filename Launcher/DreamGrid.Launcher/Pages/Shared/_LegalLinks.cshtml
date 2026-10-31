@@ -1,0 +1,17 @@
+@using DreamGrid.Launcher.Core.Guests
+@using DreamGrid.Launcher.Core.Settings
+@inject Func<LauncherSettings> Settings
+@{
+    // Only the pages the operator has written; in the order Terms, Privacy, Cookies, Contact.
+    var s = Settings();
+    var written = LegalPages.All.Where(p => LegalPages.Get(s, p) is not null).ToList();
+}
+@if (written.Count > 0)
+{
+    <nav class="small" aria-label="Legal pages">
+        @foreach (var id in written)
+        {
+            <a class="me-3" href="/@id">@LegalPages.Title(id)</a>
+        }
+    </nav>
+}

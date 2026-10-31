@@ -210,14 +210,14 @@ public class SettingsStoreTests : IDisposable
 
         var s = new SettingsStore(path).LoadOrCreate();
 
-        Assert.Equal(5, s.SchemaVersion);
+        Assert.Equal(6, s.SchemaVersion);
         Assert.Null(s.Programs[0].Physics);
         // Schema 2's BulletSim ran with the prototype's UseSeparatePhysicsThread=true: it keeps running that way.
         Assert.Equal("BulletSimThreaded", s.Programs[1].Physics);
         Assert.Equal("ubODE", s.DefaultPhysics);
         Assert.True(s.DefaultScripts);
         var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
-        Assert.Equal(5, (int)node["schemaVersion"]!);
+        Assert.Equal(6, (int)node["schemaVersion"]!);
     }
 
     [Fact]
@@ -225,7 +225,7 @@ public class SettingsStoreTests : IDisposable
     {
         var s = new SettingsStore(WriteV1(V1Region.Replace("BulletSim", "ubODE"))).LoadOrCreate();
 
-        Assert.Equal(5, s.SchemaVersion);
+        Assert.Equal(6, s.SchemaVersion);
         Assert.Null(Assert.Single(s.Programs).Physics);
     }
 
@@ -242,7 +242,7 @@ public class SettingsStoreTests : IDisposable
 
         var loaded = new SettingsStore(path).LoadOrCreate();
 
-        Assert.Equal(5, loaded.SchemaVersion);
+        Assert.Equal(6, loaded.SchemaVersion);
         Assert.Equal(["ubODE", "BulletSim"], loaded.Programs.Select(p => p.Physics));
     }
 
@@ -286,7 +286,7 @@ public class SettingsStoreTests : IDisposable
     {
         var s = new SettingsStore(WriteV1(V1Region)).LoadOrCreate();
 
-        Assert.Equal(5, s.SchemaVersion);
+        Assert.Equal(6, s.SchemaVersion);
         Assert.Equal([new ProgramSettings("Welcome", 8004, 8011, "BulletSimThreaded")], s.Programs);
         Assert.Equal([new RegionSettings("Welcome", "Welcome", V1Uuid, 1000, 1000, "island", 1, 8004)], s.Regions);
         Assert.Null(s.LegacyRegion);
@@ -299,7 +299,7 @@ public class SettingsStoreTests : IDisposable
         new SettingsStore(path).LoadOrCreate();
 
         var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
-        Assert.Equal(5, (int)node["schemaVersion"]!);
+        Assert.Equal(6, (int)node["schemaVersion"]!);
         Assert.True(node.ContainsKey("programs"));
         Assert.False(node.ContainsKey("region"));
     }
@@ -309,7 +309,7 @@ public class SettingsStoreTests : IDisposable
     {
         var s = new SettingsStore(WriteV1(null)).LoadOrCreate();
 
-        Assert.Equal(5, s.SchemaVersion);
+        Assert.Equal(6, s.SchemaVersion);
         Assert.Empty(s.Programs);
         Assert.Empty(s.Regions);
     }
@@ -355,7 +355,7 @@ public class SettingsStoreTests : IDisposable
 
         var loaded = new SettingsStore(path).LoadOrCreate();
 
-        Assert.Equal(5, loaded.SchemaVersion);
+        Assert.Equal(6, loaded.SchemaVersion);
         Assert.Empty(loaded.CustomTypes);
         Assert.False(loaded.Regions[0].NeedsContent);
     }
@@ -400,7 +400,7 @@ public class SettingsStoreTests : IDisposable
 
         Assert.Equal(OwnerPlan.SimplePublic, s.Plan);
         Assert.True(s.Hypergrid);
-        Assert.Equal(5, s.SchemaVersion);
+        Assert.Equal(6, s.SchemaVersion);
     }
 
     [Theory]
@@ -430,7 +430,104 @@ public class SettingsStoreTests : IDisposable
         Assert.Equal(200, s.Security.AdminLevel);
         Assert.False(s.Security.RequireTwoFactorForStaff);
         Assert.Null(s.Security.AdminNetworks);
-        Assert.Equal(5, s.SchemaVersion);
+        Assert.Equal(6, s.SchemaVersion);
+    }
+
+    [Fact]
+    public void Schema5_file_loads_with_default_legal_and_bots()
+    {
+        var path = Path.Combine(NewDir(), "settings.json");
+        new SettingsStore(path).LoadOrCreate();
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+        node["schemaVersion"] = 5;
+        node.Remove("legal");
+        node.Remove("bots");
+        File.WriteAllText(path, node.ToJsonString());
+
+        var s = new SettingsStore(path).LoadOrCreate();
+
+        Assert.Equal(6, s.SchemaVersion);
+        Assert.Equal(new BotSettings(true, true, 5, true, 50_000, false, false), s.Bots);
+        Assert.True(s.Bots.Honeypot);
+        Assert.False(s.Bots.ImageCaptcha);
+        Assert.False(s.Bots.AdminApproval);
+        Assert.Null(s.Legal.Texts);
+        Assert.False(s.Legal.OperatorResponsible);
+        Assert.Null(s.Legal.ResponsibleSince);
+    }
+
+    [Fact]
+    public void Legal_texts_survive_a_save_and_load()
+    {
+        var path = Path.Combine(NewDir(), "settings.json");
+        var store = new SettingsStore(path);
+        var saved = new DateTimeOffset(2026, 10, 30, 12, 0, 0, TimeSpan.Zero);
+        var texts = new Dictionary<string, IReadOnlyDictionary<string, LegalText>>
+        {
+            ["en"] = new Dictionary<string, LegalText> { ["terms"] = new("Test terms one.", 2, saved) },
+        };
+        store.Save(store.LoadOrCreate() with { Legal = new LegalSettings(texts, true, saved) });
+
+        var s = new SettingsStore(path).LoadOrCreate();
+
+        Assert.Equal(new LegalText("Test terms one.", 2, saved), s.Legal.Texts!["en"]["terms"]);
+        Assert.True(s.Legal.OperatorResponsible);
+        Assert.Equal(saved, s.Legal.ResponsibleSince);
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!;
+        Assert.Equal("Test terms one.", (string?)node["legal"]!["texts"]!["en"]!["terms"]!["markdown"]);
+    }
+
+    [Fact]
+    public void Null_legal_and_bots_read_as_the_defaults()
+    {
+        var path = Path.Combine(NewDir(), "settings.json");
+        new SettingsStore(path).LoadOrCreate();
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+        node["legal"] = null;
+        node["bots"] = null;
+        File.WriteAllText(path, node.ToJsonString());
+
+        var s = new SettingsStore(path).LoadOrCreate();
+
+        Assert.Null(s.Legal.Texts);
+        Assert.Equal(50_000, s.Bots.Difficulty);
+    }
+
+    [Theory]
+    [InlineData("""{ "difficulty": 999 }""", "bots.difficulty")]
+    [InlineData("""{ "difficulty": 1000001 }""", "bots.difficulty")]
+    [InlineData("""{ "perHourPerIp": 0 }""", "bots.perHourPerIp")]
+    [InlineData("""{ "perHourPerIp": 1001 }""", "bots.perHourPerIp")]
+    public void Bot_values_that_are_not_allowed_refuse_to_load_and_leave_the_file_alone(string bots, string key)
+    {
+        var path = Path.Combine(NewDir(), "settings.json");
+        new SettingsStore(path).LoadOrCreate();
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+        node["bots"] = System.Text.Json.Nodes.JsonNode.Parse(bots);
+        File.WriteAllText(path, node.ToJsonString());
+        var before = File.ReadAllBytes(path);
+
+        var ex = Assert.Throws<SettingsCorruptException>(() => new SettingsStore(path).LoadOrCreate());
+        Assert.Throws<SettingsCorruptException>(() => new SettingsStore(path).TryLoad());
+
+        Assert.Contains(path, ex.Message);
+        Assert.Contains($"{key}: ", ex.Message);
+        Assert.Equal(before, File.ReadAllBytes(path));
+    }
+
+    [Fact]
+    public void Allowed_bot_values_load()
+    {
+        var path = Path.Combine(NewDir(), "settings.json");
+        new SettingsStore(path).LoadOrCreate();
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+        node["bots"] = System.Text.Json.Nodes.JsonNode.Parse("""{ "difficulty": 1000, "perHourPerIp": 1000 }""");
+        File.WriteAllText(path, node.ToJsonString());
+
+        var s = new SettingsStore(path).LoadOrCreate();
+
+        Assert.Equal(1000, s.Bots.Difficulty);
+        Assert.Equal(1000, s.Bots.PerHourPerIp);
     }
 
     /// <summary>A saved settings file whose "security" object is <paramref name="security"/> (JSON), as a hand edit would leave it.</summary>

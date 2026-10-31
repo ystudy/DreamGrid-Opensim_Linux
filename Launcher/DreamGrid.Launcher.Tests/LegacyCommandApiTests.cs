@@ -367,7 +367,7 @@ public sealed class LegacyCommandApiTests : IDisposable
         Assert.StartsWith("NAK You do not have permission to StopRobust", reply);
         Assert.Equal(lookups, _robust.Lookups);
         Assert.Empty(_grid.Snapshot());
-        Assert.True(_throttle.IsLocked("God Owner", null));
+        Assert.True(_throttle.IsLocked(SignInDoor.Staff, "God Owner", null));
 
         _time.Advance(LoginThrottle.Window + TimeSpan.FromSeconds(1));
         Assert.Equal("ACK", await api.HandleAsync(Req("StopRobust", "God Owner", "godpw"), null, Ct));
@@ -377,7 +377,7 @@ public sealed class LegacyCommandApiTests : IDisposable
     public async Task A_name_locked_on_the_website_is_refused_here_too()
     {
         // The sign-in page and this API share one throttle keyed on the normalised name.
-        for (var i = 0; i < LoginThrottle.NameMaxFailures; i++) _throttle.RecordFailure(AvatarName.Parse("God  Owner").Key, null);
+        for (var i = 0; i < LoginThrottle.NameMaxFailures; i++) _throttle.RecordFailure(SignInDoor.Staff, AvatarName.Parse("God  Owner").Key, null);
 
         Assert.StartsWith("NAK You do not have permission", await Api().HandleAsync(Req("StopRobust", "God Owner", "godpw"), null, Ct));
         Assert.Equal(0, _robust.Lookups);
@@ -392,7 +392,7 @@ public sealed class LegacyCommandApiTests : IDisposable
 
         await api.HandleAsync(Req("StopRobust", "God Owner", "wrong"), null, Ct);
 
-        Assert.False(_throttle.IsLocked("God Owner", null));
+        Assert.False(_throttle.IsLocked(SignInDoor.Staff, "God Owner", null));
     }
 
     [Fact]
@@ -428,7 +428,7 @@ public sealed class LegacyCommandApiTests : IDisposable
     [Fact]
     public async Task A_refused_locked_name_is_logged_by_first_name_only()
     {
-        for (var i = 0; i < LoginThrottle.NameMaxFailures; i++) _throttle.RecordFailure("God Owner", null);
+        for (var i = 0; i < LoginThrottle.NameMaxFailures; i++) _throttle.RecordFailure(SignInDoor.Staff, "God Owner", null);
 
         await Api().HandleAsync(Req("StopRobust", "God Owner", "godpw"), null, Ct);
 
@@ -542,7 +542,7 @@ public sealed class LegacyCommandApiTests : IDisposable
             Assert.StartsWith("NAK You do not have permission to StopRobust", await api.HandleAsync(Req("StopRobust", "God Owner", "godpw"), null, Ct));
 
         Assert.Empty(_grid.Snapshot());
-        Assert.False(_throttle.IsLocked("God Owner", null));
+        Assert.False(_throttle.IsLocked(SignInDoor.Staff, "God Owner", null));
         Assert.Empty(AuditEntries());
         // The MachineId still works.
         Assert.Equal("ACK", await api.HandleAsync(Req("StopRobust", password: MachineId), null, Ct));
@@ -558,12 +558,12 @@ public sealed class LegacyCommandApiTests : IDisposable
         _twoFactor.Set(DivaId, state);
         if (required) RequireTwoFactor();
         var api = Api();
-        for (var i = 0; i < LoginThrottle.NameMaxFailures - 1; i++) _throttle.RecordFailure("Diva Admin", null);
+        for (var i = 0; i < LoginThrottle.NameMaxFailures - 1; i++) _throttle.RecordFailure(SignInDoor.Staff, "Diva Admin", null);
 
         Assert.StartsWith("NAK You do not have permission to StopRobust", await api.HandleAsync(Req("StopRobust", "Diva Admin", "divapw"), null, Ct));
-        _throttle.RecordFailure("Diva Admin", null);
+        _throttle.RecordFailure(SignInDoor.Staff, "Diva Admin", null);
 
-        Assert.True(_throttle.IsLocked("Diva Admin", null));
+        Assert.True(_throttle.IsLocked(SignInDoor.Staff, "Diva Admin", null));
     }
 
     [Fact]
@@ -576,7 +576,7 @@ public sealed class LegacyCommandApiTests : IDisposable
             Assert.StartsWith("NAK You do not have permission to StopRobust", await api.HandleAsync(Req("StopRobust", "God Owner", "godpw"), null, Ct));
 
         Assert.Empty(_grid.Snapshot());
-        Assert.False(_throttle.IsLocked("God Owner", null));
+        Assert.False(_throttle.IsLocked(SignInDoor.Staff, "God Owner", null));
         Assert.Contains(_logs, l => l.Level == LogLevel.Warning && l.Message.Contains(nameof(InvalidDataException)));
     }
 
@@ -615,7 +615,7 @@ public sealed class LegacyCommandApiTests : IDisposable
 
         Assert.StartsWith("NAK You do not have permission to StopRobust", await Api().HandleAsync(Req("StopRobust", "God Owner", "godpw"), null, Ct));
         Assert.Empty(_grid.Snapshot());
-        Assert.False(_throttle.IsLocked("God Owner", null));
+        Assert.False(_throttle.IsLocked(SignInDoor.Staff, "God Owner", null));
         Assert.Contains(_logs, l => l.Level == LogLevel.Information && l.Message.Contains("God") && l.Message.Contains("two-factor"));
 
         // With the switch off the same password works.

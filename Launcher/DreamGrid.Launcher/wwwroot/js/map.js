@@ -51,6 +51,11 @@ function startMap(map) {
     var zoomOut = document.getElementById("zoom-out");
     var panel = document.getElementById("region-panel");
     var panelBody = panel.querySelector(".region-panel-body");
+    // The panel's HTML is fetched, so confirm.js never saw its forms: a form with data-confirm asks first here too.
+    panelBody.addEventListener("submit", function (e) {
+        var question = e.target.getAttribute && e.target.getAttribute("data-confirm");
+        if (question && !window.confirm(question)) e.preventDefault();
+    });
     var panelColumn = document.getElementById("panel-column");
     var mapColumn = document.getElementById("map-column");
     var typeItems = document.querySelectorAll("#region-types li[data-type]");

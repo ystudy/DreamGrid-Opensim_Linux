@@ -19,6 +19,34 @@ public sealed class SettingsValidatorTests
     public void Security_levels_are_checked(int supervisor, int admin, bool ok) =>
         Assert.Equal(ok, SettingsValidator.Security(new SecuritySettings(supervisor, admin)).Ok);
 
+    [Theory]
+    [InlineData(999, false)]
+    [InlineData(1_000, true)]
+    [InlineData(50_000, true)]
+    [InlineData(1_000_000, true)]
+    [InlineData(1_000_001, false)]
+    public void Difficulty_out_of_range_refused(int difficulty, bool ok)
+    {
+        var result = SettingsValidator.Bots(new BotSettings(Difficulty: difficulty));
+
+        Assert.Equal(ok, result.Ok);
+        if (!ok) Assert.Equal(["Difficulty"], result.Errors.Keys);
+    }
+
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(1, true)]
+    [InlineData(5, true)]
+    [InlineData(1_000, true)]
+    [InlineData(1_001, false)]
+    public void PerHourPerIp_out_of_range_refused(int perHour, bool ok)
+    {
+        var result = SettingsValidator.Bots(new BotSettings(PerHourPerIp: perHour));
+
+        Assert.Equal(ok, result.Ok);
+        if (!ok) Assert.Equal(["PerHourPerIp"], result.Errors.Keys);
+    }
+
     [Fact]
     public void Validator_accepts_the_defaults()
     {

@@ -1,0 +1,24 @@
+@page "/guest"
+@model DreamGrid.Launcher.Pages.Guest.IndexModel
+@{
+    ViewData["Title"] = "Your account";
+}
+<h1>@Model.GridName</h1>
+<p>You're signed in as @Model.DisplayName.</p>
+
+<h2>Connect with Firestorm</h2>
+<ol>
+    <li>Install Firestorm for OpenSim from <a href="https://www.firestormviewer.org/downloads/">https://www.firestormviewer.org/downloads/</a>.</li>
+    <li>In Firestorm open Preferences, then OpenSim, then Grid Manager.</li>
+    <li>Paste <code>@Model.LoginUri</code> and click Apply.</li>
+    <li>Pick @Model.GridName on the login screen and sign in with your avatar name and password.</li>
+</ol>
+
+@if (Model.OwnsRegions)
+{
+    <p><a href="/guest/regions">My regions</a></p>
+}
+
+<form method="post" action="/guest/sign-out" asp-antiforgery="true">
+    <button type="submit" class="btn btn-outline-secondary">Sign out</button>
+</form>

@@ -78,7 +78,7 @@ public sealed class LegacyCommandApi(
 
         var name = AvatarName.Parse(r.Avatar);
         if (!name.IsComplete) return Nobody;
-        if (throttle.IsLocked(name.Key, caller))
+        if (throttle.IsLocked(SignInDoor.Staff, name.Key, caller))
         {
             log.LogInformation("Avatar check for first name {First} refused: too many failed attempts.", name.ForLog);
             return Nobody;
@@ -89,7 +89,7 @@ public sealed class LegacyCommandApi(
             var account = await robust.FindAccountAsync(name.First, name.Last, ct);
             if (account is null || !await robust.AuthenticateAsync(account.PrincipalId, r.Password, ct))
             {
-                throttle.RecordFailure(name.Key, caller);
+                throttle.RecordFailure(SignInDoor.Staff, name.Key, caller);
                 return Nobody;
             }
 
@@ -110,7 +110,7 @@ public sealed class LegacyCommandApi(
                 return Nobody;
             }
 
-            throttle.RecordSuccess(name.Key);
+            throttle.RecordSuccess(SignInDoor.Staff, name.Key);
             // A Region Server's or Connected Server's estate owner is level 0 on the other grid but administers here; on a
             // Connected Server a higher level on that grid counts for nothing.
             return new Caller(AdminRule.EffectiveLevel(settings(), account), $"{account.FirstName} {account.LastName}",

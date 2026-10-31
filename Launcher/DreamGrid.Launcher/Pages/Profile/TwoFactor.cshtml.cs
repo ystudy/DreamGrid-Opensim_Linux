@@ -168,7 +168,7 @@ public sealed class TwoFactorModel(TwoFactorStore store, Func<LauncherSettings> 
 
     private bool Locked()
     {
-        if (!throttle.IsLocked(ThrottleKey, HttpContext.Connection.RemoteIpAddress)) return false;
+        if (!throttle.IsLocked(SignInDoor.Staff, ThrottleKey, HttpContext.Connection.RemoteIpAddress)) return false;
         Error = "Too many attempts. Try again in a few minutes.";
         return true;
     }
@@ -176,7 +176,7 @@ public sealed class TwoFactorModel(TwoFactorStore store, Func<LauncherSettings> 
     /// <summary>A wrong code: counted by the throttle and audited, as at the code step.</summary>
     private IActionResult Wrong(StaffClaims claims)
     {
-        throttle.RecordFailure(ThrottleKey, HttpContext.Connection.RemoteIpAddress);
+        throttle.RecordFailure(SignInDoor.Staff, ThrottleKey, HttpContext.Connection.RemoteIpAddress);
         audit.Write(Entry(claims, "sign-in-refused", "two-factor code", "refused"));
         Error = WrongCode;
         return Page();

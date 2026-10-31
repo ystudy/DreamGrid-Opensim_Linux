@@ -874,6 +874,97 @@ public sealed partial class GridController(
         finally { _ops.Release(); }
     }
 
+    // ---- estates -------------------------------------------------------------------------------------
+
+    /// <summary>How many names <see cref="CreateEstateAsync"/> tries: the name itself, then "&lt;name&gt; 2" to "&lt;name&gt; 20".</summary>
+    private const int EstateNameTries = 20;
+
+    [GeneratedRegex(@"Estate (\d+) created as")]
+    private static partial Regex EstateCreated();
+
+    public async Task<int?> EstateOfAsync(Guid regionId, CancellationToken ct)
+    {
+        await _ops.WaitAsync(ct);
+        try
+        {
+            var s = LoadSettings();
+            ThrowIfNoGridService(s);
+            if (!DatabaseRunning) throw new InvalidOperationException("Start the database first.");
+            return await _regionStores(s).EstateOfAsync(regionId, ct);
+        }
+        finally { _ops.Release(); }
+    }
+
+    public async Task<(int Id, string Name)> CreateEstateAsync(Guid regionId, Guid owner, string name, CancellationToken ct)
+    {
+        // The console splits on whitespace and joins the name's words again with one space; quotes and options would change it.
+        if (name.Length == 0 || name.Split(' ').Any(w => w.Length == 0 || w.StartsWith("--", StringComparison.Ordinal) || w.Any(c => char.IsWhiteSpace(c) || c == '"')))
+            throw new ArgumentException("An estate name must be words separated by single spaces, with no double quotes and no word starting with \"--\".", nameof(name));
+
+        await _ops.WaitAsync(ct);
+        try
+        {
+            var (console, _) = EstateConsole(regionId);
+            var transcript = new List<string>();
+            for (var n = 1; n <= EstateNameTries; n++)
+            {
+                var candidate = n == 1 ? name : $"{name} {n}";
+                var lines = await EstateCommandAsync(console, $"estate create {owner} {candidate}", transcript, ct);
+                if (lines.Select(l => EstateCreated().Match(l)).FirstOrDefault(m => m.Success) is { } created)
+                    return (int.Parse(created.Groups[1].Value, CultureInfo.InvariantCulture), candidate);
+                if (!lines.Any(l => l.Contains($"An estate named \"{candidate}\" already exists.", StringComparison.Ordinal)))
+                    throw new InvalidOperationException($"The estate {candidate} was not created. Console: {string.Join(" | ", transcript)}");
+            }
+            throw new InvalidOperationException(
+                $"Every estate name from {name} to {name} {EstateNameTries} is taken. Console: {string.Join(" | ", transcript)}");
+        }
+        finally { _ops.Release(); }
+    }
+
+    public async Task LinkEstateAsync(Guid regionId, int estateId, CancellationToken ct)
+    {
+        await _ops.WaitAsync(ct);
+        try
+        {
+            var (console, region) = EstateConsole(regionId);
+            var transcript = new List<string>();
+            var lines = await EstateCommandAsync(console, $"estate link region {estateId} {regionId}", transcript, ct);
+            if (!lines.Any(l => l.Contains("is now attached to estate", StringComparison.Ordinal) || l.Contains("is already part of estate", StringComparison.Ordinal)))
+                throw new InvalidOperationException($"{region.Name} did not join estate {estateId}. Console: {string.Join(" | ", transcript)}");
+        }
+        finally { _ops.Release(); }
+    }
+
+    /// <summary>
+    /// Under the operation lock: the console of the program that runs the region, for an estate command. OpenSim's estate
+    /// commands need no <c>change region</c>: <c>estate create</c> works on any scene, <c>estate link region</c> names its region.
+    /// </summary>
+    private (RestConsoleClient Console, RegionSettings Region) EstateConsole(Guid regionId)
+    {
+        var s = LoadSettings();
+        ThrowIfNoGridService(s);
+        var region = RegionModel.Find(s, regionId) ?? throw new InvalidOperationException("There is no such region.");
+        if (region.DeletedAt is not null) throw new InvalidOperationException("That region has been deleted.");
+        // An OAR job talks to the same console; its output would mix with this command's.
+        ThrowIfBusy(region.Instance);
+        var program = RunningProgramOf(s, region) ?? throw new InvalidOperationException($"Start {region.Name} first.");
+        return (program.Console!, region);
+    }
+
+    /// <summary>Runs an estate command, adding its output to <paramref name="transcript"/>; a reply lost after it was sent says so.</summary>
+    private static async Task<IReadOnlyList<string>> EstateCommandAsync(RestConsoleClient console, string command, List<string> transcript, CancellationToken ct)
+    {
+        IReadOnlyList<string> lines;
+        try { lines = await console.RunAsync(command, ConsoleSettle, ct); }
+        catch (ConsoleCommandSentException e)
+        {
+            // The region took the command, then its output was lost: it may have run.
+            throw new InvalidOperationException($"The region took \"{command}\" but its answer was lost. Console: {string.Join(" | ", transcript)}", e);
+        }
+        transcript.AddRange(lines);
+        return lines;
+    }
+
     private static readonly string ContentError =
         $"Content must be starter, a built-in type ({string.Join(", ", RegionTypes.BuiltIn.Select(t => t.Id))}) or one of your region types.";
 
@@ -1074,12 +1165,8 @@ public sealed partial class GridController(
             var s = LoadSettings();
             var region = RegionModel.Find(s, request.RegionId) ?? throw new ArgumentException("There is no such region.");
             if (region.DeletedAt is not null) throw new ArgumentException("That region has been deleted.");
-            // Running means: its program runs and loaded it (an unknown list counts as loaded), and it accepts logins.
-            if (_programs.GetValueOrDefault(region.Instance) is not { Process.State: ProcessState.Running } program
-                || RegionModel.Loadable(s, region.Instance, _held).All(r => r.Uuid != region.Uuid)
-                || (_loaded.GetValueOrDefault(region.Instance) is { } ids && !ids.Contains(region.Uuid))
-                || !_logins.Enabled(region.Uuid))
-                throw new InvalidOperationException($"Start {region.Name} first; an OAR needs it running.");
+            var program = RunningProgramOf(s, region)
+                ?? throw new InvalidOperationException($"Start {region.Name} first; an OAR needs it running.");
             ThrowIfBusy(region.Instance);
             _jobs[region.Instance] = request.Kind switch
             {
@@ -1091,6 +1178,18 @@ public sealed partial class GridController(
         }
         finally { _ops.Release(); }
     }
+
+    /// <summary>
+    /// The program that runs the region, or null while it isn't running. Running means: its program runs and loaded it (an
+    /// unknown list counts as loaded), and it accepts logins.
+    /// </summary>
+    private Component? RunningProgramOf(LauncherSettings s, RegionSettings region) =>
+        _programs.GetValueOrDefault(region.Instance) is { Process.State: ProcessState.Running } program
+        && RegionModel.Loadable(s, region.Instance, _held).Any(r => r.Uuid == region.Uuid)
+        && (_loaded.GetValueOrDefault(region.Instance) is not { } ids || ids.Contains(region.Uuid))
+        && _logins.Enabled(region.Uuid)
+            ? program
+            : null;
 
     /// <summary>Under the operation lock: refuses to change a program (or programs) while an OAR job runs in it.</summary>
     private void ThrowIfBusy(params string?[] instances)

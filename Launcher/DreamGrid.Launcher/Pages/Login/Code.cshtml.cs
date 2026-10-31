@@ -38,7 +38,7 @@ public sealed class CodeModel(TwoFactorStore twoFactor, LoginThrottle throttle, 
         var key = AvatarName.Parse(pending.Name).Key;
         var remote = HttpContext.Connection.RemoteIpAddress;
         var ip = remote?.ToString();
-        if (throttle.IsLocked(key, remote))
+        if (throttle.IsLocked(SignInDoor.Staff, key, remote))
         {
             Error = "Too many attempts. Try again in a few minutes.";
             return Page();
@@ -69,14 +69,14 @@ public sealed class CodeModel(TwoFactorStore twoFactor, LoginThrottle throttle, 
 
         if (!right)
         {
-            throttle.RecordFailure(key, remote);
+            throttle.RecordFailure(SignInDoor.Staff, key, remote);
             log.LogInformation("Sign-in: a two-factor code for first name {First} was refused", LogText.Clean(pending.First, 32));
             audit.Write(new AuditEntry(pending.Name, pending.Principal, pending.Role.AuditName(), ip, "sign-in-refused", "two-factor code", "refused"));
             Error = WrongCode;
             return Page();
         }
 
-        throttle.RecordSuccess(key);
+        throttle.RecordSuccess(SignInDoor.Staff, key);
         TwoFactorPending.Delete(HttpContext);
         await StaffSignIn.SignInAsync(HttpContext, pending.Account, pending.Role);
         audit.Write(new AuditEntry(pending.Name, pending.Principal, pending.Role.AuditName(), ip, "sign-in", null, "ok"));

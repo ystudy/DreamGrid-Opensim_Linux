@@ -115,9 +115,35 @@ public sealed record SecuritySettings(
     bool RequireTwoFactorForStaff = false,
     IReadOnlyList<string>? AdminNetworks = null);
 
+/// <summary>One legal page's text as the operator wrote it (Markdown), how many times it was saved and when.</summary>
+public sealed record LegalText(string Markdown, int Version, DateTimeOffset Saved);
+
+/// <summary>
+/// The operator's own legal pages. <see cref="Texts"/>: language ("en") to page id ("terms", "privacy", "cookies", "contact") to
+/// text; null or empty means none written. DreamGrid ships no wording. <see cref="OperatorResponsible"/> is the operator's tick that they
+/// are responsible for the texts; <see cref="ResponsibleSince"/> is when it was ticked.
+/// </summary>
+public sealed record LegalSettings(
+    IReadOnlyDictionary<string, IReadOnlyDictionary<string, LegalText>>? Texts = null,
+    bool OperatorResponsible = false,
+    DateTimeOffset? ResponsibleSince = null);
+
+/// <summary>
+/// Protection of the sign-up form against bots. <see cref="Difficulty"/> is the proof-of-work's largest number to try
+/// (ALTCHA <c>maxnumber</c>, 1 000 to 1 000 000); <see cref="PerHourPerIp"/> is 1 to 1 000.
+/// </summary>
+public sealed record BotSettings(
+    bool Honeypot = true,
+    bool RateLimit = true,
+    int PerHourPerIp = 5,
+    bool ProofOfWork = true,
+    int Difficulty = 50_000,
+    bool ImageCaptcha = false,
+    bool AdminApproval = false);
+
 public sealed record LauncherSettings
 {
-    public const int CurrentSchema = 5;
+    public const int CurrentSchema = 6;
 
     public int SchemaVersion { get; init; } = CurrentSchema;
     public string GridName { get; init; } = "My World";
@@ -161,6 +187,18 @@ public sealed record LauncherSettings
     /// <summary>Sign-in security; a missing or null value (a hand edit) reads as the defaults.</summary>
     [AllowNull]
     public SecuritySettings Security { get => _security; init => _security = value ?? new(); }
+
+    private readonly LegalSettings _legal = new();
+
+    /// <summary>The operator's legal pages; a missing or null value reads as none written.</summary>
+    [AllowNull]
+    public LegalSettings Legal { get => _legal; init => _legal = value ?? new(); }
+
+    private readonly BotSettings _bots = new();
+
+    /// <summary>Bot protection for sign-up; a missing or null value reads as the defaults.</summary>
+    [AllowNull]
+    public BotSettings Bots { get => _bots; init => _bots = value ?? new(); }
     public List<ProgramSettings> Programs { get; init; } = new();
     public List<RegionSettings> Regions { get; init; } = new();
     /// <summary>Region types made from library files, in the order they were added; a missing list reads as empty.</summary>

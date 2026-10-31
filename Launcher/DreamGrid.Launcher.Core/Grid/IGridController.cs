@@ -45,6 +45,31 @@ public interface IGridController
     Task<RobustAccount> SetEstateOwnerAsync(string first, string last, CancellationToken ct);
 
     /// <summary>
+    /// The estate the region is in (<c>opensim.estate_map</c>), or null when it is in none yet. Throws
+    /// <see cref="InvalidOperationException"/> when this computer runs no grid service, and "Start the database first." while
+    /// the database isn't running.
+    /// </summary>
+    Task<int?> EstateOfAsync(Guid regionId, CancellationToken ct);
+
+    /// <summary>
+    /// Makes an estate owned by <paramref name="owner"/> through the console of the region's program (<c>estate create</c>) and
+    /// returns its id and name. When an estate already has the name, it tries "&lt;name&gt; 2", "&lt;name&gt; 3", … up to
+    /// "&lt;name&gt; 20". Throws <see cref="ArgumentException"/> for a name the console would split or change, and
+    /// <see cref="InvalidOperationException"/> when this computer runs no grid service, while the region isn't running ("Start
+    /// &lt;Region&gt; first.") or its program runs an OAR job, when every name is taken, and with the console transcript for
+    /// any other answer.
+    /// </summary>
+    Task<(int Id, string Name)> CreateEstateAsync(Guid regionId, Guid owner, string name, CancellationToken ct);
+
+    /// <summary>
+    /// Moves the region into the estate (<c>estate link region</c>); a region already in it is done too. Throws
+    /// <see cref="InvalidOperationException"/> when this computer runs no grid service, while the region isn't running ("Start
+    /// &lt;Region&gt; first.") or its program runs an OAR job, and with the console transcript for any other answer (an estate
+    /// that doesn't exist answers "No estate found with ID &lt;id&gt;").
+    /// </summary>
+    Task LinkEstateAsync(Guid regionId, int estateId, CancellationToken ct);
+
+    /// <summary>
     /// On a plan that runs Robust, how many regions on its map are not this computer's: the regions other computers joined
     /// to this grid. 0 on a plan that doesn't run Robust. Throws <see cref="InvalidOperationException"/> when Robust
     /// doesn't answer.

@@ -1,0 +1,15 @@
+@page "/home"
+@model DreamGrid.Launcher.Pages.HomeModel
+@{
+    Layout = "_GuestLayout";
+    ViewData["Title"] = "Welcome";
+}
+<h1>@Model.GridName</h1>
+<p>Welcome. Sign in with your avatar to see how to connect, or create an account to join.</p>
+<p>
+    <a class="btn btn-primary" href="/guest/sign-in">Sign in</a>
+    <a class="btn btn-outline-primary" href="/signup">Create an account</a>
+</p>
+@section Footer {
+    <small><a href="/login">Staff sign in</a></small>
+}
