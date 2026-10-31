@@ -130,6 +130,16 @@ builder.Services.AddAuthentication(AuthSchemes.Admin).AddCookie(AuthSchemes.Admi
     o.ExpireTimeSpan = StaffSignIn.Expiry;
     o.SlidingExpiration = true;
     o.Events.OnValidatePrincipal = c => c.HttpContext.RequestServices.GetRequiredService<GuestPrincipalValidator>().ValidateAsync(c);
+    // Where there is no guest side the pages do not exist: a caller who isn't signed in gets 404, not a redirect to a sign-in
+    // page that doesn't exist either (the policy challenges before GuestSideOnly runs).
+    o.Events.OnRedirectToLogin = c =>
+    {
+        if (!AdminRule.HasStaffPages(c.HttpContext.RequestServices.GetRequiredService<Func<LauncherSettings>>()()))
+            c.Response.StatusCode = StatusCodes.Status404NotFound;
+        else
+            c.Response.Redirect(c.RedirectUri);
+        return Task.CompletedTask;
+    };
 });
 // Whatever has no decision of its own needs the admin role; the open routes say .AllowAnonymous() (or a page convention).
 builder.Services.AddAuthorizationBuilder()

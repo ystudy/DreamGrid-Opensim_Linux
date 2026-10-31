@@ -190,7 +190,14 @@ public sealed class GuestAccessTests
             using var r = await guest.GetAsync(url, Ct);
             Assert.Equal(HttpStatusCode.NotFound, r.StatusCode);
         }
-        using var anonymous = await Client(f).GetAsync("/guest/sign-in", Ct);
-        Assert.Equal(HttpStatusCode.NotFound, anonymous.StatusCode);
+        // Not signed in: the policy challenges first, and that answers 404 too, not a redirect.
+        var anonymousClient = Client(f);
+        foreach (var url in new[] { "/guest", "/guest/sign-in", "/guest/sign-out" })
+        {
+            using var r = await anonymousClient.GetAsync(url, Ct);
+            Assert.Equal(HttpStatusCode.NotFound, r.StatusCode);
+        }
+        using var signOut = await anonymousClient.PostAsync("/guest/sign-out", new FormUrlEncodedContent(new Dictionary<string, string>()), Ct);
+        Assert.Equal(HttpStatusCode.NotFound, signOut.StatusCode);
     }
 }
