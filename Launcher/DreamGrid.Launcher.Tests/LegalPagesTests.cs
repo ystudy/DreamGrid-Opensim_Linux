@@ -153,6 +153,20 @@ public sealed class LegalPagesTests
     }
 
     [Theory]
+    [InlineData("/Terms")]
+    [InlineData("/PRIVACY")]
+    public async Task Legal_page_address_ignores_case(string url)
+    {
+        await using var f = Factory(Legal(true, "terms", "privacy"));
+
+        using var r = await Client(f).GetAsync(url, Ct);
+
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        var page = new HtmlParser().ParseDocument(await r.Content.ReadAsStringAsync(Ct));
+        Assert.Contains("one.", page.QuerySelector("main article")!.TextContent);
+    }
+
+    [Theory]
     [InlineData("/terms")]
     [InlineData("/privacy")]
     [InlineData("/cookies")]

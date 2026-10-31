@@ -22,6 +22,7 @@ public sealed class LegalModel(Func<LauncherSettings> settings) : PageModel
 
     public IActionResult OnGet(string slug)
     {
+        slug = slug.ToLowerInvariant(); // the route constraint ignores case: /Terms reaches here as "Terms"
         var text = LegalPages.Get(settings(), slug);
         if (text is null) return NotFound();
         PageTitle = LegalPages.Title(slug);

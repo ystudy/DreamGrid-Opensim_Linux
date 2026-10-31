@@ -1,4 +1,6 @@
 using Markdig;
+using Markdig.Extensions.Tables;
+using Markdig.Renderers.Html;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
 
@@ -36,6 +38,9 @@ public static class LegalMarkdown
             if (!IsAllowed(auto.Url)) Replace(auto, new LiteralInline(auto.Url));
         }
 
+        foreach (var table in document.Descendants<Table>())
+            AlignWithClasses(table);
+
         foreach (var link in document.Descendants<LinkInline>().ToList())
         {
             if (link.IsImage)
@@ -43,6 +48,28 @@ public static class LegalMarkdown
             else if (!IsAllowed(link.Url))
                 WithoutAddress(link);
         }
+    }
+
+    /// <summary>
+    /// A column written <c>|:--:|</c> or <c>|--:|</c> would be rendered with <c>style="text-align: ..."</c>, which the site's CSP
+    /// blocks. The alignment is cleared and the cells get Bootstrap's <c>text-center</c> / <c>text-end</c> instead.
+    /// </summary>
+    private static void AlignWithClasses(Table table)
+    {
+        foreach (var row in table.OfType<TableRow>())
+        {
+            var column = 0;
+            foreach (var cell in row.OfType<TableCell>())
+            {
+                var align = (cell.ColumnIndex >= 0 ? cell.ColumnIndex : column) is var i && i < table.ColumnDefinitions.Count
+                    ? table.ColumnDefinitions[i].Alignment
+                    : null;
+                if (align == TableColumnAlign.Center) cell.GetAttributes().AddClass("text-center");
+                else if (align == TableColumnAlign.Right) cell.GetAttributes().AddClass("text-end");
+                column += Math.Max(1, cell.ColumnSpan);
+            }
+        }
+        foreach (var definition in table.ColumnDefinitions) definition.Alignment = null;
     }
 
     /// <summary>Puts <paramref name="with"/> where <paramref name="inline"/> was, dropping the old one and everything inside it.</summary>

@@ -52,6 +52,23 @@ public sealed class LegalMarkdownTests
     }
 
     [Fact]
+    public void Aligned_table_columns_use_classes_not_style_attributes()
+    {
+        var html = LegalMarkdown.ToHtml("""
+            | left | centre | right |
+            |:-----|:------:|------:|
+            | 1 | 2 | 3 |
+            """);
+
+        Assert.DoesNotContain("style=", html); // the CSP blocks inline styles
+        Assert.Contains("""<th>left</th>""", html);
+        Assert.Contains("""<th class="text-center">centre</th>""", html);
+        Assert.Contains("""<th class="text-end">right</th>""", html);
+        Assert.Contains("""<td class="text-center">2</td>""", html);
+        Assert.Contains("""<td class="text-end">3</td>""", html);
+    }
+
+    [Fact]
     public void Raw_html_and_script_links_are_inert()
     {
         var html = LegalMarkdown.ToHtml("""
