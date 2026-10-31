@@ -169,6 +169,8 @@ builder.Services.AddRazorPages(o =>
     o.Conventions.AddFolderApplicationModelConvention("/People", m => m.Filters.Add(new StaffPagesOnly()));
     o.Conventions.AuthorizeFolder("/Guest", AuthSchemes.GuestPolicy);
     o.Conventions.AddFolderApplicationModelConvention("/Guest", m => m.Filters.Add(new GuestSideOnly()));
+    // A guest accepts the current Terms before any other guest page (the Terms page, sign-out and sign-in excepted, see TermsGate).
+    o.Conventions.AddFolderApplicationModelConvention("/Guest", m => m.Filters.Add(new TermsGate()));
     // The public front page ("/" shows it to anyone not signed in as staff, see SetupGate); like the guest pages it is not there
     // on a Region Server or a Connected Server.
     // The operator's legal pages and the sign-up page are public in the same way.
@@ -208,6 +210,8 @@ builder.Services.AddSingleton<StaffActions>();
 builder.Services.AddSingleton<StaffPrincipalValidator>();
 builder.Services.AddSingleton(sp => new GuestStamps(Path.Combine(paths.Guests, "stamps.json"), sp.GetRequiredService<ILogger<GuestStamps>>()));
 builder.Services.AddSingleton<GuestPrincipalValidator>();
+builder.Services.AddSingleton(sp => new TermsAcceptances(Path.Combine(paths.Guests, "terms.json"), sp.GetRequiredService<TimeProvider>(),
+    sp.GetRequiredService<ILogger<TermsAcceptances>>()));
 builder.Services.AddSingleton<LegacyCommandApi>();
 builder.Services.AddSingleton<IOnlineUsers>(sp => new OnlineUsers(sp.GetRequiredService<Func<LauncherSettings>>(),
     sp.GetRequiredService<ILogger<OnlineUsers>>()));

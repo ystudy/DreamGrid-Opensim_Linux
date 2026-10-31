@@ -219,7 +219,7 @@ public sealed class LegalPagesTests
         var guest = Client(f);
         (await guest.GetAsync("/__test/guest-signin", Ct)).Dispose();
 
-        foreach (var (client, url) in new[] { (anonymous, "/"), (anonymous, "/home"), (anonymous, "/signup"), (anonymous, "/terms"), (guest, "/guest") })
+        foreach (var (client, url) in new[] { (anonymous, "/"), (anonymous, "/home"), (anonymous, "/signup"), (anonymous, "/terms"), (guest, "/guest/terms") })
         {
             using var r = await client.GetAsync(url, Ct);
 

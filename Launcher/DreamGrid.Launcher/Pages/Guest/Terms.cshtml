@@ -1,0 +1,27 @@
+@page "/guest/terms"
+@model DreamGrid.Launcher.Pages.Guest.TermsModel
+@{
+    ViewData["Title"] = "Terms";
+}
+<h1>@Model.GridName</h1>
+<h2>Terms</h2>
+<p class="text-body-secondary">Version @Model.Version</p>
+@if (Model.Error is not null)
+{
+    <div class="alert alert-warning" role="alert">@Model.Error</div>
+}
+<article>@Html.Raw(Model.Html)</article>
+
+@if (Model.Accepted)
+{
+    <p>You have accepted this version.</p>
+    <p><a href="@Model.Next">Continue</a></p>
+}
+else
+{
+    <form method="post" action="/guest/terms" asp-antiforgery="true">
+        <input type="hidden" name="Version" value="@Model.Version">
+        <input type="hidden" name="ReturnUrl" value="@Model.ReturnUrl">
+        <button type="submit" class="btn btn-primary">I accept these terms</button>
+    </form>
+}
