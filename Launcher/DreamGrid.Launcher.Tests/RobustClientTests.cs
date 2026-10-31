@@ -252,6 +252,29 @@ public class RobustClientTests
         Assert.Equal("getaccount", req.Form("METHOD"));
     }
 
+    [Fact]
+    public async Task FindAccountById_asks_by_principal()
+    {
+        var (c, h) = Make(r => (HttpStatusCode.OK, AccountReply()));
+
+        var a = await c.FindAccountByIdAsync(Guid.Parse(Pid), CancellationToken.None);
+
+        Assert.Equal(Guid.Parse(Pid), a!.PrincipalId);
+        var req = Assert.Single(h.Requests);
+        Assert.Equal("getaccount", req.Form("METHOD"));
+        Assert.Equal(Pid, req.Form("PrincipalID"), ignoreCase: true);
+        Assert.Equal("", req.Form("FirstName"));
+    }
+
+    [Fact]
+    public async Task FindAccountById_null_only_for_no_such_account()
+    {
+        var (none, _) = Make(r => (HttpStatusCode.OK, "<?xml version=\"1.0\"?><ServerResponse><result>null</result></ServerResponse>"));
+        Assert.Null(await none.FindAccountByIdAsync(Guid.NewGuid(), CancellationToken.None));
+        var (broken, _) = Make(r => (HttpStatusCode.OK, "not xml"));
+        await Assert.ThrowsAsync<InvalidDataException>(() => broken.FindAccountByIdAsync(Guid.NewGuid(), CancellationToken.None));
+    }
+
     private static string AccountReplyWith(string extra) =>
         "<?xml version=\"1.0\"?><ServerResponse><result type=\"List\"><FirstName>Test</FirstName><LastName>Owner</LastName>" +
         "<Email>t@example.com</Email><PrincipalID>" + Pid + "</PrincipalID><UserLevel>100</UserLevel>" + extra + "</result></ServerResponse>";

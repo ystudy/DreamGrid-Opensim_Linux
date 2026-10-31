@@ -186,7 +186,7 @@ builder.Services.AddRazorPages(o =>
     // The same for the Email pages: email is for the guest side's sign-up and password reset.
     foreach (var emailPage in new[] { "/Security/Email", "/Security/EmailWording" })
         o.Conventions.AddPageApplicationModelConvention(emailPage, m => m.Filters.Add(new GuestSideOnly()));
-    foreach (var open in new[] { "/Login", "/Login/Code", "/Logout", "/Welcome", "/Waiting", "/SetupDone", "/Setup", "/Home", "/Legal", "/SignUp", "/Guest/SignIn", "/Guest/SignInCode", "/Guest/ForgotPassword" })
+    foreach (var open in new[] { "/Login", "/Login/Code", "/Logout", "/Welcome", "/Waiting", "/SetupDone", "/Setup", "/Home", "/Legal", "/SignUp", "/Guest/SignIn", "/Guest/SignInCode", "/Guest/ForgotPassword", "/Guest/ResetPassword" })
         o.Conventions.AllowAnonymousToPage(open);
     o.Conventions.AllowAnonymousToFolder("/Setup");
     // The dashboard's forms post here: a POST to "/" belongs to the port-8001 contract (LegacyRootPolicy).

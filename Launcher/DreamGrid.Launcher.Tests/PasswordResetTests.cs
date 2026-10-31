@@ -13,7 +13,7 @@ using Xunit;
 namespace DreamGrid.Launcher.Tests;
 
 /// <summary>Password recovery through the real website: the Forgot password page and the reset page its email links to.</summary>
-public sealed class PasswordResetTests
+public sealed partial class PasswordResetTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 

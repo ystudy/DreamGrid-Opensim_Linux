@@ -551,6 +551,14 @@ internal sealed class FakeRobustAccounts : IRobustClient, IRobustPasswords
         return GetAccountAsync(first, last, ct);
     }
 
+    public Task<RobustAccount?> FindAccountByIdAsync(Guid principal, CancellationToken ct)
+    {
+        Lookups++;
+        if (Down) throw new HttpRequestException("Connection refused");
+        if (FailureReply) throw new InvalidDataException("The account service's reply has no result.");
+        return Task.FromResult(_accounts.Values.Select(a => a.Account).FirstOrDefault(a => a.PrincipalId == principal));
+    }
+
     public Task<bool> AuthenticateAsync(Guid principal, string plainPassword, CancellationToken ct) =>
         Down ? throw new HttpRequestException("Connection refused") : Task.FromResult(_accounts.Values.Any(a => a.Account.PrincipalId == principal && a.Password == plainPassword));
 
