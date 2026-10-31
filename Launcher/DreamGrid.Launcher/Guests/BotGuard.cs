@@ -17,7 +17,7 @@ public static class BotLayers
         Honeypot => "Honeypot",
         RateLimit => "Rate limit",
         ProofOfWork => "Proof of work",
-        ImageCaptcha => "Image CAPTCHA",
+        ImageCaptcha => "Image check",
         _ => layer,
     };
 }
@@ -32,16 +32,21 @@ public sealed record BotCheck(bool Passed, string? Layer);
 /// <item><see cref="BotLayers.Honeypot"/>: the hidden <c>website</c> field must be empty.</item>
 /// <item><see cref="BotLayers.RateLimit"/>: at most <c>PerHourPerIp</c> passed posts from one address to one form in a sliding hour.</item>
 /// <item><see cref="BotLayers.ProofOfWork"/>: the <c>pow</c> field carries a solved challenge, and each answer is accepted once.</item>
+/// <item><see cref="BotLayers.ImageCaptcha"/>: the <c>captcha-token</c> field carries a token <see cref="ImageCaptcha"/> made, with
+/// the letters or the sum right. A token gets one try, right or wrong, so the few possible sums can't be tried one after another.</item>
 /// </list>
-/// (The image CAPTCHA layer joins later; until then it is skipped.) A post counts against the rate limit only when every layer
+/// A post counts against the rate limit only when every layer
 /// passed, so a visitor whose proof-of-work failed can try again. The counts and the used answers live in memory and are pruned as
 /// they go stale, so a restart forgets them. A failed check logs the layer and the form, never what was typed. Safe from any thread.
 /// </summary>
-public sealed class BotGuard(Func<LauncherSettings> settings, ProofOfWork work, TimeProvider time, ILogger<BotGuard> log)
+public sealed class BotGuard(Func<LauncherSettings> settings, ProofOfWork work, ImageCaptcha captcha, TimeProvider time, ILogger<BotGuard> log)
 {
     /// <summary>The form fields <c>_BotFields</c> renders and <see cref="Check"/> reads.</summary>
     public const string HoneypotField = "website";
     public const string ProofField = "pow";
+    public const string CaptchaTokenField = "captcha-token";
+    public const string CaptchaLettersField = "captcha-letters";
+    public const string CaptchaAnswerField = "captcha-answer";
 
     private static readonly TimeSpan Window = TimeSpan.FromHours(1);
 
@@ -80,6 +85,16 @@ public sealed class BotGuard(Func<LauncherSettings> settings, ProofOfWork work, 
                 // A solved challenge is used once, however its answer is written (spaces in the base64, JSON order): the key is the
                 // verified challenge, which the signature binds, not the text that was posted.
                 if (!_used.TryAdd(solved, expires)) return Stopped(BotLayers.ProofOfWork, form);
+            }
+
+            if (bots.ImageCaptcha)
+            {
+                var result = captcha.Check(fields?[CaptchaTokenField].ToString(), fields?[CaptchaLettersField].ToString(),
+                    fields?[CaptchaAnswerField].ToString(), out var until, out var id);
+                if (result == CaptchaResult.Invalid) return Stopped(BotLayers.ImageCaptcha, form);
+                // A token gets one try: it is spent whether or not the answer was right, and it is named by the challenge the signature
+                // binds (not by the posted text, which can be written another way). The prefix keeps it apart from the proof-of-work challenges in the same memory.
+                if (!_used.TryAdd("captcha:" + id, until) || result != CaptchaResult.Right) return Stopped(BotLayers.ImageCaptcha, form);
             }
 
             posts?.Enqueue(now);

@@ -219,9 +219,11 @@ builder.Services.AddSingleton(sp => new RegionRights(Path.Combine(paths.Guests, 
     sp.GetRequiredService<ILogger<RegionRights>>()));
 builder.Services.AddSingleton(sp => new EmailTokens(Path.Combine(paths.Guests, "email-tokens.json"), sp.GetRequiredService<TimeProvider>(),
     sp.GetRequiredService<ILogger<EmailTokens>>()));
-// The proof-of-work key lives in the owner-only security folder; one key for the life of the install.
-builder.Services.AddSingleton(sp => new ProofOfWork(ProofOfWork.LoadOrCreateKey(Path.Combine(paths.Security, "pow.key")),
-    sp.GetRequiredService<TimeProvider>()));
+// The proof-of-work key lives in the owner-only security folder; one key for the life of the install. The image CAPTCHA signs with
+// the same key (its signatures carry a label of their own), so it is read once, when the first of the two is needed.
+var powKey = new Lazy<byte[]>(() => ProofOfWork.LoadOrCreateKey(Path.Combine(paths.Security, "pow.key")));
+builder.Services.AddSingleton(sp => new ProofOfWork(powKey.Value, sp.GetRequiredService<TimeProvider>()));
+builder.Services.AddSingleton(sp => new ImageCaptcha(powKey.Value, sp.GetRequiredService<TimeProvider>()));
 builder.Services.AddSingleton<BotGuard>();
 builder.Services.AddSingleton<LegacyCommandApi>();
 builder.Services.AddSingleton<IOnlineUsers>(sp => new OnlineUsers(sp.GetRequiredService<Func<LauncherSettings>>(),

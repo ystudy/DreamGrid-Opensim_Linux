@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using AngleSharp.Html.Parser;
 using DreamGrid.Launcher.Core.Guests;
 using DreamGrid.Launcher.Core.Settings;
@@ -131,6 +132,65 @@ public sealed class BotsPageTests
         Assert.Equal("Passed", await TryAsync(owner, null, null));
         Assert.Equal("Passed", await TryAsync(owner, null, null));
         Assert.Equal("Stopped by Rate limit", await TryAsync(owner, null, null));
+    }
+
+    [Fact]
+    public async Task Try_form_shows_the_picture_and_its_question_when_the_image_check_is_on()
+    {
+        await using var f = Factory(OwnerPlan.Local, b => b with { Honeypot = false, ProofOfWork = false, RateLimit = false, ImageCaptcha = true });
+        var owner = await SignedInAsync(f);
+
+        var form = new HtmlParser().ParseDocument(await owner.GetStringAsync("/security/bots", Ct)).QuerySelector("#try-form")!;
+        var image = form.QuerySelector("img")!;
+        Assert.Equal("Picture of letters; answer the question below instead if you can't see it", image.GetAttribute("alt"));
+        var src = image.GetAttribute("src")!;
+        Assert.StartsWith("data:image/svg+xml;base64,", src);
+        var svg = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(src["data:image/svg+xml;base64,".Length..]));
+        Assert.DoesNotContain("<text", svg);
+        Assert.Equal("Type the letters", form.QuerySelector("label[for=dg-captcha-letters]")!.TextContent);
+        Assert.NotNull(form.QuerySelector("input#dg-captcha-letters[name=captcha-letters]"));
+        Assert.NotNull(form.QuerySelector("input#dg-captcha-answer[name=captcha-answer]"));
+        Assert.Matches(@"^What is \w+ plus \w+\?$", form.QuerySelector("label[for=dg-captcha-answer]")!.TextContent);
+        Assert.NotEmpty(form.QuerySelector("input[type=hidden][name=captcha-token]")!.GetAttribute("value")!);
+        Assert.Null(form.QuerySelector("input[name=website]"));
+    }
+
+    [Fact]
+    public async Task Try_form_passes_the_image_check_with_the_sum_and_uses_each_picture_once()
+    {
+        await using var f = Factory(OwnerPlan.Local, b => b with { Honeypot = false, ProofOfWork = false, RateLimit = false, ImageCaptcha = true });
+        var owner = await SignedInAsync(f);
+
+        // Reads the form the way a visitor would: the question is the only part of the answer the page gives away.
+        async Task<(string Token, string Sum)> NextAsync()
+        {
+            var form = new HtmlParser().ParseDocument(await owner.GetStringAsync("/security/bots", Ct)).QuerySelector("#try-form")!;
+            var words = new[] { "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine" };
+            var question = Regex.Match(form.QuerySelector("label[for=dg-captcha-answer]")!.TextContent, @"What is (\w+) plus (\w+)\?");
+            var sum = Array.IndexOf(words, question.Groups[1].Value) + Array.IndexOf(words, question.Groups[2].Value);
+            return (form.QuerySelector("input[name=captcha-token]")!.GetAttribute("value")!, sum.ToString());
+        }
+
+        async Task<string?> TryAsync(string? token, string? letters, string? answer)
+        {
+            var fields = new Dictionary<string, string>();
+            if (token is not null) fields["captcha-token"] = token;
+            if (letters is not null) fields["captcha-letters"] = letters;
+            if (answer is not null) fields["captcha-answer"] = answer;
+            using var r = await PostAsync(owner, "Try", fields);
+            Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+            return new HtmlParser().ParseDocument(await r.Content.ReadAsStringAsync(Ct)).QuerySelector("#try-result")?.TextContent;
+        }
+
+        var (token, sum) = await NextAsync();
+        Assert.Equal("Stopped by Image check", await TryAsync(null, null, null));
+        Assert.Equal("Stopped by Image check", await TryAsync(token, "AAAAA", "99"));
+        // The token was spent by the wrong try above.
+        Assert.Equal("Stopped by Image check", await TryAsync(token, null, sum));
+
+        var (fresh, freshSum) = await NextAsync();
+        Assert.Equal("Passed", await TryAsync(fresh, "", freshSum));
+        Assert.Equal("Stopped by Image check", await TryAsync(fresh, "", freshSum));
     }
 
     [Fact]

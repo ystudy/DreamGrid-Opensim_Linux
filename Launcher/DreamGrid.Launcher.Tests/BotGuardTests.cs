@@ -10,7 +10,7 @@ using Xunit;
 
 namespace DreamGrid.Launcher.Tests;
 
-/// <summary>The bot-protection layers in order: honeypot, per-address limit, proof-of-work.</summary>
+/// <summary>The bot-protection layers in order: honeypot, per-address limit, proof-of-work, image CAPTCHA.</summary>
 public sealed class BotGuardTests
 {
     private sealed class ListLog : ILogger<BotGuard>
@@ -28,22 +28,25 @@ public sealed class BotGuardTests
         public FakeTimeProvider Time { get; } = new(new DateTimeOffset(2026, 10, 30, 12, 0, 0, TimeSpan.Zero));
         public ListLog Log { get; } = new();
         public ProofOfWork Work { get; }
+        public ImageCaptcha Captcha { get; }
         public BotGuard Guard { get; }
 
         public Rig(BotSettings bots)
         {
             Bots = bots;
             Work = new ProofOfWork(new byte[32], Time);
-            Guard = new BotGuard(() => TestSettings.Create() with { Bots = Bots }, Work, Time, Log);
+            Captcha = new ImageCaptcha(new byte[32], Time);
+            Guard = new BotGuard(() => TestSettings.Create() with { Bots = Bots }, Work, Captcha, Time, Log);
         }
 
         public string FreshAnswer() => ProofOfWorkTests.Answer(Work.Create(1000));
     }
 
     /// <summary>Every layer off; a test switches on the one it is about.</summary>
-    private static readonly BotSettings Off = new(Honeypot: false, RateLimit: false, ProofOfWork: false);
+    private static readonly BotSettings Off = new(Honeypot: false, RateLimit: false, ProofOfWork: false, ImageCaptcha: false);
 
-    private static HttpContext Post(string ip = "198.51.100.7", string? website = null, string? pow = null)
+    private static HttpContext Post(string ip = "198.51.100.7", string? website = null, string? pow = null,
+        string? token = null, string? letters = null, string? answer = null)
     {
         var ctx = new DefaultHttpContext();
         ctx.Connection.RemoteIpAddress = IPAddress.Parse(ip);
@@ -52,6 +55,9 @@ public sealed class BotGuardTests
         var fields = new Dictionary<string, StringValues>();
         if (website is not null) fields["website"] = website;
         if (pow is not null) fields["pow"] = pow;
+        if (token is not null) fields["captcha-token"] = token;
+        if (letters is not null) fields["captcha-letters"] = letters;
+        if (answer is not null) fields["captcha-answer"] = answer;
         ctx.Request.Form = new FormCollection(fields);
         return ctx;
     }
@@ -214,5 +220,88 @@ public sealed class BotGuardTests
         Assert.Contains("honeypot", rig.Log.Lines[0]);
         Assert.Contains("proof-of-work", rig.Log.Lines[1]);
         Assert.DoesNotContain(rig.Log.Lines, l => l.Contains("SECRET"));
+    }
+
+    [Fact]
+    public void Captcha_layer_only_when_on()
+    {
+        var rig = new Rig(Off);
+
+        // Off: no token, junk, whatever: not checked.
+        Assert.Equal(new BotCheck(true, null), rig.Guard.Check(Post(token: "junk", letters: "nope", answer: "nope"), "signup"));
+        Assert.Equal(new BotCheck(true, null), rig.Guard.Check(Post(), "signup"));
+        Assert.Empty(rig.Log.Lines);
+
+        // On: it is the last layer, and it names itself.
+        rig.Bots = Off with { ImageCaptcha = true };
+        Assert.Equal(new BotCheck(false, "image-captcha"), rig.Guard.Check(Post(), "signup"));
+        Assert.Equal("image-captcha", rig.Guard.Check(Post(token: "junk", letters: "AC3DE", answer: "11"), "signup").Layer);
+
+        var c = rig.Captcha.Build("AC3DE", 4, 7);
+        Assert.Equal(new BotCheck(true, null), rig.Guard.Check(Post(token: c.Token, letters: "ac3de"), "signup"));
+        var d = rig.Captcha.Build("AC3DE", 4, 7);
+        Assert.Equal(new BotCheck(true, null), rig.Guard.Check(Post(token: d.Token, answer: "Eleven"), "signup"));
+
+        // The layers before it still decide first.
+        rig.Bots = Off with { Honeypot = true, ImageCaptcha = true };
+        var e = rig.Captcha.Build("AC3DE", 4, 7);
+        Assert.Equal("honeypot", rig.Guard.Check(Post(website: "x", token: e.Token, letters: "AC3DE"), "signup").Layer);
+        rig.Bots = Off with { ProofOfWork = true, ImageCaptcha = true };
+        Assert.Equal("proof-of-work", rig.Guard.Check(Post(token: e.Token, letters: "AC3DE"), "signup").Layer);
+        Assert.Equal(new BotCheck(true, null), rig.Guard.Check(Post(pow: rig.FreshAnswer(), token: e.Token, letters: "AC3DE"), "signup"));
+    }
+
+    [Fact]
+    public void Reused_captcha_token_fails()
+    {
+        var rig = new Rig(Off with { ImageCaptcha = true });
+        var c = rig.Captcha.Build("AC3DE", 4, 7);
+
+        Assert.True(rig.Guard.Check(Post(token: c.Token, letters: "AC3DE"), "signup").Passed);
+        Assert.Equal(new BotCheck(false, "image-captcha"), rig.Guard.Check(Post(token: c.Token, letters: "AC3DE"), "signup"));
+        Assert.Equal("image-captcha", rig.Guard.Check(Post(token: c.Token, answer: "11"), "signup").Layer);
+        // The same token on another form is refused too: it is the token that is spent, not the form.
+        Assert.Equal("image-captcha", rig.Guard.Check(Post(token: c.Token, letters: "AC3DE"), "try").Layer);
+
+        // Spent until it would have expired anyway, and expired tokens are refused on their own.
+        rig.Time.Advance(TimeSpan.FromMinutes(11));
+        Assert.Equal("image-captcha", rig.Guard.Check(Post(token: c.Token, letters: "AC3DE"), "signup").Layer);
+        Assert.True(rig.Guard.Check(Post(token: rig.Captcha.Build("AC3DE", 4, 7).Token, letters: "AC3DE"), "signup").Passed);
+    }
+
+    [Fact]
+    public void A_wrong_captcha_answer_uses_up_the_token()
+    {
+        var rig = new Rig(Off with { ImageCaptcha = true });
+        var c = rig.Captcha.Build("AC3DE", 4, 7);
+
+        // One try per picture, so the sum (eighteen possible answers) can't be guessed by trying them all on one token.
+        Assert.Equal("image-captcha", rig.Guard.Check(Post(token: c.Token, answer: "5"), "signup").Layer);
+        Assert.Equal("image-captcha", rig.Guard.Check(Post(token: c.Token, answer: "11"), "signup").Layer);
+        Assert.Equal("image-captcha", rig.Guard.Check(Post(token: c.Token, letters: "AC3DE"), "signup").Layer);
+    }
+
+    [Fact]
+    public void A_failed_captcha_does_not_use_up_a_rate_limit_slot()
+    {
+        var rig = new Rig(Off with { RateLimit = true, PerHourPerIp = 1, ImageCaptcha = true });
+
+        Assert.Equal("image-captcha", rig.Guard.Check(Post(), "signup").Layer);
+        Assert.True(rig.Guard.Check(Post(token: rig.Captcha.Build("AC3DE", 4, 7).Token, letters: "AC3DE"), "signup").Passed);
+        Assert.Equal("rate-limit", rig.Guard.Check(Post(token: rig.Captcha.Build("AC3DE", 4, 7).Token, letters: "AC3DE"), "signup").Layer);
+    }
+
+    [Fact]
+    public void Captcha_failure_log_has_no_answers()
+    {
+        var rig = new Rig(Off with { ImageCaptcha = true });
+        var c = rig.Captcha.Build("AC3DE", 4, 7);
+
+        rig.Guard.Check(Post(token: c.Token, letters: "SECRET-LETTERS", answer: "SECRET-SUM"), "signup");
+        rig.Guard.Check(Post(token: "SECRET-TOKEN"), "signup");
+
+        Assert.Equal(2, rig.Log.Lines.Count);
+        Assert.All(rig.Log.Lines, l => Assert.Contains("image-captcha", l));
+        Assert.DoesNotContain(rig.Log.Lines, l => l.Contains("SECRET") || l.Contains(c.Token));
     }
 }

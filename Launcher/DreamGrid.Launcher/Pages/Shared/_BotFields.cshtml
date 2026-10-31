@@ -1,6 +1,9 @@
+@using System.Text
+@using DreamGrid.Launcher.Core.Guests
 @using DreamGrid.Launcher.Core.Settings
 @using DreamGrid.Launcher.Guests
 @inject Func<LauncherSettings> Settings
+@inject ImageCaptcha Captcha
 @* The fields BotGuard.Check reads, for the layers that are on: put this inside a form that posts to a handler that calls Check. *@
 @{
     var bots = Settings().Bots;
@@ -17,4 +20,19 @@
     <input type="hidden" name="@BotGuard.ProofField" value="" data-challenge-url="/api/bots/challenge">
     <noscript><p class="form-text">This form needs JavaScript to prove you are not a bot.</p></noscript>
     <script src="/js/pow.js" defer></script>
+}
+@if (bots.ImageCaptcha)
+{
+    @* The picture is drawn here, with its token, because the token holds only the answers' hashes: a separate request could not draw the matching picture. *@
+    var captcha = Captcha.Create();
+    var picture = "data:image/svg+xml;base64," + Convert.ToBase64String(Encoding.UTF8.GetBytes(captcha.Svg));
+    <div class="dg-captcha mb-3">
+        <img src="@picture" width="200" height="60" alt="Picture of letters; answer the question below instead if you can't see it">
+        <label class="form-label d-block" for="dg-captcha-letters">Type the letters</label>
+        <input class="form-control" type="text" id="dg-captcha-letters" name="@BotGuard.CaptchaLettersField" value="" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="10">
+        <label class="form-label d-block mt-2" for="dg-captcha-answer">@captcha.Question</label>
+        <input class="form-control" type="text" id="dg-captcha-answer" name="@BotGuard.CaptchaAnswerField" value="" autocomplete="off" maxlength="20">
+        <p class="form-text">Answer either one.</p>
+        <input type="hidden" name="@BotGuard.CaptchaTokenField" value="@captcha.Token">
+    </div>
 }
