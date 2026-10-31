@@ -10,6 +10,10 @@
     <div class="list-group-item list-group-item-action"><a class="fw-semibold stretched-link text-decoration-none" href="/advanced/network">Network</a><span class="hint form-text d-block m-0">The address people connect to, and the ports.</span></div>
     <div class="list-group-item list-group-item-action"><a class="fw-semibold stretched-link text-decoration-none" href="/advanced/database">Database</a><span class="hint form-text d-block m-0">The database connection and its passwords.</span></div>
     <div class="list-group-item list-group-item-action"><a class="fw-semibold stretched-link text-decoration-none" href="/advanced/regions">Regions</a><span class="hint form-text d-block m-0">The physics engine and scripts regions use unless you choose for them.</span></div>
+    @if (Model.ShowPasswordReset)
+    {
+        <div class="list-group-item list-group-item-action"><a class="fw-semibold stretched-link text-decoration-none" href="/advanced/password-reset">Password reset</a><span class="hint form-text d-block m-0">How people get back in when they forget their password.</span></div>
+    }
     @foreach (var module in Model.ModulePages)
     {
         <div class="list-group-item list-group-item-action"><a class="fw-semibold stretched-link text-decoration-none" href="/advanced/module/@Uri.EscapeDataString(module.ModuleId)">@module.Title</a></div>

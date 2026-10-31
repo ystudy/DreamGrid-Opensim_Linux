@@ -25,6 +25,8 @@ public static class SetupSteps
         ("Your network", "/setup/network", s => s.Setup.NetworkSet),
         ("Name your world", "/setup/world", s => s.Setup.WorldNamed),
         ("Create your avatar", "/setup/avatar", s => s.Setup.OwnerCreated),
+        // Done once chosen, or on an install whose setup finished before password recovery existed (its rules stay off).
+        ("Account security", "/setup/security", s => s.Recovery is not null || s.Setup.Finished),
         ("Choose your first region", "/setup/region", s => s.Setup.RegionCreated || s.Setup.RegionSkipped),
         ("Connect with Firestorm", "/setup/connect", s => s.Setup.Finished),
     ];

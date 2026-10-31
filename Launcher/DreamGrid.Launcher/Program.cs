@@ -167,6 +167,9 @@ builder.Services.AddRazorPages(o =>
     o.Conventions.AuthorizeFolder("/Profile", AuthSchemes.StaffPolicy);
     o.Conventions.AuthorizeFolder("/Security", AuthSchemes.OwnerPolicy);
     o.Conventions.AuthorizeFolder("/Staff", AuthSchemes.OwnerPolicy);
+    // The owner's password-recovery rules (the admin policy applies too; the owner passes both). Only with a guest side.
+    o.Conventions.AuthorizePage("/Advanced/PasswordReset", AuthSchemes.OwnerPolicy);
+    o.Conventions.AddPageApplicationModelConvention("/Advanced/PasswordReset", m => m.Filters.Add(new GuestSideOnly()));
     o.Conventions.AuthorizeFolder("/People", AuthSchemes.StaffPolicy);
     o.Conventions.AddFolderApplicationModelConvention("/Staff", m => m.Filters.Add(new StaffPagesOnly()));
     o.Conventions.AddFolderApplicationModelConvention("/People", m => m.Filters.Add(new StaffPagesOnly()));
