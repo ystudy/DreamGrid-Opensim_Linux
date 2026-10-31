@@ -14,6 +14,7 @@ using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Core.Setup;
 using DreamGrid.Launcher.Security;
+using DreamGrid.Launcher.Email;
 using DreamGrid.Launcher.Guests;
 using DreamGrid.Launcher.Setup;
 using Microsoft.AspNetCore.Authentication;
@@ -76,6 +77,7 @@ try
     LauncherPaths.CreateOwnerOnly(paths.DataProtectionKeys);
     LauncherPaths.CreateOwnerOnly(paths.Security);
     LauncherPaths.CreateOwnerOnly(paths.Guests);
+    LauncherPaths.CreateOwnerOnly(paths.Email);
 }
 catch (Exception e) when (e is ArgumentException or SettingsCorruptException or IOException or UnauthorizedAccessException)
 {
@@ -219,6 +221,9 @@ builder.Services.AddSingleton(sp => new RegionRights(Path.Combine(paths.Guests, 
     sp.GetRequiredService<ILogger<RegionRights>>()));
 builder.Services.AddSingleton(sp => new EmailTokens(Path.Combine(paths.Guests, "email-tokens.json"), sp.GetRequiredService<TimeProvider>(),
     sp.GetRequiredService<ILogger<EmailTokens>>()));
+// Email (plan 8a): the mail accounts, passwords protected by data protection.
+builder.Services.AddSingleton(sp => new EmailAccounts(Path.Combine(paths.Email, "accounts.json"), sp.GetRequiredService<IDataProtectionProvider>(),
+    sp.GetRequiredService<ILogger<EmailAccounts>>()));
 // The proof-of-work key lives in the owner-only security folder; one key for the life of the install. The image CAPTCHA signs with
 // the same key (its signatures carry a label of their own), so it is read once, when the first of the two is needed.
 var powKey = new Lazy<byte[]>(() => ProofOfWork.LoadOrCreateKey(Path.Combine(paths.Security, "pow.key")));
