@@ -11,9 +11,10 @@ namespace DreamGrid.Launcher.Pages.Guest;
 /// <summary>
 /// The guest door: signs in with the avatar name and password. Any account at level 0 or more gets in (a staff member too, but
 /// only to the guest pages: this door opens nothing on the staff side, so two-factor, which guards that side, is not asked).
-/// Every failure (wrong name or password, a suspended account) shows the same message. It shares the staff door's
-/// <see cref="LoginThrottle"/>, so guesses at one name count whichever door they come through. The password is never logged;
-/// only the cleaned first name is.
+/// Every failure (wrong name or password, a suspended account) shows the same message. It uses the staff door's
+/// <see cref="LoginThrottle"/> with its own name count (<see cref="SignInDoor.Guest"/>): guesses here can't lock a name out of
+/// the staff door, and a right password here can't clear the staff count of wrong two-factor codes; the address count is shared,
+/// so an address gets 20 failures in all, whichever door. The password is never logged; only the cleaned first name is.
 /// </summary>
 public sealed class SignInModel(IRobustClient robust, LoginThrottle throttle, AuditLog audit, ILogger<SignInModel> log) : PageModel
 {
@@ -32,7 +33,7 @@ public sealed class SignInModel(IRobustClient robust, LoginThrottle throttle, Au
     {
         var name = AvatarName.Parse(Name);
         var address = HttpContext.Connection.RemoteIpAddress;
-        if (throttle.IsLocked(name.Key, address))
+        if (throttle.IsLocked(SignInDoor.Guest, name.Key, address))
         {
             Error = "Too many attempts. Try again in a few minutes.";
             return Page();
@@ -56,7 +57,7 @@ public sealed class SignInModel(IRobustClient robust, LoginThrottle throttle, Au
         }
         if (!allowed) return Fail(name);
 
-        throttle.RecordSuccess(name.Key);
+        throttle.RecordSuccess(SignInDoor.Guest, name.Key);
         await GuestSignIn.SignInAsync(HttpContext, account!);
         audit.Write(new AuditEntry($"{account!.FirstName} {account.LastName}", account.PrincipalId, AuthSchemes.GuestRole,
             address?.ToString(), "sign-in", null, "ok"));
@@ -65,7 +66,7 @@ public sealed class SignInModel(IRobustClient robust, LoginThrottle throttle, Au
 
     private IActionResult Fail(AvatarName name)
     {
-        throttle.RecordFailure(name.Key, HttpContext.Connection.RemoteIpAddress);
+        throttle.RecordFailure(SignInDoor.Guest, name.Key, HttpContext.Connection.RemoteIpAddress);
         // Only the cleaned first name: the rest could be a password typed into the wrong field.
         log.LogInformation("Guest sign-in: a sign-in for first name {First} was refused", name.ForLog);
         audit.Write(new AuditEntry(name.ForLog, null, StaffRole.None.AuditName(),

@@ -43,7 +43,7 @@ public sealed class LoginModel(IRobustClient robust, Func<LauncherSettings> sett
         // The throttle key is the normalised "First Last" (shared with the port-8001 API), so extra spaces cannot
         // give one account several lock states.
         var name = AvatarName.Parse(Name);
-        if (throttle.IsLocked(name.Key, HttpContext.Connection.RemoteIpAddress))
+        if (throttle.IsLocked(SignInDoor.Staff, name.Key, HttpContext.Connection.RemoteIpAddress))
         {
             Error = "Too many attempts. Try again in a few minutes.";
             return Page();
@@ -86,7 +86,7 @@ public sealed class LoginModel(IRobustClient robust, Func<LauncherSettings> sett
         }
 
         var mustEnrol = settings().Security.RequireTwoFactorForStaff && role is StaffRole.Admin or StaffRole.Supervisor;
-        throttle.RecordSuccess(name.Key);
+        throttle.RecordSuccess(SignInDoor.Staff, name.Key);
         await StaffSignIn.SignInAsync(HttpContext, account, role, mustEnrol);
         audit.Write(new AuditEntry($"{account.FirstName} {account.LastName}", account.PrincipalId, role.AuditName(), ip,
             "sign-in", null, "ok"));
@@ -100,7 +100,7 @@ public sealed class LoginModel(IRobustClient robust, Func<LauncherSettings> sett
 
     private IActionResult Fail(AvatarName name)
     {
-        throttle.RecordFailure(name.Key, HttpContext.Connection.RemoteIpAddress);
+        throttle.RecordFailure(SignInDoor.Staff, name.Key, HttpContext.Connection.RemoteIpAddress);
         // Only the cleaned first name: the rest could be a password typed into the wrong field.
         log.LogInformation("Sign-in: a sign-in for first name {First} was refused", name.ForLog);
         audit.Write(new AuditEntry(name.ForLog, null, StaffRole.None.AuditName(),

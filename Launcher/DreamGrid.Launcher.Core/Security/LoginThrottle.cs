@@ -6,17 +6,31 @@ using Microsoft.Extensions.Logging;
 
 namespace DreamGrid.Launcher.Core.Security;
 
+/// <summary>Which sign-in door a name is counted at. Each door keeps its own count for each name; the address count is shared.</summary>
+public enum SignInDoor
+{
+    /// <summary>The staff side: <c>/login</c>, <c>/login/code</c>, the two-factor page and the port-8001 command API.</summary>
+    Staff,
+
+    /// <summary>The guest door, <c>/guest/sign-in</c>.</summary>
+    Guest,
+}
+
 /// <summary>
-/// Slows down password guessing, by name and by address. Five failures for one name within 10 minutes lock that name for
-/// 10 minutes; 20 failures from one address within 10 minutes lock that address for 10 minutes (whatever names were tried).
-/// Names are compared case-insensitively and are never stored as typed (a password pasted into the name field must not
-/// reach the disk, and a huge name must not become a huge key): the name table, in memory and in the file, is keyed by the
-/// SHA-256 hex of the lowercased name. An IPv4-mapped IPv6 address counts as its IPv4 address. A sign-in is refused when
-/// either its name or its address is locked. A success clears the name only: the address keeps its failures, so one good
-/// account cannot be used to wash a guesser's count. A caller whose address is unknown (null) is counted by name only.
-/// The state is written to <c>stateFile</c> after each change and read back at construction, so a restart does not give a
-/// guesser a fresh start. A missing or damaged file means an empty start (damaged: one warning); a failed save is logged
-/// and the throttle carries on in memory.
+/// Slows down password guessing, by name and by address. Five failures for one name at one door within 10 minutes lock that
+/// name at that door for 10 minutes; 20 failures from one address within 10 minutes lock that address for 10 minutes at every
+/// door (whatever names were tried, through whichever door). Each <see cref="SignInDoor"/> has its own name table, so failures
+/// at the guest door can't lock a name out of the staff door, and a success at the guest door (password alone) can't clear
+/// the staff count of wrong two-factor codes. The tables are separate in memory and in the file, so no typed name can reach
+/// the other door's entry. Names are compared case-insensitively and are never stored as typed (a password pasted into the
+/// name field must not reach the disk, and a huge name must not become a huge key): each name table, in memory and in the
+/// file, is keyed by the SHA-256 hex of the lowercased name. An IPv4-mapped IPv6 address counts as its IPv4 address. A
+/// sign-in is refused when either its name (at its door) or its address is locked. A success clears the name at that door
+/// only: the address keeps its failures, so one good account cannot be used to wash a guesser's count. A caller whose
+/// address is unknown (null) is counted by name only. The state is written to <c>stateFile</c> after each change and read
+/// back at construction, so a restart does not give a guesser a fresh start; a file from before the guest door (one name
+/// table) loads as the staff door's. A missing or damaged file means an empty start (damaged: one warning); a failed save
+/// is logged and the throttle carries on in memory.
 /// </summary>
 public sealed class LoginThrottle
 {
@@ -32,6 +46,7 @@ public sealed class LoginThrottle
     private readonly object _gate = new();
     private bool _saveFailing;
     private readonly Dictionary<string, Entry> _names = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Entry> _guestNames = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Entry> _ips = new(StringComparer.Ordinal);
 
     public LoginThrottle(TimeProvider time, string? stateFile, ILogger<LoginThrottle>? log = null)
@@ -48,42 +63,51 @@ public sealed class LoginThrottle
         public DateTimeOffset LockedUntil;
     }
 
-    /// <summary>The saved form: only what is needed to rebuild the locks and the recent failures.</summary>
-    private sealed record State(Dictionary<string, SavedEntry>? Names, Dictionary<string, SavedEntry>? Ips);
+    /// <summary>The saved form: only what is needed to rebuild the locks and the recent failures. <c>names</c> is the staff
+    /// door's table (as it was before the guest door existed), <c>guestNames</c> the guest door's.</summary>
+    private sealed record State(Dictionary<string, SavedEntry>? Names, Dictionary<string, SavedEntry>? Ips,
+        Dictionary<string, SavedEntry>? GuestNames);
 
     private sealed record SavedEntry(List<DateTimeOffset>? Failures, DateTimeOffset? LockedUntil);
 
-    public bool IsLocked(string name, IPAddress? ip)
+    public bool IsLocked(SignInDoor door, string name, IPAddress? ip)
     {
         lock (_gate)
         {
             var now = _time.GetUtcNow();
             if (Prune(now)) Save();
-            return LockedAt(_names, NameKey(name), now) || (ip is not null && LockedAt(_ips, Normalise(ip), now));
+            return LockedAt(NamesAt(door), NameKey(name), now) || (ip is not null && LockedAt(_ips, Normalise(ip), now));
         }
     }
 
-    public void RecordFailure(string name, IPAddress? ip)
+    public void RecordFailure(SignInDoor door, string name, IPAddress? ip)
     {
         lock (_gate)
         {
             var now = _time.GetUtcNow();
             Prune(now);
-            Add(_names, NameKey(name), NameMaxFailures, now);
+            Add(NamesAt(door), NameKey(name), NameMaxFailures, now);
             if (ip is not null) Add(_ips, Normalise(ip), IpMaxFailures, now);
             Save();
         }
     }
 
-    /// <summary>Clears the name. The address's failures stay.</summary>
-    public void RecordSuccess(string name)
+    /// <summary>Clears the name at <paramref name="door"/> only. The other door's count and the address's failures stay.</summary>
+    public void RecordSuccess(SignInDoor door, string name)
     {
         lock (_gate)
         {
-            if (!_names.Remove(NameKey(name))) return;
+            if (!NamesAt(door).Remove(NameKey(name))) return;
             Save();
         }
     }
+
+    private Dictionary<string, Entry> NamesAt(SignInDoor door) => door switch
+    {
+        SignInDoor.Staff => _names,
+        SignInDoor.Guest => _guestNames,
+        _ => throw new ArgumentOutOfRangeException(nameof(door)),
+    };
 
     private static bool LockedAt(Dictionary<string, Entry> table, string key, DateTimeOffset now) =>
         table.TryGetValue(key, out var e) && e.LockedUntil > now;
@@ -128,8 +152,9 @@ public sealed class LoginThrottle
     private bool Prune(DateTimeOffset now)
     {
         var names = Prune(_names, now);
+        var guestNames = Prune(_guestNames, now);
         var ips = Prune(_ips, now);
-        return names || ips;
+        return names || guestNames || ips;
     }
 
     private void Load()
@@ -143,6 +168,7 @@ public sealed class LoginThrottle
                 json = reader.ReadToEnd();
             var state = JsonSerializer.Deserialize<State>(json, Options) ?? throw new JsonException("the file contains null");
             Restore(state.Names, _names);
+            Restore(state.GuestNames, _guestNames);
             Restore(state.Ips, _ips);
             Prune(_time.GetUtcNow());
         }
@@ -151,6 +177,7 @@ public sealed class LoginThrottle
             // The file is only a memory of recent failures: start empty rather than refuse to start. Only the exception
             // type is logged, as its message could quote the file.
             _names.Clear();
+            _guestNames.Clear();
             _ips.Clear();
             _log?.LogWarning("The sign-in throttle file {File} could not be read ({Error}); starting with no recorded failures.",
                 _stateFile, e.GetType().Name);
@@ -173,7 +200,7 @@ public sealed class LoginThrottle
         if (_stateFile is null) return;
         try
         {
-            var state = new State(Snapshot(_names), Snapshot(_ips));
+            var state = new State(Snapshot(_names), Snapshot(_ips), Snapshot(_guestNames));
             AtomicFile.WriteAllText(_stateFile, JsonSerializer.Serialize(state, Options));
             _saveFailing = false;
         }

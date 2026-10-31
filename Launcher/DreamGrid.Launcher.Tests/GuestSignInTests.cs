@@ -1,15 +1,18 @@
 using System.Net;
 using System.Text.Json;
 using AngleSharp.Html.Parser;
+using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Guests;
 using DreamGrid.Launcher.Security;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace DreamGrid.Launcher.Tests;
 
-/// <summary>The guest door: /guest/sign-in, its messages, its audit lines, the shared throttle and the level recheck.</summary>
+/// <summary>The guest door: /guest/sign-in, its messages, its audit lines, its throttle and the level recheck.</summary>
 public sealed class GuestSignInTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -18,7 +21,7 @@ public sealed class GuestSignInTests
     private const string Locked = "Too many attempts. Try again in a few minutes.";
     private const string RobustDown = "The grid's sign-in service isn't running right now. Try again later.";
 
-    private static LauncherFactory Factory()
+    private static LauncherFactory Factory(Action<IApplicationBuilder>? before = null)
     {
         var f = new LauncherFactory(s => s with
         {
@@ -27,7 +30,7 @@ public sealed class GuestSignInTests
             Setup = s.Setup with { OwnerCreated = true, Finished = true, Owner = new OwnerInfo("Test", "Owner", TestAuth.OwnerId) },
         })
         {
-            Before = TestAuth.Apply,
+            Before = before ?? TestAuth.Apply,
         };
         TestAuth.AddStaff(f.Robust);
         f.Robust.Add("Gail", "Guest", 50, "pass-word1", Guid.Parse("0b000000-0000-0000-0000-00000000000b"));
@@ -118,30 +121,58 @@ public sealed class GuestSignInTests
     }
 
     [Fact]
-    public async Task Wrong_password_counts_on_shared_throttle()
+    public async Task Guest_door_failures_lock_the_name_only_at_the_guest_door_but_count_toward_the_address()
     {
-        await using var f = Factory();
+        var remote = IPAddress.Parse("10.1.2.3");
+        await using var f = Factory(app =>
+        {
+            app.Use((ctx, next) =>
+            {
+                ctx.Connection.RemoteIpAddress = remote;
+                return next(ctx);
+            });
+            TestAuth.Apply(app);
+        });
         var client = Client(f);
-        for (var i = 0; i < 5; i++)
+        for (var i = 0; i < LoginThrottle.NameMaxFailures; i++)
         {
             using var r = await SignInAsync(client, "Test Admin", "bad-password");
             Assert.Equal(Wrong, await ErrorAsync(r));
         }
         var lookups = f.Robust.Lookups;
 
-        // The guest door and the staff door share the lock.
-        using var guestDoor = await SignInAsync(client, "test admin", "pass-word1");
-        Assert.Equal(Locked, await ErrorAsync(guestDoor));
-        var login = new HtmlParser().ParseDocument(await client.GetStringAsync("/login", Ct));
-        using var staffDoor = await client.PostAsync("/login", new FormUrlEncodedContent(new Dictionary<string, string>
+        // The guest door locks the name there...
+        using (var guestDoor = await SignInAsync(client, "test admin", "pass-word1"))
+            Assert.Equal(Locked, await ErrorAsync(guestDoor));
+        Assert.Equal(lookups, f.Robust.Lookups);
+        // ...but not at the staff door, which keeps its own count for each name.
+        using (var staffDoor = await StaffSignInAsync(Client(f), "Test Admin", "pass-word1"))
         {
-            ["Name"] = "Test Admin",
-            ["Password"] = "pass-word1",
+            Assert.Equal(HttpStatusCode.Redirect, staffDoor.StatusCode);
+            Assert.NotEqual("/login/code", LocationPath(staffDoor));
+        }
+
+        // The address's count is shared by both doors: the five guest-door failures and 15 more at the staff door lock it.
+        for (var i = 0; i < LoginThrottle.IpMaxFailures - LoginThrottle.NameMaxFailures; i++)
+        {
+            using var r = await StaffSignInAsync(client, $"Guess{i} Person", "bad-password");
+            Assert.NotEqual(Locked, await ErrorAsync(r));
+        }
+        using (var staff = await StaffSignInAsync(Client(f), "Test Owner", "pass-word1"))
+            Assert.Equal(Locked, await ErrorAsync(staff));
+        using (var guest = await SignInAsync(Client(f), "Test Guest", "pass-word1"))
+            Assert.Equal(Locked, await ErrorAsync(guest));
+    }
+
+    private static async Task<HttpResponseMessage> StaffSignInAsync(HttpClient client, string name, string password)
+    {
+        var login = new HtmlParser().ParseDocument(await client.GetStringAsync("/login", Ct));
+        return await client.PostAsync("/login", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["Name"] = name,
+            ["Password"] = password,
             ["__RequestVerificationToken"] = login.QuerySelector("input[name=__RequestVerificationToken]")!.GetAttribute("value")!,
         }), Ct);
-        Assert.Equal(HttpStatusCode.OK, staffDoor.StatusCode);
-        Assert.Equal(Locked, await ErrorAsync(staffDoor));
-        Assert.Equal(lookups, f.Robust.Lookups);
     }
 
     [Fact]

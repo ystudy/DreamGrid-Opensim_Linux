@@ -423,6 +423,34 @@ public sealed class TwoFactorSignInTests
     }
 
     [Fact]
+    public async Task A_right_password_at_the_guest_door_does_not_reset_the_count_of_wrong_codes()
+    {
+        await using var f = Factory();
+        var (secret, _) = Enrol(f, StaffRole.Admin);
+        var client = Client(f);
+        using (var r = await PasswordAsync(client, "Test Admin"))
+            Assert.Equal("/login/code", LocationPath(r));
+        for (var i = 0; i < LoginThrottle.NameMaxFailures - 1; i++)
+        {
+            using var wrong = await CodeAsync(client, WrongCode(f, secret));
+            Assert.Equal(WrongCodeMessage, await ErrorAsync(wrong));
+        }
+
+        // The guest door takes the password alone and lets the admin in to the guest pages; the staff count of wrong codes stands.
+        var guest = Client(f);
+        var page = await PageAsync(guest, "/guest/sign-in");
+        using (var door = await PostAsync(guest, "/guest/sign-in",
+            new() { ["Name"] = "Test Admin", ["Password"] = Password, ["__RequestVerificationToken"] = Token(page) }))
+            Assert.Equal("/guest", door.Headers.Location?.OriginalString);
+        using (var fifth = await CodeAsync(client, WrongCode(f, secret)))
+            Assert.Equal(WrongCodeMessage, await ErrorAsync(fifth));
+
+        using var right = await CodeAsync(client, CodeNow(f, secret));
+        Assert.Equal(Locked, await ErrorAsync(right));
+        Assert.Equal(HttpStatusCode.Redirect, await DashboardAsync(client));
+    }
+
+    [Fact]
     public async Task Wrong_codes_on_the_two_factor_page_count_toward_lock()
     {
         await using var f = Factory();
@@ -571,7 +599,7 @@ public sealed class TwoFactorSignInTests
 
         Assert.Equal(TwoFactorState.On, f.Services.GetRequiredService<TwoFactorStore>().StateOf(TestAuth.OwnerId));
         Assert.Equal(0, AuditCount(f, "sign-in-refused"));
-        Assert.False(f.Services.GetRequiredService<LoginThrottle>().IsLocked("Test Owner", null));
+        Assert.False(f.Services.GetRequiredService<LoginThrottle>().IsLocked(SignInDoor.Staff, "Test Owner", null));
     }
 
     [Fact]
