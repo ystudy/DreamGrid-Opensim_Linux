@@ -10,9 +10,12 @@ namespace DreamGrid.Launcher.Guests;
 /// It sleeps until the owner's residents' rule asks for a code: only then can a resident set it up. Someone who already has it on
 /// keeps it, and its page, whatever the rule says later.
 /// </summary>
-public sealed class ResidentTwoFactor(TwoFactorStore store)
+public sealed class ResidentTwoFactor(TwoFactorStore store, string file)
 {
     public TwoFactorStore Store { get; } = store;
+
+    /// <summary>The residents' file, for the owner to set aside when it is damaged (Security page).</summary>
+    public string File { get; } = file;
 
     /// <summary>Whether the resident's two-factor page exists for someone whose state is <paramref name="state"/>.</summary>
     public static bool PageShown(LauncherSettings s, TwoFactorState state) =>

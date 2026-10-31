@@ -39,6 +39,9 @@ public sealed class IndexModel(IGridController grid, Func<LauncherSettings> sett
     /// <summary>Residents with two-factor on (their own file, <see cref="ResidentTwoFactor"/>).</summary>
     public IReadOnlyList<(Guid Principal, string Name)> Residents { get; private set; } = [];
 
+    /// <summary>The residents' two-factor file can't be read: every resident's website sign-in stops at the code step until it is set aside.</summary>
+    public bool ResidentsDamaged { get; private set; }
+
     /// <summary>The two-factor file can't be read, so nobody can be listed or reset here (the verb on the grid computer sets it aside).</summary>
     public bool TwoFactorDamaged { get; private set; }
 
@@ -157,6 +160,29 @@ public sealed class IndexModel(IGridController grid, Func<LauncherSettings> sett
         return Page();
     }
 
+    /// <summary>
+    /// Sets a damaged residents' two-factor file aside (renamed <c>twofactor.json.damaged-…</c>, as the <c>reset-two-factor
+    /// --all-damaged</c> verb does for the staff file), so residents sign in with their password again and set two-factor up
+    /// anew. Audited as <c>two-factor-set-aside</c>. A file that reads fine is left alone.
+    /// </summary>
+    public IActionResult OnPostSetAsideResidents()
+    {
+        try
+        {
+            TwoFactorStore.MoveAsideIfDamaged(residents.File);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Fill();
+            return Refuse("The residents' two-factor file couldn't be set aside. Try again.");
+        }
+        Fill();
+        if (ResidentsDamaged) return Refuse("The residents' two-factor file couldn't be read just now, but it doesn't look damaged. Try again.");
+        Write("two-factor-set-aside", "residents", "ok");
+        Notice = "The residents' two-factor file was set aside. Residents sign in with their password and can set two-factor up again.";
+        return Page();
+    }
+
     private void Fill()
     {
         var s = settings().Security;
@@ -170,6 +196,7 @@ public sealed class IndexModel(IGridController grid, Func<LauncherSettings> sett
         TwoFactorDamaged = twoFactor.StateOf(Guid.Empty) == TwoFactorState.Unknown;
         Enrolled = [.. twoFactor.Enrolled().OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)];
         Residents = [.. residents.Store.Enrolled().OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)];
+        ResidentsDamaged = residents.Store.StateOf(Guid.Empty) == TwoFactorState.Unknown;
     }
 
     private PageResult Refuse(string message)

@@ -74,6 +74,15 @@ else
     </div>
 }
 
+@if (Model.ResidentsDamaged)
+{
+    <div id="resident-two-factor-damaged" class="alert alert-danger mt-4" role="alert">
+        <p>The residents' two-factor file can't be read, so residents can't sign in to the website. Set it aside to let them sign in with their password. Residents who had two-factor set it up again.</p>
+        <form method="post" action="/security?handler=SetAsideResidents" asp-antiforgery="true" class="mb-0">
+            <button type="submit" class="btn btn-danger">Set it aside</button>
+        </form>
+    </div>
+}
 @if (Model.Residents.Count > 0)
 {
     <h2 class="mt-4">Residents with two-factor sign-in</h2>

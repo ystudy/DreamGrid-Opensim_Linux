@@ -239,6 +239,33 @@ public sealed class ResidentTwoFactorTests
     }
 
     [Fact]
+    public async Task Owner_sets_aside_a_damaged_residents_file()
+    {
+        await using var f = Factory();
+        _ = Residents(f); // starts the host, which makes the data folders
+        var file = Path.Combine(f.Paths.Guests, "twofactor.json");
+        File.WriteAllText(file, "{ not json");
+        var guest = Client(f);
+        using (var locked = await PasswordAsync(guest, "Test Guest"))
+            Assert.Equal("/guest/sign-in/code", locked.Headers.Location?.OriginalString);
+
+        var owner = Client(f);
+        await owner.GetAsync("/__test/signin?role=owner", Ct);
+        var page = await PageAsync(owner, "/security");
+        Assert.NotNull(page.QuerySelector("#resident-two-factor-damaged"));
+        using var r = await PostAsync(owner, "/security?handler=SetAsideResidents", new()
+        {
+            ["__RequestVerificationToken"] = Token(page, "#resident-two-factor-damaged"),
+        });
+
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        Assert.False(File.Exists(file));
+        Assert.Single(Directory.EnumerateFiles(f.Paths.Guests, "twofactor.json.damaged-*"));
+        using var signedIn = await PasswordAsync(Client(f), "Test Guest");
+        Assert.Equal("/guest", signedIn.Headers.Location?.OriginalString);
+    }
+
+    [Fact]
     public async Task Owner_resets_resident_two_factor_from_security_page()
     {
         await using var f = Factory();
