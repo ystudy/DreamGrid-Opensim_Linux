@@ -1,0 +1,204 @@
+@page "/security/email"
+@model DreamGrid.Launcher.Pages.Security.EmailModel
+@using DreamGrid.Launcher.Core.Email
+@{
+    ViewData["Title"] = "Email";
+}
+<h1>Email</h1>
+<p>The grid sends a few emails of its own, like password resets. Choose a free mail account to send them from. You can add more than one: when one reaches its limit or stops working, the next one in the list takes over.</p>
+@if (Model.Notice is not null)
+{
+    <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
+}
+@if (!Model.Ready)
+{
+    <div id="email-not-ready" class="alert alert-warning" role="status">@EmailModel.NotReadyText</div>
+}
+<partial name="_EmailWarnings" model="Model.Status.Warnings" />
+
+<div class="email-cards mt-3">
+@foreach (var c in Model.Cards)
+{
+    <div class="email-card-wrap">
+        <a class="email-card card card-body h-100" data-dialog="@c.Key" href="?edit=@c.Key">
+            <span class="email-kind">@c.Provider.Kind</span>
+            <strong class="email-name">@(c.Account is null ? c.Provider.Name : c.Provider.Name + " · " + c.Account.FromAddress)</strong>
+            @if (c.Status is { } s)
+            {
+                <span class="email-order">@EmailModel.Ordinal(s.Account.Order)</span>
+                <span class="email-count">@(s.Account.PerDay is { } d ? $"{s.Day} of {d} today" : $"{s.Day} sent today")</span>
+                @if (s.Account.PerHour is { } h)
+                {
+                    <span class="email-count">@($"{s.Hour} of {h} this hour")</span>
+                }
+                <span class="email-state">@Model.StateOf(s)</span>
+            }
+            else
+            {
+                <span class="email-limit">@c.Provider.LimitText</span>
+                <span class="email-needs">@c.Provider.Needs</span>
+            }
+        </a>
+        @if (c.Account is { } a)
+        {
+            <div class="email-tools">
+                <form method="post" action="/security/email?handler=Move" asp-antiforgery="true">
+                    <input type="hidden" name="id" value="@a.Id"><input type="hidden" name="delta" value="-1">
+                    <button type="submit" class="btn btn-sm btn-outline-secondary" aria-label="Move up">Up</button>
+                </form>
+                <form method="post" action="/security/email?handler=Move" asp-antiforgery="true">
+                    <input type="hidden" name="id" value="@a.Id"><input type="hidden" name="delta" value="1">
+                    <button type="submit" class="btn btn-sm btn-outline-secondary" aria-label="Move down">Down</button>
+                </form>
+                <form method="post" action="/security/email?handler=Pause" asp-antiforgery="true">
+                    <input type="hidden" name="id" value="@a.Id"><input type="hidden" name="paused" value="@(a.Paused ? "false" : "true")">
+                    <button type="submit" class="btn btn-sm btn-outline-secondary">@(a.Paused ? "Resume" : "Pause")</button>
+                </form>
+            </div>
+        }
+    </div>
+}
+</div>
+
+<p class="mt-3"><a id="wording-link" href="/security/email/wording">Change the wording of the emails</a></p>
+
+@if (Model.Status.Problems.Count > 0)
+{
+    <h2 class="mt-4">Recent problems</h2>
+    <p>Emails that couldn't be sent in the last 7 days.</p>
+    <table id="email-problems" class="table table-sm">
+        <thead><tr><th>When</th><th>Email</th><th>For</th><th>Why</th></tr></thead>
+        <tbody>
+        @foreach (var p in Model.Status.Problems)
+        {
+            <tr><td>@p.At.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td><td>@EmailTemplates.Title(p.Template)</td><td>@(p.AvatarName ?? "—")</td><td>@p.Reason</td></tr>
+        }
+        </tbody>
+    </table>
+}
+
+@foreach (var c in Model.Cards)
+{
+    var p = c.Provider;
+    var custom = p.Key == EmailProviders.Custom;
+    var hasPassword = c.Account?.ProtectedPassword is not null;
+    <dialog id="dlg-@c.Key" class="email-dialog" aria-labelledby="dlg-@c.Key-title" open="@c.Open">
+        <form method="post" action="/security/email?handler=Save" asp-antiforgery="true">
+            <h2 id="dlg-@c.Key-title" class="h4">@p.Name</h2>
+            @if (c.Error is not null)
+            {
+                <div class="error alert alert-danger" role="alert">@c.Error</div>
+            }
+            @if (c.Outcome is not null)
+            {
+                <div class="test-outcome alert alert-info" role="status">@c.Outcome</div>
+            }
+            <input type="hidden" name="Provider" value="@p.Key">
+            @if (c.Account is not null)
+            {
+                <input type="hidden" name="Id" value="@c.Account.Id">
+            }
+            <div class="email-steps">
+                <strong>How to get your password</strong>
+                <ol>
+                @foreach (var step in p.Steps)
+                {
+                    <li>@step</li>
+                }
+                </ol>
+                @if (p.HelpUrl is not null)
+                {
+                    <a href="@p.HelpUrl" target="_blank" rel="noopener noreferrer">Open the page where you make it</a>
+                }
+            </div>
+
+            <label class="form-label mt-2" for="u-@c.Key">@p.UserLabel</label>
+            <input class="form-control" id="u-@c.Key" name="UserName" value="@c.UserName" autocomplete="off" autocapitalize="off" spellcheck="false">
+
+            <label class="form-label mt-2" for="pw-@c.Key">@p.PasswordLabel</label>
+            <input class="form-control" type="password" id="pw-@c.Key" name="Password" autocomplete="new-password" placeholder="@(hasPassword ? "Saved — type to replace" : "")">
+            <p class="hint form-text">Stored encrypted. It is never shown again.</p>
+
+            <div class="row g-2">
+                <div class="col-sm-6">
+                    <label class="form-label mt-2" for="fn-@c.Key">"From" name</label>
+                    <input class="form-control" id="fn-@c.Key" name="FromName" value="@c.FromName" autocomplete="off">
+                </div>
+                <div class="col-sm-6">
+                    <label class="form-label mt-2" for="fa-@c.Key">"From" address</label>
+                    <input class="form-control" id="fa-@c.Key" name="FromAddress" value="@c.FromAddress" autocomplete="off" autocapitalize="off" spellcheck="false">
+                </div>
+            </div>
+            <p class="hint form-text">@p.FromHint</p>
+            <label class="form-label" for="rt-@c.Key">"Reply-to" address (optional)</label>
+            <input class="form-control" id="rt-@c.Key" name="ReplyTo" value="@c.ReplyTo" autocomplete="off" autocapitalize="off" spellcheck="false">
+            <p class="hint form-text">Where replies go. Leave it empty to use the "From" address.</p>
+
+            <div class="row g-2">
+                <div class="col-6">
+                    <label class="form-label" for="pd-@c.Key">Daily limit</label>
+                    <input class="form-control" type="number" min="1" max="100000" id="pd-@c.Key" name="PerDay" value="@c.PerDay">
+                </div>
+                <div class="col-6">
+                    <label class="form-label" for="ph-@c.Key">Hourly limit</label>
+                    <input class="form-control" type="number" min="1" max="100000" id="ph-@c.Key" name="PerHour" value="@c.PerHour">
+                </div>
+            </div>
+            <p class="hint form-text">Empty means no limit. The grid counts what it sends and moves to the next account before it reaches these.</p>
+
+            <details class="mt-2" open="@custom">
+                <summary>Server details@(custom ? "" : " (filled in for you)")</summary>
+                <div class="row g-2">
+                    <div class="col-sm-6">
+                        <label class="form-label mt-2" for="h-@c.Key">Server</label>
+                        <input class="form-control" id="h-@c.Key" name="Host" value="@c.Host" readonly="@(!custom)" autocomplete="off" autocapitalize="off" spellcheck="false">
+                    </div>
+                    <div class="col-sm-2">
+                        <label class="form-label mt-2" for="p-@c.Key">Port</label>
+                        <input class="form-control" id="p-@c.Key" name="Port" value="@c.Port" readonly="@(!custom)" inputmode="numeric">
+                    </div>
+                    <div class="col-sm-4">
+                        <label class="form-label mt-2" for="s-@c.Key">Security</label>
+                        @if (custom)
+                        {
+                            <select class="form-select email-security" id="s-@c.Key" name="Security">
+                                <option value="StartTls" selected="@(c.Security == MailSecurity.StartTls)">STARTTLS (usually port 587)</option>
+                                <option value="SslOnConnect" selected="@(c.Security == MailSecurity.SslOnConnect)">SSL/TLS (usually port 465)</option>
+                                <option value="None" selected="@(c.Security == MailSecurity.None)">None</option>
+                            </select>
+                        }
+                        else
+                        {
+                            <input class="form-control" id="s-@c.Key" value="@(c.Security == MailSecurity.SslOnConnect ? "SSL/TLS" : "STARTTLS")" readonly>
+                        }
+                    </div>
+                </div>
+                @if (custom)
+                {
+                    <p class="none-warning alert alert-warning mt-2" hidden="@(c.Security != MailSecurity.None)">@EmailModel.NoneWarning</p>
+                }
+            </details>
+
+            <label class="form-label mt-3" for="tt-@c.Key">Send the test to (optional)</label>
+            <input class="form-control" id="tt-@c.Key" name="TestTo" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Your own email">
+
+            <div class="d-flex flex-wrap gap-2 justify-content-end mt-3">
+                <a class="btn btn-outline-secondary" href="/security/email" data-close>Cancel</a>
+                <button type="submit" class="btn btn-outline-primary" formaction="/security/email?handler=Test">Send test email</button>
+                <button type="submit" class="btn btn-primary">Save</button>
+            </div>
+        </form>
+        @if (c.Account is not null)
+        {
+            <form method="post" action="/security/email?handler=Remove" asp-antiforgery="true" class="mt-2 text-end" data-confirm="Remove this account and delete its password?">
+                <input type="hidden" name="id" value="@c.Account.Id">
+                <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
+            </form>
+        }
+    </dialog>
+}
+
+@section Scripts {
+    <script src="/js/confirm.js"></script>
+    <script src="/js/email.js"></script>
+}

@@ -150,6 +150,9 @@ public sealed class SiteFactsTests
     [InlineData("guests/region-rights.json")]
     [InlineData("guests/stamps.json")]
     [InlineData("guests/email-tokens.json")]
+    [InlineData("email/accounts.json")]
+    [InlineData("email/outbox.json")]
+    [InlineData("email/problems.json")]
     public void Every_file_that_holds_something_about_people_is_listed(string file) =>
         Assert.Contains(SiteFacts.Stored, s => s.Where.Contains(file, StringComparison.Ordinal));
 }

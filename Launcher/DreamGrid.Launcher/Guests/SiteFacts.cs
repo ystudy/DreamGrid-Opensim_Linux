@@ -31,5 +31,8 @@ public static class SiteFacts
         ("Account ids, with the email links sent to them (only as hashes) and when they expire", "guests/email-tokens.json."),
         ("Terms acceptances, with the IP address", "guests/terms.json."),
         ("Region rights", "guests/region-rights.json."),
+        ("Mail account settings, with their passwords (encrypted)", "email/accounts.json."),
+        ("Emails waiting to be sent: the address and the message (encrypted), until sent or expired", "email/outbox.json."),
+        ("Emails that couldn't be sent: when, which email, the avatar name and why, for 7 days", "email/problems.json."),
     ];
 }

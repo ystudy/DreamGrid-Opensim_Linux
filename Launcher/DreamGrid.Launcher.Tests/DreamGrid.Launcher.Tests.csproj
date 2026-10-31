@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <!-- Runs on Microsoft.Testing.Platform (selected in global.json); no VSTest packages needed. -->
+    <PackageReference Include="SmtpServer" Version="11.1.0" />
     <PackageReference Include="xunit.v3" Version="4.0.2" />
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.0.0" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.13" />

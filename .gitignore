@@ -137,3 +137,6 @@ bin/System.Drawing.Common.dll
 # Live Wifi configs hold secrets; only Wifi.ini.proto is tracked
 bin/config-addon-opensim/Wifi.ini
 bin/config-addon-robust/Wifi.ini
+
+# Superpowers brainstorm mockups and plan ledgers (local scratch)
+.superpowers/

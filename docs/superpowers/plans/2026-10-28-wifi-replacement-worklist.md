@@ -51,11 +51,12 @@ Legend: **[S]** security requirement, **[X]** cross-platform note, **[?]** decis
 - [x] Checked the legacy port-8001 routes: `/dreamgrid/regionready` accepts only loopback (tested); the command API on `/` stays reachable from the network on purpose (MachineId or an admin avatar), obeys the admin network list and the throttle, refuses a password alone for two-factor accounts, and audits commands that ran (design 2026-10-30 §7.8).
 
 ### 1.4 Email
-- [ ] SMTP settings page: host, port, TLS mode, user, password, sender address, and a "send test email" button.
-- [ ] **[S]** Store the SMTP password encrypted with data protection. It is never shown back in a page (write-only field).
-- [ ] **[X]** Use MailKit (works the same on Windows and Debian) rather than `System.Net.Mail`.
-- [ ] Email templates are localised (see 1.5), in plain text and HTML.
-- [ ] Every feature that needs email is hidden or explains itself when SMTP isn't set up.
+> Done in plan 8a (`docs/superpowers/plans/2026-10-31-plan8a-email.md`, design `docs/superpowers/specs/2026-10-31-email-design.md`): provider cards, several accounts in order with their limits, an encrypted outbox. Office 365 is on the later list.
+- [x] SMTP settings page: host, port, TLS mode, user, password, sender address, and a "send test email" button. (`/security/email`: provider cards and Other server.)
+- [x] **[S]** Store the SMTP password encrypted with data protection. It is never shown back in a page (write-only field).
+- [x] **[X]** Use MailKit (works the same on Windows and Debian) rather than `System.Net.Mail`.
+- [ ] Email templates are localised (see 1.5), in plain text and HTML. (Plain text and HTML done, editable at `/security/email/wording`; English only until 1.5, stored by language already.)
+- [x] Every feature that needs email is hidden or explains itself when SMTP isn't set up. (`EmailSender.IsReady`; the features in 2.1–2.3 use it.)
 
 ### 1.5 Languages (localisation)
 - [ ] Use ASP.NET Core localisation: `IStringLocalizer` and `IViewLocalizer` with `.resx` files per page or area, plus a shared resource for common words.
@@ -216,6 +217,7 @@ Decided: build **all three**, each with its own switch. A (honeypot and rate lim
 
 - Advanced install: let the owner choose the database password (owner, 2026-10-30).
 - HTTPS for the website (owner: later, 2026-10-30).
+- Office 365 / Microsoft 365 email, which needs OAuth sign-in (owner: later, 2026-10-31).
 - Region owners for regions on a Region Server (the guest side exists only where the grid service runs).
 - OAR download for region owners.
 - Audio alternative for the image CAPTCHA.

@@ -14,6 +14,7 @@ using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Core.Setup;
 using DreamGrid.Launcher.Security;
+using DreamGrid.Launcher.Email;
 using DreamGrid.Launcher.Guests;
 using DreamGrid.Launcher.Setup;
 using Microsoft.AspNetCore.Authentication;
@@ -76,6 +77,7 @@ try
     LauncherPaths.CreateOwnerOnly(paths.DataProtectionKeys);
     LauncherPaths.CreateOwnerOnly(paths.Security);
     LauncherPaths.CreateOwnerOnly(paths.Guests);
+    LauncherPaths.CreateOwnerOnly(paths.Email);
 }
 catch (Exception e) when (e is ArgumentException or SettingsCorruptException or IOException or UnauthorizedAccessException)
 {
@@ -181,6 +183,9 @@ builder.Services.AddRazorPages(o =>
     o.Conventions.AddPageApplicationModelConvention("/Security/Legal", m => m.Filters.Add(new GuestSideOnly()));
     // The same for the bot-protection page.
     o.Conventions.AddPageApplicationModelConvention("/Security/Bots", m => m.Filters.Add(new GuestSideOnly()));
+    // The same for the Email pages: email is for the guest side's sign-up and password reset.
+    foreach (var emailPage in new[] { "/Security/Email", "/Security/EmailWording" })
+        o.Conventions.AddPageApplicationModelConvention(emailPage, m => m.Filters.Add(new GuestSideOnly()));
     foreach (var open in new[] { "/Login", "/Login/Code", "/Logout", "/Welcome", "/Waiting", "/SetupDone", "/Setup", "/Home", "/Legal", "/SignUp", "/Guest/SignIn" })
         o.Conventions.AllowAnonymousToPage(open);
     o.Conventions.AllowAnonymousToFolder("/Setup");
@@ -219,6 +224,16 @@ builder.Services.AddSingleton(sp => new RegionRights(Path.Combine(paths.Guests, 
     sp.GetRequiredService<ILogger<RegionRights>>()));
 builder.Services.AddSingleton(sp => new EmailTokens(Path.Combine(paths.Guests, "email-tokens.json"), sp.GetRequiredService<TimeProvider>(),
     sp.GetRequiredService<ILogger<EmailTokens>>()));
+// Email (plan 8a): the mail accounts, passwords protected by data protection.
+builder.Services.AddSingleton(sp => new EmailAccounts(Path.Combine(paths.Email, "accounts.json"), sp.GetRequiredService<IDataProtectionProvider>(),
+    sp.GetRequiredService<ILogger<EmailAccounts>>()));
+// The outbox, send counts and recent problems; one sender is the only way in, and the worker sends in the background.
+builder.Services.AddSingleton(sp => new EmailOutbox(paths.Email, sp.GetRequiredService<IDataProtectionProvider>(), sp.GetRequiredService<TimeProvider>(),
+    log: sp.GetRequiredService<ILogger<EmailOutbox>>()));
+builder.Services.AddSingleton<IMailTransport, SmtpMailTransport>();
+builder.Services.AddSingleton<EmailSender>();
+builder.Services.AddSingleton<EmailTestLimiter>();
+builder.Services.AddHostedService<EmailWorker>();
 // The proof-of-work key lives in the owner-only security folder; one key for the life of the install. The image CAPTCHA signs with
 // the same key (its signatures carry a label of their own), so it is read once, when the first of the two is needed.
 var powKey = new Lazy<byte[]>(() => ProofOfWork.LoadOrCreateKey(Path.Combine(paths.Security, "pow.key")));

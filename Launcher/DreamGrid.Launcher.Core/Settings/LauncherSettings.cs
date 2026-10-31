@@ -129,6 +129,13 @@ public sealed record LegalSettings(
     DateTimeOffset? ResponsibleSince = null);
 
 /// <summary>
+/// The owner's wording for the grid's emails: language ("en") to template id to text, only where it differs from the default
+/// (<see cref="Email.EmailTemplates"/>); null or empty means every template uses its default.
+/// </summary>
+public sealed record EmailSettings(
+    IReadOnlyDictionary<string, IReadOnlyDictionary<string, Email.EmailTemplateText>>? Templates = null);
+
+/// <summary>
 /// Protection of the sign-up form against bots. <see cref="Difficulty"/> is the proof-of-work's largest number to try
 /// (ALTCHA <c>maxnumber</c>, 1 000 to 1 000 000); <see cref="PerHourPerIp"/> is 1 to 1 000.
 /// </summary>
@@ -193,6 +200,12 @@ public sealed record LauncherSettings
     /// <summary>The operator's legal pages; a missing or null value reads as none written.</summary>
     [AllowNull]
     public LegalSettings Legal { get => _legal; init => _legal = value ?? new(); }
+
+    private readonly EmailSettings _email = new();
+
+    /// <summary>The owner's email wording; a missing or null value reads as every default.</summary>
+    [AllowNull]
+    public EmailSettings Email { get => _email; init => _email = value ?? new(); }
 
     private readonly BotSettings _bots = new();
 
