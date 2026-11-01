@@ -146,7 +146,8 @@ public sealed record EmailSettings(
 
 /// <summary>
 /// Protection of the sign-up form against bots. <see cref="Difficulty"/> is the proof-of-work's largest number to try
-/// (ALTCHA <c>maxnumber</c>, 1 000 to 1 000 000); <see cref="PerHourPerIp"/> is 1 to 1 000.
+/// (ALTCHA <c>maxnumber</c>, 1 000 to 1 000 000); <see cref="PerHourPerIp"/> is 1 to 1 000. <see cref="AdminApproval"/>: when email
+/// isn't set up, new sign-ups wait for staff approval. <see cref="Approvers"/>: which staff may approve or deny a sign-up.
 /// </summary>
 public sealed record BotSettings(
     bool Honeypot = true,
@@ -155,7 +156,11 @@ public sealed record BotSettings(
     bool ProofOfWork = true,
     int Difficulty = 50_000,
     bool ImageCaptcha = false,
-    bool AdminApproval = false);
+    bool AdminApproval = false,
+    SignUpApprovers Approvers = SignUpApprovers.OwnerAndAdmins);
+
+/// <summary>Which staff may approve or deny a sign-up (spec 2026-11-01-sign-up-approval-design §6).</summary>
+public enum SignUpApprovers { Owner, OwnerAndAdmins, OwnerAdminsAndSupervisors }
 
 public sealed record LauncherSettings
 {

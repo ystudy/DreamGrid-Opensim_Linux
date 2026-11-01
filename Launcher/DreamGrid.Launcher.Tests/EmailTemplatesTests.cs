@@ -13,7 +13,7 @@ public sealed class EmailTemplatesTests
     public void Defaults_contain_their_required_words()
     {
         Assert.Equal(["test", "confirm-email", "reset-password", "account-approved", "password-changed", "already-have-account",
-            "confirm-new-email", "email-change-notice"], EmailTemplates.All);
+            "confirm-new-email", "email-change-notice", "signup-denied", "signups-waiting"], EmailTemplates.All);
         foreach (var id in EmailTemplates.All)
         {
             var d = EmailTemplates.Default(id);
@@ -24,6 +24,28 @@ public sealed class EmailTemplatesTests
         Assert.Contains("{ExpiresIn}", EmailTemplates.Required("confirm-email"));
         Assert.DoesNotContain("{Link}", EmailTemplates.Required("account-approved"));
         Assert.Contains("{Link}", EmailTemplates.Words("account-approved"));
+    }
+
+    [Fact]
+    public void Denied_renders_empty_note()
+    {
+        var r = EmailTemplates.Render("signup-denied", EmailTemplates.Default("signup-denied"),
+            new Dictionary<string, string> { ["AvatarName"] = "Ann Avatar", ["GridName"] = "Avalon", ["Note"] = "" });
+
+        Assert.Equal("Your sign-up on Avalon", r.Subject);
+        Assert.Equal("Hello Ann Avatar,\n\nYour sign-up on Avalon wasn't approved.\n\n", r.Text);
+        Assert.Equal(["{GridName}", "{AvatarName}", "{Note}"], EmailTemplates.Words("signup-denied"));
+    }
+
+    [Fact]
+    public void Waiting_needs_its_link()
+    {
+        Assert.Equal(["{GridName}", "{Count}", "{Names}", "{Link}"], EmailTemplates.Words("signups-waiting"));
+        Assert.Equal(["{Link}"], EmailTemplates.Required("signups-waiting"));
+        var r = EmailTemplates.Render("signups-waiting", EmailTemplates.Default("signups-waiting"),
+            new Dictionary<string, string> { ["GridName"] = "Avalon", ["Count"] = "2", ["Names"] = "Ann Avatar\nBo Avatar", ["Link"] = "http://h/" });
+        Assert.Equal("2 waiting for approval on Avalon", r.Subject);
+        Assert.Contains("Ann Avatar\nBo Avatar", r.Text);
     }
 
     [Fact]

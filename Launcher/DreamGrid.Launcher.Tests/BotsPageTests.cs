@@ -51,9 +51,12 @@ public sealed class BotsPageTests
 
     /// <summary>Posts the save form with these layers on (an unticked switch posts nothing).</summary>
     private static Task<HttpResponseMessage> SaveAsync(HttpClient client, bool honeypot = false, bool rateLimit = false, int perHour = 5,
-        bool proof = false, int difficulty = 50_000, bool image = false, bool approval = false)
+        bool proof = false, int difficulty = 50_000, bool image = false, bool approval = false, string approvers = "OwnerAndAdmins")
     {
-        var fields = new Dictionary<string, string> { ["PerHourPerIp"] = perHour.ToString(), ["Difficulty"] = difficulty.ToString() };
+        var fields = new Dictionary<string, string>
+        {
+            ["PerHourPerIp"] = perHour.ToString(), ["Difficulty"] = difficulty.ToString(), ["Approvers"] = approvers,
+        };
         foreach (var (name, on) in new[] { ("Honeypot", honeypot), ("RateLimit", rateLimit), ("ProofOfWork", proof), ("ImageCaptcha", image), ("AdminApproval", approval) })
             if (on) fields[name] = "true";
         return PostAsync(client, "Save", fields);
@@ -203,7 +206,7 @@ public sealed class BotsPageTests
 
         Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
         Assert.Equal("/security/bots", r.Headers.Location?.OriginalString);
-        Assert.Equal(new BotSettings(false, true, 8, true, 2000, true, false), f.Store.LoadOrCreate().Bots);
+        Assert.Equal(new BotSettings(false, true, 8, true, 2000, true, true), f.Store.LoadOrCreate().Bots);
         Assert.Equal([false], f.Grid.UpdateWriteConfig);
 
         var html = await owner.GetStringAsync("/security/bots", Ct);
@@ -214,8 +217,7 @@ public sealed class BotsPageTests
         Assert.Equal("8", page.QuerySelector("#PerHourPerIp")!.GetAttribute("value"));
         Assert.Equal("2000", page.QuerySelector("#Difficulty")!.GetAttribute("value"));
         Assert.NotNull(page.QuerySelector("#ImageCaptcha:checked"));
-        // Admin approval isn't built yet: the switch is hidden and a posted value is ignored.
-        Assert.Null(page.QuerySelector("#AdminApproval"));
+        Assert.NotNull(page.QuerySelector("#AdminApproval:checked"));
         // The challenge now has the new difficulty.
         using var challenge = JsonDocument.Parse(await f.CreateClient().GetStringAsync("/api/bots/challenge", Ct));
         Assert.Equal(2000, challenge.RootElement.GetProperty("maxnumber").GetInt32());
@@ -268,17 +270,87 @@ public sealed class BotsPageTests
             BotAudit(f).Select(e => e.GetProperty("action").GetString() + ":" + e.GetProperty("target").GetString()));
     }
 
+    private const string NoGuardWarning = "Anyone can make an account and use it at once: email isn't set up and staff approval is off.";
+
+    private static List<string> ApprovalAudit(LauncherFactory f)
+    {
+        var path = Path.Combine(f.Paths.Logs, "audit.log");
+        if (!File.Exists(path)) return [];
+        using var s = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        return new StreamReader(s).ReadToEnd().Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(l => JsonDocument.Parse(l).RootElement)
+            .Where(e => e.GetProperty("action").GetString() == "approval-settings")
+            .Select(e => e.GetProperty("target").GetString()!).ToList();
+    }
+
     [Fact]
-    public async Task Bots_post_keeps_stored_admin_approval()
+    public async Task Bots_page_shows_both_switches()
     {
         await using var f = Factory(OwnerPlan.Local);
-        f.Store.Save(f.Store.LoadOrCreate() with { Bots = new BotSettings(AdminApproval: true) });
         var owner = await SignedInAsync(f);
 
-        using var r = await SaveAsync(owner, honeypot: true, rateLimit: true, proof: true);
+        var html = await owner.GetStringAsync("/security/bots", Ct);
+        var page = new HtmlParser().ParseDocument(html);
 
-        Assert.True(f.Store.LoadOrCreate().Bots.AdminApproval);
-        Assert.Null(new HtmlParser().ParseDocument(await owner.GetStringAsync("/security/bots", Ct)).QuerySelector("#AdminApproval"));
+        Assert.NotNull(page.QuerySelector("#AdminApproval"));
+        Assert.Null(page.QuerySelector("#AdminApproval:checked"));
+        Assert.Contains("When email isn't set up, new sign-ups wait for staff approval.", TextOf(html));
+        Assert.Contains("Who can approve new sign-ups", TextOf(html));
+        var options = page.QuerySelectorAll("#Approvers option").Select(o => (o.GetAttribute("value"), o.TextContent.Trim(), o.HasAttribute("selected"))).ToList();
+        Assert.Equal(
+        [
+            ("Owner", "The owner only", false),
+            ("OwnerAndAdmins", "The owner and admins", true),
+            ("OwnerAdminsAndSupervisors", "The owner, admins and supervisors", false),
+        ], options);
+    }
+
+    [Fact]
+    public async Task Saving_approval_switch_audited()
+    {
+        await using var f = Factory(OwnerPlan.Local);
+        var owner = await SignedInAsync(f);
+
+        using var on = await SaveAsync(owner, honeypot: true, rateLimit: true, proof: true, approval: true);
+        using var off = await SaveAsync(owner, honeypot: true, rateLimit: true, proof: true);
+
+        Assert.False(f.Store.LoadOrCreate().Bots.AdminApproval);
+        Assert.Equal(["admin-approval on", "admin-approval off"], ApprovalAudit(f));
+        Assert.Empty(BotAudit(f));
+    }
+
+    [Fact]
+    public async Task Saving_approvers_audited()
+    {
+        await using var f = Factory(OwnerPlan.Local);
+        var owner = await SignedInAsync(f);
+
+        using var r = await SaveAsync(owner, honeypot: true, rateLimit: true, proof: true, approvers: "OwnerAdminsAndSupervisors");
+
+        Assert.Equal(SignUpApprovers.OwnerAdminsAndSupervisors, f.Store.LoadOrCreate().Bots.Approvers);
+        Assert.Equal(["approvers OwnerAdminsAndSupervisors"], ApprovalAudit(f));
+    }
+
+    [Fact]
+    public async Task Warning_when_open_without_email_or_approval()
+    {
+        await using var f = Factory(OwnerPlan.Local);
+        f.Store.Save(f.Store.LoadOrCreate() with { Legal = SignUpsTests.WrittenLegal(), SignUp = new SignUpSettings(Open: true) });
+        var owner = await SignedInAsync(f);
+        Assert.Contains(NoGuardWarning, TextOf(await owner.GetStringAsync("/security/bots", Ct)));
+
+        using var on = await SaveAsync(owner, honeypot: true, rateLimit: true, proof: true, approval: true);
+
+        Assert.DoesNotContain(NoGuardWarning, TextOf(await owner.GetStringAsync("/security/bots", Ct)));
+    }
+
+    [Fact]
+    public async Task No_warning_while_sign_up_closed()
+    {
+        await using var f = Factory(OwnerPlan.Local);
+        var owner = await SignedInAsync(f);
+
+        Assert.DoesNotContain(NoGuardWarning, TextOf(await owner.GetStringAsync("/security/bots", Ct)));
     }
 
     [Theory]

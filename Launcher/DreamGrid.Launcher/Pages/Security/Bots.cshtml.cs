@@ -1,6 +1,8 @@
 using DreamGrid.Launcher.Core.Grid;
+using DreamGrid.Launcher.Core.Guests;
 using DreamGrid.Launcher.Core.Logs;
 using DreamGrid.Launcher.Core.Settings;
+using DreamGrid.Launcher.Email;
 using DreamGrid.Launcher.Guests;
 using DreamGrid.Launcher.Security;
 using Microsoft.AspNetCore.Mvc;
@@ -20,7 +22,7 @@ namespace DreamGrid.Launcher.Pages.Security;
 /// or which layer stopped it. It saves nothing, but it counts against the rate limit like any other post.</item>
 /// </list>
 /// </summary>
-public sealed class BotsModel(IGridController grid, Func<LauncherSettings> settings, BotGuard guard, AuditLog audit) : PageModel
+public sealed class BotsModel(IGridController grid, Func<LauncherSettings> settings, BotGuard guard, EmailSender sender, AuditLog audit) : PageModel
 {
     [BindProperty] public bool Honeypot { get; set; }
     [BindProperty] public bool RateLimit { get; set; }
@@ -28,6 +30,8 @@ public sealed class BotsModel(IGridController grid, Func<LauncherSettings> setti
     [BindProperty] public bool ProofOfWork { get; set; }
     [BindProperty] public int Difficulty { get; set; }
     [BindProperty] public bool ImageCaptcha { get; set; }
+    [BindProperty] public bool AdminApproval { get; set; }
+    [BindProperty] public SignUpApprovers Approvers { get; set; } = SignUpApprovers.OwnerAndAdmins;
 
     [TempData] public string? Notice { get; set; }
 
@@ -39,11 +43,14 @@ public sealed class BotsModel(IGridController grid, Func<LauncherSettings> setti
     /// <summary>True when every protection layer is off.</summary>
     public bool AllOff => !Honeypot && !RateLimit && !ProofOfWork && !ImageCaptcha;
 
+    /// <summary>True when sign-up is open, email isn't set up and staff approval is off: anyone gets in at once.</summary>
+    public bool NoGuard => SignUpRules.IsOpen(settings()) && !sender.IsReady && !AdminApproval;
+
     public void OnGet() => Fill();
 
     public IActionResult OnPostSave()
     {
-        var wanted = new BotSettings(Honeypot, RateLimit, PerHourPerIp, ProofOfWork, Difficulty, ImageCaptcha);
+        var wanted = new BotSettings(Honeypot, RateLimit, PerHourPerIp, ProofOfWork, Difficulty, ImageCaptcha, AdminApproval, Approvers);
         var check = SettingsValidator.Bots(wanted);
         if (!check.Ok)
         {
@@ -62,8 +69,9 @@ public sealed class BotsModel(IGridController grid, Func<LauncherSettings> setti
             Layer(BotLayers.ImageCaptcha, before.ImageCaptcha, wanted.ImageCaptcha);
             if (before.PerHourPerIp != wanted.PerHourPerIp) changes.Add(("bot-settings", $"rate-limit {wanted.PerHourPerIp} per hour"));
             if (before.Difficulty != wanted.Difficulty) changes.Add(("bot-settings", $"difficulty {wanted.Difficulty}"));
-            // Admin approval isn't on the form until approval is built (worklist 2.2): the stored value is kept as it is.
-            return changes.Count == 0 ? s : s with { Bots = wanted with { AdminApproval = before.AdminApproval } };
+            if (before.AdminApproval != wanted.AdminApproval) changes.Add(("approval-settings", "admin-approval " + (wanted.AdminApproval ? "on" : "off")));
+            if (before.Approvers != wanted.Approvers) changes.Add(("approval-settings", $"approvers {wanted.Approvers}"));
+            return changes.Count == 0 ? s : s with { Bots = wanted };
         }, writeConfig: false);
 
         foreach (var (action, target) in changes)
@@ -88,8 +96,8 @@ public sealed class BotsModel(IGridController grid, Func<LauncherSettings> setti
     private void Fill()
     {
         var b = settings().Bots;
-        (Honeypot, RateLimit, PerHourPerIp, ProofOfWork, Difficulty, ImageCaptcha) =
-            (b.Honeypot, b.RateLimit, b.PerHourPerIp, b.ProofOfWork, b.Difficulty, b.ImageCaptcha);
+        (Honeypot, RateLimit, PerHourPerIp, ProofOfWork, Difficulty, ImageCaptcha, AdminApproval, Approvers) =
+            (b.Honeypot, b.RateLimit, b.PerHourPerIp, b.ProofOfWork, b.Difficulty, b.ImageCaptcha, b.AdminApproval, b.Approvers);
     }
 
     private void Write(string action, string target)

@@ -1,5 +1,6 @@
 @page "/security/bots"
 @model DreamGrid.Launcher.Pages.Security.BotsModel
+@using DreamGrid.Launcher.Core.Settings
 @{
     ViewData["Title"] = "Bot protection";
 }
@@ -16,6 +17,10 @@
 @if (Model.AllOff)
 {
     <div id="all-off-warning" class="alert alert-warning" role="alert">Every protection is off. Once sign-ups are open, bots can create accounts freely.</div>
+}
+@if (Model.NoGuard)
+{
+    <div id="no-guard-warning" class="alert alert-warning" role="alert">Anyone can make an account and use it at once: email isn't set up and staff approval is off.</div>
 }
 
 <div class="row g-4">
@@ -48,6 +53,19 @@
         <label class="form-check-label" for="ImageCaptcha">Picture puzzle (image CAPTCHA)</label>
     </div>
     <p class="hint form-text">The visitor types the letters in a picture. It is off by default.</p>
+
+    <h2 class="h5 mt-4">Approving new sign-ups</h2>
+    <div class="form-check form-switch mt-3">
+        <input class="form-check-input" type="checkbox" role="switch" id="AdminApproval" name="AdminApproval" value="true" checked="@Model.AdminApproval">
+        <label class="form-check-label" for="AdminApproval">When email isn't set up, new sign-ups wait for staff approval.</label>
+    </div>
+    <p class="hint form-text">With email set up, a sign-up gets in by its email link or by staff approval, whichever comes first. Without email and with this off, a sign-up gets in at once.</p>
+    <label class="form-label mt-3" for="Approvers">Who can approve new sign-ups</label>
+    <select class="form-select" id="Approvers" name="Approvers">
+        <option value="Owner" selected="@(Model.Approvers == SignUpApprovers.Owner)">The owner only</option>
+        <option value="OwnerAndAdmins" selected="@(Model.Approvers == SignUpApprovers.OwnerAndAdmins)">The owner and admins</option>
+        <option value="OwnerAdminsAndSupervisors" selected="@(Model.Approvers == SignUpApprovers.OwnerAdminsAndSupervisors)">The owner, admins and supervisors</option>
+    </select>
 
     <button type="submit" class="btn btn-primary mt-3">Save</button>
 </form>
