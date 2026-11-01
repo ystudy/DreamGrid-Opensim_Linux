@@ -7,10 +7,19 @@ namespace DreamGrid.Launcher.Tests;
 internal static class TestPorts
 {
     /// <summary>
+    /// The highest port handed out. The grid counts up from its "first port" settings for a new program, so a port near
+    /// 65535 (Windows hands those out) would leave it nowhere to go.
+    /// </summary>
+    public const int Highest = 65000;
+
+    /// <summary>
     /// <paramref name="count"/> distinct ports that are free on TCP and on UDP: the grid's port check binds a region's
     /// UDP port too, and on Windows a port free on TCP can be held on UDP by another program.
     /// </summary>
-    public static int[] Free(int count)
+    public static int[] Free(int count) => Free(count, () => new TcpListener(IPAddress.Any, 0));
+
+    /// <param name="listener">Where each candidate comes from (a test of this class hands it a high port first).</param>
+    internal static int[] Free(int count, Func<TcpListener> listener)
     {
         var held = new List<IDisposable>();
         var ports = new List<int>();
@@ -18,10 +27,11 @@ internal static class TestPorts
         {
             while (ports.Count < count)
             {
-                var tcp = new TcpListener(IPAddress.Any, 0);
+                var tcp = listener();
                 tcp.Start();
                 held.Add(new Stopper(tcp));
                 var port = ((IPEndPoint)tcp.LocalEndpoint).Port;
+                if (port > Highest) continue; // no room above it: keep it held so it is not handed out again, and try another
                 try
                 {
                     held.Add(new UdpClient(new IPEndPoint(IPAddress.Any, port)));

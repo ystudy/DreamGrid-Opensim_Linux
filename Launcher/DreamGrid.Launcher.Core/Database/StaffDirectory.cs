@@ -18,6 +18,12 @@ public interface IStaffDirectory
     /// <see cref="StaffDirectoryUnavailableException"/> when the database can't be asked.
     /// </summary>
     Task<RobustAccount?> FindByEmailAsync(string normalEmail, CancellationToken ct);
+
+    /// <summary>
+    /// Every account whose email, trimmed and lower-case, is <paramref name="normalEmail"/>, at any level. Throws
+    /// <see cref="StaffDirectoryUnavailableException"/> when the database can't be asked.
+    /// </summary>
+    Task<IReadOnlyList<RobustAccount>> ListByEmailAsync(string normalEmail, CancellationToken ct);
 }
 
 /// <summary>
@@ -35,11 +41,17 @@ public sealed class StaffDirectory(Func<LauncherSettings> settings) : IStaffDire
     private const string ByEmail =
         "SELECT PrincipalID, FirstName, LastName, UserLevel, Email, Created FROM robust.UserAccounts WHERE LOWER(TRIM(Email)) = @email LIMIT 1";
 
+    public const string AllByEmail =
+        "SELECT PrincipalID, FirstName, LastName, UserLevel, Email, Created FROM robust.UserAccounts WHERE LOWER(TRIM(Email)) = @email";
+
     public Task<IReadOnlyList<RobustAccount>> ListAtOrAboveAsync(int level, CancellationToken ct) =>
         ReadAsync(Query, ("@level", level), ct);
 
     public async Task<RobustAccount?> FindByEmailAsync(string normalEmail, CancellationToken ct) =>
         (await ReadAsync(ByEmail, ("@email", normalEmail), ct)).FirstOrDefault();
+
+    public Task<IReadOnlyList<RobustAccount>> ListByEmailAsync(string normalEmail, CancellationToken ct) =>
+        ReadAsync(AllByEmail, ("@email", normalEmail), ct);
 
     private async Task<IReadOnlyList<RobustAccount>> ReadAsync(string query, (string Name, object Value) parameter, CancellationToken ct)
     {

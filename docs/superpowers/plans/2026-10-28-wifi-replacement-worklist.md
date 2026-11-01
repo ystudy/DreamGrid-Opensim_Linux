@@ -92,8 +92,9 @@ Each item says what Wifi did, how v7 should do it better, and the security rules
 - [x] Owner-chosen rules per group (residents, staff, owner) set from Setup's "What kind of grid is this?", with two-factor for residents asleep until a rule asks for it (plan 8b, `2026-10-31-password-recovery-design.md`).
 
 ### 2.4 Resident account page (Wifi: `useraccountform`)
-- [ ] Change email (confirmed by a link sent to the **new** address, with a notice to the old one) and change password (asks for the current password).
-- [ ] Choose language and see their own details.
+- [x] Change email (confirmed by a link sent to the **new** address, with a notice to the old one) and change password (asks for the current password). (Plan 10, `/guest/account`.)
+- [x] See their own details. (Plan 10.)
+- [ ] Choose language. Waits for 1.5 (plan 10 left it out: there is nothing to choose yet).
 - Decided: residents **cannot** delete their own account. Only an admin can (2.5).
 
 ### 2.5 Admin user management (Wifi: `userlist`, `usersearchform`, `usereditform`, `userdeleteform`)

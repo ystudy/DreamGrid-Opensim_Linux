@@ -494,7 +494,7 @@ internal sealed class FakeOtherGrid : IOtherGridClient
 }
 
 /// <summary>Robust with a fixed set of avatars: (first, last) → (level, password).</summary>
-internal sealed class FakeRobustAccounts : IRobustClient, IRobustPasswords
+internal sealed class FakeRobustAccounts : IRobustClient, IRobustPasswords, IRobustEmails
 {
     private readonly Dictionary<(string, string), (RobustAccount Account, string Password)> _accounts = new();
 
@@ -506,9 +506,21 @@ internal sealed class FakeRobustAccounts : IRobustClient, IRobustPasswords
     /// <summary>Simulates the database being down: <see cref="SetAsync"/> throws as <see cref="RobustPasswords"/> does.</summary>
     public bool PasswordsDown { get; set; }
 
-    public FakeRobustAccounts Add(string first, string last, int level, string password, Guid? id = null, string email = "")
+    /// <summary>Simulates the database being down for <see cref="IRobustEmails.SetAsync"/>, as <see cref="RobustEmails"/> throws.</summary>
+    public bool EmailsDown { get; set; }
+
+    Task IRobustEmails.SetAsync(Guid principal, string email, CancellationToken ct)
     {
-        _accounts[(first, last)] = (new RobustAccount(id ?? Guid.NewGuid(), first, last, level, email), password);
+        if (EmailsDown) throw new RobustEmailsUnavailableException("The email address could not be written.", new TimeoutException());
+        foreach (var (key, a) in _accounts.ToList())
+            if (a.Account.PrincipalId == principal) _accounts[key] = (a.Account with { Email = email }, a.Password);
+        return Task.CompletedTask;
+    }
+
+    public FakeRobustAccounts Add(string first, string last, int level, string password, Guid? id = null, string email = "",
+        DateTimeOffset? created = null)
+    {
+        _accounts[(first, last)] = (new RobustAccount(id ?? Guid.NewGuid(), first, last, level, email, created), password);
         return this;
     }
 
@@ -623,6 +635,10 @@ internal sealed class FakeStaffDirectory(FakeRobustAccounts robust) : IStaffDire
     public Task<RobustAccount?> FindByEmailAsync(string normalEmail, CancellationToken ct) =>
         Down ? throw new StaffDirectoryUnavailableException("The database isn't running.")
             : Task.FromResult(robust.All.FirstOrDefault(a => a.Email.Trim().ToLowerInvariant() == normalEmail));
+
+    public Task<IReadOnlyList<RobustAccount>> ListByEmailAsync(string normalEmail, CancellationToken ct) =>
+        Down ? throw new StaffDirectoryUnavailableException("The database isn't running.")
+            : Task.FromResult<IReadOnlyList<RobustAccount>>([.. robust.All.Where(a => a.Email.Trim().ToLowerInvariant() == normalEmail)]);
 }
 
 /// <summary>Who's online without a database: returns <see cref="Result"/>.</summary>

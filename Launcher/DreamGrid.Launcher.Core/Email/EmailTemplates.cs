@@ -24,11 +24,14 @@ public static class EmailTemplates
     public const string AccountApproved = "account-approved";
     public const string PasswordChanged = "password-changed";
     public const string AlreadyHaveAccount = "already-have-account";
+    public const string ConfirmNewEmail = "confirm-new-email";
+    public const string EmailChangeNotice = "email-change-notice";
 
     /// <summary>Until languages arrive (worklist 1.5) every template is in this one.</summary>
     public const string DefaultLanguage = LegalPages.DefaultLanguage;
 
-    public static IReadOnlyList<string> All { get; } = [Test, ConfirmEmail, ResetPassword, AccountApproved, PasswordChanged, AlreadyHaveAccount];
+    public static IReadOnlyList<string> All { get; } = [Test, ConfirmEmail, ResetPassword, AccountApproved, PasswordChanged, AlreadyHaveAccount,
+        ConfirmNewEmail, EmailChangeNotice];
 
     private static readonly DateTimeOffset Shipped = DateTimeOffset.UnixEpoch;
 
@@ -54,6 +57,13 @@ public static class EmailTemplates
         [AlreadyHaveAccount] = new("Already have an account", ["{GridName}", "{AvatarName}", "{Link}"], ["{Link}"],
             "Someone tried to sign up on {GridName}",
             "Hello {AvatarName},\n\nSomeone tried to sign up on {GridName} with this email address. If that was you, you already have an avatar: {AvatarName}.\n\nForgot your password? You can choose a new one here:\n\n{Link}\n\nIf it wasn't you, you can ignore this email."),
+        [ConfirmNewEmail] = new("Confirm your new email address", ["{GridName}", "{AvatarName}", "{Link}", "{ExpiresIn}"], ["{Link}", "{ExpiresIn}"],
+            "Confirm your new email address",
+            "Hello {AvatarName},\n\nConfirm your new email address for {AvatarName} on {GridName}:\n\n{Link}\n\nThe link works once, for {ExpiresIn}. If you didn't ask for this, ignore this email."),
+        // Never names the new address: this goes to the old one, which may no longer be the person's.
+        [EmailChangeNotice] = new("Email change requested", ["{GridName}", "{AvatarName}", "{Link}"], ["{Link}"],
+            "Your email address on {GridName}",
+            "Hello {AvatarName},\n\nSomeone asked to change the email address for {AvatarName} on {GridName}. If that was you, there's nothing to do.\n\nIf not, change your password now:\n\n{Link}"),
     };
 
     public static string Title(string id) => Get(id).Title;

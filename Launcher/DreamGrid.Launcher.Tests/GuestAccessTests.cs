@@ -185,8 +185,9 @@ public sealed class GuestAccessTests
         });
         var guest = await GuestAsync(f);
         var wrong = new List<string>();
-        string[] gets = ["/guest", "/guest/sign-in", "/guest/sign-out", "/guest/terms", "/guest/regions"];
-        string[] posts = ["/guest/sign-in", "/guest/sign-out", "/guest/terms", $"/guest/regions?handler=restart&id={Guid.NewGuid()}"];
+        string[] gets = ["/guest", "/guest/sign-in", "/guest/sign-out", "/guest/terms", "/guest/regions", "/guest/account", "/guest/confirm-email?token=x"];
+        string[] posts = ["/guest/sign-in", "/guest/sign-out", "/guest/terms", $"/guest/regions?handler=restart&id={Guid.NewGuid()}",
+            "/guest/account?handler=password", "/guest/account?handler=email"];
 
         foreach (var url in gets)
         {

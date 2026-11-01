@@ -21,21 +21,35 @@ internal sealed class FakeSmtp : IAsyncDisposable
     private readonly CancellationTokenSource _stop = new();
     private readonly Task _running;
 
-    public FakeSmtp()
+    public FakeSmtp() : this(() => TestPorts.Free(1)[0]) { }
+
+    /// <param name="pickPort">Where the port comes from (a test of this class hands it a taken one first).</param>
+    internal FakeSmtp(Func<int> pickPort)
     {
-        Port = TestPorts.Free(1)[0];
+        // A free port can be taken by a test running alongside between picking it and binding it: the bind fails at once, so pick again.
+        for (var attempt = 1; ; attempt++)
+        {
+            Port = pickPort();
+            _running = Start(Port);
+            if (attempt == 5 || !(_running.Exception?.InnerException is System.Net.Sockets.SocketException { SocketErrorCode: System.Net.Sockets.SocketError.AddressAlreadyInUse }))
+                break;
+        }
+    }
+
+    private Task Start(int port)
+    {
         var options = new SmtpServerOptionsBuilder()
             .ServerName("localhost")
-            .Endpoint(b => b.Endpoint(new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, Port)).AllowUnsecureAuthentication(true).AuthenticationRequired(true))
+            .Endpoint(b => b.Endpoint(new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, port)).AllowUnsecureAuthentication(true).AuthenticationRequired(true))
             .Build();
         var services = new SmtpServer.ComponentModel.ServiceProvider();
         services.Add(new Store(this));
         services.Add(new Auth());
         services.Add(new Filter(this));
-        _running = new SmtpServer.SmtpServer(options, services).StartAsync(_stop.Token);
+        return new SmtpServer.SmtpServer(options, services).StartAsync(_stop.Token);
     }
 
-    public int Port { get; }
+    public int Port { get; private set; }
 
     public List<MimeMessage> Received { get; } = [];
 

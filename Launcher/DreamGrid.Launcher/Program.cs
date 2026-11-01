@@ -189,7 +189,7 @@ builder.Services.AddRazorPages(o =>
     // The same for the Email pages: email is for the guest side's sign-up and password reset.
     foreach (var emailPage in new[] { "/Security/Email", "/Security/EmailWording" })
         o.Conventions.AddPageApplicationModelConvention(emailPage, m => m.Filters.Add(new GuestSideOnly()));
-    foreach (var open in new[] { "/Login", "/Login/Code", "/Logout", "/Welcome", "/Waiting", "/SetupDone", "/Setup", "/Home", "/Legal", "/SignUp", "/Guest/SignIn", "/Guest/SignInCode", "/Guest/ForgotPassword", "/Guest/ResetPassword", "/Guest/Confirm", "/Guest/Connect" })
+    foreach (var open in new[] { "/Login", "/Login/Code", "/Logout", "/Welcome", "/Waiting", "/SetupDone", "/Setup", "/Home", "/Legal", "/SignUp", "/Guest/SignIn", "/Guest/SignInCode", "/Guest/ForgotPassword", "/Guest/ResetPassword", "/Guest/Confirm", "/Guest/ConfirmEmail", "/Guest/Connect" })
         o.Conventions.AllowAnonymousToPage(open);
     o.Conventions.AllowAnonymousToFolder("/Setup");
     // The dashboard's forms post here: a POST to "/" belongs to the port-8001 contract (LegacyRootPolicy).
@@ -220,6 +220,7 @@ builder.Services.AddSingleton(sp => new ResidentTwoFactor(new TwoFactorStore(Pat
 builder.Services.AddSingleton(sp => new SuspendedStore(Path.Combine(paths.Security, "suspended.json"), sp.GetRequiredService<ILogger<SuspendedStore>>()));
 builder.Services.AddSingleton<IStaffDirectory>(sp => new StaffDirectory(sp.GetRequiredService<Func<LauncherSettings>>()));
 builder.Services.AddSingleton<IRobustPasswords>(sp => new RobustPasswords(sp.GetRequiredService<Func<LauncherSettings>>()));
+builder.Services.AddSingleton<IRobustEmails>(sp => new RobustEmails(sp.GetRequiredService<Func<LauncherSettings>>()));
 builder.Services.AddSingleton<IAccountRemover>(sp => new AccountRemover(sp.GetRequiredService<Func<LauncherSettings>>()));
 builder.Services.AddSingleton<StaffActions>();
 builder.Services.AddSingleton<StaffPrincipalValidator>();
@@ -242,6 +243,12 @@ builder.Services.AddSingleton(sp => new PendingSignUps(Path.Combine(paths.Guests
 builder.Services.AddSingleton(sp => new SignUpLimits(new ResetLimits(sp.GetRequiredService<TimeProvider>(), Path.Combine(paths.Guests, "signup-limits.json"),
     sp.GetRequiredService<ILogger<ResetLimits>>())));
 builder.Services.AddSingleton<SignUps>();
+// The resident account page (plan 10): email changes waiting for their link, and their own request counts.
+builder.Services.AddSingleton(sp => new PendingEmailChanges(Path.Combine(paths.Guests, "email-changes.json"), sp.GetRequiredService<TimeProvider>(),
+    sp.GetRequiredService<ILogger<PendingEmailChanges>>()));
+builder.Services.AddSingleton(sp => new EmailChangeLimits(new ResetLimits(sp.GetRequiredService<TimeProvider>(),
+    Path.Combine(paths.Guests, "email-change-limits.json"), sp.GetRequiredService<ILogger<ResetLimits>>())));
+builder.Services.AddSingleton<AccountChanges>();
 // Email (plan 8a): the mail accounts, passwords protected by data protection.
 builder.Services.AddSingleton(sp => new EmailAccounts(Path.Combine(paths.Email, "accounts.json"), sp.GetRequiredService<IDataProtectionProvider>(),
     sp.GetRequiredService<ILogger<EmailAccounts>>()));

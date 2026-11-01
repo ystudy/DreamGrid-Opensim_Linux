@@ -39,7 +39,8 @@ public enum ResetResult { Done, Expired, WrongCode, Locked, BadPassword, WriteFa
 /// </summary>
 public sealed class PasswordResets(Func<LauncherSettings> settings, IRobustClient robust, ResetLimits limits, EmailTokens tokens,
     EmailSender sender, AuditLog audit, IRobustPasswords passwords, TwoFactorStore staffTwoFactor, ResidentTwoFactor residents,
-    LoginThrottle throttle, StaffSessions sessions, GuestStamps guestStamps, IResetWork work, ILogger<PasswordResets> log)
+    LoginThrottle throttle, StaffSessions sessions, GuestStamps guestStamps, IResetWork work, PendingEmailChanges emailChanges,
+    ILogger<PasswordResets> log)
 {
     public const string Purpose = "reset-password";
     public static readonly TimeSpan LinkLifetime = TimeSpan.FromMinutes(30);
@@ -210,6 +211,7 @@ public sealed class PasswordResets(Func<LauncherSettings> settings, IRobustClien
             }
             throttle.RecordSuccess(door, key);
         }
+        AccountChanges.CancelEmailChange(tokens, emailChanges, link.Principal);
         sessions.EndAll(link.Principal);
         guestStamps.Rotate(link.Principal);
         if (a.Email.Trim() is { Length: > 0 } to)
