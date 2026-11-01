@@ -56,6 +56,10 @@ public sealed partial class LauncherEndToEndTests
             {
                 ["FirstName"] = "Test", ["LastName"] = "Owner", ["Password"] = Password, ["Confirm"] = Password,
             });
+            Assert.Equal("/setup/security", page.Path);
+
+            // "What kind of grid is this?": Home lab, which fills in the password-recovery rules.
+            page = await web.SubmitAsync(page, new() { ["Kind"] = "HomeLab" });
             Assert.Equal("/setup/region", page.Path);
 
             // 5. Step 3: the region, then its progress until it is ready.
@@ -124,6 +128,8 @@ public sealed partial class LauncherEndToEndTests
             {
                 ["FirstName"] = "Test", ["LastName"] = "Owner", ["Password"] = Password, ["Confirm"] = Password,
             });
+            Assert.Equal("/setup/security", page.Path);
+            page = await web.SubmitAsync(page, new() { ["Kind"] = "HomeLab" });
             Assert.Equal("/setup/region", page.Path);
 
             // Create the region (not Skip, whose form comes first on this plan) and wait until it is ready (logins enabled).
@@ -157,7 +163,7 @@ public sealed partial class LauncherEndToEndTests
             Assert.Equal("/setup/world", page.Path);
             page = await a.Web.SubmitAsync(page, new() { ["GridName"] = "Avalon" });
             Assert.Equal("/setup/avatar", page.Path);
-            await FinishSetupFromAvatarAsync(a, "A", page, OwnerWithPassword, "Hub", "main > form");
+            await FinishSetupFromAvatarAsync(a, "A", page, OwnerWithPassword, "Hub", "main > form", securityStep: true);
 
             // 2. Launcher B: its own data folder and free ports (picked now, so none is one A already uses).
             var pathsB = RequirePaths(_secondRoot);
@@ -225,7 +231,7 @@ public sealed partial class LauncherEndToEndTests
             Assert.Equal("/setup/world", page.Path);
             page = await a.Web.SubmitAsync(page, new() { ["GridName"] = "Elsewhere" });
             Assert.Equal("/setup/avatar", page.Path);
-            await FinishSetupFromAvatarAsync(a, "A", page, OwnerWithPassword, "Hub");
+            await FinishSetupFromAvatarAsync(a, "A", page, OwnerWithPassword, "Hub", securityStep: true);
 
             // 2. Launcher B: its own data folder and free ports (picked now, so none is one A already uses).
             var pathsB = RequirePaths(_secondRoot);
@@ -321,13 +327,19 @@ public sealed partial class LauncherEndToEndTests
     /// <summary>
     /// From the avatar step (<paramref name="page"/>) to the dashboard: the owner (<paramref name="owner"/>), the first
     /// region, its progress until it is ready, and "I'm in!". <paramref name="regionForm"/> picks the region form when the
-    /// page has more than one.
+    /// page has more than one. <paramref name="securityStep"/>: the plan has a guest side, so "What kind of grid is this?"
+    /// comes between the owner and the region (answered Home lab).
     /// </summary>
     private async Task FinishSetupFromAvatarAsync(SetupSession setup, string which, WebPage page, Dictionary<string, string> owner,
-        string regionName, string regionForm = "main form")
+        string regionName, string regionForm = "main form", bool securityStep = false)
     {
         var web = setup.Web;
         page = await web.SubmitAsync(page, owner);
+        if (securityStep)
+        {
+            Assert.Equal("/setup/security", page.Path);
+            page = await web.SubmitAsync(page, new() { ["Kind"] = "HomeLab" });
+        }
         Assert.Equal("/setup/region", page.Path);
         page = await web.SubmitAsync(page, new() { ["RegionName"] = regionName, ["Content"] = "island" }, regionForm);
         Assert.Equal("/setup/region?working=1", page.PathAndQuery);
