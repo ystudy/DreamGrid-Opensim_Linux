@@ -12,11 +12,11 @@ namespace DreamGrid.Launcher.Guests;
 /// the <see cref="SignUpBoard"/> made more than <see cref="SignUpBoard.WaitLimit"/> ago, and unlisted ones whose last link went out
 /// more than <see cref="SignUps.LinkLifetime"/> ago (spec 2026-11-01-sign-up-approval-design §9), so their names are free again. It
 /// also takes off the board waiting entries whose account is gone or no longer at −1, fills in missing names, and drops finished
-/// rows after <see cref="SignUpBoard.ShowFinishedFor"/>. Only listed avatars are ever touched: a listed one that
+/// rows after <see cref="SignUpBoard.ShowFinishedFor"/>, then tells approvers who is waiting (<see cref="SignUpNotices"/>). Only listed avatars are ever touched: a listed one that
 /// is gone or no longer at level −1 is just taken off the list. A database or Robust that doesn't answer leaves the list as it was
 /// for the next run. Each deletion is audited as done by DreamGrid.
 /// </summary>
-public sealed class SignUpCleanup(SignUpBoard pending, IRobustClient robust, IAccountRemover remover, AuditLog audit, TimeProvider time,
+public sealed class SignUpCleanup(SignUpBoard pending, IRobustClient robust, IAccountRemover remover, SignUpNotices notices, AuditLog audit, TimeProvider time,
     ILogger<SignUpCleanup> log) : BackgroundService
 {
     public static readonly TimeSpan Period = TimeSpan.FromHours(1);
@@ -88,6 +88,7 @@ public sealed class SignUpCleanup(SignUpBoard pending, IRobustClient robust, IAc
         }
 
         pending.PruneFinished();
+        await notices.RunAsync(ct);
     }
 
     private static bool IsDown(Exception e, CancellationToken ct) =>
