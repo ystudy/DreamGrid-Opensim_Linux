@@ -27,9 +27,12 @@
         </div>
         <div id="public-part" hidden="@(!regionPublic)">
             <label class="form-label mt-3" for="PublicAddress">Your public IP address or a name for this computer</label>
-            <input class="form-control" id="PublicAddress" name="PublicAddress" value="@Model.PublicAddress" placeholder="regions.example.com" autocomplete="off" autocapitalize="off" spellcheck="false">
+            <div class="input-group">
+                <input class="form-control" id="PublicAddress" name="PublicAddress" value="@Model.PublicAddress" placeholder="regions.example.com" autocomplete="off" autocapitalize="off" spellcheck="false">
+                <button type="button" id="find-address" class="btn btn-outline-secondary d-none" data-url="?handler=PublicAddress">Find my address</button>
+            </div>
             <span class="hint form-text d-block">The address visitors use to reach your regions from the internet.</span>
-            <span class="field-error text-danger small d-block">@Model.AddressError</span>
+            <span id="address-error" class="field-error text-danger small d-block">@Model.AddressError</span>
             <p class="router-advice mt-3">Your router must forward the region ports, @Model.FirstRegionPort upward, to this computer.</p>
         </div>
 
@@ -78,9 +81,12 @@
     {
         <div id="public-part" hidden="@(!showPublic)">
             <label class="form-label mt-3" for="PublicAddress">Your public IP address or your grid's name</label>
-            <input class="form-control" id="PublicAddress" name="PublicAddress" value="@Model.PublicAddress" placeholder="world.example.com" autocomplete="off" autocapitalize="off" spellcheck="false">
+            <div class="input-group">
+                <input class="form-control" id="PublicAddress" name="PublicAddress" value="@Model.PublicAddress" placeholder="world.example.com" autocomplete="off" autocapitalize="off" spellcheck="false">
+                <button type="button" id="find-address" class="btn btn-outline-secondary d-none" data-url="?handler=PublicAddress">Find my address</button>
+            </div>
             <span class="hint form-text d-block">The address visitors use to reach you from the internet.</span>
-            <span class="field-error text-danger small d-block">@Model.AddressError</span>
+            <span id="address-error" class="field-error text-danger small d-block">@Model.AddressError</span>
             <p class="router-advice mt-3">Your router must forward these ports to this computer: @Model.Ports.</p>
         </div>
         <div id="switch-part" hidden="@(!showPublic)">
@@ -110,5 +116,8 @@
 @if (gridAsset)
 {
     <noscript><link rel="stylesheet" href="/css/noscript.css"></noscript>
+}
+@if (Model.Plan != OwnerPlan.Local)
+{
     <script src="/js/network.js"></script>
 }

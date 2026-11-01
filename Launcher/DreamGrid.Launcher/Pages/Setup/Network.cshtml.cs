@@ -71,6 +71,20 @@ public sealed class NetworkModel(IGridController grid, Func<LauncherSettings> se
         return Page();
     }
 
+    /// <summary>
+    /// The "Find my address" button: this computer's public IP as the internet sees it (not the browser's), as
+    /// <c>{ address }</c> or <c>{ error }</c>. Saves nothing; the owner still presses Continue.
+    /// </summary>
+    public async Task<IActionResult> OnGetPublicAddressAsync([FromServices] IPublicAddressFinder finder, CancellationToken ct)
+    {
+        if (Closed() is { } closed) return closed;
+        return await finder.FindAsync(ct) is { } address
+            ? new JsonResult(new { address })
+            : new JsonResult(new { error = NoPublicAddress });
+    }
+
+    public const string NoPublicAddress = "DreamGrid couldn't find this computer's public address. Check its internet connection, or type the address.";
+
     public IActionResult OnPost()
     {
         if (Closed() is { } closed) return closed;
