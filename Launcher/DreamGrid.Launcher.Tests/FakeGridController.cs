@@ -517,9 +517,10 @@ internal sealed class FakeRobustAccounts : IRobustClient, IRobustPasswords, IRob
         return Task.CompletedTask;
     }
 
-    public FakeRobustAccounts Add(string first, string last, int level, string password, Guid? id = null, string email = "")
+    public FakeRobustAccounts Add(string first, string last, int level, string password, Guid? id = null, string email = "",
+        DateTimeOffset? created = null)
     {
-        _accounts[(first, last)] = (new RobustAccount(id ?? Guid.NewGuid(), first, last, level, email), password);
+        _accounts[(first, last)] = (new RobustAccount(id ?? Guid.NewGuid(), first, last, level, email, created), password);
         return this;
     }
 

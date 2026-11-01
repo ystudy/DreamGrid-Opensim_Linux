@@ -1,0 +1,25 @@
+@page "/guest/confirm-email"
+@model DreamGrid.Launcher.Pages.Guest.ConfirmEmailModel
+@using DreamGrid.Launcher.Guests
+@{
+    ViewData["Title"] = "Confirm your new email";
+}
+<div class="card card-body shadow-sm mx-auto sign-in-card">
+<h1>Confirm your new email</h1>
+@switch (Model.Result)
+{
+    case EmailLinkResult.Done:
+        <p role="status">Your email address is now @(Model.Email).</p>
+        break;
+    case EmailLinkResult.Taken:
+        <p role="alert">@AccountChanges.AddressTaken</p>
+        break;
+    case EmailLinkResult.Busy:
+        <p role="alert">@AccountChanges.EmailBusy</p>
+        break;
+    default:
+        <p role="alert">@AccountChanges.LinkExpired</p>
+        break;
+}
+<p class="mb-0"><a href="/guest/account">Go to your account</a></p>
+</div>

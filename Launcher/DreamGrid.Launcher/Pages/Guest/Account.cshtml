@@ -1,0 +1,90 @@
+@page "/guest/account"
+@model DreamGrid.Launcher.Pages.Guest.AccountModel
+@using DreamGrid.Launcher.Guests
+@{
+    ViewData["Title"] = "Account settings";
+}
+<h1>Account settings</h1>
+@if (Model.Account is not { } a)
+{
+    <div class="error-box error alert alert-danger" role="alert">@Model.Unavailable</div>
+}
+else
+{
+    <h2>Your details</h2>
+    <dl class="row">
+        <dt class="col-sm-3">Avatar name</dt>
+        <dd class="col-sm-9" id="account-name">@a.FirstName @a.LastName</dd>
+        <dt class="col-sm-3">Email address</dt>
+        <dd class="col-sm-9" id="account-email">@(string.IsNullOrWhiteSpace(a.Email) ? "No email address" : a.Email.Trim())</dd>
+        <dt class="col-sm-3">Role</dt>
+        <dd class="col-sm-9" id="account-role">@Model.Role</dd>
+        @if (Model.Created is not null)
+        {
+            <dt class="col-sm-3">Account made</dt>
+            <dd class="col-sm-9" id="account-created">@Model.Created</dd>
+        }
+    </dl>
+    @if (Model.TwoFactorLink)
+    {
+        <p><a href="/guest/two-factor">Two-factor sign-in</a></p>
+    }
+    @if (Model.OwnsRegions)
+    {
+        <p><a href="/guest/regions">My regions</a></p>
+    }
+
+    <h2>Change password</h2>
+    <form id="change-password" method="post" asp-page-handler="Password" class="mb-4">
+        @if (Model.PasswordError is not null)
+        {
+            <div class="error-box error alert alert-danger" role="alert">@Model.PasswordError</div>
+        }
+        @if (Model.PasswordNotice is not null)
+        {
+            <div class="alert alert-success" role="status">@Model.PasswordNotice</div>
+        }
+        <label class="form-label" for="password-current">Current password</label>
+        <input class="form-control mb-3" id="password-current" name="Current" type="password" value="" autocomplete="current-password" required>
+        @if (Model.NeedsCode)
+        {
+            <label class="form-label" for="password-code">Code from your authenticator app, or a backup code</label>
+            <input class="form-control mb-3 code-input" id="password-code" name="Code" value="" maxlength="32" autocomplete="one-time-code" required>
+        }
+        <label class="form-label" for="password-new">New password</label>
+        <input class="form-control mb-3" id="password-new" name="Password" type="password" value="" autocomplete="new-password" required>
+        <label class="form-label" for="password-again">New password again</label>
+        <input class="form-control mb-3" id="password-again" name="Again" type="password" value="" autocomplete="new-password" required>
+        <button type="submit" class="btn btn-primary">Change password</button>
+    </form>
+
+    <h2>Change email</h2>
+    @if (!Model.EmailChangeAvailable)
+    {
+        <p>@AccountChanges.NoEmailText</p>
+    }
+    else
+    {
+        <form id="change-email" method="post" asp-page-handler="Email">
+            @if (Model.EmailError is not null)
+            {
+                <div class="error-box error alert alert-danger" role="alert">@Model.EmailError</div>
+            }
+            @if (Model.EmailNotice is not null)
+            {
+                <div class="alert alert-success" role="status">@Model.EmailNotice</div>
+            }
+            <label class="form-label" for="email-new">New email address</label>
+            <input class="form-control mb-3" id="email-new" name="NewEmail" type="email" value="@Model.NewEmail" maxlength="254" autocomplete="email" required>
+            <label class="form-label" for="email-current">Current password</label>
+            <input class="form-control mb-3" id="email-current" name="Current" type="password" value="" autocomplete="current-password" required>
+            @if (Model.NeedsCode)
+            {
+                <label class="form-label" for="email-code">Code from your authenticator app, or a backup code</label>
+                <input class="form-control mb-3 code-input" id="email-code" name="Code" value="" maxlength="32" autocomplete="one-time-code" required>
+            }
+            <button type="submit" class="btn btn-primary">Send the link</button>
+        </form>
+    }
+}
+<p class="mt-4"><a href="/guest">Back to your account</a></p>
