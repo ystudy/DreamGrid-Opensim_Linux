@@ -105,6 +105,61 @@ public sealed partial class ResidentAvatarsTests
     }
 
     [Fact]
+    public async Task Existing_name_with_a_bad_reply_is_never_touched()
+    {
+        var ann = Guid.NewGuid();
+        _robust.Add("Ann", "Example", 0, "keep-me-please", ann);
+        _robust.FailureReply = true;
+        var console = Console();
+
+        await Assert.ThrowsAnyAsync<Exception>(() => Avatars().CreateAsync(console.Client, "Ann", "Example", null, -1, Ct));
+
+        Assert.Empty(console.Commands);
+        _robust.FailureReply = false;
+        var still = _robust.All.Single();
+        Assert.Equal((ann, 0), (still.PrincipalId, still.UserLevel));
+        Assert.True(await _robust.AuthenticateAsync(ann, "keep-me-please", Ct));
+        Assert.Empty(_remover.Deleted);
+    }
+
+    [Fact]
+    public async Task Only_the_account_it_made_counts()
+    {
+        // Robust refuses create user (the name appeared meanwhile): the account with that name isn't the one asked for.
+        var other = Guid.NewGuid();
+        var console = new FakeRestConsole(cmd =>
+        {
+            if (cmd.StartsWith("create user")) _robust.Add("Ann", "Example", 0, "someone-else", other);
+            return [];
+        });
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Avatars().CreateAsync(console.Client, "Ann", "Example", null, -1, Ct));
+
+        Assert.DoesNotContain(console.Commands, c => c.StartsWith("set user level"));
+        Assert.Empty(_remover.Deleted);
+    }
+
+    [Fact]
+    public async Task Cancelled_after_create_still_cleans_up()
+    {
+        using var cts = new CancellationTokenSource();
+        _ignoreLevel = true;
+        var console = new FakeRestConsole(cmd =>
+        {
+            if (CreateLine().Match(cmd) is { Success: true } c)
+            {
+                _robust.Add(c.Groups[1].Value, c.Groups[2].Value, 0, c.Groups[3].Value, Guid.Parse(c.Groups[5].Value));
+                cts.Cancel();
+            }
+            return [];
+        });
+
+        await Assert.ThrowsAnyAsync<Exception>(() => Avatars().CreateAsync(console.Client, "Ann", "Example", null, -1, cts.Token));
+
+        Assert.Equal([_robust.All.Single().PrincipalId], _remover.Deleted);
+    }
+
+    [Fact]
     public void Remover_sql_names_every_table()
     {
         var sql = string.Join("\n", AccountRemover.Statements);

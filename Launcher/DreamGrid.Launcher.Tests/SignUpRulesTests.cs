@@ -81,6 +81,16 @@ public sealed class SignUpRulesTests
     public void Email_two_ats_refused(string? email) => Assert.NotNull(SignUpRules.EmailProblem(email));
 
     [Fact]
+    public void Email_longer_than_robust_keeps_refused()
+    {
+        Assert.Null(SignUpRules.EmailProblem(new string('a', 54) + "@example.x"));
+        Assert.NotNull(SignUpRules.EmailProblem(new string('a', 55) + "@example.x"));
+    }
+
+    [Fact]
+    public void Email_starting_with_two_dashes_refused() => Assert.NotNull(SignUpRules.EmailProblem("--ann@example.com"));
+
+    [Fact]
     public void A_good_email_has_no_problem() => Assert.Null(SignUpRules.EmailProblem(" Ann@X.com "));
 
     [Fact]

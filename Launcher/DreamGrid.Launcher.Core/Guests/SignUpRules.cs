@@ -12,6 +12,9 @@ public static class SignUpRules
 {
     public const int MaxNamePart = 31;
 
+    /// <summary>The longest address Robust keeps (<c>UserAccounts.Email</c> is <c>varchar(64)</c>).</summary>
+    public const int MaxEmail = 64;
+
     private static readonly HashSet<string> Reserved = new(StringComparer.OrdinalIgnoreCase)
     {
         "Test User", "Grid Owner", "Admin Admin", "Grid Admin", "System Admin",
@@ -38,8 +41,11 @@ public static class SignUpRules
     {
         var e = email?.Trim();
         if (string.IsNullOrEmpty(e)) return "Type your email address.";
+        if (e.Length > MaxEmail) return $"Use an email address of at most {MaxEmail} characters.";
         var at = e.IndexOf('@');
-        if (at <= 0 || at != e.LastIndexOf('@') || at == e.Length - 1 || e.Any(c => char.IsWhiteSpace(c) || c == '"'))
+        // The console line quotes the address: no quote, backslash or leading "--" (as GridConsoleCommands.ValidateOwner).
+        if (at <= 0 || at != e.LastIndexOf('@') || at == e.Length - 1 || e.Any(c => char.IsWhiteSpace(c) || c is '"' or '\\')
+            || e.StartsWith("--", StringComparison.Ordinal))
             return "That doesn't look like an email address.";
         return null;
     }

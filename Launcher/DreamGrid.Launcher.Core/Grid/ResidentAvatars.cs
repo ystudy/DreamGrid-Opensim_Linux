@@ -23,26 +23,37 @@ public sealed class ResidentAvatars(IRobustClient robust, IAccountRemover remove
     public async Task<RobustAccount> CreateAsync(RestConsoleClient console, string first, string last, string? email, int level, CancellationToken ct)
     {
         GridConsoleCommands.ValidateAvatarName(first, last);
-        if (await robust.GetAccountAsync(first, last, ct) is not null) throw new NameTakenException(first, last);
+        // The strict lookup: a reply that isn't an account answer is Robust failing, never "the name is free".
+        if (await robust.FindAccountAsync(first, last, ct) is not null) throw new NameTakenException(first, last);
 
+        var id = Guid.NewGuid();
         var password = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
-        var transcript = new List<string>(await GridConsoleCommands.CreateUserAsync(console, first, last, password, email, Guid.NewGuid(), settle, ct));
+        // Once create user is sent the avatar may exist, so from there on it runs to the end even if the request is given up:
+        // nothing is left half-made. Only the account with the PrincipalID sent counts; another one with the name (Robust refused
+        // create user) is never touched.
+        var none = CancellationToken.None;
         RobustAccount? made = null;
         try
         {
-            made = await WaitAsync(first, last, _ => true, ct)
-                ?? throw new InvalidOperationException($"Robust did not create {first} {last} in time. Console: {string.Join(" | ", transcript)}");
+            await GridConsoleCommands.CreateUserAsync(console, first, last, password, email, id, settle, none);
+            made = await WaitAsync(first, last, a => a.PrincipalId == id, none);
+            if (made?.PrincipalId != id)
+            {
+                made = null;
+                throw new InvalidOperationException($"Robust did not create {first} {last} in time.");
+            }
             if (level == made.UserLevel) return made;
 
-            transcript.AddRange(await console.RunAsync($"set user level {first} {last} {level}", settle, ct));
-            var leveled = await WaitAsync(first, last, a => a.UserLevel == level, ct);
-            if (leveled is null || leveled.UserLevel != level)
-                throw new InvalidOperationException($"Robust did not give {first} {last} level {level} in time. Console: {string.Join(" | ", transcript)}");
+            await console.RunAsync($"set user level {first} {last} {level}", settle, none);
+            var leveled = await WaitAsync(first, last, a => a.PrincipalId == id && a.UserLevel == level, none);
+            if (leveled is null || leveled.PrincipalId != id || leveled.UserLevel != level)
+                throw new InvalidOperationException($"Robust did not give {first} {last} level {level} in time.");
             return leveled;
         }
-        catch when (made is not null && !ct.IsCancellationRequested)
+        catch when (made is not null)
         {
-            await remover.DeleteAsync(made.PrincipalId, CancellationToken.None);
+            try { await remover.DeleteAsync(made.PrincipalId, none); }
+            catch (StaffDirectoryUnavailableException) { } // the first failure is the one to report
             throw;
         }
     }

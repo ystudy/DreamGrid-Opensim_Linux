@@ -142,7 +142,7 @@ public sealed partial class SignUpsTests
         var r = await rig.SignUps.SubmitAsync(Form(email: "ann@example.com"), Caller, Ct);
 
         Assert.Equal(SignUpOutcome.CheckEmail, r.Outcome);
-        Assert.DoesNotContain(rig.F.Robust.All, a => a.FirstName == "Bea");
+        await Task.Delay(200, Ct);
         var sent = Assert.Single(await SentAsync(rig, 1));
         Assert.Equal("ann@example.com", sent.To);
         Assert.Contains("Ann Smith", sent.Email.Text);
@@ -157,7 +157,57 @@ public sealed partial class SignUpsTests
         var r = await rig.SignUps.SubmitAsync(Form(email: "  ANN@Example.com "), Caller, Ct);
 
         Assert.Equal(SignUpOutcome.CheckEmail, r.Outcome);
-        Assert.DoesNotContain(rig.F.Robust.All, a => a.FirstName == "Bea");
+        await Task.Delay(200, Ct);
+        Assert.Equal("Someone tried to sign up on Avalon", Assert.Single(await SentAsync(rig, 1)).Email.Subject);
+    }
+
+    [Fact]
+    public async Task Email_taken_holds_the_name_like_any_sign_up()
+    {
+        await using var rig = Factory();
+        await rig.SignUps.SubmitAsync(Form(email: "ann@example.com"), Caller, Ct);
+
+        // Had the address been free, the name would be held now; it must be held either way.
+        var again = await rig.SignUps.SubmitAsync(Form(email: "fresh@example.com"), Caller, Ct);
+
+        Assert.Equal(SignUpOutcome.NameTaken, again.Outcome);
+        var bea = rig.F.Robust.All.Single(a => a.FirstName == "Bea");
+        Assert.Equal(-1, bea.UserLevel);
+        Assert.True(rig.Pending.Contains(bea.PrincipalId));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Failed_delete_is_left_for_the_clean_up(bool email)
+    {
+        await using var rig = Factory(email: email);
+        rig.F.Robust.PasswordsDown = true;
+        rig.F.Remover.Down = true;
+
+        Assert.Equal(SignUpOutcome.Busy, (await rig.SignUps.SubmitAsync(Form(), Caller, Ct)).Outcome);
+
+        var bea = rig.F.Robust.All.Single(a => a.FirstName == "Bea");
+        Assert.Equal(-1, bea.UserLevel);
+        Assert.True(rig.Pending.Contains(bea.PrincipalId));
+    }
+
+    [Fact]
+    public async Task Unreadable_pending_list_is_busy_and_keeps_the_link()
+    {
+        await using var rig = Factory();
+        await rig.SignUps.SubmitAsync(Form(), Caller, Ct);
+        var token = LinkToken(Assert.Single(await SentAsync(rig, 1)).Email);
+        var file = Path.Combine(rig.F.Paths.Guests, "pending-signups.json");
+        var saved = File.ReadAllText(file);
+        File.Delete(file);
+        Directory.CreateDirectory(file);
+
+        await Assert.ThrowsAsync<SignUpBusyException>(() => rig.SignUps.ConfirmAsync(token, Caller, Ct));
+
+        Directory.Delete(file);
+        File.WriteAllText(file, saved);
+        Assert.NotNull(await rig.SignUps.ConfirmAsync(token, Caller, Ct));
     }
 
     [Fact]

@@ -31,11 +31,12 @@ public sealed record SignUpLimits(ResetLimits Counts);
 /// <summary>
 /// Resident sign-up behind the guest pages (spec 2026-10-31-sign-up-design). <see cref="SubmitAsync"/> checks, in order, that
 /// sign-up is open, the address's limit, the name, the password, the email and the Terms tick, and that the name is free (said
-/// plainly). With email set up, an address already on the grid is never said: its owner gets a short notice and the reply is the
-/// normal "check your email". Otherwise the avatar is made (<see cref="IGridController.CreateResidentAsync"/>), its password
-/// written through the database (<see cref="IRobustPasswords"/>, so it never goes on the console), and the Terms acceptance
-/// recorded. With email it waits at level −1 on the <see cref="PendingSignUps"/> list for a single-use link valid
-/// <see cref="LinkLifetime"/>; without email it is level 0 and ready. A failure after the avatar was made deletes it again.
+/// plainly). The avatar is made at level -1 and put on the <see cref="PendingSignUps"/> list
+/// (<see cref="IGridController.CreateResidentAsync"/>), its password written through the database (<see cref="IRobustPasswords"/>,
+/// so it never goes on the console), and the Terms acceptance recorded. With email it waits there for a single-use link valid
+/// <see cref="LinkLifetime"/>; without email it is raised to 0 and taken off the list. With email set up, an address already on the
+/// grid is never said: the avatar is made the same way but gets no link, its owner gets a short notice, and the clean-up frees the
+/// name. A failure after the avatar was made deletes it again, or leaves it listed for the clean-up when that fails too.
 /// <see cref="ConfirmAsync"/> raises a pending avatar to 0 and only then spends the link. The audit log gets every outcome,
 /// never the typed email, the password or the token.
 /// </summary>
@@ -75,15 +76,12 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
         var email = SignUpRules.NormalEmail(form.Email!);
         var withEmail = sender.IsReady;
 
+        RobustAccount? owner;
         try
         {
-            if (await robust.GetAccountAsync(first, last, ct) is not null) return Taken(form, ip);
-            if (withEmail && await directory.FindByEmailAsync(email, ct) is { } owner)
-            {
-                NoticeOwner(s, owner, email);
-                Refused(form, ip, "email taken");
-                return new(SignUpOutcome.CheckEmail);
-            }
+            // The strict lookup: a reply that isn't an account answer is Robust failing, never "the name is free".
+            if (await robust.FindAccountAsync(first, last, ct) is not null) return Taken(form, ip);
+            owner = withEmail ? await directory.FindByEmailAsync(email, ct) : null;
         }
         catch (Exception e) when (IsDown(e, ct))
         {
@@ -91,27 +89,38 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
             return new(SignUpOutcome.Busy);
         }
 
+        // Every sign-up is made at -1 and listed first, so one that fails half-way and can't be deleted is left for the clean-up.
+        // From here the request may be given up, but the work runs to the end. An address already on the grid gets the same
+        // avatar and reply (so neither the name nor the time taken says whether it is registered), but no link: its owner gets a
+        // notice instead, and the clean-up frees the name.
+        var none = CancellationToken.None;
         RobustAccount account;
         try
         {
-            account = await grid.CreateResidentAsync(first, last, email, withEmail ? -1 : 0, ct);
+            account = await grid.CreateResidentAsync(first, last, email, -1, none);
         }
         catch (NameTakenException)
         {
             return Taken(form, ip);
         }
-        catch (Exception e) when (IsDown(e, ct))
+        catch (Exception e) when (IsDown(e, none))
         {
-            log.LogWarning("Sign-up: the avatar for first name {First} couldn't be made: {Message}", LogText.Clean(first, 32), e.Message);
+            log.LogWarning("Sign-up: the avatar for first name {First} couldn't be made: {Error}", LogText.Clean(first, 32), e.GetType().Name);
             return new(SignUpOutcome.Busy);
         }
 
         try
         {
-            await passwords.SetAsync(account.PrincipalId, form.Password!, ct);
-            if (withEmail) pending.Add(account.PrincipalId);
+            pending.Add(account.PrincipalId);
+            await passwords.SetAsync(account.PrincipalId, form.Password!, none);
+            if (!withEmail)
+            {
+                account = await grid.SetUserLevelAsync(account.FirstName, account.LastName, 0, none);
+                pending.Remove(account.PrincipalId);
+            }
         }
-        catch (Exception e) when (e is RobustPasswordsUnavailableException or IOException or UnauthorizedAccessException)
+        catch (Exception e) when (e is RobustPasswordsUnavailableException or UnauthorizedAccessException or LevelNotConfirmedException
+            || IsDown(e, none))
         {
             log.LogWarning("Sign-up: the avatar for first name {First} couldn't be finished, so it is deleted: {Message}",
                 LogText.Clean(first, 32), e.InnerException?.Message ?? e.Message);
@@ -120,6 +129,12 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
         }
 
         if (LegalPages.Get(s, LegalPages.Terms) is { } t) terms.Accept(account.PrincipalId, t.Version, ip?.ToString());
+        if (owner is not null)
+        {
+            NoticeOwner(s, owner, email);
+            Refused(form, ip, "email taken");
+            return new(SignUpOutcome.CheckEmail);
+        }
         audit.Write(new AuditEntry(Full(account), account.PrincipalId, StaffRole.None.AuditName(), ip?.ToString(), "signup-made",
             withEmail ? "waiting for email" : "ready", "ok"));
         if (!withEmail) return new(SignUpOutcome.SignedUp, Account: account);
@@ -137,19 +152,21 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
         await _one.WaitAsync(ct);
         try
         {
-            if (tokens.Find(Purpose, token) is not { } principal || !pending.Contains(principal)) return null;
+            if (tokens.Find(Purpose, token) is not { } principal) return null;
             RobustAccount account;
             try
             {
+                if (!pending.Contains(principal)) return null;
                 if (await robust.FindAccountByIdAsync(principal, ct) is not { } found) return null;
                 account = found.UserLevel == 0 ? found : await grid.SetUserLevelAsync(found.FirstName, found.LastName, 0, ct);
+                // Off the list before the link is spent: a confirmed resident left on it could later be deleted as unconfirmed.
+                pending.Remove(principal);
             }
-            catch (Exception e) when (IsDown(e, ct) || e is LevelNotConfirmedException)
+            catch (Exception e) when (IsDown(e, ct) || e is LevelNotConfirmedException or UnauthorizedAccessException)
             {
                 throw new SignUpBusyException("The account couldn't be confirmed right now.", e);
             }
             tokens.TryRedeem(Purpose, principal, token);
-            pending.Remove(principal);
             audit.Write(new AuditEntry(Full(account), principal, StaffRole.None.AuditName(), ip?.ToString(), "signup-confirmed", null, "ok"));
             return account;
         }
@@ -221,11 +238,15 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
 
     private async Task DeleteAsync(Guid principal)
     {
-        try { await remover.DeleteAsync(principal, CancellationToken.None); }
-        catch (StaffDirectoryUnavailableException e)
+        try
         {
-            // Not on the pending list, so the clean-up won't find it either; the owner sees the name on People.
-            log.LogWarning("Sign-up: a half-made avatar {Principal} couldn't be deleted: {Message}", principal, e.InnerException?.Message ?? e.Message);
+            await remover.DeleteAsync(principal, CancellationToken.None);
+            pending.Remove(principal);
+        }
+        catch (Exception e) when (e is StaffDirectoryUnavailableException or IOException or UnauthorizedAccessException)
+        {
+            // Still on the pending list at -1 (when the list could be written), so the clean-up deletes it later.
+            log.LogWarning("Sign-up: a half-made avatar {Principal} couldn't be deleted now: {Message}", principal, e.InnerException?.Message ?? e.Message);
         }
     }
 
