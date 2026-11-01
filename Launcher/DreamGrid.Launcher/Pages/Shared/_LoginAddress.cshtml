@@ -1,0 +1,6 @@
+@model string
+@* The grid's login address with a Copy button (shown by /js/connect.js once scripts run). *@
+<div class="input-group copy-row mb-3">
+    <code id="login-uri" class="form-control login-uri">@Model</code>
+    <button type="button" id="copy-uri" class="btn btn-outline-primary" hidden>Copy</button>
+</div>

@@ -1,0 +1,27 @@
+@page "/guest/connect"
+@model DreamGrid.Launcher.Pages.Guest.ConnectModel
+@{
+    ViewData["Title"] = "How to connect";
+}
+<h1>How to connect to @Model.GridName</h1>
+<p>The grid's login address:</p>
+<partial name="_LoginAddress" model="Model.LoginUri" />
+<h2>With Firestorm</h2>
+<ol class="steps list-group list-group-numbered mb-3">
+    <li class="list-group-item">Download Firestorm from <a href="https://www.firestormviewer.org/downloads/" rel="noopener noreferrer">https://www.firestormviewer.org/downloads/</a>. Choose the OpenSim version, not the Second Life one.</li>
+    <li class="list-group-item">Open it and go to Preferences, then OpenSim, then Grid Manager. Paste the login address in "Add new grid" and press Apply.</li>
+    <li class="list-group-item">On the login screen, pick @Model.GridName from the grid list.</li>
+    @if (Model.DisplayName.Length > 0)
+    {
+        <li class="list-group-item">Log in as @Model.DisplayName with your password.</li>
+    }
+    else
+    {
+        <li class="list-group-item">Log in with your avatar's first and last name and your password.</li>
+    }
+</ol>
+<p>Any OpenSim viewer works: add the login address as a new grid.</p>
+
+@section Scripts {
+<script src="/js/connect.js"></script>
+}

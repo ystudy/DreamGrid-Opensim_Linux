@@ -1,0 +1,17 @@
+@page "/guest/confirm"
+@model DreamGrid.Launcher.Pages.Guest.ConfirmModel
+@{
+    ViewData["Title"] = "Confirm your email";
+}
+<div class="card card-body shadow-sm mx-auto sign-in-card">
+<h1>Confirm your email</h1>
+@if (Model.Busy)
+{
+    <p role="alert">Sign-up isn't working right now. Try again in a few minutes.</p>
+}
+else
+{
+    <p role="alert">This link has expired or was already used.</p>
+    <p class="mb-0"><a href="/signup">Sign up again</a>, or <a href="/guest/sign-in">sign in</a> to ask for a new link.</p>
+}
+</div>

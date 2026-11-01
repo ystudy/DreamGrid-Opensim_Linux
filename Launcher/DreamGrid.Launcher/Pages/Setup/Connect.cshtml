@@ -6,10 +6,7 @@
 <partial name="_Checklist" />
 <h1>Connect with Firestorm</h1>
 <p>Your world's address:</p>
-<div class="input-group copy-row mb-3">
-    <code id="login-uri" class="form-control login-uri">@Model.LoginUri</code>
-    <button type="button" id="copy-uri" class="btn btn-outline-primary" hidden>Copy</button>
-</div>
+<partial name="_LoginAddress" model="Model.LoginUri" />
 <ol class="steps list-group list-group-numbered mb-3">
     <li class="list-group-item">Install Firestorm from <a href="https://www.firestormviewer.org/" rel="noopener noreferrer" target="_blank">https://www.firestormviewer.org/</a></li>
     <li class="list-group-item">Viewer → Preferences → OpenSim → Grid Manager → paste the address → Apply</li>

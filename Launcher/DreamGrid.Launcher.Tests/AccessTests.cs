@@ -289,6 +289,9 @@ public sealed class AccessTests
             // A resident's two-factor code step: only does anything with the pending cookie the guest password step leaves.
             "page guest/sign-in/code",
             // Password recovery for everyone: one reply whatever was typed, and the reset page needs the emailed link.
+            // Sign-up's email link (does anything only with a live link) and How to connect (the login address, not a secret).
+            "page guest/confirm",
+            "page guest/connect",
             "page guest/forgot-password",
             "page guest/reset-password",
             // The operator's legal pages (terms, privacy, cookies, contact) and the sign-up page: public, and 404 until written / where there is no guest side.
