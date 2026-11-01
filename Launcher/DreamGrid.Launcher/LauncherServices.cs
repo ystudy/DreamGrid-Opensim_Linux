@@ -1,5 +1,6 @@
 using DreamGrid.Launcher.Core;
 using DreamGrid.Launcher.Core.Api;
+using DreamGrid.Launcher.Core.Config;
 using DreamGrid.Launcher.Core.Database;
 using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.Modules;
@@ -47,6 +48,8 @@ public static class LauncherServices
         services.AddSingleton<IGridJoinClient>(sp => new GridJoinClient(sp.GetRequiredService<IHttpClientFactory>().CreateClient("DreamGrid.Join")));
         services.AddHttpClient("DreamGrid.OtherGrid", c => c.Timeout = TimeSpan.FromSeconds(10));
         services.AddSingleton<IOtherGridClient>(sp => new OtherGridClient(sp.GetRequiredService<IHttpClientFactory>().CreateClient("DreamGrid.OtherGrid")));
+        services.AddHttpClient("DreamGrid.PublicAddress", c => c.Timeout = TimeSpan.FromSeconds(5));
+        services.AddSingleton<IPublicAddressFinder>(sp => new PublicAddressFinder(sp.GetRequiredService<IHttpClientFactory>().CreateClient("DreamGrid.PublicAddress")));
         services.AddSingleton<GridController>();
         services.AddSingleton<IGridController>(sp => sp.GetRequiredService<GridController>());
         return services;

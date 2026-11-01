@@ -140,6 +140,16 @@ public sealed class GridConfigWriterTests : IDisposable
     }
 
     [Fact]
+    public void Login_asks_the_launcher_about_the_terms_and_shows_the_terms_page()
+    {
+        Write(Make(plan: OwnerPlan.SimplePublic, hostname: "203.0.113.7"));
+        var r = Robust();
+        Assert.Equal("http://127.0.0.1:8001/dreamgrid/terms", r.Get("LoginService", "TermsCheckURL"));
+        // Firestorm loads the reply as a page only when it contains "http://".
+        Assert.Equal("http://203.0.113.7:8001/terms", r.Get("LoginService", "TermsPageURL"));
+    }
+
+    [Fact]
     public void Register_points_at_sign_up()
     {
         Write(Make(plan: OwnerPlan.SimplePublic, hostname: "203.0.113.7"));

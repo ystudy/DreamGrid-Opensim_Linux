@@ -5,8 +5,7 @@
 }
 <partial name="_Checklist" />
 <h1>Connect with Firestorm</h1>
-<p>Your world's address:</p>
-<partial name="_LoginAddress" model="Model.LoginUri" />
+@await Html.PartialAsync("_LoginAddress", ("Your world's address:", Model.LoginUri))
 <ol class="steps list-group list-group-numbered mb-3">
     <li class="list-group-item">Install Firestorm from <a href="https://www.firestormviewer.org/" rel="noopener noreferrer" target="_blank">https://www.firestormviewer.org/</a></li>
     <li class="list-group-item">Viewer → Preferences → OpenSim → Grid Manager → paste the address → Apply</li>

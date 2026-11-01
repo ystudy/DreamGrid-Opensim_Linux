@@ -1279,6 +1279,77 @@ public sealed class SetupFlowTests
         Assert.NotNull(page.QuerySelector("input[name=Hypergrid]"));
     }
 
+    [Theory]
+    [InlineData("simple-public")]
+    [InlineData("grid-asset")]
+    [InlineData("region-server")]
+    [InlineData("connected")]
+    public async Task Network_step_offers_find_my_address_beside_the_public_address(string plan)
+    {
+        await using var f = plan switch
+        {
+            "simple-public" => OnNetwork(OwnerPlan.SimplePublic),
+            "grid-asset" => OnNetwork(OwnerPlan.GridAsset),
+            "region-server" => JoinedRegionServer(networkSet: false),
+            _ => ConnectedToOsgrid(networkSet: false),
+        };
+        using var client = await SetupClientAsync(f);
+
+        var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/network", Ct));
+
+        Assert.Equal("button", page.QuerySelector("#public-part #find-address")!.GetAttribute("type"));
+        Assert.NotNull(page.QuerySelector("script[src='/js/network.js']"));
+    }
+
+    [Fact]
+    public async Task Network_step_for_local_has_no_find_my_address()
+    {
+        await using var f = OnNetwork(OwnerPlan.Local);
+        using var client = await SetupClientAsync(f);
+
+        var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/network", Ct));
+
+        Assert.Null(page.QuerySelector("#find-address"));
+    }
+
+    [Fact]
+    public async Task Find_my_address_answers_the_public_address_and_saves_nothing()
+    {
+        await using var f = OnNetwork(OwnerPlan.SimplePublic);
+        f.PublicAddress.Result = "203.0.113.7";
+        using var client = await SetupClientAsync(f);
+
+        using var doc = System.Text.Json.JsonDocument.Parse(await client.GetStringAsync("/setup/network?handler=PublicAddress", Ct));
+
+        Assert.Equal("203.0.113.7", doc.RootElement.GetProperty("address").GetString());
+        var s = f.Store.LoadOrCreate();
+        Assert.False(s.Setup.NetworkSet);
+        Assert.Null(s.Hostname);
+    }
+
+    [Fact]
+    public async Task Find_my_address_says_so_when_nothing_answers()
+    {
+        await using var f = OnNetwork(OwnerPlan.SimplePublic);
+        using var client = await SetupClientAsync(f);
+
+        using var doc = System.Text.Json.JsonDocument.Parse(await client.GetStringAsync("/setup/network?handler=PublicAddress", Ct));
+
+        Assert.Equal(DreamGrid.Launcher.Pages.Setup.NetworkModel.NoPublicAddress, doc.RootElement.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task Find_my_address_is_closed_until_the_plan_is_chosen()
+    {
+        await using var f = Unplanned();
+        using var client = await SetupClientAsync(f);
+
+        using var resp = await client.GetAsync("/setup/network?handler=PublicAddress", Ct);
+
+        Assert.Equal("/setup", Location(resp));
+        Assert.Equal(0, f.PublicAddress.Calls);
+    }
+
     [Fact]
     public async Task Network_step_is_closed_until_the_plan_is_chosen()
     {

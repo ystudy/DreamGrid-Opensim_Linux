@@ -16,6 +16,8 @@ namespace DreamGrid.Launcher.Pages.Security;
 /// <item>Save: each page whose text changed gets the next version number and the time; an unchanged page keeps its version; a page
 /// with only whitespace is cleared (it stops existing). Audited as <c>legal-text-saved</c> (the page id and its new version, or
 /// "cleared").</item>
+/// <item>A save ticked as a small fix keeps a written page's version (only the text and time change), so nobody is asked to accept
+/// the Terms again; audited with "small fix". A new page still gets its first number.</item>
 /// <item>Preview shows all four as visitors would see them and saves nothing.</item>
 /// <item>The tick that the owner wrote the texts and is responsible for them is its own small form, audited as
 /// <c>legal-responsibility</c> (on or off).</item>
@@ -40,6 +42,9 @@ public sealed class LegalModel(IGridController grid, Func<LauncherSettings> sett
 
     /// <summary>The tick as posted (an unchecked box posts nothing, which reads as off).</summary>
     [BindProperty] public bool Responsible { get; set; }
+
+    /// <summary>The save is a small fix: written pages keep their version. Never shown ticked, so a real change can't inherit it.</summary>
+    [BindProperty] public bool SmallFix { get; set; }
 
     /// <summary>The previews of the texts written, in page order; empty unless Preview was pressed.</summary>
     public IReadOnlyList<(string Title, string Html)> Previews { get; private set; } = [];
@@ -78,9 +83,11 @@ public sealed class LegalModel(IGridController grid, Func<LauncherSettings> sett
                 }
                 else if (before is null || Normalize(before.Markdown) != markdown)
                 {
-                    var version = (before?.Version ?? 0) + 1;
+                    // A small fix to a written page keeps its number: what people accepted still stands.
+                    var keep = SmallFix && before is not null && !string.IsNullOrWhiteSpace(before.Markdown);
+                    var version = keep ? before!.Version : (before?.Version ?? 0) + 1;
                     pages[id] = new LegalText(markdown, version, now);
-                    changes.Add(($"{id} v{version}", "ok"));
+                    changes.Add(($"{id} v{version}" + (keep ? " small fix" : ""), "ok"));
                 }
             }
             if (changes.Count == 0) return s;
@@ -90,7 +97,10 @@ public sealed class LegalModel(IGridController grid, Func<LauncherSettings> sett
 
         foreach (var (target, result) in changes)
             Write("legal-text-saved", target, result);
-        Notice = changes.Count == 0 ? "Nothing changed." : "Saved. The pages are live now.";
+        Notice = changes.Count == 0 ? "Nothing changed."
+            : changes.Any(c => c.Target.EndsWith(" small fix", StringComparison.Ordinal))
+                ? "Saved as a small fix. The pages are live now, and nobody is asked to accept them again."
+                : "Saved. The pages are live now.";
         return Redirect("/security/legal");
     }
 

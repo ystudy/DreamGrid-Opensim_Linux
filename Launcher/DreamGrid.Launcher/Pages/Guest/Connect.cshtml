@@ -8,8 +8,7 @@
 {
     <div class="alert alert-success" role="status">You're approved. Log in as @Model.DisplayName.</div>
 }
-<p>The grid's login address:</p>
-<partial name="_LoginAddress" model="Model.LoginUri" />
+@await Html.PartialAsync("_LoginAddress", ("The grid's login address:", Model.LoginUri))
 <h2>With Firestorm</h2>
 <ol class="steps list-group list-group-numbered mb-3">
     <li class="list-group-item">Download Firestorm from <a href="https://www.firestormviewer.org/downloads/" rel="noopener noreferrer">https://www.firestormviewer.org/downloads/</a>. Choose the OpenSim version, not the Second Life one.</li>

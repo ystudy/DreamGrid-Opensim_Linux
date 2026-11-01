@@ -61,6 +61,8 @@ internal sealed class LauncherFactory : WebApplicationFactory<Program>
     public FakeGridJoin Join { get; } = new();
     /// <summary>The other grid's information the host reads (no network).</summary>
     public FakeOtherGrid OtherGrid { get; } = new();
+    /// <summary>This computer's public address the network step's button finds (no network).</summary>
+    public FakePublicAddressFinder PublicAddress { get; } = new();
     public ConcurrentQueue<(LogLevel Level, string Category, string Message)> Logs { get; } = new();
 
     /// <summary>Runs before the app's own middleware (e.g. to fake the remote address).</summary>
@@ -94,6 +96,8 @@ internal sealed class LauncherFactory : WebApplicationFactory<Program>
             services.AddSingleton<IGridJoinClient>(Join);
             services.RemoveAll<IOtherGridClient>();
             services.AddSingleton<IOtherGridClient>(OtherGrid);
+            services.RemoveAll<DreamGrid.Launcher.Core.Config.IPublicAddressFinder>();
+            services.AddSingleton<DreamGrid.Launcher.Core.Config.IPublicAddressFinder>(PublicAddress);
             services.RemoveAll<TimeProvider>();
             services.AddSingleton<TimeProvider>(Time);
             if (Before is { } before)

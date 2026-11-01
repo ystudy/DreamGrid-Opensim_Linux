@@ -28,8 +28,10 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.Http;
 using System.Reflection;
 using System.Text.RegularExpressions;
 
@@ -79,6 +81,9 @@ namespace OpenSim.Services.LLLoginService
         protected string m_ProfileURL;
         protected string m_OpenIDURL;
         protected string m_SearchURL;
+        // DreamGrid: where login asks whether the avatar must accept the grid's Terms first, and the page the viewer shows them.
+        protected string m_TermsCheckURL;
+        protected string m_TermsPageURL;
         protected string m_Currency;
         protected string m_ClassifiedFee;
         protected int m_MaxAgentGroups = 42;
@@ -127,6 +132,8 @@ namespace OpenSim.Services.LLLoginService
             m_ProfileURL = m_LoginServerConfig.GetString("ProfileServerURL", string.Empty);
             m_OpenIDURL = m_LoginServerConfig.GetString("OpenIDServerURL", string.Empty);
             m_SearchURL = m_LoginServerConfig.GetString("SearchURL", string.Empty);
+            m_TermsCheckURL = m_LoginServerConfig.GetString("TermsCheckURL", string.Empty);
+            m_TermsPageURL = m_LoginServerConfig.GetString("TermsPageURL", string.Empty);
             m_Currency = m_LoginServerConfig.GetString("Currency", string.Empty);
             m_ClassifiedFee = m_LoginServerConfig.GetString("ClassifiedFee", string.Empty);
             m_DestinationGuide = m_LoginServerConfig.GetString ("DestinationGuide", string.Empty);
@@ -330,7 +337,7 @@ namespace OpenSim.Services.LLLoginService
         }
 
         public LoginResponse Login(string firstName, string lastName, string passwd, string startLocation, UUID scopeID,
-            string clientVersion, string channel, string mac, string id0, IPEndPoint clientIP)
+            string clientVersion, string channel, string mac, string id0, IPEndPoint clientIP, bool agreedToTerms = false)
         {
             bool success;
             UUID session = UUID.Random();
@@ -463,6 +470,23 @@ namespace OpenSim.Services.LLLoginService
                         "[LLOGIN SERVICE]: Login failed for {0} {1}, reason: authentication failed",
                         firstName, lastName);
                     return LLFailedLoginResponse.UserProblem;
+                }
+
+                //
+                // DreamGrid: the grid's Terms. A "tos" reply makes Firestorm show TermsPageURL in its Terms window; ticking
+                // "I agree" logs in again with agree_to_tos, which the launcher records.
+                //
+                if (!string.IsNullOrWhiteSpace(m_TermsCheckURL) && !string.IsNullOrWhiteSpace(m_TermsPageURL))
+                {
+                    if (agreedToTerms)
+                        TermsAgreed(account, clientIP);
+                    else if (MustAcceptTerms(account))
+                    {
+                        m_log.InfoFormat(
+                            "[LLOGIN SERVICE]: Login paused for {0} {1}, reason: the grid's Terms are not accepted yet",
+                            firstName, lastName);
+                        return new LLFailedLoginResponse("tos", m_TermsPageURL, "false");
+                    }
                 }
 
                 string PrincipalIDstr = account.PrincipalID.ToString();
@@ -1172,6 +1196,54 @@ namespace OpenSim.Services.LLLoginService
                         m_WelcomeMessage = m_WelcomeMessage.Replace("\\n", "\n");
                     }
                     break;
+            }
+        }
+
+        /// <summary>
+        /// DreamGrid: asks the launcher whether this avatar must accept the grid's Terms before logging in. When the launcher
+        /// can't be reached or answers anything else, the avatar is let in: a launcher hiccup must not lock the grid out.
+        /// </summary>
+        private bool MustAcceptTerms(UserAccount account)
+        {
+            try
+            {
+                Uri url = new($"{m_TermsCheckURL}?id={account.PrincipalID}&level={account.UserLevel}");
+                using HttpClient client = WebUtil.GetNewGlobalHttpClient(3000);
+                using HttpRequestMessage request = new(HttpMethod.Get, url);
+                using HttpResponseMessage response = client.Send(request, HttpCompletionOption.ResponseHeadersRead);
+                response.EnsureSuccessStatusCode();
+                using StreamReader reader = new(response.Content.ReadAsStream());
+                return reader.ReadToEnd().Trim() == "ASK";
+            }
+            catch (Exception e)
+            {
+                m_log.WarnFormat("[LLOGIN SERVICE]: Terms check failed, letting {0} in: {1}", account.Name, e.Message);
+                return false;
+            }
+        }
+
+        /// <summary>DreamGrid: tells the launcher the avatar agreed to the Terms in the viewer, from <paramref name="clientIP"/>.</summary>
+        private void TermsAgreed(UserAccount account, IPEndPoint clientIP)
+        {
+            try
+            {
+                using HttpClient client = WebUtil.GetNewGlobalHttpClient(3000);
+                using HttpRequestMessage request = new(HttpMethod.Post, m_TermsCheckURL)
+                {
+                    Content = new FormUrlEncodedContent(new Dictionary<string, string>
+                    {
+                        ["id"] = account.PrincipalID.ToString(),
+                        ["level"] = account.UserLevel.ToString(),
+                        ["ip"] = clientIP?.Address.ToString() ?? string.Empty,
+                        ["name"] = account.Name,
+                    }),
+                };
+                using HttpResponseMessage response = client.Send(request);
+                response.EnsureSuccessStatusCode();
+            }
+            catch (Exception e)
+            {
+                m_log.WarnFormat("[LLOGIN SERVICE]: Could not record that {0} agreed to the Terms: {1}", account.Name, e.Message);
             }
         }
 

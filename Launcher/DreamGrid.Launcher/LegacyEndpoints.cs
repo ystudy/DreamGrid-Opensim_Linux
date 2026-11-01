@@ -2,8 +2,13 @@ using System.Net;
 using DreamGrid.Launcher.Core;
 using DreamGrid.Launcher.Core.Api;
 using DreamGrid.Launcher.Core.Grid;
+using DreamGrid.Launcher.Core.Guests;
+using DreamGrid.Launcher.Core.Logs;
 using DreamGrid.Launcher.Core.OpenSim;
+using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Core.Settings;
+using DreamGrid.Launcher.Guests;
+using DreamGrid.Launcher.Security;
 
 namespace DreamGrid.Launcher;
 
@@ -46,6 +51,8 @@ public static class LegacyEndpoints
         // Open on purpose: the patched OpenSim and Robust call these without signing in (SetupGate and the loopback check guard them).
         app.MapMethods("/", [HttpMethods.Get, HttpMethods.Post], Root).WithMetadata(new LegacyRootMetadata()).AllowAnonymous();
         app.MapPost("/dreamgrid/regionready", RegionReady).AllowAnonymous();
+        app.MapGet("/dreamgrid/terms", TermsCheck).AllowAnonymous();
+        app.MapPost("/dreamgrid/terms", TermsAgreed).AllowAnonymous();
     }
 
     private static async Task<IResult> Root(HttpContext ctx, LegacyCommandApi api, IHostApplicationLifetime lifetime, ILoggerFactory logs)
@@ -110,5 +117,57 @@ public static class LegacyEndpoints
         if (RegionAlert.Parse(new string(buffer, 0, read)) is not { } alert) return Results.BadRequest();
         grid.OnRegionAlert(alert);
         return Results.Ok();
+    }
+
+    /// <summary>
+    /// Robust's login asks whether the avatar (<c>id</c>, at <c>level</c>) must accept the operator's Terms first: "ASK" or "OK".
+    /// Only Robust on this machine asks. A website acceptance counts here too (<see cref="TermsAcceptances"/>).
+    /// </summary>
+    private static IResult TermsCheck(HttpContext ctx, Func<LauncherSettings> settings, TermsAcceptances acceptances)
+    {
+        if (ctx.Connection.RemoteIpAddress is { } remote && !IsLoopbackCaller(remote))
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
+        if (!TryAvatar(ctx.Request.Query["id"], ctx.Request.Query["level"], out var id, out var level)) return Results.BadRequest();
+        return Text(ctx, TermsToAccept(settings(), acceptances, id, level) is null ? "OK" : "ASK");
+    }
+
+    /// <summary>
+    /// Robust says the avatar ticked "I agree" in the viewer's Terms window: the current version is recorded with the viewer's
+    /// address (<c>ip</c>), as an acceptance on the website would be. Only Robust on this machine says so.
+    /// </summary>
+    private static async Task<IResult> TermsAgreed(HttpContext ctx, Func<LauncherSettings> settings, TermsAcceptances acceptances, AuditLog audit)
+    {
+        if (ctx.Connection.RemoteIpAddress is { } remote && !IsLoopbackCaller(remote))
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
+        if (!ctx.Request.HasFormContentType) return Results.BadRequest();
+        var form = await ctx.Request.ReadFormAsync(ctx.RequestAborted);
+        if (!TryAvatar(form["id"], form["level"], out var id, out var level)) return Results.BadRequest();
+
+        if (TermsToAccept(settings(), acceptances, id, level) is { } terms)
+        {
+            // An address that doesn't parse is not kept: the value is Robust's, but the record is shown to staff.
+            var ip = IPAddress.TryParse(form["ip"], out var address) ? address.ToString() : null;
+            acceptances.Accept(id, terms.Version, ip);
+            audit.Write(new AuditEntry(Clean(form["name"]), id, AuthSchemes.GuestRole, ip,
+                "terms-accepted", "terms v" + terms.Version + " in the viewer", "ok"));
+        }
+        return Text(ctx, "OK");
+    }
+
+    /// <summary>
+    /// The Terms the avatar must accept before logging in: the current text, unless there is none, the avatar is the owner or
+    /// staff (who are never asked, so the grid can't lock out its own people), or they have accepted this version already.
+    /// </summary>
+    private static LegalText? TermsToAccept(LauncherSettings s, TermsAcceptances acceptances, Guid id, int level)
+    {
+        if (LegalPages.Get(s, LegalPages.Terms) is not { } terms) return null;
+        if (AdminRule.RoleOf(s, new RobustAccount(id, "", "", level, "")) != StaffRole.None) return null;
+        return acceptances.HasAccepted(id, terms.Version) ? null : terms;
+    }
+
+    private static bool TryAvatar(string? id, string? level, out Guid principal, out int userLevel)
+    {
+        userLevel = 0;
+        return Guid.TryParse(id, out principal) && principal != Guid.Empty && int.TryParse(level, out userLevel);
     }
 }

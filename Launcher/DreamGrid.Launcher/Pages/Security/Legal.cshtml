@@ -43,6 +43,10 @@
 @(Model.Texts.GetValueOrDefault(id))</textarea>
         </div>
     }
+    <div class="form-check mb-3">
+        <input class="form-check-input" type="checkbox" id="SmallFix" name="SmallFix" value="true">
+        <label class="form-check-label" for="SmallFix">Small fix only (a typo or a broken link): keep the version numbers, so nobody has to accept the Terms again</label>
+    </div>
     <button type="submit" formaction="/security/legal?handler=Save" class="btn btn-primary">Save</button>
     <button type="submit" formaction="/security/legal?handler=Preview" class="btn btn-outline-secondary">Preview</button>
 </form>

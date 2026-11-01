@@ -493,6 +493,19 @@ internal sealed class FakeOtherGrid : IOtherGridClient
     }
 }
 
+/// <summary>The public address lookup without a network: answers <see cref="Result"/> (null: no service answered).</summary>
+internal sealed class FakePublicAddressFinder : DreamGrid.Launcher.Core.Config.IPublicAddressFinder
+{
+    public string? Result { get; set; }
+    public int Calls { get; private set; }
+
+    public Task<string?> FindAsync(CancellationToken ct)
+    {
+        Calls++;
+        return Task.FromResult(Result);
+    }
+}
+
 /// <summary>Robust with a fixed set of avatars: (first, last) → (level, password).</summary>
 internal sealed class FakeRobustAccounts : IRobustClient, IRobustPasswords, IRobustEmails
 {

@@ -47,8 +47,9 @@ namespace OpenSim.Services.Interfaces
 
     public interface ILoginService
     {
+        /// <param name="agreedToTerms">DreamGrid: the viewer sent agree_to_tos, after showing the grid's Terms window.</param>
         LoginResponse Login(string firstName, string lastName, string passwd, string startLocation, UUID scopeID,
-            string clientVersion, string channel, string mac, string id0, IPEndPoint clientIP);
+            string clientVersion, string channel, string mac, string id0, IPEndPoint clientIP, bool agreedToTerms = false);
         Hashtable SetLevel(string firstName, string lastName, string passwd, int level, IPEndPoint clientIP);
     }
 
