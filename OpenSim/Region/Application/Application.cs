@@ -73,6 +73,8 @@ namespace OpenSim
             // First line, hook the appdomain to the crash reporter
             AppDomain.CurrentDomain.UnhandledException += new UnhandledExceptionEventHandler(CurrentDomain_UnhandledException);
 
+            Util.InstallNativeDllFallback();
+
             Culture.SetCurrentCulture();
             Culture.SetDefaultCurrentCulture();
 

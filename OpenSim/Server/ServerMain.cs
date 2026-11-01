@@ -92,6 +92,8 @@ namespace OpenSim.Server
 
         public static int Main(string[] args)
         {
+            Util.InstallNativeDllFallback();
+
             Culture.SetCurrentCulture();
             Culture.SetDefaultCurrentCulture();
 
