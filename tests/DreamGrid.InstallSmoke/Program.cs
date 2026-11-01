@@ -48,6 +48,9 @@ try
     {
         ["FirstName"] = "Smoke", ["LastName"] = "Tester", ["Password"] = password, ["Confirm"] = password,
     });
+    // "What kind of grid is this?": the preselected Home lab sets the password-recovery rules.
+    Expect("/setup/security", page.Path);
+    page = await web.SubmitAsync(page, new() { ["Kind"] = "HomeLab" });
     Expect("/setup/region", page.Path);
     page = await web.SubmitAsync(page, new() { ["RegionName"] = Region, ["Content"] = "island" });
     Expect("/setup/region?working=1", page.PathAndQuery);
@@ -58,7 +61,7 @@ try
         throw new SmokeFailure($"the connect step does not show the login port {robustPort}");
     page = await web.SubmitAsync(page, new());
     Expect("/", page.Path);
-    Pass("setup", "plan, network, world, owner, region and connect steps done");
+    Pass("setup", "plan, network, world, owner, security, region and connect steps done");
 
     // 2. Logins open, as an admin sees it.
     stage = "logins";

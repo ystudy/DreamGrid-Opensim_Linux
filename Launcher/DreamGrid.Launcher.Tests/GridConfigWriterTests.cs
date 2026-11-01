@@ -132,6 +132,22 @@ public sealed class GridConfigWriterTests : IDisposable
         Assert.Equal("http://192.168.1.50:8001/welcome", r.Get("GridInfoService", "welcome"));
     }
 
+    [Fact]
+    public void Viewer_password_link_points_to_forgot_password()
+    {
+        Write(Make(plan: OwnerPlan.SimplePublic, hostname: "203.0.113.7"));
+        Assert.Equal("http://203.0.113.7:8001/guest/forgot-password", Robust().Get("GridInfoService", "password"));
+    }
+
+    [Fact]
+    public void Allow_set_password_never_on()
+    {
+        Write(Make());
+        Assert.Null(Robust().Get("AuthenticationService", "AllowSetPassword"));
+        var text = File.ReadAllText(Path.Combine(_paths.RuntimeOpenSim, "Robust.HG.ini"));
+        Assert.DoesNotMatch(@"(?im)^\s*AllowSetPassword\s*=\s*true", text);
+    }
+
     private static LauncherSettings JoinMake(OwnerPlan plan, bool programs) => Make(plan: plan, hypergrid: true, hostname: "203.0.113.7") with
     {
         RobustPrivatePort = 8003,

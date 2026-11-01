@@ -76,6 +76,24 @@ public sealed class EmailTokens
         }
     }
 
+    /// <summary>
+    /// Whose live token this is, for <paramref name="purpose"/>, without spending it: a page reads it to learn whose link was opened,
+    /// then calls <see cref="TryRedeem"/> once the work is done. Null for an expired token, another purpose or anything else.
+    /// </summary>
+    public Guid? Find(string purpose, string? token)
+    {
+        if (string.IsNullOrEmpty(token)) return null;
+        var hash = Encoding.ASCII.GetBytes(HashOf(token));
+        var now = _time.GetUtcNow();
+        lock (_gate)
+        {
+            foreach (var e in _all)
+                if (CryptographicOperations.FixedTimeEquals(hash, Encoding.ASCII.GetBytes(e.Hash)))
+                    return e.Purpose == purpose && e.Expires > now ? e.Principal : null;
+            return null;
+        }
+    }
+
     private static string HashOf(string token) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
 
     private static string Base64Url(byte[] bytes) => Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');

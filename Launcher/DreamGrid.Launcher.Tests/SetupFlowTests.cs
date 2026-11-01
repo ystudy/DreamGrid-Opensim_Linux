@@ -49,6 +49,9 @@ public sealed class SetupFlowTests
         };
 
     /// <summary>After the owner exists (token spent); the client signs in through TestAuth.</summary>
+    /// <summary>The rules Setup's "Home lab" answer gives, for tests that start after that step.</summary>
+    private static readonly RecoverySettings HomeLab = Core.Security.Recovery.Level(Core.Security.GridKind.HomeLab).Rules;
+
     private static LauncherFactory AfterOwner(bool regionCreated = false) => new(s => s with
     {
         GridName = "Avalon",
@@ -56,6 +59,7 @@ public sealed class SetupFlowTests
         Plan = OwnerPlan.Local,
         Setup = new SetupState(WorldNamed: true, OwnerCreated: true, RegionCreated: regionCreated,
             Owner: new OwnerInfo("Test", "Owner", Guid.NewGuid()), NetworkSet: true),
+        Recovery = HomeLab,
     })
     {
         Before = TestAuth.Apply,
@@ -126,7 +130,7 @@ public sealed class SetupFlowTests
 
             var page = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/world", Ct));
             var steps = page.QuerySelectorAll(".checklist li");
-            Assert.Equal(["Choose your plan (done)", "Your network (done)", "Name your world", "Create your avatar", "Choose your first region", "Connect with Firestorm"],
+            Assert.Equal(["Choose your plan (done)", "Your network (done)", "Name your world", "Create your avatar", "Account security", "Choose your first region", "Connect with Firestorm"],
                 steps.Select(li => li.TextContent.Trim()));
             Assert.Contains("current", steps[2].ClassName);
             Assert.Equal(2, steps.Count(li => li.ClassList.Contains("done")));
@@ -439,9 +443,9 @@ public sealed class SetupFlowTests
         // The setup cookie is no use any more.
         Assert.Contains(resp.Headers.GetValues("Set-Cookie"), c => c.StartsWith("dg-setup=;", StringComparison.Ordinal));
 
-        // Signed in: the gate now lets this client on to step 3.
+        // Signed in: the gate now lets this client on to the next step, "What kind of grid is this?".
         using var next = await client.GetAsync("/setup", Ct);
-        Assert.Equal("/setup/region", Location(next));
+        Assert.Equal("/setup/security", Location(next));
 
         Assert.DoesNotContain(f.Logs, l => l.Message.Contains("Secret-pass42"));
         Assert.DoesNotContain(f.Logs, l => l.Message.Contains(Token) && !l.Message.StartsWith("Setup link:", StringComparison.Ordinal));
@@ -513,6 +517,7 @@ public sealed class SetupFlowTests
         Plan = plan,
         Setup = new SetupState(WorldNamed: true, OwnerCreated: true,
             Owner: new OwnerInfo("Test", "Owner", Guid.NewGuid()), NetworkSet: true),
+        Recovery = HomeLab,
     })
     {
         Before = TestAuth.Apply,

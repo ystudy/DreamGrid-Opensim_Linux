@@ -481,7 +481,7 @@ internal sealed class FakeOtherGrid : IOtherGridClient
 }
 
 /// <summary>Robust with a fixed set of avatars: (first, last) → (level, password).</summary>
-internal sealed class FakeRobustAccounts : IRobustClient
+internal sealed class FakeRobustAccounts : IRobustClient, IRobustPasswords
 {
     private readonly Dictionary<(string, string), (RobustAccount Account, string Password)> _accounts = new();
 
@@ -490,10 +490,25 @@ internal sealed class FakeRobustAccounts : IRobustClient
     /// <summary>Simulates Robust not running: lookups and sign-in checks fail like a refused connection.</summary>
     public bool Down { get; set; }
 
-    public FakeRobustAccounts Add(string first, string last, int level, string password, Guid? id = null)
+    /// <summary>Simulates the database being down: <see cref="SetAsync"/> throws as <see cref="RobustPasswords"/> does.</summary>
+    public bool PasswordsDown { get; set; }
+
+    public FakeRobustAccounts Add(string first, string last, int level, string password, Guid? id = null, string email = "")
     {
-        _accounts[(first, last)] = (new RobustAccount(id ?? Guid.NewGuid(), first, last, level, ""), password);
+        _accounts[(first, last)] = (new RobustAccount(id ?? Guid.NewGuid(), first, last, level, email), password);
         return this;
+    }
+
+    /// <summary>Runs inside <see cref="SetAsync"/> before the password is stored (e.g. to let the clock move during a slow write).</summary>
+    public Action? OnSetPassword { get; set; }
+
+    public Task SetAsync(Guid principal, string password, CancellationToken ct)
+    {
+        if (PasswordsDown) throw new RobustPasswordsUnavailableException("The password could not be written.", new TimeoutException());
+        OnSetPassword?.Invoke();
+        foreach (var (key, a) in _accounts.ToList())
+            if (a.Account.PrincipalId == principal) _accounts[key] = (a.Account, password);
+        return Task.CompletedTask;
     }
 
     public Task<bool> IsReadyAsync(CancellationToken ct) => Task.FromResult(true);
@@ -538,6 +553,14 @@ internal sealed class FakeRobustAccounts : IRobustClient
             throw new InvalidDataException("The account service's reply has no result.");
         }
         return GetAccountAsync(first, last, ct);
+    }
+
+    public Task<RobustAccount?> FindAccountByIdAsync(Guid principal, CancellationToken ct)
+    {
+        Lookups++;
+        if (Down) throw new HttpRequestException("Connection refused");
+        if (FailureReply) throw new InvalidDataException("The account service's reply has no result.");
+        return Task.FromResult(_accounts.Values.Select(a => a.Account).FirstOrDefault(a => a.PrincipalId == principal));
     }
 
     public Task<bool> AuthenticateAsync(Guid principal, string plainPassword, CancellationToken ct) =>

@@ -4,6 +4,7 @@ using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.Logs;
 using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Core.Settings;
+using DreamGrid.Launcher.Guests;
 using DreamGrid.Launcher.Security;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -23,7 +24,7 @@ namespace DreamGrid.Launcher.Pages.Security;
 /// save that changes nothing is not); a reset as <c>two-factor-reset</c> with the person's name as the target.
 /// </summary>
 public sealed class IndexModel(IGridController grid, Func<LauncherSettings> settings, TwoFactorStore twoFactor, StaffSessions sessions,
-    AuditLog audit) : PageModel
+    AuditLog audit, ResidentTwoFactor residents, GuestStamps guestStamps) : PageModel
 {
     public const int MaxEntries = 50;
 
@@ -34,6 +35,12 @@ public sealed class IndexModel(IGridController grid, Func<LauncherSettings> sett
     [BindProperty] public string? Networks { get; set; }
 
     public IReadOnlyList<(Guid Principal, string Name)> Enrolled { get; private set; } = [];
+
+    /// <summary>Residents with two-factor on (their own file, <see cref="ResidentTwoFactor"/>).</summary>
+    public IReadOnlyList<(Guid Principal, string Name)> Residents { get; private set; } = [];
+
+    /// <summary>The residents' two-factor file can't be read: every resident's website sign-in stops at the code step until it is set aside.</summary>
+    public bool ResidentsDamaged { get; private set; }
 
     /// <summary>The two-factor file can't be read, so nobody can be listed or reset here (the verb on the grid computer sets it aside).</summary>
     public bool TwoFactorDamaged { get; private set; }
@@ -114,6 +121,68 @@ public sealed class IndexModel(IGridController grid, Func<LauncherSettings> sett
         return Page();
     }
 
+    /// <summary>
+    /// A resident lost their phone and backup codes: two-factor is turned off in the residents' file and their guest sessions end
+    /// (their stamp changes), so they sign in with their password. Audited as <c>two-factor-reset</c>.
+    /// </summary>
+    public IActionResult OnPostResetResident(Guid id)
+    {
+        var store = residents.Store;
+        var person = store.Enrolled().Where(p => p.Principal == id).Select(p => ((Guid, string)?)p).FirstOrDefault();
+        if (person is not { } who)
+        {
+            Fill();
+            Notice = "That person doesn't have two-factor sign-in on.";
+            return Page();
+        }
+
+        try
+        {
+            store.Disable(who.Item1);
+            if (store.StateOf(who.Item1) != TwoFactorState.Off)
+                throw new IOException("The two-factor file changed while it was being saved.");
+        }
+        catch (InvalidOperationException)
+        {
+            Fill();
+            return Refuse("The residents' two-factor file is damaged and has not been changed.");
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Fill();
+            return Refuse(TwoFactorStore.SaveFailed);
+        }
+
+        guestStamps.Rotate(who.Item1);
+        Write("two-factor-reset", LogText.Clean(who.Item2, 64), "ok");
+        Fill();
+        Notice = $"Two-factor sign-in is off for {who.Item2}. They have been signed out and sign in with their password again.";
+        return Page();
+    }
+
+    /// <summary>
+    /// Sets a damaged residents' two-factor file aside (renamed <c>twofactor.json.damaged-…</c>, as the <c>reset-two-factor
+    /// --all-damaged</c> verb does for the staff file), so residents sign in with their password again and set two-factor up
+    /// anew. Audited as <c>two-factor-set-aside</c>. A file that reads fine is left alone.
+    /// </summary>
+    public IActionResult OnPostSetAsideResidents()
+    {
+        try
+        {
+            TwoFactorStore.MoveAsideIfDamaged(residents.File);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Fill();
+            return Refuse("The residents' two-factor file couldn't be set aside. Try again.");
+        }
+        Fill();
+        if (ResidentsDamaged) return Refuse("The residents' two-factor file couldn't be read just now, but it doesn't look damaged. Try again.");
+        Write("two-factor-set-aside", "residents", "ok");
+        Notice = "The residents' two-factor file was set aside. Residents sign in with their password and can set two-factor up again.";
+        return Page();
+    }
+
     private void Fill()
     {
         var s = settings().Security;
@@ -126,6 +195,8 @@ public sealed class IndexModel(IGridController grid, Func<LauncherSettings> sett
     {
         TwoFactorDamaged = twoFactor.StateOf(Guid.Empty) == TwoFactorState.Unknown;
         Enrolled = [.. twoFactor.Enrolled().OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)];
+        Residents = [.. residents.Store.Enrolled().OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)];
+        ResidentsDamaged = residents.Store.StateOf(Guid.Empty) == TwoFactorState.Unknown;
     }
 
     private PageResult Refuse(string message)

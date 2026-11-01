@@ -167,6 +167,9 @@ builder.Services.AddRazorPages(o =>
     o.Conventions.AuthorizeFolder("/Profile", AuthSchemes.StaffPolicy);
     o.Conventions.AuthorizeFolder("/Security", AuthSchemes.OwnerPolicy);
     o.Conventions.AuthorizeFolder("/Staff", AuthSchemes.OwnerPolicy);
+    // The owner's password-recovery rules (the admin policy applies too; the owner passes both). Only with a guest side.
+    o.Conventions.AuthorizePage("/Advanced/PasswordReset", AuthSchemes.OwnerPolicy);
+    o.Conventions.AddPageApplicationModelConvention("/Advanced/PasswordReset", m => m.Filters.Add(new GuestSideOnly()));
     o.Conventions.AuthorizeFolder("/People", AuthSchemes.StaffPolicy);
     o.Conventions.AddFolderApplicationModelConvention("/Staff", m => m.Filters.Add(new StaffPagesOnly()));
     o.Conventions.AddFolderApplicationModelConvention("/People", m => m.Filters.Add(new StaffPagesOnly()));
@@ -186,7 +189,7 @@ builder.Services.AddRazorPages(o =>
     // The same for the Email pages: email is for the guest side's sign-up and password reset.
     foreach (var emailPage in new[] { "/Security/Email", "/Security/EmailWording" })
         o.Conventions.AddPageApplicationModelConvention(emailPage, m => m.Filters.Add(new GuestSideOnly()));
-    foreach (var open in new[] { "/Login", "/Login/Code", "/Logout", "/Welcome", "/Waiting", "/SetupDone", "/Setup", "/Home", "/Legal", "/SignUp", "/Guest/SignIn" })
+    foreach (var open in new[] { "/Login", "/Login/Code", "/Logout", "/Welcome", "/Waiting", "/SetupDone", "/Setup", "/Home", "/Legal", "/SignUp", "/Guest/SignIn", "/Guest/SignInCode", "/Guest/ForgotPassword", "/Guest/ResetPassword" })
         o.Conventions.AllowAnonymousToPage(open);
     o.Conventions.AllowAnonymousToFolder("/Setup");
     // The dashboard's forms post here: a POST to "/" belongs to the port-8001 contract (LegacyRootPolicy).
@@ -212,8 +215,11 @@ builder.Services.AddSingleton(sp => new StaffSessions(Path.Combine(paths.Securit
 builder.Services.AddSingleton(sp => new TwoFactorStore(Path.Combine(paths.Security, "twofactor.json"),
     sp.GetRequiredService<IDataProtectionProvider>(), sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<TwoFactorStore>>()));
 builder.Services.AddSingleton<ITwoFactorStatus>(sp => sp.GetRequiredService<TwoFactorStore>());
+builder.Services.AddSingleton(sp => new ResidentTwoFactor(new TwoFactorStore(Path.Combine(paths.Guests, "twofactor.json"),
+    sp.GetRequiredService<IDataProtectionProvider>(), sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<TwoFactorStore>>()), Path.Combine(paths.Guests, "twofactor.json")));
 builder.Services.AddSingleton(sp => new SuspendedStore(Path.Combine(paths.Security, "suspended.json"), sp.GetRequiredService<ILogger<SuspendedStore>>()));
 builder.Services.AddSingleton<IStaffDirectory>(sp => new StaffDirectory(sp.GetRequiredService<Func<LauncherSettings>>()));
+builder.Services.AddSingleton<IRobustPasswords>(sp => new RobustPasswords(sp.GetRequiredService<Func<LauncherSettings>>()));
 builder.Services.AddSingleton<StaffActions>();
 builder.Services.AddSingleton<StaffPrincipalValidator>();
 builder.Services.AddSingleton(sp => new GuestStamps(Path.Combine(paths.Guests, "stamps.json"), sp.GetRequiredService<ILogger<GuestStamps>>()));
@@ -224,6 +230,12 @@ builder.Services.AddSingleton(sp => new RegionRights(Path.Combine(paths.Guests, 
     sp.GetRequiredService<ILogger<RegionRights>>()));
 builder.Services.AddSingleton(sp => new EmailTokens(Path.Combine(paths.Guests, "email-tokens.json"), sp.GetRequiredService<TimeProvider>(),
     sp.GetRequiredService<ILogger<EmailTokens>>()));
+builder.Services.AddSingleton(sp => new ResetLimits(sp.GetRequiredService<TimeProvider>(), Path.Combine(paths.Guests, "reset-limits.json"),
+    sp.GetRequiredService<ILogger<ResetLimits>>()));
+builder.Services.AddSingleton<ResetWorker>();
+builder.Services.AddSingleton<IResetWork>(sp => sp.GetRequiredService<ResetWorker>());
+builder.Services.AddHostedService(sp => sp.GetRequiredService<ResetWorker>());
+builder.Services.AddSingleton<PasswordResets>();
 // Email (plan 8a): the mail accounts, passwords protected by data protection.
 builder.Services.AddSingleton(sp => new EmailAccounts(Path.Combine(paths.Email, "accounts.json"), sp.GetRequiredService<IDataProtectionProvider>(),
     sp.GetRequiredService<ILogger<EmailAccounts>>()));

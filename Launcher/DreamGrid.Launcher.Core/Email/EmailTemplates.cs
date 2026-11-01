@@ -22,11 +22,12 @@ public static class EmailTemplates
     public const string ConfirmEmail = "confirm-email";
     public const string ResetPassword = "reset-password";
     public const string AccountApproved = "account-approved";
+    public const string PasswordChanged = "password-changed";
 
     /// <summary>Until languages arrive (worklist 1.5) every template is in this one.</summary>
     public const string DefaultLanguage = LegalPages.DefaultLanguage;
 
-    public static IReadOnlyList<string> All { get; } = [Test, ConfirmEmail, ResetPassword, AccountApproved];
+    public static IReadOnlyList<string> All { get; } = [Test, ConfirmEmail, ResetPassword, AccountApproved, PasswordChanged];
 
     private static readonly DateTimeOffset Shipped = DateTimeOffset.UnixEpoch;
 
@@ -46,6 +47,9 @@ public static class EmailTemplates
         [AccountApproved] = new("Account approved", ["{GridName}", "{AvatarName}", "{Link}"], [],
             "Welcome to {GridName}",
             "Hello {AvatarName},\n\nYour account on {GridName} is ready. You can sign in now:\n\n{Link}"),
+        [PasswordChanged] = new("Password changed", ["{GridName}", "{AvatarName}"], [],
+            "Your password on {GridName} was changed",
+            "Hello {AvatarName},\n\nYour password on {GridName} was just changed, and you were signed out everywhere.\n\nIf it wasn't you, contact the grid owner straight away."),
     };
 
     public static string Title(string id) => Get(id).Title;

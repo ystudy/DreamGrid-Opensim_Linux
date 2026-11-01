@@ -286,6 +286,11 @@ public sealed class AccessTests
             "page home",
             // The guest door: any account at level 0 or more signs in here, to the guest pages only.
             "page guest/sign-in",
+            // A resident's two-factor code step: only does anything with the pending cookie the guest password step leaves.
+            "page guest/sign-in/code",
+            // Password recovery for everyone: one reply whatever was typed, and the reset page needs the emailed link.
+            "page guest/forgot-password",
+            "page guest/reset-password",
             // The operator's legal pages (terms, privacy, cookies, contact) and the sign-up page: public, and 404 until written / where there is no guest side.
             "page {slug:regex(^(terms|privacy|cookies|contact)$)}",
             "page login",
@@ -302,6 +307,7 @@ public sealed class AccessTests
             "page setup/plan",
             "page setup/plan/{id}",
             "page setup/region",
+            "page setup/security",
             "page setup/world",
             "page waiting",
             "page signup",

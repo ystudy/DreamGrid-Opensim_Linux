@@ -21,6 +21,10 @@ public interface IRobustClient
     /// <see cref="InvalidDataException"/>, so a Robust failure can never be read as "this person has no role".
     /// </summary>
     Task<RobustAccount?> FindAccountAsync(string first, string last, CancellationToken ct);
+
+    /// <summary>The strict lookup (as <see cref="FindAccountAsync"/>) by the account's id, for a link that carries only that.</summary>
+    Task<RobustAccount?> FindAccountByIdAsync(Guid principal, CancellationToken ct) =>
+        throw new NotSupportedException("This account service can't look up an account by its id.");
     Task<bool> AuthenticateAsync(Guid principal, string plainPassword, CancellationToken ct);
 
     /// <summary>Every region on the grid's map (all computers), from the grid service. Empty when there are none.</summary>
@@ -71,13 +75,18 @@ public sealed class RobustClient(HttpClient http, Func<LauncherSettings> setting
         return new RobustAccount(id, Field("FirstName"), Field("LastName"), level, Field("Email"), CreatedOf(Field("Created")));
     }
 
-    public async Task<RobustAccount?> FindAccountAsync(string first, string last, CancellationToken ct)
+    public Task<RobustAccount?> FindAccountAsync(string first, string last, CancellationToken ct) =>
+        FindStrictAsync(ct, ("METHOD", "getaccount"), ("FirstName", first), ("LastName", last));
+
+    public Task<RobustAccount?> FindAccountByIdAsync(Guid principal, CancellationToken ct) =>
+        FindStrictAsync(ct, ("METHOD", "getaccount"), ("PrincipalID", principal.ToString("D")));
+
+    private async Task<RobustAccount?> FindStrictAsync(CancellationToken ct, params (string Key, string Value)[] fields)
     {
         XElement? root;
         try
         {
-            root = await PostAsync(GridServiceKind.Accounts, "/accounts", ct, strict: true,
-                ("METHOD", "getaccount"), ("FirstName", first), ("LastName", last));
+            root = await PostAsync(GridServiceKind.Accounts, "/accounts", ct, strict: true, fields);
         }
         catch (System.Xml.XmlException)
         {

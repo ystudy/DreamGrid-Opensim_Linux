@@ -84,9 +84,10 @@ Each item says what Wifi did, how v7 should do it better, and the security rules
 - [ ] Pending accounts can't log in to the grid. **[?]** Check how Wifi marked them (a negative `UserLevel`?) and migrate any that already exist.
 
 ### 2.3 Password recovery (Wifi: `forgotpasswordform`, `recoveringpassword`)
-- [ ] "Forgot password" sends a single-use reset link (30-minute expiry, token hashed when stored).
-- [ ] **[S]** Same response whether or not the account exists, rate limited by email and IP, and every session ends after a reset.
-- [ ] The viewer's "forgot password" link (`password=` in `Robust.HG.ini.proto`) points to the new page.
+- [x] "Forgot password" sends a single-use reset link (30-minute expiry, token hashed when stored).
+- [x] **[S]** Same response whether or not the account exists, rate limited by email and IP, and every session ends after a reset.
+- [x] The viewer's "forgot password" link (`password=` in `Robust.HG.ini.proto`) points to the new page.
+- [x] Owner-chosen rules per group (residents, staff, owner) set from Setup's "What kind of grid is this?", with two-factor for residents asleep until a rule asks for it (plan 8b, `2026-10-31-password-recovery-design.md`).
 
 ### 2.4 Resident account page (Wifi: `useraccountform`)
 - [ ] Change email (confirmed by a link sent to the **new** address, with a notice to the old one) and change password (asks for the current password).

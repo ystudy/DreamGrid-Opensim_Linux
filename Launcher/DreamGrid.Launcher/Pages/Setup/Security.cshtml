@@ -1,0 +1,25 @@
+@page "/setup/security"
+@model DreamGrid.Launcher.Pages.Setup.SecurityModel
+@using DreamGrid.Launcher.Core.Security
+@{
+    ViewData["Title"] = "Account security";
+}
+<partial name="_Checklist" />
+<h1>What kind of grid is this?</h1>
+<p>This sets how people get back in when they forget their password. You can change it later in Advanced Settings.</p>
+@if (!Model.EmailReady)
+{
+    <div id="email-first" class="alert alert-info" role="status">Password reset sends an email. Set up email after setup, on the Security page, or password reset won't work.</div>
+}
+<form method="post">
+    @foreach (var kind in Enum.GetValues<GridKind>())
+    {
+        var id = "kind-" + kind;
+        <div class="form-check mt-3">
+            <input class="form-check-input" type="radio" name="Kind" id="@id" value="@kind" checked="@(Model.Kind == kind)">
+            <label class="form-check-label fw-semibold" for="@id">@Recovery.Title(kind)</label>
+            <div class="form-text">@Recovery.Line(kind)</div>
+        </div>
+    }
+    <button type="submit" class="btn btn-primary mt-4">Save and continue</button>
+</form>
