@@ -9,6 +9,10 @@
 {
     <p role="alert">Sign-up isn't working right now. Try again in a few minutes.</p>
 }
+else if (Model.AlreadyApproved)
+{
+    <p role="status">You're already approved. <a href="/guest/sign-in">Sign in.</a></p>
+}
 else
 {
     <p role="alert">This link has expired or was already used.</p>

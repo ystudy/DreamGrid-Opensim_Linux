@@ -1,9 +1,11 @@
+using DreamGrid.Launcher.Core.Guests;
 using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.Logs;
 using DreamGrid.Launcher.Core.Modules;
 using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Endpoints;
+using DreamGrid.Launcher.Guests;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
@@ -14,7 +16,7 @@ namespace DreamGrid.Launcher.Pages;
 /// <see cref="IDashboardSwitch"/> (spec 6.9).
 /// </summary>
 public sealed class IndexModel(IGridController grid, IOnlineUsers online, GridActions actions, LogReader logs, Func<LauncherSettings> settings,
-    IEnumerable<IDashboardSwitch> switches, DreamGrid.Launcher.Email.EmailSender email) : PageModel
+    IEnumerable<IDashboardSwitch> switches, DreamGrid.Launcher.Email.EmailSender email, SignUpBoard board, TimeProvider time) : PageModel
 {
     /// <summary>
     /// Email's warnings (empty where there is no guest side). The owner sees each one and a link to the Email page; other staff
@@ -23,6 +25,11 @@ public sealed class IndexModel(IGridController grid, IOnlineUsers online, GridAc
     public IReadOnlyList<string> EmailWarnings { get; private set; } = [];
 
     public bool IsOwner => User.IsInRole(DreamGrid.Launcher.Security.AuthSchemes.OwnerRole);
+
+    /// <summary>The New sign-ups card (spec 2026-11-01-sign-up-approval-design §7); null where there is no guest side.</summary>
+    public SignUpRowsView? SignUps { get; private set; }
+
+    public int SignUpsWaiting { get; private set; }
 
     private const int DetailLines = 20;
 
@@ -43,7 +50,14 @@ public sealed class IndexModel(IGridController grid, IOnlineUsers online, GridAc
     {
         var raw = grid.GetStatus();
         RunsRobust = raw.RunsRobust;
-        if (AdminRule.HasStaffPages(settings())) EmailWarnings = email.Status().Warnings;
+        if (AdminRule.HasStaffPages(settings()))
+        {
+            EmailWarnings = email.Status().Warnings;
+            var shown = board.Shown();
+            SignUpsWaiting = shown.Count(e => e.Waiting);
+            SignUps = new(SignUpRows.Default(shown).Take(SignUpRows.CardRows).ToList(),
+                ApprovalRules.CanApprove(DreamGrid.Launcher.Security.StaffSignIn.RoleOf(User), settings()), "/", time.GetUtcNow());
+        }
         Status = await StatusApi.BuildAsync(grid, online, withOnline: true, HttpContext.RequestAborted, settings());
         var g = Status.Grid;
         var details = new List<(string Label, IReadOnlyList<string> Lines)>();

@@ -21,7 +21,7 @@ namespace DreamGrid.Launcher.Pages.People;
 /// pages bring it). The regions the person has rights over are listed under the facts.
 /// </summary>
 public sealed class IndexModel(IRobustClient robust, StaffActions actions, RegionRights rights, Func<LauncherSettings> settings,
-    PendingSignUps pending, ILogger<IndexModel> log) : PageModel
+    SignUpBoard pending, ILogger<IndexModel> log) : PageModel
 {
     /// <summary>The name to look up, as typed (a GET, so a person can be linked to).</summary>
     [BindProperty(SupportsGet = true)] public string? Name { get; set; }
@@ -32,9 +32,9 @@ public sealed class IndexModel(IRobustClient robust, StaffActions actions, Regio
     public string? Error { get; private set; }
     public string? Notice { get; private set; }
 
-    /// <summary><c>Pending</c>: a sign-up waiting for its email link (level −1 like a suspension, but not one).</summary>
+    /// <summary><c>Pending</c>: a sign-up waiting for its email link or for staff (level −1 like a suspension, but not one); <c>WaitingForStaff</c> says which.</summary>
     public sealed record Person(RobustAccount Account, StaffRole Role, bool Suspended, bool CanSuspend, bool CanUnsuspend,
-        IReadOnlyList<string> Regions, bool Pending = false)
+        IReadOnlyList<string> Regions, bool Pending = false, bool WaitingForStaff = false)
     {
         public string FullName => $"{Account.FirstName} {Account.LastName}";
 
@@ -67,8 +67,8 @@ public sealed class IndexModel(IRobustClient robust, StaffActions actions, Regio
         var account = await FindAsync(ct);
         if (account is not null && IsPending(account))
         {
-            // Confirming a sign-up always takes its email link: "unsuspend" would skip it.
-            Error = "This person hasn't confirmed their email yet. Their account opens when they click the link.";
+            // A sign-up is let in by its email link or on the Sign-ups page: "unsuspend" would skip both.
+            Error = "This person is a new sign-up. Approve or deny them on the Sign-ups page.";
             Show(account);
         }
         else if (account is not null)
@@ -120,6 +120,12 @@ public sealed class IndexModel(IRobustClient robust, StaffActions actions, Regio
             .Order(StringComparer.OrdinalIgnoreCase).ToList();
     }
 
+    private SignUpState? StateOf(RobustAccount account)
+    {
+        try { return pending.Get(account.PrincipalId)?.State; }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return null; }
+    }
+
     private bool IsPending(RobustAccount account)
     {
         try { return account.UserLevel < 0 && pending.Contains(account.PrincipalId); }
@@ -135,19 +141,20 @@ public sealed class IndexModel(IRobustClient robust, StaffActions actions, Regio
     {
         var waiting = IsPending(account);
         var suspended = account.UserLevel < 0 && !waiting;
+        var forStaff = waiting && StateOf(account) == SignUpState.WaitingForStaff;
         try
         {
             var view = actions.RoleOf(account);
             Found = new Person(account, view.Current, suspended,
                 CanSuspend: !suspended && !waiting && actions.Refusal(User, account, StaffChange.Suspend) is null,
                 CanUnsuspend: suspended && actions.Refusal(User, account, StaffChange.Unsuspend) is null,
-                RegionsOf(account), waiting);
+                RegionsOf(account), waiting, forStaff);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             // Who may unsuspend depends on the level they get back, which can't be read: shown, but no buttons.
             log.LogWarning("People: the suspended list could not be read ({Error}).", e.GetType().Name);
-            Found = new Person(account, StaffRole.None, suspended, CanSuspend: false, CanUnsuspend: false, RegionsOf(account), waiting);
+            Found = new Person(account, StaffRole.None, suspended, CanSuspend: false, CanUnsuspend: false, RegionsOf(account), waiting, forStaff);
             Error ??= "The list of suspended people couldn't be read, so this person can't be changed here now.";
         }
         Name = Found.FullName;

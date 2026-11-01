@@ -26,12 +26,14 @@ public static class EmailTemplates
     public const string AlreadyHaveAccount = "already-have-account";
     public const string ConfirmNewEmail = "confirm-new-email";
     public const string EmailChangeNotice = "email-change-notice";
+    public const string SignUpDenied = "signup-denied";
+    public const string SignUpsWaiting = "signups-waiting";
 
     /// <summary>Until languages arrive (worklist 1.5) every template is in this one.</summary>
     public const string DefaultLanguage = LegalPages.DefaultLanguage;
 
     public static IReadOnlyList<string> All { get; } = [Test, ConfirmEmail, ResetPassword, AccountApproved, PasswordChanged, AlreadyHaveAccount,
-        ConfirmNewEmail, EmailChangeNotice];
+        ConfirmNewEmail, EmailChangeNotice, SignUpDenied, SignUpsWaiting];
 
     private static readonly DateTimeOffset Shipped = DateTimeOffset.UnixEpoch;
 
@@ -64,6 +66,14 @@ public static class EmailTemplates
         [EmailChangeNotice] = new("Email change requested", ["{GridName}", "{AvatarName}", "{Link}"], ["{Link}"],
             "Your email address on {GridName}",
             "Hello {AvatarName},\n\nSomeone asked to change the email address for {AvatarName} on {GridName}. If that was you, there's nothing to do.\n\nIf not, change your password now:\n\n{Link}"),
+        // {Note} is the staff member's optional words, empty when they wrote none.
+        [SignUpDenied] = new("Sign-up not approved", ["{GridName}", "{AvatarName}", "{Note}"], [],
+            "Your sign-up on {GridName}",
+            "Hello {AvatarName},\n\nYour sign-up on {GridName} wasn't approved.\n\n{Note}"),
+        // To staff: names only, never an applicant's email address.
+        [SignUpsWaiting] = new("Sign-ups waiting", ["{GridName}", "{Count}", "{Names}", "{Link}"], ["{Link}"],
+            "{Count} waiting for approval on {GridName}",
+            "{Count} people are waiting for approval on {GridName}:\n\n{Names}\n\n{Link}"),
     };
 
     public static string Title(string id) => Get(id).Title;
@@ -116,6 +126,9 @@ public static class EmailTemplates
             ["AvatarName"] = "Sample Avatar",
             ["Link"] = "https://example.com/sample-link",
             ["ExpiresIn"] = "30 minutes",
+            ["Note"] = "Sample note from staff.",
+            ["Count"] = "2",
+            ["Names"] = "Sample Avatar\nOther Avatar",
         };
         return Get(id).Words.Select(w => w.Trim('{', '}')).ToDictionary(w => w, w => all[w]);
     }

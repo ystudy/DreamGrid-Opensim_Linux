@@ -247,6 +247,22 @@ public class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public void Old_settings_file_gets_default_approvers()
+    {
+        var path = Path.Combine(NewDir(), "settings.json");
+        var store = new SettingsStore(path);
+        store.Save(store.LoadOrCreate() with { Bots = new BotSettings(AdminApproval: true) });
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+        node["bots"]!.AsObject().Remove("approvers");
+        File.WriteAllText(path, node.ToJsonString());
+
+        var bots = new SettingsStore(path).LoadOrCreate().Bots;
+
+        Assert.True(bots.AdminApproval);
+        Assert.Equal(SignUpApprovers.OwnerAndAdmins, bots.Approvers);
+    }
+
+    [Fact]
     public void Schema1_file_migrates_through_to_4()
     {
         var s = new SettingsStore(WriteV1(V1Region.Replace("BulletSim", "ubODE"))).LoadOrCreate();

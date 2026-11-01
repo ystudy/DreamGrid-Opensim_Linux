@@ -186,6 +186,8 @@ builder.Services.AddRazorPages(o =>
     o.Conventions.AddPageApplicationModelConvention("/Security/Legal", m => m.Filters.Add(new GuestSideOnly()));
     // The same for the bot-protection page.
     o.Conventions.AddPageApplicationModelConvention("/Security/Bots", m => m.Filters.Add(new GuestSideOnly()));
+    o.Conventions.AddPageApplicationModelConvention("/People/SignUps", m => m.Filters.Add(new GuestSideOnly()));
+    o.Conventions.AddPageApplicationModelConvention("/People/Deny", m => m.Filters.Add(new GuestSideOnly()));
     // The same for the Email pages: email is for the guest side's sign-up and password reset.
     foreach (var emailPage in new[] { "/Security/Email", "/Security/EmailWording" })
         o.Conventions.AddPageApplicationModelConvention(emailPage, m => m.Filters.Add(new GuestSideOnly()));
@@ -238,11 +240,15 @@ builder.Services.AddSingleton<ResetWorker>();
 builder.Services.AddSingleton<IResetWork>(sp => sp.GetRequiredService<ResetWorker>());
 builder.Services.AddHostedService(sp => sp.GetRequiredService<ResetWorker>());
 builder.Services.AddSingleton<PasswordResets>();
-builder.Services.AddSingleton(sp => new PendingSignUps(Path.Combine(paths.Guests, "pending-signups.json"), sp.GetRequiredService<TimeProvider>(),
-    sp.GetRequiredService<ILogger<PendingSignUps>>()));
+builder.Services.AddSingleton(sp => new SignUpBoard(Path.Combine(paths.Guests, "pending-signups.json"), sp.GetRequiredService<TimeProvider>(),
+    sp.GetRequiredService<ILogger<SignUpBoard>>()));
 builder.Services.AddSingleton(sp => new SignUpLimits(new ResetLimits(sp.GetRequiredService<TimeProvider>(), Path.Combine(paths.Guests, "signup-limits.json"),
     sp.GetRequiredService<ILogger<ResetLimits>>())));
+builder.Services.AddSingleton<SignUpLock>();
 builder.Services.AddSingleton<SignUps>();
+builder.Services.AddSingleton<SignUpApprovals>();
+builder.Services.AddSingleton(sp => new ApprovalNotices(Path.Combine(paths.Guests, "approval-notices.json")));
+builder.Services.AddSingleton<SignUpNotices>();
 // The resident account page (plan 10): email changes waiting for their link, and their own request counts.
 builder.Services.AddSingleton(sp => new PendingEmailChanges(Path.Combine(paths.Guests, "email-changes.json"), sp.GetRequiredService<TimeProvider>(),
     sp.GetRequiredService<ILogger<PendingEmailChanges>>()));

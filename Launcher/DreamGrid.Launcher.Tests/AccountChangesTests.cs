@@ -93,8 +93,14 @@ public sealed class AccountChangesTests
     private static async Task<string> AskedTokenAsync(Rig rig, string email = "ann.new@example.com", string current = Old)
     {
         Assert.Equal(AccountResult.Done, (await AskAsync(rig, email, current)).Result);
-        var sent = await SentAsync(rig, 1);
-        return SignUpsTests.LinkToken(sent.Last(m => m.To == email).Email);
+        // Wait for this ask's own email: an earlier ask's emails already count toward "sent at least one".
+        for (var i = 0; i < 200; i++)
+        {
+            lock (rig.Transport.Sent)
+                if (rig.Transport.Sent.Any(m => m.To == email)) break;
+            await Task.Delay(25, Ct);
+        }
+        lock (rig.Transport.Sent) return SignUpsTests.LinkToken(rig.Transport.Sent.Last(m => m.To == email).Email);
     }
 
     // ---- Change password (§5) ----
@@ -354,7 +360,7 @@ public sealed class AccountChangesTests
         var token = await AskedTokenAsync(rig);
         var squatter = Guid.NewGuid();
         rig.F.Robust.Add("Sly", "Squat", -1, "p", squatter, email: "ann.new@example.com");
-        rig.F.Services.GetRequiredService<PendingSignUps>().Add(squatter);
+        rig.F.Services.GetRequiredService<SignUpBoard>().Add(squatter, "Squat Ter", SignUpState.Unlisted);
         Assert.Equal(EmailLinkResult.Done, (await rig.Changes.ConfirmEmailChangeAsync(token, Ct)).Result);
     }
 

@@ -27,6 +27,8 @@ public sealed class SignUpModel(Func<LauncherSettings> settings, SignUps signUps
 
     public bool Closed { get; private set; }
     public bool CheckEmail { get; private set; }
+    /// <summary>The sign-up waits for staff approval (no email, the owner's switch on).</summary>
+    public bool WaitingForStaff { get; private set; }
     public string? Error { get; private set; }
     public string GridName { get; private set; } = "";
 
@@ -52,6 +54,9 @@ public sealed class SignUpModel(Func<LauncherSettings> settings, SignUps signUps
                 return LocalRedirect("/guest/connect");
             case SignUpOutcome.CheckEmail:
                 CheckEmail = true;
+                break;
+            case SignUpOutcome.WaitingForStaff:
+                WaitingForStaff = true;
                 break;
             case SignUpOutcome.Busy:
                 Error = Busy;
