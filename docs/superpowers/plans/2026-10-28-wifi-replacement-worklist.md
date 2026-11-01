@@ -112,7 +112,8 @@ Each item says what Wifi did, how v7 should do it better, and the security rules
   - [x] Add a small DreamGrid patch to `LLLoginService`: when the avatar hasn't accepted the current ToS version, refuse the login with a localised message that names the URL where they can accept it. The patch asks the launcher (loopback only) or reads a launcher-owned table. (Done: login asks `/dreamgrid/terms` on loopback and answers reason `tos` with the public `/terms` page, which Firestorm shows in its Terms window; "I agree" logs in again with `agree_to_tos`, recorded like a website acceptance. If the launcher can't be reached, the login goes ahead. Hypergrid visitors aren't asked. English only until 1.5.)
   - [x] Admins (level 200 and above) are never blocked, so the grid can't lock out its owner. (The owner and supervisors aren't asked either.)
   - [x] Saving a small fix to the Terms shouldn't make everyone accept again: a "small fix, don't ask again" choice when saving. (A "Small fix only" tick on the Legal page keeps a written page's version; audited with "small fix".)
-  - [ ] Try it with a real Firestorm on Windows and on Debian, and see what other viewers (Singularity, Cool VL Viewer) show for a `tos` reply.
+  - [x] Try it with a real Firestorm. (2026-11-01: Firestorm 7.2.5 on Windows against a Debian 12 grid: the Terms window showed the page, "I agree" logged in, and the acceptance was recorded as "in the viewer"; the owner and admins weren't asked.)
+  - [ ] A grid on Windows, and what other viewers (Singularity, Cool VL Viewer) show for a `tos` reply.
   - [ ] Store acceptance in a launcher-owned table: avatar, ToS version, time, IP. Move existing values from `GridUser.TOS` into it during the upgrade (Phase 3).
 
 ### 2.7 Viewer splash page (Wifi: `splash`, `welcome`)
