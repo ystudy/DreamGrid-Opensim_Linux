@@ -114,6 +114,53 @@ public sealed class LegalEditorTests
     }
 
     [Fact]
+    public async Task A_small_fix_keeps_the_version_so_nobody_is_asked_again()
+    {
+        await using var f = Factory();
+        var owner = await SignedInAsync(f);
+        using var one = await SaveAsync(owner, "terms", "Test terms one, with a tpyo.");
+        f.Time.Advance(TimeSpan.FromHours(1));
+
+        using var fix = await PostAsync(owner, "Save", new() { ["Texts[terms]"] = "Test terms one, with a typo fixed.", ["SmallFix"] = "true" });
+
+        var fixedText = Stored(f, "terms");
+        Assert.Equal(("Test terms one, with a typo fixed.", 1, f.Time.GetUtcNow()), (fixedText!.Markdown, fixedText.Version, fixedText.Saved));
+        var entry = LegalEntries(f).Last();
+        Assert.Equal("legal-text-saved", entry.GetProperty("action").GetString());
+        Assert.Equal("terms v1 small fix", entry.GetProperty("target").GetString());
+        Assert.Contains("Saved as a small fix", TextOf(await owner.GetStringAsync("/security/legal", Ct)));
+    }
+
+    [Fact]
+    public async Task A_small_fix_still_numbers_a_new_page()
+    {
+        await using var f = Factory();
+        var owner = await SignedInAsync(f);
+
+        // Nobody has accepted a page that didn't exist, so there is nothing to keep.
+        using var first = await PostAsync(owner, "Save", new() { ["Texts[terms]"] = "Test terms one.", ["SmallFix"] = "true" });
+
+        Assert.Equal(1, Stored(f, "terms")!.Version);
+        Assert.Equal("terms v1", LegalEntries(f).Last().GetProperty("target").GetString());
+    }
+
+    [Fact]
+    public async Task Without_the_tick_a_change_is_a_new_version()
+    {
+        await using var f = Factory();
+        var owner = await SignedInAsync(f);
+        using var one = await SaveAsync(owner, "terms", "Test terms one.");
+
+        using var two = await SaveAsync(owner, "terms", "Test terms two.");
+
+        Assert.Equal(2, Stored(f, "terms")!.Version);
+        // The tick is unticked again on the next visit: a real change must never inherit it.
+        var box = new HtmlParser().ParseDocument(await owner.GetStringAsync("/security/legal", Ct)).QuerySelector("#SmallFix");
+        Assert.NotNull(box);
+        Assert.False(box.HasAttribute("checked"));
+    }
+
+    [Fact]
     public async Task Unchanged_save_keeps_version()
     {
         await using var f = Factory();
