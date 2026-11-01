@@ -243,6 +243,15 @@ namespace OpenSim.Services.HypergridService
                 return false;
             }
 
+            // A travel record opens this user's inventory to the hypergrid, and this call is reachable
+            // by anyone on the public port. Only a session that really logged in here may create one.
+            if (!IsKnownSession(agentCircuit))
+            {
+                m_log.WarnFormat("[USER AGENT SERVICE]: Refused to launch user {0} with unknown session {1}", agentCircuit.AgentID, agentCircuit.SessionID);
+                reason = "Forbidden to launch your agents from here";
+                return false;
+            }
+
             // Is this user allowed to go there?
             if (m_GridName != gridName)
             {
@@ -327,6 +336,21 @@ namespace OpenSim.Services.HypergridService
             return LoginAgentToGrid(source, agentCircuit, gatekeeper, finalDestination, false, out reason);
         }
 
+        /// <summary>
+        /// True if this session already travels as this user, or is logged in here as this user.
+        /// Presence is only checked for the first trip, as a local user is logged out of presence on leaving.
+        /// </summary>
+        private bool IsKnownSession(AgentCircuitData agentCircuit)
+        {
+            HGTravelingData hgt = m_Database.Get(agentCircuit.SessionID);
+            if (hgt is not null)
+                return hgt.UserID == agentCircuit.AgentID;
+
+            PresenceInfo presence = m_PresenceService?.GetAgent(agentCircuit.SessionID);
+            return presence is not null
+                && presence.UserID.Equals(agentCircuit.AgentID.ToString(), StringComparison.OrdinalIgnoreCase);
+        }
+
         TravelingAgentInfo CreateTravelInfo(AgentCircuitData agentCircuit, GridRegion region, bool fromLogin, out TravelingAgentInfo existing)
         {
             HGTravelingData hgt = m_Database.Get(agentCircuit.SessionID);
@@ -361,6 +385,7 @@ namespace OpenSim.Services.HypergridService
         {
             m_log.DebugFormat("[USER AGENT SERVICE]: User {0} logged out", userID);
 
+            HGTravelGateInventoryService.NoteLogout(m_Database.Get(sessionID));
             m_Database.Delete(sessionID);
 
             GridUserInfo guinfo = m_GridUserService.GetGridUserInfo(userID.ToString());
