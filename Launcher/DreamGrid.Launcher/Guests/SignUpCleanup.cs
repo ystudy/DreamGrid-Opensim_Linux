@@ -8,9 +8,11 @@ using DreamGrid.Launcher.Core.Security;
 namespace DreamGrid.Launcher.Guests;
 
 /// <summary>
-/// Every <see cref="Period"/> (the first time <see cref="FirstRun"/> after start), deletes the sign-ups nobody confirmed: avatars on
-/// the <see cref="SignUpBoard"/> whose last link went out more than <see cref="SignUps.LinkLifetime"/> ago (spec
-/// 2026-10-31-sign-up-design §5 step 6), so their names are free again. Only listed avatars are ever touched: a listed one that
+/// Every <see cref="Period"/> (the first time <see cref="FirstRun"/> after start), deletes the sign-ups nobody let in: waiting avatars on
+/// the <see cref="SignUpBoard"/> made more than <see cref="SignUpBoard.WaitLimit"/> ago, and unlisted ones whose last link went out
+/// more than <see cref="SignUps.LinkLifetime"/> ago (spec 2026-11-01-sign-up-approval-design §9), so their names are free again. It
+/// also takes off the board waiting entries whose account is gone or no longer at −1, fills in missing names, and drops finished
+/// rows after <see cref="SignUpBoard.ShowFinishedFor"/>. Only listed avatars are ever touched: a listed one that
 /// is gone or no longer at level −1 is just taken off the list. A database or Robust that doesn't answer leaves the list as it was
 /// for the next run. Each deletion is audited as done by DreamGrid.
 /// </summary>
@@ -64,11 +66,31 @@ public sealed class SignUpCleanup(SignUpBoard pending, IRobustClient robust, IAc
                 }
                 pending.Remove(principal);
             }
-            catch (Exception e) when (e is StaffDirectoryUnavailableException or HttpRequestException or TaskCanceledException or IOException
-                or InvalidOperationException or InvalidDataException && !ct.IsCancellationRequested)
+            catch (Exception e) when (IsDown(e, ct))
             {
                 log.LogWarning("Sign-up clean-up: {Principal} is kept for the next run: {Message}", principal, e.InnerException?.Message ?? e.Message);
             }
         }
+
+        // Waiting entries whose account is gone or was changed outside this flow leave the board; unnamed ones get their name.
+        foreach (var entry in pending.Shown().Where(e => e.Waiting))
+        {
+            try
+            {
+                var account = await robust.FindAccountByIdAsync(entry.Principal, ct);
+                if (account is not { UserLevel: -1 }) pending.Remove(entry.Principal);
+                else if (entry.Name.Length == 0) pending.SetName(entry.Principal, $"{account.FirstName} {account.LastName}");
+            }
+            catch (Exception e) when (IsDown(e, ct))
+            {
+                log.LogWarning("Sign-up clean-up: {Principal} is checked again next run: {Message}", entry.Principal, e.InnerException?.Message ?? e.Message);
+            }
+        }
+
+        pending.PruneFinished();
     }
+
+    private static bool IsDown(Exception e, CancellationToken ct) =>
+        e is StaffDirectoryUnavailableException or HttpRequestException or TaskCanceledException or IOException
+            or InvalidOperationException or InvalidDataException && !ct.IsCancellationRequested;
 }

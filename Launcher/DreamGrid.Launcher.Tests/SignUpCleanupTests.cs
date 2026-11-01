@@ -34,6 +34,81 @@ public sealed class SignUpCleanupTests
     }
 
     [Fact]
+    public async Task Keeps_waiting_at_29_days()
+    {
+        var (rig, bea) = await PendingAsync();
+        await using var _ = rig;
+        rig.F.Time.Advance(TimeSpan.FromDays(29));
+
+        await Cleanup(rig).RunOnceAsync(Ct);
+
+        Assert.Contains(rig.F.Robust.All, a => a.PrincipalId == bea);
+        Assert.Equal(SignUpState.WaitingForEmail, rig.Pending.Get(bea)!.State);
+    }
+
+    [Fact]
+    public async Task Deletes_unlisted_after_24_hours()
+    {
+        await using var rig = SignUpsTests.Factory();
+        await rig.SignUps.SubmitAsync(SignUpsTests.Form(email: "ann@example.com"), null, Ct);
+        var bea = rig.F.Robust.All.Single(a => a.FirstName == "Bea").PrincipalId;
+        rig.F.Time.Advance(TimeSpan.FromHours(23));
+        await Cleanup(rig).RunOnceAsync(Ct);
+        Assert.True(rig.Pending.Contains(bea));
+
+        rig.F.Time.Advance(TimeSpan.FromHours(2));
+        await Cleanup(rig).RunOnceAsync(Ct);
+
+        Assert.DoesNotContain(rig.F.Robust.All, a => a.PrincipalId == bea);
+        Assert.Null(rig.Pending.Get(bea));
+    }
+
+    [Fact]
+    public async Task Drops_entry_raised_elsewhere_without_deleting()
+    {
+        var (rig, bea) = await PendingAsync();
+        await using var _ = rig;
+        rig.F.Robust.SetLevel("Bea", "Example", 0);
+
+        await Cleanup(rig).RunOnceAsync(Ct);
+
+        Assert.Contains(rig.F.Robust.All, a => a.PrincipalId == bea);
+        Assert.Null(rig.Pending.Get(bea));
+        Assert.Empty(rig.F.Remover.Deleted);
+    }
+
+    [Fact]
+    public async Task Fills_missing_name()
+    {
+        var (rig, bea) = await PendingAsync();
+        await using var _ = rig;
+        rig.Pending.SetName(bea, "");
+
+        await Cleanup(rig).RunOnceAsync(Ct);
+
+        Assert.Equal("Bea Example", rig.Pending.Get(bea)!.Name);
+    }
+
+    [Fact]
+    public async Task Prunes_finished_after_14_days_account_untouched()
+    {
+        var (rig, bea) = await PendingAsync();
+        await using var _ = rig;
+        var token = SignUpsTests.LinkToken(Assert.Single(await SignUpsTests.SentAsync(rig, 1)).Email);
+        await rig.SignUps.ConfirmAsync(token, null, Ct);
+        rig.F.Time.Advance(TimeSpan.FromDays(13));
+        await Cleanup(rig).RunOnceAsync(Ct);
+        Assert.Equal(SignUpState.SelfApproved, rig.Pending.Get(bea)!.State);
+
+        rig.F.Time.Advance(TimeSpan.FromDays(1) + TimeSpan.FromHours(1));
+        await Cleanup(rig).RunOnceAsync(Ct);
+
+        Assert.Null(rig.Pending.Get(bea));
+        Assert.Equal(0, rig.F.Robust.All.Single(a => a.PrincipalId == bea).UserLevel);
+        Assert.Empty(rig.F.Remover.Deleted);
+    }
+
+    [Fact]
     public async Task Keeps_listed_younger()
     {
         var (rig, bea) = await PendingAsync();
