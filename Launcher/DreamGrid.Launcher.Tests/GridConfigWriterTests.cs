@@ -140,6 +140,20 @@ public sealed class GridConfigWriterTests : IDisposable
     }
 
     [Fact]
+    public void Register_points_at_sign_up()
+    {
+        Write(Make(plan: OwnerPlan.SimplePublic, hostname: "203.0.113.7"));
+        Assert.Equal("http://203.0.113.7:8001/signup", Robust().Get("GridInfoService", "register"));
+    }
+
+    [Fact]
+    public void Register_no_longer_points_at_wifi()
+    {
+        Write(Make());
+        Assert.DoesNotContain("/wifi/", Robust().Get("GridInfoService", "register") ?? "");
+    }
+
+    [Fact]
     public void Allow_set_password_never_on()
     {
         Write(Make());

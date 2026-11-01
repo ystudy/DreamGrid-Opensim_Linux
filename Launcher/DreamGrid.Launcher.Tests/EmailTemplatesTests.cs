@@ -12,7 +12,7 @@ public sealed class EmailTemplatesTests
     [Fact]
     public void Defaults_contain_their_required_words()
     {
-        Assert.Equal(["test", "confirm-email", "reset-password", "account-approved", "password-changed"], EmailTemplates.All);
+        Assert.Equal(["test", "confirm-email", "reset-password", "account-approved", "password-changed", "already-have-account"], EmailTemplates.All);
         foreach (var id in EmailTemplates.All)
         {
             var d = EmailTemplates.Default(id);

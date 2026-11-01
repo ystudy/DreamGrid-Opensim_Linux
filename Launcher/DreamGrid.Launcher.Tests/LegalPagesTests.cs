@@ -197,7 +197,7 @@ public sealed class LegalPagesTests
     [Fact]
     public async Task Signup_says_not_open()
     {
-        // Open or not, this plan only says it isn't open yet; sign-up itself comes later.
+        // Written legal pages alone don't open it: the owner's sign-up switch is still off.
         foreach (var legal in new[] { new LegalSettings(), Legal(true, "terms", "privacy", "cookies") })
         {
             await using var f = Factory(legal);

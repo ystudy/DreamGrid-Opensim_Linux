@@ -121,6 +121,9 @@ public enum RecoveryRule { Off, EmailLink, EmailLinkAndCode }
 /// <summary>The password-recovery rule for each group (see <see cref="Security.Recovery"/>).</summary>
 public sealed record RecoverySettings(RecoveryRule Residents, RecoveryRule Staff, RecoveryRule Owner);
 
+/// <summary>Whether the owner lets people sign up; it takes effect only while the legal-page gate is open (see <see cref="Guests.SignUpRules.IsOpen"/>).</summary>
+public sealed record SignUpSettings(bool Open = false);
+
 /// <summary>One legal page's text as the operator wrote it (Markdown), how many times it was saved and when.</summary>
 public sealed record LegalText(string Markdown, int Version, DateTimeOffset Saved);
 
@@ -203,6 +206,9 @@ public sealed record LauncherSettings
 
     /// <summary>The password-recovery rules; null until the owner chooses a level (read as all off).</summary>
     public RecoverySettings? Recovery { get; init; }
+
+    /// <summary>The owner's sign-up switch; null until the owner sets it (read as closed).</summary>
+    public SignUpSettings? SignUp { get; init; }
 
     private readonly LegalSettings _legal = new();
 

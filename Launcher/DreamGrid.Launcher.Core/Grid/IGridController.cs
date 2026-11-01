@@ -37,6 +37,15 @@ public interface IGridController
     Task<RobustAccount> SetUserLevelAsync(string first, string last, int level, CancellationToken ct);
 
     /// <summary>
+    /// Makes a resident avatar for sign-up with <paramref name="email"/> at <paramref name="level"/> (0, or −1 while it waits for its
+    /// email link) and a random password the caller replaces (<see cref="ResidentAvatars"/>). Throws <see cref="NameTakenException"/>
+    /// when the name is on the grid, <see cref="ArgumentException"/> for a name the console would split,
+    /// <see cref="InvalidOperationException"/> when this computer runs no grid service or Robust didn't finish (then the avatar is
+    /// deleted again), and <see cref="HttpRequestException"/> when Robust isn't running.
+    /// </summary>
+    Task<RobustAccount> CreateResidentAsync(string first, string last, string? email, int level, CancellationToken ct);
+
+    /// <summary>
     /// Makes the avatar called <paramref name="first"/> <paramref name="last"/> on the grid the estate owner, without a
     /// password: the grid service looks the name up, and the account's own spelling is saved as the owner. Throws
     /// <see cref="ArgumentException"/> in plain words when the grid has no such avatar, and

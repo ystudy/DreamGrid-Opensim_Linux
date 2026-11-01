@@ -44,7 +44,7 @@ Legend: **[S]** security requirement, **[X]** cross-platform note, **[?]** decis
   - [x] A2 rate limit per IP — **on** by default, with an adjustable limit (for example sign-ups per hour).
   - [x] B proof-of-work puzzle (ALTCHA, self-hosted) — **on** by default, with an adjustable difficulty.
   - [x] C self-hosted image CAPTCHA — **off** by default; with a text alternative for accessibility (a sum in words). Localisation is 1.5; an audio alternative is on the later list.
-  - [ ] Admin approval of new accounts — a switch, **off** by default (2.1 and 2.2).
+  - [ ] Admin approval of new accounts — a switch, **off** by default (2.1 and 2.2). Hidden on the Bots page until approval is built (plan 9); its stored value is kept.
   - [x] **[S]** Turning a layer off is written to the audit log. The settings page warns when every layer is off and sign-up is open.
 - [x] **[S]** Optional TOTP two-factor sign-in for admins. The Robust password stays the first factor.
 - [x] Sessions page: an admin sees their active sessions and can end all of them ("sign out everywhere" rotates a per-user stamp).
@@ -73,11 +73,13 @@ Legend: **[S]** security requirement, **[X]** cross-platform note, **[?]** decis
 Each item says what Wifi did, how v7 should do it better, and the security rules.
 
 ### 2.1 Resident sign-up (Wifi: `newaccountform`, `avatarselectitem`)
-- [ ] Sign-up form: first name, last name, email, password, starter avatar (Female, Male, Neutral, Tiny — the appearance accounts come from settings).
-- [ ] **[S]** Password rules (minimum length, check against a common-passwords list), the honeypot and rate limit from 1.3, and the same answer whether or not the name is taken until the email is confirmed (where practical).
-- [ ] Modes chosen by the admin: open, email confirmation required, admin approval required, or closed.
+> First version done in plan 9 (`docs/superpowers/plans/2026-10-31-plan9-sign-up.md`, design `docs/superpowers/specs/2026-10-31-sign-up-design.md`): `/signup`, an email link (or none when email isn't set up), `/guest/connect`, the owner's switch on the Legal page, and clean-up of sign-ups nobody confirmed.
+- [x] Sign-up form: first name, last name, email, password. (Starter avatar still open, below.)
+- [ ] Starter avatar (Female, Male, Neutral, Tiny — the appearance accounts come from settings).
+- [x] **[S]** Password rules (minimum length, check against a common-passwords list), the honeypot and rate limit from 1.3. Decided (owner): a taken name is said plainly; a taken email address is never said (its owner gets a notice email).
+- [ ] Modes chosen by the admin: open, email confirmation required, admin approval required, or closed. (Open or closed, with email confirmation whenever email is set up, done; admin approval waits for 2.2.)
 - [ ] Copying the starter avatar's outfit and inventory runs as a background job with progress, not inside the request.
-- [ ] The viewer's "create account" link (`register=` in `Robust.HG.ini.proto`) points to the new page.
+- [x] The viewer's "create account" link (`register=` in `Robust.HG.ini.proto`) points to the new page.
 
 ### 2.2 Pending accounts (Wifi: `userpendinglist`)
 - [ ] An admin list of accounts waiting for approval: approve or reject, with an email to the user.

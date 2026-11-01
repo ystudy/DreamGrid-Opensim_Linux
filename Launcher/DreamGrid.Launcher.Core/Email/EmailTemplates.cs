@@ -23,11 +23,12 @@ public static class EmailTemplates
     public const string ResetPassword = "reset-password";
     public const string AccountApproved = "account-approved";
     public const string PasswordChanged = "password-changed";
+    public const string AlreadyHaveAccount = "already-have-account";
 
     /// <summary>Until languages arrive (worklist 1.5) every template is in this one.</summary>
     public const string DefaultLanguage = LegalPages.DefaultLanguage;
 
-    public static IReadOnlyList<string> All { get; } = [Test, ConfirmEmail, ResetPassword, AccountApproved, PasswordChanged];
+    public static IReadOnlyList<string> All { get; } = [Test, ConfirmEmail, ResetPassword, AccountApproved, PasswordChanged, AlreadyHaveAccount];
 
     private static readonly DateTimeOffset Shipped = DateTimeOffset.UnixEpoch;
 
@@ -50,6 +51,9 @@ public static class EmailTemplates
         [PasswordChanged] = new("Password changed", ["{GridName}", "{AvatarName}"], [],
             "Your password on {GridName} was changed",
             "Hello {AvatarName},\n\nYour password on {GridName} was just changed, and you were signed out everywhere.\n\nIf it wasn't you, contact the grid owner straight away."),
+        [AlreadyHaveAccount] = new("Already have an account", ["{GridName}", "{AvatarName}", "{Link}"], ["{Link}"],
+            "Someone tried to sign up on {GridName}",
+            "Hello {AvatarName},\n\nSomeone tried to sign up on {GridName} with this email address. If that was you, you already have an avatar: {AvatarName}.\n\nForgot your password? You can choose a new one here:\n\n{Link}\n\nIf it wasn't you, you can ignore this email."),
     };
 
     public static string Title(string id) => Get(id).Title;

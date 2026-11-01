@@ -30,6 +30,10 @@
                 {
                     <span class="badge text-bg-danger ms-2">Suspended</span>
                 }
+                @if (p.Pending)
+                {
+                    <span class="badge text-bg-secondary ms-2">Waiting for email</span>
+                }
             </h2>
             <dl class="row mb-0">
                 <dt class="col-sm-3">Role</dt>

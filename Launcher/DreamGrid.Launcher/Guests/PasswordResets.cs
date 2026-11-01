@@ -45,6 +45,7 @@ public sealed class PasswordResets(Func<LauncherSettings> settings, IRobustClien
     public static readonly TimeSpan LinkLifetime = TimeSpan.FromMinutes(30);
     public const string ExpiresIn = "30 minutes";
     public const string ResetPath = "/guest/reset-password";
+    public const string AskPath = "/guest/forgot-password";
 
     /// <summary>Whether anyone can reset a password: some rule is on and the grid can send email.</summary>
     public bool Available() => Recovery.AnyOn(settings()) && sender.IsReady;
