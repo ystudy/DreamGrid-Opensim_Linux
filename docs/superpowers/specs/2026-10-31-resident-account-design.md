@@ -91,6 +91,8 @@ The link works without being signed in (my call: people often open email on anot
 3. **Write** the new address to Robust's account record (§7). A failure: "Couldn't change your email right now. Try again in a few minutes." and the link is **not** spent (redeemed only after the write succeeds, as recovery does).
 4. Done: "Your email address is now {new address}." with a link to the account page. The waiting address is dropped. Sessions are left alone (my call: changing the email doesn't mean someone else knows the password).
 
+**A password change cancels a waiting email change** (added after the branch review). Once a new password is written, by this page or by password recovery, any waiting change's link stops working and its address is dropped, so the person who follows the old address's "change your password now" really stops it. A link also confirms only the address it was sent for: a newer request can never be confirmed by an older link.
+
 Audited: `email-change-asked`, `email-changed`, refusals (who, door, address, outcome), never the typed addresses, password, code or token.
 
 ## 7. How the email is written

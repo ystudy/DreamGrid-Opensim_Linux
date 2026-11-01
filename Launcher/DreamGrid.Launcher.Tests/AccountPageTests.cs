@@ -94,8 +94,10 @@ public sealed class AccountPageTests
         var changes = f.Services.GetRequiredService<AccountChanges>();
         Assert.Equal(AccountResult.Done, (await changes.AskEmailChangeAsync(AnnId, Old, null, "ann.new@example.com", IPAddress.Loopback, Ct)).Result);
         var tokens = f.Services.GetRequiredService<Core.Guests.EmailTokens>();
-        // Replace the link just sent with one whose token the test knows; the waiting address stays.
-        return tokens.Issue(AccountChanges.Purpose, AnnId, AccountChanges.LinkLifetime);
+        // Replace the link just sent with one whose token the test knows, tied to the same address as the ask ties it.
+        var token = tokens.Issue(AccountChanges.Purpose, AnnId, AccountChanges.LinkLifetime);
+        f.Services.GetRequiredService<Core.Guests.PendingEmailChanges>().Set(AnnId, "ann.new@example.com", token);
+        return token;
     }
 
     [Fact]

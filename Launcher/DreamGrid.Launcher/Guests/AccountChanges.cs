@@ -89,6 +89,7 @@ public sealed class AccountChanges(Func<LauncherSettings> settings, IRobustClien
 
         // Written: everything below happens whatever else does.
         Passed(a, code);
+        CancelEmailChange(tokens, waiting, principal);
         stamps.Rotate(principal);
         if (AdminRule.RoleOf(settings(), a) != StaffRole.None) sessions.EndAll(principal);
         if (sender.IsReady && a.Email.Trim() is { Length: > 0 } to)
@@ -121,8 +122,8 @@ public sealed class AccountChanges(Func<LauncherSettings> settings, IRobustClien
         Counts.CountAddress(ip);
         Counts.CountSend(principal, email);
 
-        waiting.Set(principal, email);
         var token = tokens.Issue(Purpose, principal, LinkLifetime);
+        waiting.Set(principal, email, token);
         var s = settings();
         var full = Full(a);
         var queued = sender.Queue(EmailTemplates.ConfirmNewEmail, email, full,
@@ -153,7 +154,7 @@ public sealed class AccountChanges(Func<LauncherSettings> settings, IRobustClien
     private async Task<(EmailLinkResult Result, string? Email)> ConfirmOneAsync(string? token, CancellationToken ct)
     {
         if (tokens.Find(Purpose, token) is not { } principal) return (EmailLinkResult.Expired, null);
-        if (waiting.Get(principal, LinkLifetime) is not { } email) return (EmailLinkResult.Expired, null);
+        if (waiting.Get(principal, token, LinkLifetime) is not { } email) return (EmailLinkResult.Expired, null);
 
         RobustAccount? account;
         IReadOnlyList<RobustAccount> holders;
@@ -197,6 +198,17 @@ public sealed class AccountChanges(Func<LauncherSettings> settings, IRobustClien
         waiting.Remove(principal);
         Write(account, null, "email-changed", null, "ok");
         return (EmailLinkResult.Done, email);
+    }
+
+    /// <summary>
+    /// Ends a waiting email change, so the old address's "change your password now" really stops it: whoever asked for it with a
+    /// stolen session can't still open the link after the owner took the account back. Called once a password is written, here and
+    /// by password recovery.
+    /// </summary>
+    public static void CancelEmailChange(EmailTokens tokens, PendingEmailChanges waiting, Guid principal)
+    {
+        tokens.Revoke(Purpose, principal);
+        waiting.Remove(principal);
     }
 
     /// <summary>

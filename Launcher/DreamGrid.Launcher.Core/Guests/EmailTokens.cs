@@ -94,7 +94,20 @@ public sealed class EmailTokens
         }
     }
 
-    private static string HashOf(string token) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
+    /// <summary>
+    /// Ends every token for this purpose and account at once, so no link already sent for it works (an email change the owner
+    /// cancels by taking their account back).
+    /// </summary>
+    public void Revoke(string purpose, Guid principal)
+    {
+        lock (_gate)
+        {
+            if (_all.RemoveAll(e => e.Principal == principal && e.Purpose == purpose) > 0) _file.Save(_all);
+        }
+    }
+
+    /// <summary>The token's SHA-256 as lower-case hex, as stored: for another store to tie a record to one link without keeping it.</summary>
+    public static string HashOf(string token) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
 
     private static string Base64Url(byte[] bytes) => Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 }

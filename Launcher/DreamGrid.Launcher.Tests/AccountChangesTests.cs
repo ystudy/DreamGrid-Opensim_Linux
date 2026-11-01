@@ -40,6 +40,7 @@ public sealed class AccountChangesTests
             GridName = "Avalon",
             SetupToken = null,
             Setup = s.Setup with { WorldNamed = true, OwnerCreated = true, Finished = true, Owner = new OwnerInfo("Test", "Owner", TestAuth.OwnerId) },
+            Recovery = new RecoverySettings(RecoveryRule.EmailLink, RecoveryRule.EmailLink, RecoveryRule.EmailLink),
         })
         {
             Before = TestAuth.Apply,
@@ -389,5 +390,40 @@ public sealed class AccountChangesTests
         Assert.NotEmpty(text);
         foreach (var secret in new[] { Old, New, "wrong-guess-1", token, "ann.new", "ann@example.com" })
             Assert.DoesNotContain(secret, text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // ---- Review fixes: a waiting change can't outlive the owner taking the account back, and a link confirms only its own address ----
+
+    [Fact]
+    public async Task Password_change_cancels_waiting_email_change()
+    {
+        await using var rig = Factory();
+        var token = await AskedTokenAsync(rig);
+        Assert.Equal(AccountResult.Done, (await ChangeAsync(rig)).Result);
+        Assert.Equal(EmailLinkResult.Expired, (await rig.Changes.ConfirmEmailChangeAsync(token, Ct)).Result);
+        Assert.Equal("ann@example.com", rig.Ann.Email);
+    }
+
+    [Fact]
+    public async Task Password_reset_cancels_waiting_email_change()
+    {
+        await using var rig = Factory();
+        var token = await AskedTokenAsync(rig);
+        var reset = rig.F.Services.GetRequiredService<Core.Guests.EmailTokens>().Issue(PasswordResets.Purpose, AnnId, PasswordResets.LinkLifetime);
+        var (result, _, _) = await rig.F.Services.GetRequiredService<PasswordResets>().ResetAsync(reset, null, New, New, Caller, Ct);
+        Assert.Equal(ResetResult.Done, result);
+        Assert.Equal(EmailLinkResult.Expired, (await rig.Changes.ConfirmEmailChangeAsync(token, Ct)).Result);
+        Assert.Equal("ann@example.com", rig.Ann.Email);
+    }
+
+    [Fact]
+    public async Task Link_confirms_only_the_address_it_was_sent_for()
+    {
+        await using var rig = Factory();
+        var tokenA = await AskedTokenAsync(rig, "first@example.com");
+        // A second ask caught half-way: its address is waiting, but link A is still the live token.
+        rig.F.Services.GetRequiredService<PendingEmailChanges>().Set(AnnId, "second@example.com", "not-link-a");
+        Assert.Equal(EmailLinkResult.Expired, (await rig.Changes.ConfirmEmailChangeAsync(tokenA, Ct)).Result);
+        Assert.Equal("ann@example.com", rig.Ann.Email);
     }
 }

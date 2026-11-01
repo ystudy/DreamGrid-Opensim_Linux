@@ -22,12 +22,12 @@ public sealed class PendingEmailChangesTests : IDisposable
     {
         var a = Guid.NewGuid();
         var store = new PendingEmailChanges(File_, _time);
-        Assert.Null(store.Get(a, Day));
-        store.Set(a, "first@example.com");
-        store.Set(a, "second@example.com");
-        Assert.Equal("second@example.com", store.Get(a, Day));
+        Assert.Null(store.Get(a, "tok", Day));
+        store.Set(a, "first@example.com", "tok");
+        store.Set(a, "second@example.com", "tok");
+        Assert.Equal("second@example.com", store.Get(a, "tok", Day));
         store.Remove(a);
-        Assert.Null(store.Get(a, Day));
+        Assert.Null(store.Get(a, "tok", Day));
     }
 
     [Fact]
@@ -35,19 +35,19 @@ public sealed class PendingEmailChangesTests : IDisposable
     {
         var a = Guid.NewGuid();
         var store = new PendingEmailChanges(File_, _time);
-        store.Set(a, "new@example.com");
+        store.Set(a, "new@example.com", "tok");
         _time.Advance(TimeSpan.FromHours(23));
-        Assert.Equal("new@example.com", store.Get(a, Day));
+        Assert.Equal("new@example.com", store.Get(a, "tok", Day));
         _time.Advance(TimeSpan.FromHours(2));
-        Assert.Null(store.Get(a, Day));
+        Assert.Null(store.Get(a, "tok", Day));
     }
 
     [Fact]
     public void Survives_restart()
     {
         var a = Guid.NewGuid();
-        new PendingEmailChanges(File_, _time).Set(a, "new@example.com");
-        Assert.Equal("new@example.com", new PendingEmailChanges(File_, _time).Get(a, Day));
+        new PendingEmailChanges(File_, _time).Set(a, "new@example.com", "tok");
+        Assert.Equal("new@example.com", new PendingEmailChanges(File_, _time).Get(a, "tok", Day));
     }
 
     [Fact]
@@ -55,10 +55,22 @@ public sealed class PendingEmailChangesTests : IDisposable
     {
         var old = Guid.NewGuid();
         var store = new PendingEmailChanges(File_, _time);
-        store.Set(old, "old@example.com");
+        store.Set(old, "old@example.com", "tok");
         _time.Advance(TimeSpan.FromHours(25));
-        store.Set(Guid.NewGuid(), "young@example.com");
+        store.Set(Guid.NewGuid(), "young@example.com", "tok");
         Assert.DoesNotContain("old@example.com", File.ReadAllText(File_));
         Assert.Contains("young@example.com", File.ReadAllText(File_));
+    }
+
+    [Fact]
+    public void Get_needs_the_token_it_was_set_with()
+    {
+        var a = Guid.NewGuid();
+        var store = new PendingEmailChanges(File_, _time);
+        store.Set(a, "new@example.com", "token-one");
+        Assert.Null(store.Get(a, "token-two", Day));
+        Assert.Null(store.Get(a, null, Day));
+        Assert.Equal("new@example.com", store.Get(a, "token-one", Day));
+        Assert.DoesNotContain("token-one", File.ReadAllText(File_));
     }
 }

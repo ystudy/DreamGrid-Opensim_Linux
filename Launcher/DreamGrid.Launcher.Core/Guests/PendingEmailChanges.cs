@@ -1,12 +1,15 @@
 using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 
 namespace DreamGrid.Launcher.Core.Guests;
 
 /// <summary>
-/// The new email addresses waiting for their link, one per person, with when each was asked (spec
-/// 2026-10-31-resident-account-design §6). A new request replaces the old one. An address is kept only until its link is used or
+/// The new email addresses waiting for their link, one per person, with when each was asked and the hash of the link sent for it
+/// (spec 2026-10-31-resident-account-design §6). A new request replaces the old one, and an address is given back only for the
+/// link that was sent for it, so a link can never confirm an address another request put there. An address is kept only until its link is used or
 /// runs out: <see cref="Set"/> drops entries older than the age it is given. Kept in <c>file</c>
 /// (<c>&lt;data&gt;/guests/email-changes.json</c>, written atomically, in the owner-only data folder). Only a missing file holds
 /// nothing. A file that can't be read throws <see cref="IOException"/> or <see cref="UnauthorizedAccessException"/> from every call.
@@ -18,30 +21,39 @@ public sealed class PendingEmailChanges(string file, TimeProvider time, ILogger<
     /// <summary>How long a waiting address is kept when <see cref="Set"/> tidies the file: the change-email link's lifetime.</summary>
     public static readonly TimeSpan KeepFor = TimeSpan.FromHours(24);
 
-    private sealed record Entry(string Email, DateTimeOffset Asked);
+    private sealed record Entry(string Email, DateTimeOffset Asked, string TokenHash);
 
     private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
     private readonly Lock _gate = new();
 
-    /// <summary>Records <paramref name="normalEmail"/> as the address <paramref name="principal"/> asked for now, replacing an earlier one.</summary>
-    public void Set(Guid principal, string normalEmail)
+    /// <summary>
+    /// Records <paramref name="normalEmail"/> as the address <paramref name="principal"/> asked for now, sent with
+    /// <paramref name="token"/> (only its hash is kept), replacing an earlier one.
+    /// </summary>
+    public void Set(Guid principal, string normalEmail, string token)
     {
         lock (_gate)
         {
             var (waiting, damaged) = Read();
             var cutoff = time.GetUtcNow() - KeepFor;
             foreach (var old in waiting.Where(p => p.Value.Asked < cutoff).Select(p => p.Key).ToList()) waiting.Remove(old);
-            waiting[principal] = new Entry(normalEmail, time.GetUtcNow());
+            waiting[principal] = new Entry(normalEmail, time.GetUtcNow(), EmailTokens.HashOf(token));
             Write(waiting, damaged);
         }
     }
 
-    /// <summary>The address <paramref name="principal"/> is waiting for, or null when none or it was asked more than <paramref name="maxAge"/> ago.</summary>
-    public string? Get(Guid principal, TimeSpan maxAge)
+    /// <summary>
+    /// The address <paramref name="principal"/> is waiting for, or null when none, when it was asked more than
+    /// <paramref name="maxAge"/> ago, or when <paramref name="token"/> isn't the link sent for it.
+    /// </summary>
+    public string? Get(Guid principal, string? token, TimeSpan maxAge)
     {
+        if (string.IsNullOrEmpty(token)) return null;
+        var hash = EmailTokens.HashOf(token);
         lock (_gate)
-            return Read().Waiting.TryGetValue(principal, out var e) && e.Asked >= time.GetUtcNow() - maxAge ? e.Email : null;
+            return Read().Waiting.TryGetValue(principal, out var e) && e.Asked >= time.GetUtcNow() - maxAge
+                && CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(e.TokenHash), Encoding.ASCII.GetBytes(hash)) ? e.Email : null;
     }
 
     public void Remove(Guid principal)
