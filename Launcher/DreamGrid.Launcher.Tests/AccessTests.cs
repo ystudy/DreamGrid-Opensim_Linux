@@ -291,6 +291,8 @@ public sealed class AccessTests
             // Password recovery for everyone: one reply whatever was typed, and the reset page needs the emailed link.
             // Sign-up's email link (does anything only with a live link) and How to connect (the login address, not a secret).
             "page guest/confirm",
+            // The change-email link (does anything only with a live link; opened from the email, often on another device).
+            "page guest/confirm-email",
             "page guest/connect",
             "page guest/forgot-password",
             "page guest/reset-password",
