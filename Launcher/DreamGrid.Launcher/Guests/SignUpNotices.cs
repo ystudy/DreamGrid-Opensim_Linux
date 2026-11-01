@@ -15,7 +15,8 @@ namespace DreamGrid.Launcher.Guests;
 /// email. Each staff member for whom <see cref="ApprovalRules.CanApprove"/> holds, with an address and not opted out
 /// (<see cref="ApprovalNotices"/>), gets <see cref="EmailTemplates.SignUpsWaiting"/>: the count and names of everyone waiting, never
 /// an applicant's address, linking the owner and admins to the dashboard and supervisors to the sign-ups list. A database that
-/// doesn't answer is tried again on the next pass.
+/// doesn't answer is tried again on the next pass. The gap counts from when the pass started (<c>startedAt</c>), so an hourly pass
+/// that takes a moment never skips the next hour.
 /// </summary>
 public sealed class SignUpNotices(Func<LauncherSettings> settings, SignUpBoard board, ApprovalNotices notices, IStaffDirectory directory,
     IRobustClient robust, EmailSender sender, TimeProvider time, ILogger<SignUpNotices> log)
@@ -23,7 +24,7 @@ public sealed class SignUpNotices(Func<LauncherSettings> settings, SignUpBoard b
     public static readonly TimeSpan MinGap = TimeSpan.FromHours(1);
     public const string ListPath = "/people/sign-ups";
 
-    public async Task RunAsync(CancellationToken ct)
+    public async Task RunAsync(CancellationToken ct, DateTimeOffset? startedAt = null)
     {
         if (!sender.IsReady) return;
         if (notices.LastSent is { } last && time.GetUtcNow() - last < MinGap) return;
@@ -57,6 +58,6 @@ public sealed class SignUpNotices(Func<LauncherSettings> settings, SignUpBoard b
             sender.Queue(EmailTemplates.SignUpsWaiting, account.Email.Trim(), $"{account.FirstName} {account.LastName}",
                 new Dictionary<string, string> { ["Count"] = waiting.Count.ToString(), ["Names"] = names, ["Link"] = link });
         }
-        notices.Sent(waiting[^1].Made);
+        notices.Sent(startedAt ?? time.GetUtcNow(), waiting[^1].Made);
     }
 }

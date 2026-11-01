@@ -8,7 +8,7 @@ namespace DreamGrid.Launcher.Core.Guests;
 /// written atomically); PrincipalIDs and times only. A missing or damaged file reads as nobody opted out and nothing sent. Safe to call
 /// from any thread.
 /// </summary>
-public sealed class ApprovalNotices(string file, TimeProvider time)
+public sealed class ApprovalNotices(string file)
 {
     private sealed record State(List<Guid> OptedOut, DateTimeOffset? LastSent, DateTimeOffset NewestNoticed);
 
@@ -44,10 +44,10 @@ public sealed class ApprovalNotices(string file, TimeProvider time)
         get { lock (_gate) return Read().NewestNoticed; }
     }
 
-    /// <summary>The email went out now, covering sign-ups made up to <paramref name="newestMade"/>.</summary>
-    public void Sent(DateTimeOffset newestMade)
+    /// <summary>The email went out on the pass that started <paramref name="at"/>, covering sign-ups made up to <paramref name="newestMade"/>.</summary>
+    public void Sent(DateTimeOffset at, DateTimeOffset newestMade)
     {
-        lock (_gate) Write(Read() with { LastSent = time.GetUtcNow(), NewestNoticed = newestMade });
+        lock (_gate) Write(Read() with { LastSent = at, NewestNoticed = newestMade });
     }
 
     private State Read()

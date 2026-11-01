@@ -16,7 +16,7 @@ namespace DreamGrid.Launcher.Guests;
 /// is gone or no longer at level −1 is just taken off the list. A database or Robust that doesn't answer leaves the list as it was
 /// for the next run. Each deletion is audited as done by DreamGrid.
 /// </summary>
-public sealed class SignUpCleanup(SignUpBoard pending, IRobustClient robust, IAccountRemover remover, SignUpNotices notices, AuditLog audit, TimeProvider time,
+public sealed class SignUpCleanup(SignUpBoard pending, IRobustClient robust, IAccountRemover remover, SignUpNotices notices, SignUpLock gate, AuditLog audit, TimeProvider time,
     ILogger<SignUpCleanup> log) : BackgroundService
 {
     public static readonly TimeSpan Period = TimeSpan.FromHours(1);
@@ -53,10 +53,14 @@ public sealed class SignUpCleanup(SignUpBoard pending, IRobustClient robust, IAc
 
     private async Task PassAsync(CancellationToken ct)
     {
+        var started = time.GetUtcNow();
         foreach (var principal in pending.ToDelete(SignUps.LinkLifetime).Select(e => e.Principal))
         {
+            // Under the sign-up lock, and checked again inside it: an approval or a link click may have let the person in meanwhile.
+            await gate.Gate.WaitAsync(ct);
             try
             {
+                if (pending.Get(principal) is not { } now || !(now.Waiting || now.State == SignUpState.Unlisted)) continue;
                 var account = await robust.FindAccountByIdAsync(principal, ct);
                 if (account is { UserLevel: -1 })
                 {
@@ -70,13 +74,16 @@ public sealed class SignUpCleanup(SignUpBoard pending, IRobustClient robust, IAc
             {
                 log.LogWarning("Sign-up clean-up: {Principal} is kept for the next run: {Message}", principal, e.InnerException?.Message ?? e.Message);
             }
+            finally { gate.Gate.Release(); }
         }
 
         // Waiting entries whose account is gone or was changed outside this flow leave the board; unnamed ones get their name.
         foreach (var entry in pending.Shown().Where(e => e.Waiting))
         {
+            await gate.Gate.WaitAsync(ct);
             try
             {
+                if (pending.Get(entry.Principal) is not { Waiting: true }) continue;
                 var account = await robust.FindAccountByIdAsync(entry.Principal, ct);
                 if (account is not { UserLevel: -1 }) pending.Remove(entry.Principal);
                 else if (entry.Name.Length == 0) pending.SetName(entry.Principal, $"{account.FirstName} {account.LastName}");
@@ -85,10 +92,11 @@ public sealed class SignUpCleanup(SignUpBoard pending, IRobustClient robust, IAc
             {
                 log.LogWarning("Sign-up clean-up: {Principal} is checked again next run: {Message}", entry.Principal, e.InnerException?.Message ?? e.Message);
             }
+            finally { gate.Gate.Release(); }
         }
 
         pending.PruneFinished();
-        await notices.RunAsync(ct);
+        await notices.RunAsync(ct, started);
     }
 
     private static bool IsDown(Exception e, CancellationToken ct) =>

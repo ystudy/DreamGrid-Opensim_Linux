@@ -148,6 +148,49 @@ public sealed class SignUpApprovalsTests
 
         Assert.Equal(ConfirmResult.Confirmed, result);
         Assert.Equal(0, account!.UserLevel);
+        // An unlisted entry never shows on the board, not even once it is confirmed.
+        Assert.Empty(rig.Pending.Shown());
+        Assert.False(rig.Pending.Contains(bea));
+    }
+
+    [Fact]
+    public async Task Approve_refused_when_address_now_used_by_another_account()
+    {
+        var (rig, bea) = await SignedUpAsync();
+        await using var _ = rig;
+        await SignUpsTests.SentAsync(rig, 1);
+        rig.F.Robust.Add("Cal", "Other", 0, "pass-word1", email: "Bea@Example.com ");
+
+        var r = await Approvals(rig).ApproveAsync(bea, Staff, StaffRole.Owner, Caller, Ct);
+
+        Assert.Equal(ApprovalResult.EmailTaken, r.Result);
+        Assert.Equal(SignUpApprovals.EmailTakenText, r.Message);
+        Assert.Equal(-1, Level(rig, bea));
+        Assert.Equal(SignUpState.WaitingForEmail, rig.Pending.Get(bea)!.State);
+    }
+
+    [Fact]
+    public async Task Approve_audited_even_when_board_write_fails()
+    {
+        var (rig, bea) = await SignedUpAsync(email: false, approval: true);
+        await using var _ = rig;
+        var file = Path.Combine(rig.F.Paths.Guests, "pending-signups.json");
+        FileStream? held = null;
+        var inner = rig.F.Grid.OnSetUserLevel;
+        // The board file is locked (antivirus, backup) between the level change and the board write.
+        rig.F.Grid.OnSetUserLevel = (first, last, level) =>
+        {
+            held ??= new FileStream(file, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            return inner?.Invoke(first, last, level);
+        };
+
+        ApprovalOutcome r;
+        try { r = await Approvals(rig).ApproveAsync(bea, Staff, StaffRole.Owner, Caller, Ct); }
+        finally { held?.Dispose(); }
+
+        Assert.Equal(ApprovalResult.Done, r.Result);
+        Assert.Equal(0, Level(rig, bea));
+        Assert.Contains("signup-approved", Actions(rig));
     }
 
     // Approve.

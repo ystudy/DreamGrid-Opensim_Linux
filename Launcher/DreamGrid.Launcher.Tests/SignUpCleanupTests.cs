@@ -34,6 +34,30 @@ public sealed class SignUpCleanupTests
     }
 
     [Fact]
+    public async Task Waits_for_an_approval_in_progress_and_keeps_the_account()
+    {
+        var (rig, bea) = await PendingAsync();
+        await using var _ = rig;
+        var gate = rig.F.Services.GetRequiredService<SignUpLock>().Gate;
+
+        // An approval holds the lock: the clean-up must wait for it, then see the account is no longer waiting. The lock is
+        // taken before the clock moves, since moving it also wakes the host's own clean-up.
+        await gate.WaitAsync(Ct);
+        rig.F.Time.Advance(TimeSpan.FromDays(30) + TimeSpan.FromHours(1));
+        var pass = Cleanup(rig).RunOnceAsync(Ct);
+        await Task.Delay(300, Ct);
+        Assert.Contains(rig.F.Robust.All, a => a.PrincipalId == bea);
+        rig.F.Robust.SetLevel("Bea", "Example", 0);
+        rig.Pending.TryFinish(bea, SignUpState.Approved, "Test Owner");
+        gate.Release();
+        await pass;
+
+        Assert.Contains(rig.F.Robust.All, a => a.PrincipalId == bea);
+        Assert.Equal(SignUpState.Approved, rig.Pending.Get(bea)!.State);
+        Assert.Empty(rig.F.Remover.Deleted);
+    }
+
+    [Fact]
     public async Task Keeps_waiting_at_29_days()
     {
         var (rig, bea) = await PendingAsync();

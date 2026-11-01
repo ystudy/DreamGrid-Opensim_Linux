@@ -182,7 +182,9 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
                 if (await robust.FindAccountByIdAsync(principal, ct) is not { } found) return (ConfirmResult.Bad, null);
                 account = found.UserLevel == 0 ? found : await grid.SetUserLevelAsync(found.FirstName, found.LastName, 0, ct);
                 // Off the waiting list before the link is spent: a confirmed resident left on it could later be deleted as unconfirmed.
-                pending.TryFinish(principal, SignUpState.SelfApproved, null);
+                // An unlisted one (carried over from the old list) leaves the board altogether: it was never shown, and isn't now.
+                if (entry.State == SignUpState.Unlisted) pending.Remove(principal);
+                else pending.TryFinish(principal, SignUpState.SelfApproved, null);
             }
             catch (Exception e) when (IsDown(e, ct) || e is LevelNotConfirmedException or UnauthorizedAccessException)
             {

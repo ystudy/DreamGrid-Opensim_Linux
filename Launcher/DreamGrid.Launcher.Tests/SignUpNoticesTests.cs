@@ -70,6 +70,22 @@ public sealed class SignUpNoticesTests
     }
 
     [Fact]
+    public async Task Gap_counts_from_the_pass_start()
+    {
+        await using var rig = await WaitingAsync(SignUpApprovers.Owner);
+        // A pass that started two minutes ago and took that long to reach the email.
+        await Notices(rig).RunAsync(Ct, startedAt: rig.F.Time.GetUtcNow() - TimeSpan.FromMinutes(2));
+        await StaffMailAsync(rig, 1);
+
+        // The next hourly pass starts 59 minutes after this one finished: a full hour after the last one started.
+        rig.F.Time.Advance(TimeSpan.FromMinutes(59));
+        await rig.SignUps.SubmitAsync(SignUpsTests.Form(first: "Cy", email: "cy@example.com"), null, Ct);
+        await Notices(rig).RunAsync(Ct);
+
+        Assert.Equal(2, (await StaffMailAsync(rig, 2)).Count);
+    }
+
+    [Fact]
     public async Task No_email_without_new_waiting()
     {
         await using var rig = await WaitingAsync(SignUpApprovers.Owner);

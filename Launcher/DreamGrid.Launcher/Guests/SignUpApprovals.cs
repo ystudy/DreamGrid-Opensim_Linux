@@ -23,7 +23,7 @@ public sealed class SignUpLock
 }
 
 /// <summary>How an approve or deny went.</summary>
-public enum ApprovalResult { Done, AlreadyDone, NotAllowed, NotFound, Busy }
+public enum ApprovalResult { Done, AlreadyDone, NotAllowed, NotFound, EmailTaken, Busy }
 
 /// <summary>An approve or deny's result; <c>Message</c> is the sentence to show staff, when there is one.</summary>
 public sealed record ApprovalOutcome(ApprovalResult Result, string? Message = null);
@@ -38,15 +38,32 @@ public sealed record ApprovalOutcome(ApprovalResult Result, string? Message = nu
 /// <c>signup-denied</c>); the note never is.
 /// </summary>
 public sealed class SignUpApprovals(Func<LauncherSettings> settings, IGridController grid, IRobustClient robust, IAccountRemover remover,
-    SignUpBoard board, SignUpLock gate, EmailSender sender, AuditLog audit, ILogger<SignUpApprovals> log)
+    IStaffDirectory directory, SignUpBoard board, SignUpLock gate, EmailSender sender, AuditLog audit, ILogger<SignUpApprovals> log)
 {
     public const int NoteLimit = 500;
     public const string ApproveBusy = "Couldn't approve right now. Try again in a few minutes.";
     public const string DenyBusy = "Couldn't deny right now. Try again in a few minutes.";
+    public const string EmailTakenText = "Another account uses this email address now. Deny this sign-up, or ask the person to sign up with another address.";
 
     public Task<ApprovalOutcome> ApproveAsync(Guid principal, string staffName, StaffRole role, IPAddress? ip, CancellationToken ct) =>
         ActAsync(principal, staffName, role, ip, ApproveBusy, ct, async account =>
         {
+            // The address may have gone to another account since the sign-up (a resident changed theirs): approving would give
+            // two accounts one address, and the newcomer could receive the other's password resets.
+            if (account.Email.Trim().Length > 0)
+            {
+                try
+                {
+                    var holders = await directory.ListByEmailAsync(SignUpRules.NormalEmail(account.Email), ct);
+                    if (holders.Any(a => a.PrincipalId != principal && !board.Contains(a.PrincipalId)))
+                        return new(ApprovalResult.EmailTaken, EmailTakenText);
+                }
+                catch (StaffDirectoryUnavailableException e)
+                {
+                    log.LogWarning("Sign-up approval: the address of {Principal} couldn't be checked: {Message}", principal, e.InnerException?.Message ?? e.Message);
+                    return new(ApprovalResult.Busy, ApproveBusy);
+                }
+            }
             try
             {
                 await grid.SetUserLevelAsync(account.FirstName, account.LastName, 0, CancellationToken.None);
@@ -56,7 +73,9 @@ public sealed class SignUpApprovals(Func<LauncherSettings> settings, IGridContro
                 log.LogWarning("Sign-up approval: the level of {Principal} couldn't be raised: {Message}", principal, e.InnerException?.Message ?? e.Message);
                 return new(ApprovalResult.Busy, ApproveBusy);
             }
-            board.TryFinish(principal, SignUpState.Approved, staffName);
+            // Audited as soon as Robust took it, so a board that can't be written never hides who let someone in.
+            audit.Write(new AuditEntry(staffName, null, role.AuditName(), ip?.ToString(), "signup-approved", Full(account), "ok"));
+            Finish(principal, SignUpState.Approved, staffName);
             var s = settings();
             if (sender.IsReady && account.Email.Trim().Length > 0)
             {
@@ -64,7 +83,6 @@ public sealed class SignUpApprovals(Func<LauncherSettings> settings, IGridContro
                 sender.Queue(EmailTemplates.AccountApproved, SignUpRules.NormalEmail(account.Email), full,
                     new Dictionary<string, string> { ["AvatarName"] = full, ["Link"] = $"{Site(s)}/guest/sign-in" });
             }
-            audit.Write(new AuditEntry(staffName, null, role.AuditName(), ip?.ToString(), "signup-approved", Full(account), "ok"));
             return new(ApprovalResult.Done);
         });
 
@@ -80,7 +98,8 @@ public sealed class SignUpApprovals(Func<LauncherSettings> settings, IGridContro
                 log.LogWarning("Sign-up approval: {Principal} couldn't be deleted: {Message}", principal, e.InnerException?.Message ?? e.Message);
                 return new(ApprovalResult.Busy, DenyBusy);
             }
-            board.TryFinish(principal, SignUpState.Denied, staffName);
+            audit.Write(new AuditEntry(staffName, null, role.AuditName(), ip?.ToString(), "signup-denied", Full(account), "ok"));
+            Finish(principal, SignUpState.Denied, staffName);
             if (sender.IsReady && account.Email.Trim().Length > 0)
             {
                 var words = (note ?? "").Trim();
@@ -89,9 +108,18 @@ public sealed class SignUpApprovals(Func<LauncherSettings> settings, IGridContro
                 sender.Queue(EmailTemplates.SignUpDenied, SignUpRules.NormalEmail(account.Email), full,
                     new Dictionary<string, string> { ["AvatarName"] = full, ["Note"] = words });
             }
-            audit.Write(new AuditEntry(staffName, null, role.AuditName(), ip?.ToString(), "signup-denied", Full(account), "ok"));
             return new(ApprovalResult.Done);
         });
+
+    /// <summary>Records the outcome on the board; the change in Robust already happened, so a board that can't be written is only logged.</summary>
+    private void Finish(Guid principal, SignUpState to, string staffName)
+    {
+        try { board.TryFinish(principal, to, staffName); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            log.LogWarning("Sign-up approval: the board couldn't record {Principal} as {State}: {Message}", principal, to, e.Message);
+        }
+    }
 
     private async Task<ApprovalOutcome> ActAsync(Guid principal, string staffName, StaffRole role, IPAddress? ip, string busy, CancellationToken ct,
         Func<RobustAccount, Task<ApprovalOutcome>> act)
