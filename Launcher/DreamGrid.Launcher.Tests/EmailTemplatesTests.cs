@@ -12,7 +12,8 @@ public sealed class EmailTemplatesTests
     [Fact]
     public void Defaults_contain_their_required_words()
     {
-        Assert.Equal(["test", "confirm-email", "reset-password", "account-approved", "password-changed", "already-have-account"], EmailTemplates.All);
+        Assert.Equal(["test", "confirm-email", "reset-password", "account-approved", "password-changed", "already-have-account",
+            "confirm-new-email", "email-change-notice"], EmailTemplates.All);
         foreach (var id in EmailTemplates.All)
         {
             var d = EmailTemplates.Default(id);
@@ -116,5 +117,27 @@ public sealed class EmailTemplatesTests
         Assert.DoesNotContain("{Link}", d.Body);
         Assert.Contains("{GridName}", d.Subject);
         Assert.Contains("{AvatarName}", d.Body);
+    }
+
+    [Fact]
+    public void Notice_template_never_has_new_address_word()
+    {
+        Assert.Equal(["{GridName}", "{AvatarName}", "{Link}"], EmailTemplates.Words(EmailTemplates.EmailChangeNotice));
+        Assert.Equal(["{Link}"], EmailTemplates.Required(EmailTemplates.EmailChangeNotice));
+    }
+
+    [Fact]
+    public void Confirm_new_email_renders_link_and_expiry()
+    {
+        var d = EmailTemplates.Default(EmailTemplates.ConfirmNewEmail);
+        Assert.Equal(["{Link}", "{ExpiresIn}"], EmailTemplates.Required(EmailTemplates.ConfirmNewEmail));
+        var mail = EmailTemplates.Render(EmailTemplates.ConfirmNewEmail, d, new Dictionary<string, string>
+        {
+            ["GridName"] = "Dream", ["AvatarName"] = "Ann Smith", ["Link"] = "http://x/guest/confirm-email?token=abc", ["ExpiresIn"] = "24 hours",
+        });
+        Assert.Equal("Confirm your new email address", mail.Subject);
+        Assert.Contains("http://x/guest/confirm-email?token=abc", mail.Text);
+        Assert.Contains("24 hours", mail.Text);
+        Assert.Contains("Ann Smith", mail.Text);
     }
 }
