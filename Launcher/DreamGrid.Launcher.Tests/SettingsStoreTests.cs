@@ -129,6 +129,18 @@ public class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public void Sign_up_switch_round_trips_and_a_missing_value_reads_null()
+    {
+        var store = new SettingsStore(Path.Combine(NewDir(), "settings.json"));
+        var s = store.LoadOrCreate();
+        Assert.Null(s.SignUp);
+
+        store.Save(s with { SignUp = new SignUpSettings(Open: true) });
+
+        Assert.Equal(new SignUpSettings(Open: true), store.LoadOrCreate().SignUp);
+    }
+
+    [Fact]
     public async Task Concurrent_reads_never_make_a_save_fail()
     {
         var store = new SettingsStore(Path.Combine(NewDir(), "settings.json"));
