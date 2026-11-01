@@ -28,7 +28,6 @@ public sealed class BotsModel(IGridController grid, Func<LauncherSettings> setti
     [BindProperty] public bool ProofOfWork { get; set; }
     [BindProperty] public int Difficulty { get; set; }
     [BindProperty] public bool ImageCaptcha { get; set; }
-    [BindProperty] public bool AdminApproval { get; set; }
 
     [TempData] public string? Notice { get; set; }
 
@@ -44,7 +43,7 @@ public sealed class BotsModel(IGridController grid, Func<LauncherSettings> setti
 
     public IActionResult OnPostSave()
     {
-        var wanted = new BotSettings(Honeypot, RateLimit, PerHourPerIp, ProofOfWork, Difficulty, ImageCaptcha, AdminApproval);
+        var wanted = new BotSettings(Honeypot, RateLimit, PerHourPerIp, ProofOfWork, Difficulty, ImageCaptcha);
         var check = SettingsValidator.Bots(wanted);
         if (!check.Ok)
         {
@@ -63,8 +62,8 @@ public sealed class BotsModel(IGridController grid, Func<LauncherSettings> setti
             Layer(BotLayers.ImageCaptcha, before.ImageCaptcha, wanted.ImageCaptcha);
             if (before.PerHourPerIp != wanted.PerHourPerIp) changes.Add(("bot-settings", $"rate-limit {wanted.PerHourPerIp} per hour"));
             if (before.Difficulty != wanted.Difficulty) changes.Add(("bot-settings", $"difficulty {wanted.Difficulty}"));
-            if (before.AdminApproval != wanted.AdminApproval) changes.Add(("bot-settings", "admin-approval " + (wanted.AdminApproval ? "on" : "off")));
-            return changes.Count == 0 ? s : s with { Bots = wanted };
+            // Admin approval isn't on the form until approval is built (worklist 2.2): the stored value is kept as it is.
+            return changes.Count == 0 ? s : s with { Bots = wanted with { AdminApproval = before.AdminApproval } };
         }, writeConfig: false);
 
         foreach (var (action, target) in changes)
@@ -89,8 +88,8 @@ public sealed class BotsModel(IGridController grid, Func<LauncherSettings> setti
     private void Fill()
     {
         var b = settings().Bots;
-        (Honeypot, RateLimit, PerHourPerIp, ProofOfWork, Difficulty, ImageCaptcha, AdminApproval) =
-            (b.Honeypot, b.RateLimit, b.PerHourPerIp, b.ProofOfWork, b.Difficulty, b.ImageCaptcha, b.AdminApproval);
+        (Honeypot, RateLimit, PerHourPerIp, ProofOfWork, Difficulty, ImageCaptcha) =
+            (b.Honeypot, b.RateLimit, b.PerHourPerIp, b.ProofOfWork, b.Difficulty, b.ImageCaptcha);
     }
 
     private void Write(string action, string target)

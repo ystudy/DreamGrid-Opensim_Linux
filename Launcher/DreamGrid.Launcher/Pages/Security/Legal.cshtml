@@ -14,6 +14,24 @@
 <p>Guests see these pages on your website. You write them: DreamGrid supplies no wording. Use Markdown. Leave a page empty to remove it.</p>
 <p id="gate-state" class="fw-semibold">@Model.GateText</p>
 
+<form id="sign-up-switch" method="post" action="/security/legal?handler=SignUp" asp-antiforgery="true" class="mb-3">
+    <div class="form-check form-switch">
+        <input class="form-check-input" type="checkbox" role="switch" id="SignUpOpen" name="SignUpOpen" value="true"
+               checked="@Model.SignUpOpen" disabled="@(!Model.GateOpen)">
+        <label class="form-check-label" for="SignUpOpen">Let people sign up</label>
+    </div>
+    <p class="hint form-text">New residents make their own avatar on the sign-up page.@(Model.EmailReady ? " They confirm it with a link sent by email." : "")</p>
+    <button type="submit" class="btn btn-outline-primary btn-sm" disabled="@(!Model.GateOpen && !Model.SignUpOpen)">Save this</button>
+</form>
+@if (Model.SignUpOpen && Model.BotsAllOff)
+{
+    <div id="sign-up-warn-bots" class="alert alert-warning" role="alert">Every protection is off. Bots can create accounts freely.</div>
+}
+@if (Model.SignUpOpen && !Model.EmailReady)
+{
+    <div id="sign-up-warn-email" class="alert alert-warning" role="alert">Email isn't set up, so anyone can sign up without proving an email address.</div>
+}
+
 <div class="row g-4">
 <div class="col-lg-8">
 <form id="legal-texts" method="post" action="/security/legal" asp-antiforgery="true">

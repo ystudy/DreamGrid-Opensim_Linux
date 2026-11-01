@@ -2,6 +2,7 @@ using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.Guests;
 using DreamGrid.Launcher.Core.Logs;
 using DreamGrid.Launcher.Core.Settings;
+using DreamGrid.Launcher.Email;
 using DreamGrid.Launcher.Security;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -21,8 +22,19 @@ namespace DreamGrid.Launcher.Pages.Security;
 /// </list>
 /// Sign-up opens only when the three required pages are written and the tick is on (<see cref="LegalPages.SignUpGateOpen"/>).
 /// </summary>
-public sealed class LegalModel(IGridController grid, Func<LauncherSettings> settings, AuditLog audit, TimeProvider time) : PageModel
+public sealed class LegalModel(IGridController grid, Func<LauncherSettings> settings, AuditLog audit, TimeProvider time, EmailSender email) : PageModel
 {
+    /// <summary>The owner's sign-up switch as shown or posted (an unchecked box posts nothing, which reads as off).</summary>
+    [BindProperty] public bool SignUpOpen { get; set; }
+
+    /// <summary>Whether the legal pages let sign-up open (the switch can't be turned on otherwise).</summary>
+    public bool GateOpen { get; private set; }
+
+    public bool EmailReady { get; private set; }
+
+    /// <summary>Every bot-protection layer is off.</summary>
+    public bool BotsAllOff { get; private set; }
+
     /// <summary>The texts as shown or posted, by page id.</summary>
     [BindProperty] public Dictionary<string, string?> Texts { get; set; } = [];
 
@@ -108,6 +120,28 @@ public sealed class LegalModel(IGridController grid, Func<LauncherSettings> sett
         return Redirect("/security/legal");
     }
 
+    /// <summary>
+    /// The sign-up switch, audited as <c>signup-switch</c> (on or off). It can be turned on only while the legal pages are written
+    /// and ticked (<see cref="LegalPages.SignUpGateOpen"/>); turning it off always works.
+    /// </summary>
+    public IActionResult OnPostSignUp()
+    {
+        var changed = false;
+        var refused = false;
+        grid.UpdateSettings(s =>
+        {
+            refused = SignUpOpen && !LegalPages.SignUpGateOpen(s);
+            var wanted = SignUpOpen && !refused;
+            changed = (s.SignUp?.Open == true) != wanted;
+            return changed ? s with { SignUp = new SignUpSettings(wanted) } : s;
+        }, writeConfig: false);
+        if (changed)
+            Write("signup-switch", SignUpOpen && !refused ? "on" : "off", "ok");
+        Notice = refused ? "Sign-up can't be opened yet. Write the pages and tick the box first."
+            : SignUpOpen ? "Saved. People can sign up now." : "Saved. Sign-up is closed.";
+        return Redirect("/security/legal");
+    }
+
     private void Fill()
     {
         var s = settings();
@@ -120,7 +154,11 @@ public sealed class LegalModel(IGridController grid, Func<LauncherSettings> sett
     {
         var s = settings();
         Responsible = s.Legal.OperatorResponsible;
-        if (LegalPages.SignUpGateOpen(s))
+        GateOpen = LegalPages.SignUpGateOpen(s);
+        SignUpOpen = SignUpRules.IsOpen(s);
+        EmailReady = email.IsReady;
+        BotsAllOff = s.Bots is { Honeypot: false, RateLimit: false, ProofOfWork: false, ImageCaptcha: false };
+        if (GateOpen)
         {
             GateText = "Sign-ups can be opened";
             return;

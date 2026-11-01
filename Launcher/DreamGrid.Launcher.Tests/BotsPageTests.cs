@@ -203,7 +203,7 @@ public sealed class BotsPageTests
 
         Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
         Assert.Equal("/security/bots", r.Headers.Location?.OriginalString);
-        Assert.Equal(new BotSettings(false, true, 8, true, 2000, true, true), f.Store.LoadOrCreate().Bots);
+        Assert.Equal(new BotSettings(false, true, 8, true, 2000, true, false), f.Store.LoadOrCreate().Bots);
         Assert.Equal([false], f.Grid.UpdateWriteConfig);
 
         var html = await owner.GetStringAsync("/security/bots", Ct);
@@ -214,8 +214,8 @@ public sealed class BotsPageTests
         Assert.Equal("8", page.QuerySelector("#PerHourPerIp")!.GetAttribute("value"));
         Assert.Equal("2000", page.QuerySelector("#Difficulty")!.GetAttribute("value"));
         Assert.NotNull(page.QuerySelector("#ImageCaptcha:checked"));
-        Assert.NotNull(page.QuerySelector("#AdminApproval:checked"));
-        Assert.Contains("Used once sign-ups exist.", page.Body!.TextContent);
+        // Admin approval isn't built yet: the switch is hidden and a posted value is ignored.
+        Assert.Null(page.QuerySelector("#AdminApproval"));
         // The challenge now has the new difficulty.
         using var challenge = JsonDocument.Parse(await f.CreateClient().GetStringAsync("/api/bots/challenge", Ct));
         Assert.Equal(2000, challenge.RootElement.GetProperty("maxnumber").GetInt32());
@@ -257,15 +257,28 @@ public sealed class BotsPageTests
     }
 
     [Fact]
-    public async Task A_changed_number_or_admin_approval_is_audited_as_a_setting()
+    public async Task A_changed_number_is_audited_as_a_setting()
     {
         await using var f = Factory(OwnerPlan.Local);
         var owner = await SignedInAsync(f);
 
         using var r = await SaveAsync(owner, honeypot: true, rateLimit: true, perHour: 7, proof: true, difficulty: 3000, approval: true);
 
-        Assert.Equal(["bot-settings:rate-limit 7 per hour", "bot-settings:difficulty 3000", "bot-settings:admin-approval on"],
+        Assert.Equal(["bot-settings:rate-limit 7 per hour", "bot-settings:difficulty 3000"],
             BotAudit(f).Select(e => e.GetProperty("action").GetString() + ":" + e.GetProperty("target").GetString()));
+    }
+
+    [Fact]
+    public async Task Bots_post_keeps_stored_admin_approval()
+    {
+        await using var f = Factory(OwnerPlan.Local);
+        f.Store.Save(f.Store.LoadOrCreate() with { Bots = new BotSettings(AdminApproval: true) });
+        var owner = await SignedInAsync(f);
+
+        using var r = await SaveAsync(owner, honeypot: true, rateLimit: true, proof: true);
+
+        Assert.True(f.Store.LoadOrCreate().Bots.AdminApproval);
+        Assert.Null(new HtmlParser().ParseDocument(await owner.GetStringAsync("/security/bots", Ct)).QuerySelector("#AdminApproval"));
     }
 
     [Theory]
@@ -293,9 +306,6 @@ public sealed class BotsPageTests
 
         using var off = await SaveAsync(owner);
 
-        Assert.Contains(AllOffWarning, TextOf(await owner.GetStringAsync("/security/bots", Ct)));
-        // Admin approval is not a protection layer: it does not lift the warning.
-        using var approval = await SaveAsync(owner, approval: true);
         Assert.Contains(AllOffWarning, TextOf(await owner.GetStringAsync("/security/bots", Ct)));
         using var one = await SaveAsync(owner, image: true);
         Assert.DoesNotContain(AllOffWarning, TextOf(await owner.GetStringAsync("/security/bots", Ct)));
