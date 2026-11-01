@@ -276,6 +276,8 @@ public sealed class AccessTests
             // The port-8001 contract (the bare "/" is split from the dashboard by LegacyRootPolicy; SetupGate guards it).
             "route /",
             "route /dreamgrid/regionready",
+            // Robust's login asks about the Terms; loopback only, like regionready.
+            "route /dreamgrid/terms",
             // Names and states only; avatar names only for an admin.
             "route /api/status",
             // A proof-of-work challenge for the sign-up form: made for anyone, and 404 where there is no guest side.

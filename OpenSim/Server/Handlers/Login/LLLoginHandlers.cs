@@ -130,10 +130,15 @@ namespace OpenSim.Server.Handlers.Login
                     if (requestData.Contains("id0") && requestData["id0"] != null)
                         id0 = requestData["id0"].ToString();
 
+                    // DreamGrid: the viewer agreed to the grid's Terms (an XML-RPC boolean, read as True or 1).
+                    bool agreedToTerms = requestData.Contains("agree_to_tos") && requestData["agree_to_tos"] != null &&
+                        requestData["agree_to_tos"].ToString() is string agreed &&
+                        (agreed.Equals("true", StringComparison.OrdinalIgnoreCase) || agreed == "1");
+
                     //m_log.InfoFormat("[LOGIN]: XMLRPC Login Requested for {0} {1}, starting in {2}, using {3}", first, last, startLocation, clientVersion);
 
                     LoginResponse reply = null;
-                    reply = m_LocalService.Login(first, last, passwd, startLocation, scopeID, clientVersion, channel, mac, id0, remoteClient);
+                    reply = m_LocalService.Login(first, last, passwd, startLocation, scopeID, clientVersion, channel, mac, id0, remoteClient, agreedToTerms);
 
                     XmlRpcResponse response = new XmlRpcResponse();
                     response.Value = reply.ToHashtable();
@@ -221,7 +226,8 @@ namespace OpenSim.Server.Handlers.Login
                     LoginResponse reply = null;
                     reply = m_LocalService.Login(first, last, passwd, startLocation, scopeID,
                         map["version"].AsString(), map["channel"].AsString(), map["mac"].AsString(),
-                        map["id0"].AsString(), remoteClient);
+                        map["id0"].AsString(), remoteClient,
+                        map.TryGetValue("agree_to_tos", out OSD oagreed) && oagreed.AsBoolean());
                     return reply.ToOSDMap();
                 }
             }

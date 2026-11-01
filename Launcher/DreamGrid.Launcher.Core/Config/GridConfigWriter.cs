@@ -63,6 +63,10 @@ public sealed class GridConfigWriter(LauncherPaths paths)
         {
             robust.Set("GridInfoService", "password", $"http://{host}:{s.WebPort}/guest/forgot-password");
             robust.Set("GridInfoService", "register", $"http://{host}:{s.WebPort}/signup");
+            // The grid's Terms at login (patched LLLoginService): Robust asks the launcher on this machine, and a viewer that
+            // must accept them first is shown the public Terms page in its Terms window.
+            robust.Set("LoginService", "TermsCheckURL", $"http://127.0.0.1:{s.WebPort}/dreamgrid/terms");
+            robust.Set("LoginService", "TermsPageURL", $"http://{host}:{s.WebPort}/terms");
         }
         robust.Set("GridInfoService", "gridname", s.GridName);
         // What a Region Server reads to join this grid.
