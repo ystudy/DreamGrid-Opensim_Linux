@@ -24,7 +24,8 @@ public sealed class SignInModel(IRobustClient robust, LoginThrottle throttle, Au
     SignUpBoard pending, Func<LauncherSettings> settings, ILogger<SignInModel> log) : PageModel
 {
     private const string Generic = "Name or password is wrong.";
-    public const string ConfirmFirst = "Confirm your email first.";
+    public const string ConfirmFirst = "Confirm your email first. Or wait for staff to approve you.";
+    public const string WaitForStaff = "Your account is waiting for approval by the grid's staff.";
 
     [BindProperty] public string? Name { get; set; }
     [BindProperty] public string? Password { get; set; }
@@ -62,9 +63,14 @@ public sealed class SignInModel(IRobustClient robust, LoginThrottle throttle, Au
             account = await robust.FindAccountAsync(name.First, name.Last, ct);
             var rightPassword = account is not null && await robust.AuthenticateAsync(account.PrincipalId, Password ?? "", ct);
             allowed = rightPassword && account!.UserLevel >= 0;
-            // Only someone who knows the password learns that the account waits for its email (a suspended one doesn't).
+            // Only someone who knows the password learns that the account waits for its email or for staff (a suspended one doesn't).
             if (rightPassword && !allowed && pending.Contains(account!.PrincipalId))
             {
+                if (pending.Get(account.PrincipalId)?.State == SignUpState.WaitingForStaff)
+                {
+                    Error = WaitForStaff;
+                    return Page();
+                }
                 Pending = account;
                 Error = ConfirmFirst;
                 return Page();
@@ -90,6 +96,12 @@ public sealed class SignInModel(IRobustClient robust, LoginThrottle throttle, Au
         await GuestSignIn.SignInAsync(HttpContext, account!);
         audit.Write(new AuditEntry($"{account!.FirstName} {account.LastName}", account.PrincipalId, AuthSchemes.GuestRole,
             address?.ToString(), "sign-in", null, "ok"));
+        // The first sign-in after a staff approval says so, once, with the name to log in as.
+        if (pending.Get(account.PrincipalId) is { State: SignUpState.Approved, Greeted: false })
+        {
+            pending.MarkGreeted(account.PrincipalId);
+            return LocalRedirect("/guest/connect?approved=1");
+        }
         return LocalRedirect("/guest");
     }
 

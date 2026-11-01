@@ -4,6 +4,10 @@
     ViewData["Title"] = "How to connect";
 }
 <h1>How to connect to @Model.GridName</h1>
+@if (Model.Approved)
+{
+    <div class="alert alert-success" role="status">You're approved. Log in as @Model.DisplayName.</div>
+}
 <p>The grid's login address:</p>
 <partial name="_LoginAddress" model="Model.LoginUri" />
 <h2>With Firestorm</h2>

@@ -207,7 +207,7 @@ public sealed partial class SignUpsTests
 
         Directory.Delete(file);
         File.WriteAllText(file, saved);
-        Assert.NotNull(await rig.SignUps.ConfirmAsync(token, Caller, Ct));
+        Assert.NotNull((await rig.SignUps.ConfirmAsync(token, Caller, Ct)).Account);
     }
 
     [Fact]
@@ -282,13 +282,13 @@ public sealed partial class SignUpsTests
         await rig.SignUps.SubmitAsync(Form(), Caller, Ct);
         var token = LinkToken(Assert.Single(await SentAsync(rig, 1)).Email);
 
-        var account = await rig.SignUps.ConfirmAsync(token, Caller, Ct);
+        var (_, account) = await rig.SignUps.ConfirmAsync(token, Caller, Ct);
 
         Assert.NotNull(account);
         Assert.Equal(0, account.UserLevel);
         Assert.Equal(0, rig.F.Robust.All.Single(a => a.FirstName == "Bea").UserLevel);
         Assert.False(rig.Pending.Contains(account.PrincipalId));
-        Assert.Null(await rig.SignUps.ConfirmAsync(token, Caller, Ct));
+        Assert.Null((await rig.SignUps.ConfirmAsync(token, Caller, Ct)).Account);
     }
 
     [Fact]
@@ -302,7 +302,7 @@ public sealed partial class SignUpsTests
         await Assert.ThrowsAsync<SignUpBusyException>(() => rig.SignUps.ConfirmAsync(token, Caller, Ct));
 
         rig.F.Grid.SetUserLevelError = null;
-        Assert.NotNull(await rig.SignUps.ConfirmAsync(token, Caller, Ct));
+        Assert.NotNull((await rig.SignUps.ConfirmAsync(token, Caller, Ct)).Account);
     }
 
     [Fact]
@@ -314,7 +314,7 @@ public sealed partial class SignUpsTests
         var bea = rig.F.Robust.All.Single(a => a.FirstName == "Bea");
         rig.Pending.Remove(bea.PrincipalId);
 
-        Assert.Null(await rig.SignUps.ConfirmAsync(token, Caller, Ct));
+        Assert.Null((await rig.SignUps.ConfirmAsync(token, Caller, Ct)).Account);
         Assert.Equal(-1, rig.F.Robust.All.Single(a => a.FirstName == "Bea").UserLevel);
     }
 
@@ -329,8 +329,8 @@ public sealed partial class SignUpsTests
 
         var sent = await SentAsync(rig, 2);
         Assert.Equal(2, sent.Count);
-        Assert.Null(await rig.SignUps.ConfirmAsync(first, Caller, Ct));
-        Assert.NotNull(await rig.SignUps.ConfirmAsync(LinkToken(sent[1].Email), Caller, Ct));
+        Assert.Null((await rig.SignUps.ConfirmAsync(first, Caller, Ct)).Account);
+        Assert.NotNull((await rig.SignUps.ConfirmAsync(LinkToken(sent[1].Email), Caller, Ct)).Account);
     }
 
     [Fact]

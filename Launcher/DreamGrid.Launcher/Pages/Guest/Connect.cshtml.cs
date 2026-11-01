@@ -16,11 +16,15 @@ public sealed class ConnectModel(Func<LauncherSettings> settings) : PageModel
     public string LoginUri { get; private set; } = "";
     public string DisplayName { get; private set; } = "";
 
-    public void OnGet()
+    /// <summary>Arrived from the first sign-in after a staff approval.</summary>
+    public bool Approved { get; private set; }
+
+    public void OnGet(int? approved)
     {
         var s = settings();
         GridName = s.GridName;
         LoginUri = GridEndpoints.LoginUri(s, HostAddress.Effective(s.Hostname));
         DisplayName = GuestSignIn.Read(User) is not null ? User.Identity?.Name ?? "" : "";
+        Approved = approved == 1 && DisplayName.Length > 0;
     }
 }

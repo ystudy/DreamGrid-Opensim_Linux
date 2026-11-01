@@ -14,12 +14,18 @@
 else if (Model.CheckEmail)
 {
     <p id="sign-up-reply" role="status">Check your email. We sent a link to confirm your account. It works once, for 24 hours. Check your spam folder.</p>
+    <p>Can't find the email? Staff can approve you too.</p>
     <form id="resend" method="post" asp-page-handler="Resend">
         <input type="hidden" asp-for="First">
         <input type="hidden" asp-for="Last">
         <button type="submit" class="btn btn-outline-primary">Send it again</button>
     </form>
     <p class="mt-3 mb-0"><a href="/guest/connect">How to connect</a></p>
+}
+else if (Model.WaitingForStaff)
+{
+    <p id="sign-up-reply" role="status">Thanks. The grid's staff will look at your sign-up. Once you're approved, you can sign in here with the name and password you just chose.</p>
+    <p class="mb-0"><a href="/guest/sign-in">Sign in</a> · <a href="/guest/connect">How to connect</a></p>
 }
 else
 {

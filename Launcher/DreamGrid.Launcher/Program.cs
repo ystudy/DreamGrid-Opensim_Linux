@@ -242,7 +242,9 @@ builder.Services.AddSingleton(sp => new SignUpBoard(Path.Combine(paths.Guests, "
     sp.GetRequiredService<ILogger<SignUpBoard>>()));
 builder.Services.AddSingleton(sp => new SignUpLimits(new ResetLimits(sp.GetRequiredService<TimeProvider>(), Path.Combine(paths.Guests, "signup-limits.json"),
     sp.GetRequiredService<ILogger<ResetLimits>>())));
+builder.Services.AddSingleton<SignUpLock>();
 builder.Services.AddSingleton<SignUps>();
+builder.Services.AddSingleton<SignUpApprovals>();
 // The resident account page (plan 10): email changes waiting for their link, and their own request counts.
 builder.Services.AddSingleton(sp => new PendingEmailChanges(Path.Combine(paths.Guests, "email-changes.json"), sp.GetRequiredService<TimeProvider>(),
     sp.GetRequiredService<ILogger<PendingEmailChanges>>()));

@@ -5,7 +5,7 @@ using Xunit;
 
 namespace DreamGrid.Launcher.Tests;
 
-/// <summary>Removing sign-ups nobody confirmed within 24 hours (spec 2026-10-31-sign-up-design §5 step 6).</summary>
+/// <summary>Removing sign-ups nobody let in (spec 2026-10-31-sign-up-design §5 step 6, 2026-11-01-sign-up-approval-design §9).</summary>
 public sealed class SignUpCleanupTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -20,11 +20,11 @@ public sealed class SignUpCleanupTests
     }
 
     [Fact]
-    public async Task Deletes_listed_older_than_24h()
+    public async Task Deletes_waiting_after_30_days()
     {
         var (rig, bea) = await PendingAsync();
         await using var _ = rig;
-        rig.F.Time.Advance(TimeSpan.FromHours(25));
+        rig.F.Time.Advance(TimeSpan.FromDays(30) + TimeSpan.FromHours(1));
 
         await Cleanup(rig).RunOnceAsync(Ct);
 
@@ -81,7 +81,7 @@ public sealed class SignUpCleanupTests
         var (rig, bea) = await PendingAsync();
         await using var _ = rig;
         var token = SignUpsTests.LinkToken(Assert.Single(await SignUpsTests.SentAsync(rig, 1)).Email);
-        Assert.NotNull(await rig.SignUps.ConfirmAsync(token, null, Ct));
+        Assert.NotNull((await rig.SignUps.ConfirmAsync(token, null, Ct)).Account);
         rig.F.Robust.SetLevel("Bea", "Example", -1);
         rig.F.Time.Advance(TimeSpan.FromDays(3));
 
@@ -97,7 +97,7 @@ public sealed class SignUpCleanupTests
         var (rig, bea) = await PendingAsync();
         await using var _ = rig;
         rig.F.Robust.SetLevel("Bea", "Example", 0);
-        rig.F.Time.Advance(TimeSpan.FromHours(25));
+        rig.F.Time.Advance(TimeSpan.FromDays(31));
 
         await Cleanup(rig).RunOnceAsync(Ct);
 
@@ -113,7 +113,7 @@ public sealed class SignUpCleanupTests
         await using var _ = rig;
         // Down before the clock moves: moving it also wakes the host's own clean-up.
         rig.F.Remover.Down = true;
-        rig.F.Time.Advance(TimeSpan.FromHours(25));
+        rig.F.Time.Advance(TimeSpan.FromDays(31));
 
         await Cleanup(rig).RunOnceAsync(Ct);
 

@@ -13,12 +13,17 @@ public sealed class ConfirmModel(SignUps signUps) : PageModel
 {
     public bool Busy { get; private set; }
 
+    /// <summary>Staff approved the account before the link was opened.</summary>
+    public bool AlreadyApproved { get; private set; }
+
     public async Task<IActionResult> OnGetAsync(string? token, CancellationToken ct)
     {
         try
         {
-            if (await signUps.ConfirmAsync(token, HttpContext.Connection.RemoteIpAddress, ct) is not { } account) return Page();
-            await GuestSignIn.SignInAsync(HttpContext, account);
+            var (result, account) = await signUps.ConfirmAsync(token, HttpContext.Connection.RemoteIpAddress, ct);
+            AlreadyApproved = result == ConfirmResult.AlreadyApproved;
+            if (result != ConfirmResult.Confirmed) return Page();
+            await GuestSignIn.SignInAsync(HttpContext, account!);
             return LocalRedirect("/guest/connect");
         }
         catch (SignUpBusyException)

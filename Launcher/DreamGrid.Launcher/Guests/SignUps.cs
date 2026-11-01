@@ -17,10 +17,13 @@ namespace DreamGrid.Launcher.Guests;
 public sealed record SignUpForm(string? First, string? Last, string? Email, string? Password, string? Again, bool AcceptTerms);
 
 /// <summary>How a sign-up post or a "send the link again" went.</summary>
-public enum SignUpOutcome { Closed, Invalid, NameTaken, CheckEmail, SignedUp, Busy }
+public enum SignUpOutcome { Closed, Invalid, NameTaken, CheckEmail, SignedUp, WaitingForStaff, Busy }
 
 /// <summary>A sign-up's outcome; <c>Problem</c> is the sentence to show, <c>Account</c> the avatar when it can be used at once.</summary>
 public sealed record SignUpResult(SignUpOutcome Outcome, string? Problem = null, RobustAccount? Account = null);
+
+/// <summary>How a confirm link went: the account is in now, staff had already let it in, or the link is used, expired or unknown.</summary>
+public enum ConfirmResult { Confirmed, AlreadyApproved, Bad }
 
 /// <summary>Robust or the database didn't answer while a link was being confirmed: the link is still good.</summary>
 public sealed class SignUpBusyException(string message, Exception inner) : Exception(message, inner);
@@ -42,7 +45,7 @@ public sealed record SignUpLimits(ResetLimits Counts);
 /// </summary>
 public sealed class SignUps(Func<LauncherSettings> settings, IGridController grid, IRobustClient robust, IStaffDirectory directory,
     IAccountRemover remover, IRobustPasswords passwords, SignUpBoard pending, SignUpLimits limits, EmailTokens tokens,
-    EmailSender sender, TermsAcceptances terms, AuditLog audit, ILogger<SignUps> log)
+    EmailSender sender, TermsAcceptances terms, SignUpLock gate, AuditLog audit, ILogger<SignUps> log)
 {
     public const string Purpose = "confirm-signup";
     public static readonly TimeSpan LinkLifetime = TimeSpan.FromHours(24);
@@ -113,7 +116,16 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
         {
             pending.Add(account.PrincipalId, Full(account), SignUpState.Unlisted);
             await passwords.SetAsync(account.PrincipalId, form.Password!, none);
-            if (!withEmail)
+            if (withEmail)
+            {
+                // A decoy (address already on the grid) stays unlisted: never shown, never approved.
+                if (owner is null) pending.Add(account.PrincipalId, Full(account), SignUpState.WaitingForEmail);
+            }
+            else if (ApprovalRules.WaitsForStaff(s, emailReady: false))
+            {
+                pending.Add(account.PrincipalId, Full(account), SignUpState.WaitingForStaff);
+            }
+            else
             {
                 account = await grid.SetUserLevelAsync(account.FirstName, account.LastName, 0, none);
                 pending.Add(account.PrincipalId, Full(account), SignUpState.LetIn);
@@ -135,8 +147,10 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
             Refused(form, ip, "email taken");
             return new(SignUpOutcome.CheckEmail);
         }
+        var waitsForStaff = !withEmail && account.UserLevel < 0;
         audit.Write(new AuditEntry(Full(account), account.PrincipalId, StaffRole.None.AuditName(), ip?.ToString(), "signup-made",
-            withEmail ? "waiting for email" : "ready", "ok"));
+            withEmail ? "waiting for email" : waitsForStaff ? "waiting for staff" : "ready", "ok"));
+        if (waitsForStaff) return new(SignUpOutcome.WaitingForStaff);
         if (!withEmail) return new(SignUpOutcome.SignedUp, Account: account);
 
         SendLink(s, account, email);
@@ -144,20 +158,28 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
     }
 
     /// <summary>
-    /// The avatar behind a live confirm link, raised to level 0, or null for a link that is used, expired, unknown or not a
-    /// pending sign-up's. Throws <see cref="SignUpBusyException"/> when Robust didn't answer; the link is then still good.
+    /// What a confirm link does. A live link to a waiting (or unlisted) sign-up raises it to level 0, marks it self-approved and
+    /// returns the account; a live link to one staff already approved is spent and says so; anything else is
+    /// <see cref="ConfirmResult.Bad"/>. Throws <see cref="SignUpBusyException"/> when Robust didn't answer; the link is then still good.
+    /// Takes <see cref="SignUpLock"/>, so a staff approval landing at the same moment raises the level only once.
     /// </summary>
-    public async Task<RobustAccount?> ConfirmAsync(string? token, IPAddress? ip, CancellationToken ct)
+    public async Task<(ConfirmResult Result, RobustAccount? Account)> ConfirmAsync(string? token, IPAddress? ip, CancellationToken ct)
     {
-        await _one.WaitAsync(ct);
+        await gate.Gate.WaitAsync(ct);
         try
         {
-            if (tokens.Find(Purpose, token) is not { } principal) return null;
+            if (tokens.Find(Purpose, token) is not { } principal) return (ConfirmResult.Bad, null);
             RobustAccount account;
             try
             {
-                if (!pending.Contains(principal)) return null;
-                if (await robust.FindAccountByIdAsync(principal, ct) is not { } found) return null;
+                if (pending.Get(principal) is not { } entry) return (ConfirmResult.Bad, null);
+                if (entry.State == SignUpState.Approved)
+                {
+                    tokens.TryRedeem(Purpose, principal, token);
+                    return (ConfirmResult.AlreadyApproved, null);
+                }
+                if (!pending.Contains(principal)) return (ConfirmResult.Bad, null);
+                if (await robust.FindAccountByIdAsync(principal, ct) is not { } found) return (ConfirmResult.Bad, null);
                 account = found.UserLevel == 0 ? found : await grid.SetUserLevelAsync(found.FirstName, found.LastName, 0, ct);
                 // Off the waiting list before the link is spent: a confirmed resident left on it could later be deleted as unconfirmed.
                 pending.TryFinish(principal, SignUpState.SelfApproved, null);
@@ -168,12 +190,11 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
             }
             tokens.TryRedeem(Purpose, principal, token);
             audit.Write(new AuditEntry(Full(account), principal, StaffRole.None.AuditName(), ip?.ToString(), "signup-confirmed", null, "ok"));
-            return account;
+            return (ConfirmResult.Confirmed, account);
         }
-        finally { _one.Release(); }
+        finally { gate.Gate.Release(); }
     }
 
-    private readonly SemaphoreSlim _one = new(1, 1);
 
     /// <summary>
     /// Sends a new link (replacing the last) to a pending sign-up called <paramref name="first"/> <paramref name="last"/>, within the
@@ -197,7 +218,8 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
             log.LogWarning("Sign-up: the account service did not answer: {Message}", e.Message);
             return SignUpOutcome.CheckEmail;
         }
-        if (account is not null && pending.Contains(account.PrincipalId) && account.Email.Trim().Length > 0)
+        // Only a sign-up waiting for its email gets a link: never a decoy, whose address belongs to someone else.
+        if (account is not null && pending.Get(account.PrincipalId)?.State == SignUpState.WaitingForEmail && account.Email.Trim().Length > 0)
             SendLink(settings(), account, SignUpRules.NormalEmail(account.Email));
         return SignUpOutcome.CheckEmail;
     }

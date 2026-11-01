@@ -168,6 +168,122 @@ public sealed class SignUpPageTests
         Assert.NotNull(page.QuerySelector("form#resend"));
     }
 
+    public const string WaitingForStaff = "Thanks. The grid's staff will look at your sign-up. Once you're approved, you can sign in here with the name and password you just chose.";
+
+    private static SignUpsTests.Rig WithApproval(bool email)
+    {
+        var rig = SignUpsTests.Factory(email: email);
+        rig.F.Store.Save(rig.F.Store.LoadOrCreate() is var s ? s with { Bots = s.Bots with { AdminApproval = true } } : null!);
+        return rig;
+    }
+
+    [Fact]
+    public async Task Waiting_for_staff_copy()
+    {
+        await using var rig = WithApproval(email: false);
+        var client = Client(rig);
+
+        using var r = await PostSignUpAsync(client);
+
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        var page = new HtmlParser().ParseDocument(await r.Content.ReadAsStringAsync(Ct));
+        Assert.Contains(WaitingForStaff, page.QuerySelector("main")!.TextContent);
+        Assert.Empty(page.QuerySelectorAll("form#resend"));
+    }
+
+    [Fact]
+    public async Task Check_email_has_staff_line()
+    {
+        await using var rig = SignUpsTests.Factory();
+
+        using var r = await PostSignUpAsync(Client(rig));
+
+        var text = new HtmlParser().ParseDocument(await r.Content.ReadAsStringAsync(Ct)).QuerySelector("main")!.TextContent;
+        Assert.Contains(CheckEmail, text);
+        Assert.Contains("Can't find the email? Staff can approve you too.", text);
+    }
+
+    [Fact]
+    public async Task Decoy_reply_has_staff_line_too()
+    {
+        await using var rig = SignUpsTests.Factory();
+
+        using var r = await PostSignUpAsync(Client(rig), email: "ann@example.com");
+
+        Assert.Contains("Can't find the email? Staff can approve you too.",
+            new HtmlParser().ParseDocument(await r.Content.ReadAsStringAsync(Ct)).QuerySelector("main")!.TextContent);
+    }
+
+    [Fact]
+    public async Task Sign_in_waiting_for_staff_copy()
+    {
+        await using var rig = WithApproval(email: false);
+        var client = Client(rig);
+        (await PostSignUpAsync(client)).Dispose();
+
+        var page = await SignInAsync(client, "Bea Example", Password);
+
+        Assert.Equal("Your account is waiting for approval by the grid's staff.", page.QuerySelector("[role=alert]")!.TextContent.Trim());
+        Assert.Null(page.QuerySelector("form#resend"));
+    }
+
+    [Fact]
+    public async Task Sign_in_waiting_for_email_copy()
+    {
+        await using var rig = SignUpsTests.Factory();
+        var client = Client(rig);
+        (await PostSignUpAsync(client)).Dispose();
+
+        var page = await SignInAsync(client, "Bea Example", Password);
+
+        Assert.Equal("Confirm your email first. Or wait for staff to approve you.", page.QuerySelector("[role=alert]")!.TextContent.Trim());
+    }
+
+    [Fact]
+    public async Task Confirm_link_after_staff_approval_says_already_approved()
+    {
+        await using var rig = SignUpsTests.Factory();
+        var client = Client(rig);
+        (await PostSignUpAsync(client)).Dispose();
+        var token = SignUpsTests.LinkToken(Assert.Single(await SignUpsTests.SentAsync(rig, 1)).Email);
+        var bea = rig.F.Robust.All.Single(a => a.FirstName == "Bea").PrincipalId;
+        await rig.F.Services.GetRequiredService<DreamGrid.Launcher.Guests.SignUpApprovals>()
+            .ApproveAsync(bea, "Test Owner", DreamGrid.Launcher.Core.Security.StaffRole.Owner, null, Ct);
+
+        var page = await PageAsync(client, "/guest/confirm?token=" + token);
+
+        Assert.Contains("You're already approved. Sign in.", page.QuerySelector("main")!.TextContent);
+        Assert.NotNull(page.QuerySelector("a[href='/guest/sign-in']"));
+    }
+
+    [Fact]
+    public async Task First_sign_in_after_approval_greets_once()
+    {
+        await using var rig = WithApproval(email: false);
+        var client = Client(rig);
+        (await PostSignUpAsync(client)).Dispose();
+        var bea = rig.F.Robust.All.Single(a => a.FirstName == "Bea").PrincipalId;
+        await rig.F.Services.GetRequiredService<DreamGrid.Launcher.Guests.SignUpApprovals>()
+            .ApproveAsync(bea, "Test Owner", DreamGrid.Launcher.Core.Security.StaffRole.Owner, null, Ct);
+
+        var signIn = await PageAsync(client, "/guest/sign-in");
+        using var first = await client.PostAsync("/guest/sign-in", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["Name"] = "Bea Example", ["Password"] = Password, ["__RequestVerificationToken"] = Antiforgery(signIn),
+        }), Ct);
+        Assert.Equal("/guest/connect?approved=1", first.Headers.Location?.OriginalString);
+        var connect = await PageAsync(client, "/guest/connect?approved=1");
+        Assert.Contains("You're approved. Log in as Bea Example.", connect.QuerySelector("main")!.TextContent);
+
+        var again = Client(rig);
+        signIn = await PageAsync(again, "/guest/sign-in");
+        using var second = await again.PostAsync("/guest/sign-in", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["Name"] = "Bea Example", ["Password"] = Password, ["__RequestVerificationToken"] = Antiforgery(signIn),
+        }), Ct);
+        Assert.Equal("/guest", second.Headers.Location?.OriginalString);
+    }
+
     [Fact]
     public async Task Pending_with_wrong_password_gets_the_usual_message()
     {
