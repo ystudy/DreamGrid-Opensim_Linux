@@ -9,12 +9,12 @@ namespace DreamGrid.Launcher.Guests;
 
 /// <summary>
 /// Every <see cref="Period"/> (the first time <see cref="FirstRun"/> after start), deletes the sign-ups nobody confirmed: avatars on
-/// the <see cref="PendingSignUps"/> list whose last link went out more than <see cref="SignUps.LinkLifetime"/> ago (spec
+/// the <see cref="SignUpBoard"/> whose last link went out more than <see cref="SignUps.LinkLifetime"/> ago (spec
 /// 2026-10-31-sign-up-design §5 step 6), so their names are free again. Only listed avatars are ever touched: a listed one that
 /// is gone or no longer at level −1 is just taken off the list. A database or Robust that doesn't answer leaves the list as it was
 /// for the next run. Each deletion is audited as done by DreamGrid.
 /// </summary>
-public sealed class SignUpCleanup(PendingSignUps pending, IRobustClient robust, IAccountRemover remover, AuditLog audit, TimeProvider time,
+public sealed class SignUpCleanup(SignUpBoard pending, IRobustClient robust, IAccountRemover remover, AuditLog audit, TimeProvider time,
     ILogger<SignUpCleanup> log) : BackgroundService
 {
     public static readonly TimeSpan Period = TimeSpan.FromHours(1);
@@ -51,7 +51,7 @@ public sealed class SignUpCleanup(PendingSignUps pending, IRobustClient robust, 
 
     private async Task PassAsync(CancellationToken ct)
     {
-        foreach (var principal in pending.OlderThan(SignUps.LinkLifetime))
+        foreach (var principal in pending.ToDelete(SignUps.LinkLifetime).Select(e => e.Principal))
         {
             try
             {

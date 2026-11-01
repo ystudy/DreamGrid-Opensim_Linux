@@ -27,7 +27,7 @@ public sealed partial class SignUpsTests
     internal sealed record Rig(LauncherFactory F, EmailPageTests.FakeTransport Transport) : IAsyncDisposable
     {
         public SignUps SignUps => F.Services.GetRequiredService<SignUps>();
-        public PendingSignUps Pending => F.Services.GetRequiredService<PendingSignUps>();
+        public SignUpBoard Pending => F.Services.GetRequiredService<SignUpBoard>();
         public ValueTask DisposeAsync() => F.DisposeAsync();
     }
 

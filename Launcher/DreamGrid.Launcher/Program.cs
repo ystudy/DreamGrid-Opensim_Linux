@@ -238,8 +238,8 @@ builder.Services.AddSingleton<ResetWorker>();
 builder.Services.AddSingleton<IResetWork>(sp => sp.GetRequiredService<ResetWorker>());
 builder.Services.AddHostedService(sp => sp.GetRequiredService<ResetWorker>());
 builder.Services.AddSingleton<PasswordResets>();
-builder.Services.AddSingleton(sp => new PendingSignUps(Path.Combine(paths.Guests, "pending-signups.json"), sp.GetRequiredService<TimeProvider>(),
-    sp.GetRequiredService<ILogger<PendingSignUps>>()));
+builder.Services.AddSingleton(sp => new SignUpBoard(Path.Combine(paths.Guests, "pending-signups.json"), sp.GetRequiredService<TimeProvider>(),
+    sp.GetRequiredService<ILogger<SignUpBoard>>()));
 builder.Services.AddSingleton(sp => new SignUpLimits(new ResetLimits(sp.GetRequiredService<TimeProvider>(), Path.Combine(paths.Guests, "signup-limits.json"),
     sp.GetRequiredService<ILogger<ResetLimits>>())));
 builder.Services.AddSingleton<SignUps>();

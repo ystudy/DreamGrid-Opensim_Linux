@@ -354,7 +354,7 @@ public sealed class AccountChangesTests
         var token = await AskedTokenAsync(rig);
         var squatter = Guid.NewGuid();
         rig.F.Robust.Add("Sly", "Squat", -1, "p", squatter, email: "ann.new@example.com");
-        rig.F.Services.GetRequiredService<PendingSignUps>().Add(squatter);
+        rig.F.Services.GetRequiredService<SignUpBoard>().Add(squatter, "Squat Ter", SignUpState.Unlisted);
         Assert.Equal(EmailLinkResult.Done, (await rig.Changes.ConfirmEmailChangeAsync(token, Ct)).Result);
     }
 

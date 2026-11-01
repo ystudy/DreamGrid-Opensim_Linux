@@ -149,7 +149,7 @@ The existing `SignUpCleanup` pass grows to do three things:
 
 ## 11. Upgrade
 
-- Entries already on the pending list become **Waiting for email**. Their names come from Robust on the first pass (my call), and their 30-day wait counts from when they were made.
+- Entries already on the old pending list become **unlisted** (changed in plan 11: the old list can't tell a decoy from a real sign-up, and its entries are at most 24 hours old). They keep today's 24-hour rule, their links still confirm, and they never appear on the board. Their names come from Robust on the first pass.
 - `AdminApproval` keeps its stored value (default off), so no existing grid changes how it behaves. The new approvers setting gets its default.
 
 ## 12. Testing

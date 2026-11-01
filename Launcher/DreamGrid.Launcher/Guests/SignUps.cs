@@ -31,7 +31,7 @@ public sealed record SignUpLimits(ResetLimits Counts);
 /// <summary>
 /// Resident sign-up behind the guest pages (spec 2026-10-31-sign-up-design). <see cref="SubmitAsync"/> checks, in order, that
 /// sign-up is open, the address's limit, the name, the password, the email and the Terms tick, and that the name is free (said
-/// plainly). The avatar is made at level -1 and put on the <see cref="PendingSignUps"/> list
+/// plainly). The avatar is made at level -1 and put on the <see cref="SignUpBoard"/>
 /// (<see cref="IGridController.CreateResidentAsync"/>), its password written through the database (<see cref="IRobustPasswords"/>,
 /// so it never goes on the console), and the Terms acceptance recorded. With email it waits there for a single-use link valid
 /// <see cref="LinkLifetime"/>; without email it is raised to 0 and taken off the list. With email set up, an address already on the
@@ -41,7 +41,7 @@ public sealed record SignUpLimits(ResetLimits Counts);
 /// never the typed email, the password or the token.
 /// </summary>
 public sealed class SignUps(Func<LauncherSettings> settings, IGridController grid, IRobustClient robust, IStaffDirectory directory,
-    IAccountRemover remover, IRobustPasswords passwords, PendingSignUps pending, SignUpLimits limits, EmailTokens tokens,
+    IAccountRemover remover, IRobustPasswords passwords, SignUpBoard pending, SignUpLimits limits, EmailTokens tokens,
     EmailSender sender, TermsAcceptances terms, AuditLog audit, ILogger<SignUps> log)
 {
     public const string Purpose = "confirm-signup";
@@ -111,12 +111,12 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
 
         try
         {
-            pending.Add(account.PrincipalId);
+            pending.Add(account.PrincipalId, Full(account), SignUpState.Unlisted);
             await passwords.SetAsync(account.PrincipalId, form.Password!, none);
             if (!withEmail)
             {
                 account = await grid.SetUserLevelAsync(account.FirstName, account.LastName, 0, none);
-                pending.Remove(account.PrincipalId);
+                pending.Add(account.PrincipalId, Full(account), SignUpState.LetIn);
             }
         }
         catch (Exception e) when (e is RobustPasswordsUnavailableException or UnauthorizedAccessException or LevelNotConfirmedException
@@ -159,8 +159,8 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
                 if (!pending.Contains(principal)) return null;
                 if (await robust.FindAccountByIdAsync(principal, ct) is not { } found) return null;
                 account = found.UserLevel == 0 ? found : await grid.SetUserLevelAsync(found.FirstName, found.LastName, 0, ct);
-                // Off the list before the link is spent: a confirmed resident left on it could later be deleted as unconfirmed.
-                pending.Remove(principal);
+                // Off the waiting list before the link is spent: a confirmed resident left on it could later be deleted as unconfirmed.
+                pending.TryFinish(principal, SignUpState.SelfApproved, null);
             }
             catch (Exception e) when (IsDown(e, ct) || e is LevelNotConfirmedException or UnauthorizedAccessException)
             {
@@ -208,7 +208,7 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
         Counts.CountSend(account.PrincipalId, email);
         var token = tokens.Issue(Purpose, account.PrincipalId, LinkLifetime);
         // The clean-up counts from the newest link, so it never deletes an avatar whose link still works.
-        pending.Add(account.PrincipalId);
+        pending.Linked(account.PrincipalId);
         var link = $"{Site(s)}{ConfirmPath}?token={token}";
         var full = Full(account);
         var queued = sender.Queue(EmailTemplates.ConfirmEmail, email, full,

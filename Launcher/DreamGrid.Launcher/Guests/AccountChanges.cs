@@ -33,7 +33,7 @@ public enum EmailLinkResult { Done, Expired, Taken, Busy }
 /// </summary>
 public sealed class AccountChanges(Func<LauncherSettings> settings, IRobustClient robust, IStaffDirectory directory,
     IRobustPasswords passwords, IRobustEmails emails, LoginThrottle throttle, ResidentTwoFactor residents, StaffSessions sessions,
-    GuestStamps stamps, EmailSender sender, EmailTokens tokens, PendingEmailChanges waiting, PendingSignUps pendingSignUps,
+    GuestStamps stamps, EmailSender sender, EmailTokens tokens, PendingEmailChanges waiting, SignUpBoard pendingSignUps,
     EmailChangeLimits limits, AuditLog audit, ILogger<AccountChanges> log)
 {
     public const string Purpose = "change-email";

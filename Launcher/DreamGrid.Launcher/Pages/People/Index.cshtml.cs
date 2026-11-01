@@ -21,7 +21,7 @@ namespace DreamGrid.Launcher.Pages.People;
 /// pages bring it). The regions the person has rights over are listed under the facts.
 /// </summary>
 public sealed class IndexModel(IRobustClient robust, StaffActions actions, RegionRights rights, Func<LauncherSettings> settings,
-    PendingSignUps pending, ILogger<IndexModel> log) : PageModel
+    SignUpBoard pending, ILogger<IndexModel> log) : PageModel
 {
     /// <summary>The name to look up, as typed (a GET, so a person can be linked to).</summary>
     [BindProperty(SupportsGet = true)] public string? Name { get; set; }

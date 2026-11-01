@@ -21,7 +21,7 @@ namespace DreamGrid.Launcher.Pages.Guest;
 /// so an address gets 20 failures in all, whichever door. The password is never logged; only the cleaned first name is.
 /// </summary>
 public sealed class SignInModel(IRobustClient robust, LoginThrottle throttle, AuditLog audit, ResidentTwoFactor residents,
-    PendingSignUps pending, Func<LauncherSettings> settings, ILogger<SignInModel> log) : PageModel
+    SignUpBoard pending, Func<LauncherSettings> settings, ILogger<SignInModel> log) : PageModel
 {
     private const string Generic = "Name or password is wrong.";
     public const string ConfirmFirst = "Confirm your email first.";
