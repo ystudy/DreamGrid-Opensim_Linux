@@ -32,9 +32,13 @@
                 }
                 @if (p.Pending)
                 {
-                    <span class="badge text-bg-secondary ms-2">Waiting for email</span>
+                    <span class="badge text-bg-secondary ms-2">@(p.WaitingForStaff ? "Waiting for approval" : "Waiting for email")</span>
                 }
             </h2>
+            @if (p.Pending)
+            {
+                <p><a href="/people/sign-ups">Approve or deny on the Sign-ups page</a></p>
+            }
             <dl class="row mb-0">
                 <dt class="col-sm-3">Role</dt>
                 <dd class="col-sm-9">@p.RoleName</dd>

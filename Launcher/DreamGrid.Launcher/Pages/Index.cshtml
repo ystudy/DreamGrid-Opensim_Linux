@@ -105,6 +105,15 @@
     <p id="notice" class="notice alert alert-info mt-3 mb-0 py-2" role="status">@Model.Notice</p>
 </section>
 
+@if (Model.SignUps is { } signUps)
+{
+    <section id="signups-card" class="card card-body shadow-sm mb-3">
+        <h2>New sign-ups @if (Model.SignUpsWaiting > 0) { <span class="badge text-bg-warning">@Model.SignUpsWaiting waiting</span> }</h2>
+        <partial name="_SignUpRows" model="signUps" />
+        <p class="small mt-2 mb-0"><a href="/people/sign-ups">See all sign-ups</a></p>
+    </section>
+}
+
 <div class="row g-3 mb-3">
 <div class="col-md-6">
 <section class="card card-body shadow-sm h-100">

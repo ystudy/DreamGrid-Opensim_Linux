@@ -1,12 +1,16 @@
 @using System.Reflection
 @using DreamGrid.Launcher.Core.Settings
 @inject Func<LauncherSettings> Settings
+@inject DreamGrid.Launcher.Core.Guests.SignUpBoard SignUpBoard
 @{
     var version = DreamGrid.Launcher.CommandLine.Version();
     var gridName = Settings().GridName;
     var hasStaffPages = DreamGrid.Launcher.Core.Security.AdminRule.HasStaffPages(Settings());
     var path = Context.Request.Path.Value ?? "/";
     var enrolOnly = DreamGrid.Launcher.Security.TwoFactorGate.MustEnrol(Context);
+    // The "waiting" badge, for staff who may approve sign-ups (spec 2026-11-01-sign-up-approval-design §8).
+    var staffRole = DreamGrid.Launcher.Security.StaffSignIn.RoleOf(User);
+    var signUpsWaiting = hasStaffPages && DreamGrid.Launcher.Core.Guests.ApprovalRules.CanApprove(staffRole, Settings()) ? SignUpBoard.WaitingCount() : 0;
     string Active(string prefix) => (prefix == "/" ? path == "/" : path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) ? " active" : "";
 }
 <!DOCTYPE html>
@@ -36,7 +40,12 @@
                 {
                     if (User.IsInRole(DreamGrid.Launcher.Security.AuthSchemes.AdminRole))
                     {
-                        <a class="nav-link@(Active("/"))" href="/">Home</a>
+                        <a class="nav-link@(Active("/"))" href="/">Home
+                            @if (signUpsWaiting > 0)
+                            {
+                                <span id="signups-badge" class="badge text-bg-warning ms-1">@signUpsWaiting waiting</span>
+                            }
+                        </a>
                         <a class="nav-link@(Active("/regions"))" href="/regions">Regions</a>
                         <a class="nav-link@(Active("/advanced"))" href="/advanced">Advanced</a>
                         <a class="nav-link@(Active("/logs"))" href="/logs">Logs</a>
@@ -45,6 +54,10 @@
                     if (hasStaffPages)
                     {
                         <a class="nav-link@(Active("/people"))" href="/people">People</a>
+                        if (signUpsWaiting > 0 && staffRole == DreamGrid.Launcher.Core.Security.StaffRole.Supervisor)
+                        {
+                            <a class="nav-link" href="/people/sign-ups"><span id="signups-badge" class="badge text-bg-warning">@signUpsWaiting waiting</span></a>
+                        }
                         if (User.IsInRole(DreamGrid.Launcher.Security.AuthSchemes.OwnerRole))
                         {
                             <a class="nav-link@(Active("/staff"))" href="/staff">Staff</a>
@@ -55,7 +68,10 @@
                         <a class="nav-link@(Active("/security"))" href="/security">Security</a>
                     }
                     <a class="nav-link@(Active("/profile/sessions"))" href="/profile/sessions">Sessions</a>
-                    <a class="nav-link@(Active("/profile/emails"))" href="/profile/emails">Emails</a>
+                    if (hasStaffPages)
+                    {
+                        <a class="nav-link@(Active("/profile/emails"))" href="/profile/emails">Emails</a>
+                    }
                     <a class="nav-link@(Active("/profile/two-factor"))" href="/profile/two-factor">Two-factor</a>
                 }
                 <form method="post" action="/logout" asp-antiforgery="true" class="signout"><button type="submit" class="btn btn-link nav-link">Sign out</button></form>

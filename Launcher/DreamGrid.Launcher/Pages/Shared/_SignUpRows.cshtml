@@ -1,0 +1,34 @@
+@model DreamGrid.Launcher.Guests.SignUpRowsView
+@using DreamGrid.Launcher.Guests
+@if (Model.Rows.Count == 0)
+{
+    <p class="text-body-secondary mb-0">No sign-ups to show.</p>
+}
+else
+{
+    <ul class="list-group list-group-flush">
+        @foreach (var e in Model.Rows)
+        {
+            <li class="signup-row list-group-item px-0 d-flex flex-wrap align-items-center gap-2">
+                <div class="me-auto">
+                    <strong class="signup-name">@e.Name</strong>
+                    <span class="d-block small text-body-secondary">@SignUpRows.Ago(e.Made, Model.Now)</span>
+                </div>
+                @if (e.Waiting && Model.CanApprove)
+                {
+                    <form method="post" action="/people/sign-ups?handler=approve" asp-antiforgery="true" class="d-inline">
+                        <input type="hidden" name="id" value="@e.Principal">
+                        <input type="hidden" name="returnUrl" value="@Model.ReturnUrl">
+                        <button type="submit" class="approve btn btn-sm btn-success">&#10004; Approve</button>
+                    </form>
+                    <a class="deny btn btn-sm btn-outline-danger" href="/people/sign-ups/deny?id=@e.Principal&amp;returnUrl=@Uri.EscapeDataString(Model.ReturnUrl)">&#10006; Deny</a>
+                    <span class="badge text-bg-warning">@SignUpRows.Badge(e)</span>
+                }
+                else
+                {
+                    <span class="badge @(e.Waiting ? "text-bg-warning" : "text-bg-light")">@SignUpRows.Badge(e)</span>
+                }
+            </li>
+        }
+    </ul>
+}

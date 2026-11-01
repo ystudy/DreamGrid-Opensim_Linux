@@ -1,0 +1,17 @@
+@page "/people/sign-ups/deny"
+@model DreamGrid.Launcher.Pages.People.DenyModel
+@{
+    ViewData["Title"] = "Deny a sign-up";
+}
+<h1>Deny @Model.Name?</h1>
+<p>The account is removed and the name is free again. With email set up, @Model.Name gets a short email saying the sign-up wasn't approved.</p>
+<form method="post" asp-antiforgery="true">
+    <input type="hidden" name="id" value="@Model.Id">
+    <input type="hidden" name="returnUrl" value="@Model.ReturnUrl">
+    <label class="form-label" for="note">Note for the email (optional)</label>
+    <textarea class="form-control" id="note" name="note" maxlength="500" rows="4"></textarea>
+    <div class="d-flex gap-2 mt-3">
+        <button type="submit" class="btn btn-danger">Deny</button>
+        <a class="btn btn-outline-secondary" href="@(Model.ReturnUrl == "/" ? "/" : "/people/sign-ups")">Cancel</a>
+    </div>
+</form>
