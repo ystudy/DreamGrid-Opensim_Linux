@@ -220,6 +220,7 @@ builder.Services.AddSingleton(sp => new ResidentTwoFactor(new TwoFactorStore(Pat
 builder.Services.AddSingleton(sp => new SuspendedStore(Path.Combine(paths.Security, "suspended.json"), sp.GetRequiredService<ILogger<SuspendedStore>>()));
 builder.Services.AddSingleton<IStaffDirectory>(sp => new StaffDirectory(sp.GetRequiredService<Func<LauncherSettings>>()));
 builder.Services.AddSingleton<IRobustPasswords>(sp => new RobustPasswords(sp.GetRequiredService<Func<LauncherSettings>>()));
+builder.Services.AddSingleton<IAccountRemover>(sp => new AccountRemover(sp.GetRequiredService<Func<LauncherSettings>>()));
 builder.Services.AddSingleton<StaffActions>();
 builder.Services.AddSingleton<StaffPrincipalValidator>();
 builder.Services.AddSingleton(sp => new GuestStamps(Path.Combine(paths.Guests, "stamps.json"), sp.GetRequiredService<ILogger<GuestStamps>>()));

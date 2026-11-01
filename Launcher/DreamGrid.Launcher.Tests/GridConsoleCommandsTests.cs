@@ -10,52 +10,10 @@ public class GridConsoleCommandsTests
 {
     private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(100);
 
-    /// <summary>
-    /// Models OpenSim's RemoteConsole: each COMMAND queues the lines <c>respond</c> returns for it (plus the echo
-    /// and the command prompt the real server sends), and the next /ReadResponses/ hands them out.
-    /// </summary>
-    private sealed class FakeConsole
-    {
-        private readonly Queue<(string Text, bool Prompt, bool Command, bool Input)> _pending = new();
-        public List<string> Commands { get; } = new();
-        public RestConsoleClient Client { get; }
-
-        public FakeConsole(Func<string, (string Text, bool Prompt)[]> respond)
-        {
-            var handler = new StubHandler(r =>
-            {
-                lock (_pending)
-                {
-                    switch (r.Uri.AbsolutePath)
-                    {
-                        case "/StartSession/":
-                            return (HttpStatusCode.OK, "<ConsoleSession><SessionID>sid</SessionID><Prompt>R# </Prompt></ConsoleSession>");
-                        case "/SessionCommand/":
-                            var cmd = r.Form("COMMAND");
-                            Commands.Add(cmd);
-                            _pending.Enqueue((cmd, false, false, true));
-                            foreach (var (text, prompt) in respond(cmd)) _pending.Enqueue((text, prompt, false, false));
-                            _pending.Enqueue(("R# ", true, true, false));
-                            return (HttpStatusCode.OK, "<ConsoleSession><Result>OK</Result></ConsoleSession>");
-                        case "/CloseSession/":
-                            return (HttpStatusCode.OK, "<ConsoleSession/>");
-                        default:
-                            var lines = new List<(string, bool, bool, bool)>();
-                            while (_pending.Count > 0) lines.Add(_pending.Dequeue());
-                            return (HttpStatusCode.OK, "<ConsoleSession>" + string.Concat(lines.Select(l =>
-                                $"<Line Number=\"1\" Level=\"normal\" Prompt=\"{(l.Item2 ? "true" : "false")}\" Command=\"{(l.Item3 ? "true" : "false")}\" Input=\"{(l.Item4 ? "true" : "false")}\">{System.Security.SecurityElement.Escape(l.Item1)}</Line>"))
-                                + "</ConsoleSession>");
-                    }
-                }
-            });
-            Client = new RestConsoleClient(new HttpClient(handler), new Uri("http://127.0.0.1:8010/"), "u", "p");
-        }
-    }
-
     [Fact]
     public async Task Create_user_answers_a_real_prompt_line_with_an_empty_line()
     {
-        var console = new FakeConsole(cmd => cmd.StartsWith("create user") ? [("Model name []: ", true)] : []);
+        var console = new FakeRestConsole(cmd => cmd.StartsWith("create user") ? [("Model name []: ", true)] : []);
 
         await GridConsoleCommands.CreateUserAsync(console.Client, "Test", "Owner", "pw1", null, Guid.Empty, Settle, CancellationToken.None);
 
@@ -66,7 +24,7 @@ public class GridConsoleCommandsTests
     [Fact]
     public async Task Create_user_does_not_answer_ordinary_output_that_ends_in_a_colon()
     {
-        var console = new FakeConsole(cmd => cmd.StartsWith("create user") ? [("Account details:", false)] : []);
+        var console = new FakeRestConsole(cmd => cmd.StartsWith("create user") ? [("Account details:", false)] : []);
 
         await GridConsoleCommands.CreateUserAsync(console.Client, "Test", "Owner", "pw1", null, Guid.Empty, Settle, CancellationToken.None);
 
@@ -83,7 +41,7 @@ public class GridConsoleCommandsTests
     [InlineData("Login in My Region are enabled", true)]
     public async Task Login_status_is_read_from_the_region_console(string reply, bool expected)
     {
-        var console = new FakeConsole(cmd => cmd == "login status" ? [(reply, false)] : []);
+        var console = new FakeRestConsole(cmd => cmd == "login status" ? [(reply, false)] : []);
 
         Assert.Equal(expected, await GridConsoleCommands.LoginsEnabledAsync(console.Client, Settle, CancellationToken.None));
     }
@@ -91,7 +49,7 @@ public class GridConsoleCommandsTests
     [Fact]
     public async Task Login_status_is_null_when_the_reply_is_not_recognised()
     {
-        var console = new FakeConsole(_ => [("something else", false)]);
+        var console = new FakeRestConsole(_ => [("something else", false)]);
 
         Assert.Null(await GridConsoleCommands.LoginsEnabledAsync(console.Client, Settle, CancellationToken.None));
     }
@@ -102,7 +60,7 @@ public class GridConsoleCommandsTests
     [InlineData("max/min/avg/sum: 26,3/4,8/12,5/819200", true)]   // comma decimal culture
     public async Task Island_terrain_is_verified_from_terrain_stats(string stats, bool expected)
     {
-        var console = new FakeConsole(cmd => cmd == "terrain stats" ? [("Channel 256x256", false), (stats, false)] : []);
+        var console = new FakeRestConsole(cmd => cmd == "terrain stats" ? [("Channel 256x256", false), (stats, false)] : []);
 
         Assert.Equal(expected, await GridConsoleCommands.IslandTerrainLoadedAsync(console.Client, Settle, TimeProvider.System, CancellationToken.None));
     }
@@ -112,7 +70,7 @@ public class GridConsoleCommandsTests
     {
         // The console thread can still be finishing "terrain load" when the first "terrain stats" is sent.
         var asked = 0;
-        var console = new FakeConsole(cmd => cmd == "terrain stats"
+        var console = new FakeRestConsole(cmd => cmd == "terrain stats"
             ? (++asked == 1 ? [("Terrain load in progress", false)] : [("max/min/avg/sum: 26.3/4.8/12.5/819200", false)])
             : []);
 
@@ -123,7 +81,7 @@ public class GridConsoleCommandsTests
     [Fact]
     public async Task Island_terrain_check_is_false_without_asking_again_once_stats_show_flat_land()
     {
-        var console = new FakeConsole(cmd => cmd == "terrain stats" ? [("max/min/avg/sum: 21/21/21/1376256", false)] : []);
+        var console = new FakeRestConsole(cmd => cmd == "terrain stats" ? [("max/min/avg/sum: 21/21/21/1376256", false)] : []);
 
         Assert.False(await GridConsoleCommands.IslandTerrainLoadedAsync(console.Client, Settle, TimeProvider.System, CancellationToken.None));
         Assert.Single(console.Commands, c => c == "terrain stats");
@@ -133,7 +91,7 @@ public class GridConsoleCommandsTests
     public async Task Island_terrain_check_gives_up_when_no_stats_line_ever_arrives()
     {
         var time = new FakeTimeProvider { AutoAdvanceAmount = TimeSpan.FromSeconds(10) };
-        var console = new FakeConsole(_ => [("nothing useful", false)]);
+        var console = new FakeRestConsole(_ => [("nothing useful", false)]);
 
         Assert.False(await GridConsoleCommands.IslandTerrainLoadedAsync(console.Client, Settle, time, CancellationToken.None));
         Assert.True(console.Commands.Count(c => c == "terrain stats") >= 2);

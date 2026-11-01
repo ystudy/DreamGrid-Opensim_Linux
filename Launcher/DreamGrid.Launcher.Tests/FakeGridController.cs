@@ -383,6 +383,19 @@ internal sealed class FakeGridController : IGridController
         return Task.FromResult(OnSetUserLevel?.Invoke(first, last, level) ?? new RobustAccount(Guid.NewGuid(), first, last, level, ""));
     }
 
+    /// <summary>
+    /// What <see cref="CreateResidentAsync"/> does besides recording: (first, last, email, level) → the account (the host's fake
+    /// Robust makes it here). By default a new account that is in no fake Robust.
+    /// </summary>
+    public Func<string, string, string?, int, RobustAccount>? OnCreateResident { get; set; }
+
+    public Task<RobustAccount> CreateResidentAsync(string first, string last, string? email, int level, CancellationToken ct)
+    {
+        Record($"CreateResident {first} {last} {level}");
+        try { return Task.FromResult(OnCreateResident?.Invoke(first, last, email, level) ?? new RobustAccount(Guid.NewGuid(), first, last, level, email ?? "")); }
+        catch (Exception e) { return Task.FromException<RobustAccount>(e); }
+    }
+
     /// <summary>What <see cref="EstateOfAsync"/> answers for a region (it may throw); the grid's estate, 1, by default.</summary>
     public Func<Guid, int?> OnEstateOf { get; set; } = _ => 1;
 
@@ -531,6 +544,12 @@ internal sealed class FakeRobustAccounts : IRobustClient, IRobustPasswords
     /// </summary>
     public bool FailureReply { get; set; }
 
+    public FakeRobustAccounts RemoveById(Guid principal)
+    {
+        foreach (var key in _accounts.Where(a => a.Value.Account.PrincipalId == principal).Select(a => a.Key).ToList()) _accounts.Remove(key);
+        return this;
+    }
+
     public FakeRobustAccounts Remove(string first, string last)
     {
         _accounts.Remove((first, last));
@@ -577,6 +596,21 @@ internal sealed class FakeRobustAccounts : IRobustClient, IRobustPasswords
             && m.Y <= area.YMax && m.Y + m.Size - 1 >= area.YMin).ToList());
 }
 
+/// <summary>Deletes from the fake Robust; <see cref="Down"/> is a database that isn't running. <see cref="Deleted"/> records each call.</summary>
+internal sealed class FakeAccountRemover(FakeRobustAccounts robust) : IAccountRemover
+{
+    public bool Down { get; set; }
+    public List<Guid> Deleted { get; } = [];
+
+    public Task DeleteAsync(Guid principal, CancellationToken ct)
+    {
+        if (Down) throw new StaffDirectoryUnavailableException("The database isn't running.");
+        Deleted.Add(principal);
+        robust.RemoveById(principal);
+        return Task.CompletedTask;
+    }
+}
+
 /// <summary>The staff list without a database: the fake Robust's accounts at or above the level; <see cref="Down"/> is a database that isn't running.</summary>
 internal sealed class FakeStaffDirectory(FakeRobustAccounts robust) : IStaffDirectory
 {
@@ -585,6 +619,10 @@ internal sealed class FakeStaffDirectory(FakeRobustAccounts robust) : IStaffDire
     public Task<IReadOnlyList<RobustAccount>> ListAtOrAboveAsync(int level, CancellationToken ct) =>
         Down ? throw new StaffDirectoryUnavailableException("The database isn't running.")
             : Task.FromResult<IReadOnlyList<RobustAccount>>([.. robust.All.Where(a => a.UserLevel >= level).OrderBy(a => a.LastName).ThenBy(a => a.FirstName)]);
+
+    public Task<RobustAccount?> FindByEmailAsync(string normalEmail, CancellationToken ct) =>
+        Down ? throw new StaffDirectoryUnavailableException("The database isn't running.")
+            : Task.FromResult(robust.All.FirstOrDefault(a => a.Email.Trim().ToLowerInvariant() == normalEmail));
 }
 
 /// <summary>Who's online without a database: returns <see cref="Result"/>.</summary>

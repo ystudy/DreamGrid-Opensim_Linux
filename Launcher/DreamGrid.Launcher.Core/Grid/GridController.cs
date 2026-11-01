@@ -874,6 +874,21 @@ public sealed partial class GridController(
         finally { _ops.Release(); }
     }
 
+    public async Task<RobustAccount> CreateResidentAsync(string first, string last, string? email, int level, CancellationToken ct)
+    {
+        GridConsoleCommands.ValidateAvatarName(first, last);
+
+        await _ops.WaitAsync(ct);
+        try
+        {
+            ThrowIfNoGridService(LoadSettings());
+            // Its own remover: one from the container would need the settings, which come from this controller.
+            var avatars = new ResidentAvatars(robust, new AccountRemover(LoadSettings), time, ConsoleSettle, AccountWait, AccountPoll);
+            return await avatars.CreateAsync(_robust!.Console!, first, last, email, level, ct);
+        }
+        finally { _ops.Release(); }
+    }
+
     // ---- estates -------------------------------------------------------------------------------------
 
     /// <summary>How many names <see cref="CreateEstateAsync"/> tries: the name itself, then "&lt;name&gt; 2" to "&lt;name&gt; 20".</summary>

@@ -12,6 +12,12 @@ public interface IStaffDirectory
 {
     /// <summary>Every account whose level is at least <paramref name="level"/>, by last then first name. Throws <see cref="StaffDirectoryUnavailableException"/> when the database can't be asked.</summary>
     Task<IReadOnlyList<RobustAccount>> ListAtOrAboveAsync(int level, CancellationToken ct);
+
+    /// <summary>
+    /// An account whose email, trimmed and lower-case, is <paramref name="normalEmail"/>, or null. Throws
+    /// <see cref="StaffDirectoryUnavailableException"/> when the database can't be asked.
+    /// </summary>
+    Task<RobustAccount?> FindByEmailAsync(string normalEmail, CancellationToken ct);
 }
 
 /// <summary>
@@ -26,15 +32,24 @@ public sealed class StaffDirectory(Func<LauncherSettings> settings) : IStaffDire
     private const string Query =
         "SELECT PrincipalID, FirstName, LastName, UserLevel, Email, Created FROM robust.UserAccounts WHERE UserLevel >= @level ORDER BY LastName, FirstName";
 
-    public async Task<IReadOnlyList<RobustAccount>> ListAtOrAboveAsync(int level, CancellationToken ct)
+    private const string ByEmail =
+        "SELECT PrincipalID, FirstName, LastName, UserLevel, Email, Created FROM robust.UserAccounts WHERE LOWER(TRIM(Email)) = @email LIMIT 1";
+
+    public Task<IReadOnlyList<RobustAccount>> ListAtOrAboveAsync(int level, CancellationToken ct) =>
+        ReadAsync(Query, ("@level", level), ct);
+
+    public async Task<RobustAccount?> FindByEmailAsync(string normalEmail, CancellationToken ct) =>
+        (await ReadAsync(ByEmail, ("@email", normalEmail), ct)).FirstOrDefault();
+
+    private async Task<IReadOnlyList<RobustAccount>> ReadAsync(string query, (string Name, object Value) parameter, CancellationToken ct)
     {
         try
         {
             var s = settings();
             await using var conn = new MySqlConnection(MariaDbServer.ConnectionString(s, "robust", "robustuser", s.Db.RobustPassword, TimeoutSeconds));
             await conn.OpenAsync(ct);
-            await using var cmd = new MySqlCommand(Query, conn);
-            cmd.Parameters.AddWithValue("@level", level);
+            await using var cmd = new MySqlCommand(query, conn);
+            cmd.Parameters.AddWithValue(parameter.Name, parameter.Value);
             await using var reader = await cmd.ExecuteReaderAsync(ct);
             var list = new List<RobustAccount>();
             while (await reader.ReadAsync(ct))
