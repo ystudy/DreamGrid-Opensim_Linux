@@ -778,12 +778,18 @@
 ; *
 [HGInventoryService]
     ; For the InventoryServiceInConnector
-    LocalServiceModule    = "OpenSim.Services.HypergridService.dll:HGSuitcaseInventoryService"
+    ;; Refuses all requests unless the inventory's owner is on a foreign grid, and needs
+    ;; InnerServiceModule to do the work. Do not remove: this port has no caller identity.
+    LocalServiceModule    = "OpenSim.Services.HypergridService.dll:HGTravelGateInventoryService"
+    InnerServiceModule    = "OpenSim.Services.HypergridService.dll:HGSuitcaseInventoryService"
     ;; alternatives:
     ;;  HG1.5, more permissive, not recommended, but still supported
-    ;LocalServiceModule    = "OpenSim.Services.HypergridService.dll:HGInventoryService"
+    ;InnerServiceModule    = "OpenSim.Services.HypergridService.dll:HGInventoryService"
     ;;  HG1.0, totally permissive, not recommended, but OK for grids with 100% trust
-    ;LocalServiceModule    = "OpenSim.Services.InventoryService.dll:XInventoryService"
+    ;InnerServiceModule    = "OpenSim.Services.InventoryService.dll:XInventoryService"
+
+    ;; Seconds the inventory stays open after logout on a foreign grid, for attachments to save
+    ; GraceSeconds = 120
 
     UserAccountsService = "OpenSim.Services.UserAccountService.dll:UserAccountService"
     AvatarService = "OpenSim.Services.AvatarService.dll:AvatarService"
