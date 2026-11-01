@@ -190,6 +190,8 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
         if (!Counts.SendAllowed(account.PrincipalId, email)) return;
         Counts.CountSend(account.PrincipalId, email);
         var token = tokens.Issue(Purpose, account.PrincipalId, LinkLifetime);
+        // The clean-up counts from the newest link, so it never deletes an avatar whose link still works.
+        pending.Add(account.PrincipalId);
         var link = $"{Site(s)}{ConfirmPath}?token={token}";
         var full = Full(account);
         var queued = sender.Queue(EmailTemplates.ConfirmEmail, email, full,

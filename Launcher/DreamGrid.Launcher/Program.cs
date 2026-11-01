@@ -276,6 +276,9 @@ builder.Services.AddSingleton<Func<CpuPriority, string?>>(_ => RegionSettingsRul
 builder.Services.AddHostedService<GridHostedService>();
 // Moves regions into their owner's estate and back while they run; registered after GridHostedService, so it stops first.
 builder.Services.AddHostedService<RegionEstateSync>();
+// Deletes sign-ups nobody confirmed; after GridHostedService too.
+builder.Services.AddSingleton<SignUpCleanup>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<SignUpCleanup>());
 // Registered after GridHostedService, so it stops first: running work is awaited before the controller detaches.
 builder.Services.AddSingleton<BackgroundWork>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<BackgroundWork>());
