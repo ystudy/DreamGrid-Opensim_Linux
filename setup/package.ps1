@@ -57,7 +57,11 @@ New-Item -ItemType Directory -Force $pkg | Out-Null
 Push-Location $repo
 try {
     Invoke-Native 'dotnet build' { dotnet build -c Release DreamGrid.sln "-p:Version=$Version" }
-    Invoke-Native 'dotnet publish' { dotnet publish Launcher/DreamGrid.Launcher -c Release "-p:Version=$Version" -o (Join-Path $pkg 'launcher') }
+    # For this system only (still started as "dotnet DreamGrid.Launcher.dll"): a portable publish would carry SkiaSharp's
+    # native library for 18 systems, over 450 MB.
+    Invoke-Native 'dotnet publish' { dotnet publish Launcher/DreamGrid.Launcher -c Release -r $Rid --self-contained false "-p:Version=$Version" -o (Join-Path $pkg 'launcher') }
+    # SkiaSharp's Windows debug symbols (about 96 MB) are of no use to an installed grid.
+    Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $pkg 'launcher/libSkiaSharp.pdb')
 }
 finally { Pop-Location }
 

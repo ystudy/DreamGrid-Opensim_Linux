@@ -47,14 +47,15 @@ public sealed class GridRegionsTests : IDisposable
             {
                 await conn.OpenAsync(ct);
                 // uuid, regionHandle and Token are the columns without a default.
-                await using var cmd = new MySqlCommand("INSERT INTO regions (uuid, regionHandle, regionName, Token) VALUES (@u, 1, 'Far Away', '')", conn);
+                await using var cmd = new MySqlCommand("INSERT INTO regions (uuid, regionHandle, regionName, Token, locX, locY) VALUES (@u, 1, 'Far Away', '', 256000, 256512)", conn);
                 cmd.Parameters.AddWithValue("@u", elsewhere.ToString());
                 await cmd.ExecuteNonQueryAsync(ct);
             }
 
             var list = await regions.ListAsync(ct);
             Assert.True(list.Available);
-            Assert.Contains(new GridRegion(elsewhere, "Far Away"), list.Regions);
+            // Robust keeps the corner in metres; the list gives the map square.
+            Assert.Contains(new GridRegion(elsewhere, "Far Away", 1000, 1002), list.Regions);
             Assert.Equal(before.Regions.Count + 1, list.Regions.Count);
 
             // A database that is down: no exception, no long wait.

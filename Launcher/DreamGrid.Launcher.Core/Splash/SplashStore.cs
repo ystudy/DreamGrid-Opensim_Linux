@@ -65,10 +65,11 @@ public sealed class SplashStore
     /// <param name="basedOnVersion">The <see cref="DraftVersion"/> the editor started from.</param>
     public SplashSaveResult SaveDraft(SplashDesign design, int basedOnVersion, string savedBy)
     {
-        var problems = SplashRules.Check(design, PictureExists);
-        if (problems.Count > 0) return new SplashSaveResult.Invalid(problems);
+        // Checked inside the lock, so a picture can't be removed (RemovePictureIfUnused) between the check and the write.
         lock (_gate)
         {
+            var problems = SplashRules.Check(design, PictureExists);
+            if (problems.Count > 0) return new SplashSaveResult.Invalid(problems);
             var current = DraftVersion();
             if (basedOnVersion != current) return new SplashSaveResult.Conflict(current);
             var doc = new SplashDocument(design, current + 1, savedBy, _time.GetUtcNow());
@@ -77,17 +78,35 @@ public sealed class SplashStore
         }
     }
 
-    /// <summary>Copies the draft to the published copy with the next published version; null when there is no draft.</summary>
+    /// <summary>
+    /// Copies the draft to the published copy with the next published version; null when there is no draft, or when the
+    /// draft no longer passes its check (a picture it names is gone), so the public page never loses its design.
+    /// </summary>
     public SplashDocument? Publish(string publishedBy)
     {
         lock (_gate)
         {
-            if (Draft() is not { } draft) return null;
+            if (Draft() is not { } draft || SplashRules.Check(draft.Design, PictureExists).Count > 0) return null;
             // The counter is read from the file even when it fails the check, so a version is never used twice.
             var next = (_published.Load().Document?.Version ?? 0) + 1;
             var doc = new SplashDocument(draft.Design, next, publishedBy, _time.GetUtcNow());
             Write(_published, new SplashFile(doc, doc.Version));
             return doc;
+        }
+    }
+
+    /// <summary>
+    /// Removes a picture through <paramref name="delete"/> unless the draft or the published design names it; false when it
+    /// is in use or <paramref name="delete"/> found nothing. Done under the same lock as saving and publishing, so a picture
+    /// can't go between a save's check and its write.
+    /// </summary>
+    public bool RemovePictureIfUnused(string name, Func<string, bool> delete)
+    {
+        lock (_gate)
+        {
+            // The published file as stored, not Published(): a design that fails its check still names its pictures.
+            var used = SplashPictures.UsedBy(Draft()?.Design).Contains(name) || SplashPictures.UsedBy(_published.Load().Document?.Design).Contains(name);
+            return !used && delete(name);
         }
     }
 

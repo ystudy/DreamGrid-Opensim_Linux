@@ -13,17 +13,23 @@
     static string Count(int n, string one, string many) => n == 1 ? "1 " + one : n + " " + many;
 }
 @* One block of the splash page. Owner text goes through the Legal pages' Markdown, which shows any HTML as text. *@
-<div class="splash-block @SplashCss.ClassOf(b)">
+<div class="splash-block splash-kind-@b.Kind.ToString().ToLowerInvariant() @SplashCss.ClassOf(b)">
     @switch (b.Kind)
     {
         case SplashBlockKind.Text:
             @Html.Raw(LegalMarkdown.ToHtml(En(c.Text)))
             break;
         case SplashBlockKind.GridName:
-            if (c.ShowName)
-            {
-                <div class="splash-heading">@s.GridName</div>
-            }
+            <div class="splash-name">
+                @if (c.ShowLogo && Model.Logo is { } logo)
+                {
+                    <img class="splash-logo" src="@DreamGrid.Launcher.Splash.SplashSnapshot.LogoUrl(logo)" alt="@s.GridName">
+                }
+                @if (c.ShowName)
+                {
+                    <div class="splash-heading">@s.GridName</div>
+                }
+            </div>
             break;
         case SplashBlockKind.Status:
             <ul class="splash-list">
@@ -57,12 +63,26 @@
             </ul>
             break;
         case SplashBlockKind.Places:
-            <ul class="splash-list">
-                @foreach (var place in c.Places ?? [])
+            <ul class="splash-list splash-places">
+                @for (var i = 0; i < (c.Places?.Count ?? 0); i++)
                 {
-                    <li><span class="splash-place-name">@place.RegionName</span> @En(place.Line)</li>
+                    var place = c.Places![i];
+                    <li>
+                        @if (place.Picture is not null)
+                        {
+                            <div class="splash-place-picture @SplashCss.PlaceClassOf(b, i)" role="img" aria-label="@place.RegionName"></div>
+                        }
+                        <span class="splash-place-name">@place.RegionName</span> @En(place.Line)
+                    </li>
                 }
             </ul>
+            break;
+        case SplashBlockKind.Picture:
+            <div class="splash-picture @SplashCss.PictureClassOf(b)" role="img" aria-label="@(En(c.Caption) is { Length: > 0 } label ? label : "Picture")"></div>
+            if (En(c.Caption) is { Length: > 0 } caption)
+            {
+                <div class="splash-caption">@caption</div>
+            }
             break;
         case SplashBlockKind.Links:
             <nav class="splash-links">

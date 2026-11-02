@@ -8,6 +8,6 @@
 <div class="splash-page">
     @foreach (var block in Model.View.Design.Blocks)
     {
-        <partial name="_SplashBlock" model="new DreamGrid.Launcher.Splash.SplashBlockView(block, Model.View.Status, Model.Settings)" />
+        <partial name="_SplashBlock" model="new DreamGrid.Launcher.Splash.SplashBlockView(block, Model.View.Status, Model.Settings, Model.View.Logo)" />
     }
 </div>
