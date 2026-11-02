@@ -32,6 +32,11 @@ public sealed record LauncherPaths(string Data, string OpenSimProgram, string? M
 
     /// <summary>The viewer splash page: its draft and published design (and, with plan 12b, its pictures).</summary>
     public string Splash => Path.Combine(Data, "splash");
+    /// <summary>The splash page's pictures (redrawn uploads under the launcher's own names, with their index).</summary>
+    public string SplashImages => Path.Combine(Splash, "images");
+    /// <summary>The grid-wide look: for now the logo.</summary>
+    public string Theme => Path.Combine(Data, "theme");
+    public string ThemeImages => Path.Combine(Theme, "images");
 
     public string RegionDir(string instance) => Path.Combine(RegionsRoot, instance);
     public string RegionDefinitionDir(string instance) => Path.Combine(RegionDir(instance), "Region");

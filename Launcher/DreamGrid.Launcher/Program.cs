@@ -13,6 +13,7 @@ using DreamGrid.Launcher.Core.OpenSim;
 using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Core.Setup;
+using DreamGrid.Launcher.Core.Pictures;
 using DreamGrid.Launcher.Core.Splash;
 using DreamGrid.Launcher.Security;
 using DreamGrid.Launcher.Splash;
@@ -279,8 +280,18 @@ builder.Services.AddSingleton<IOnlineUsers>(sp => new OnlineUsers(sp.GetRequired
 builder.Services.AddSingleton<IGridRegions>(sp => new GridRegions(sp.GetRequiredService<Func<LauncherSettings>>(),
     sp.GetRequiredService<ILogger<GridRegions>>()));
 // The viewer splash page: its saved design, and what /welcome shows (rebuilt at most once a minute).
-builder.Services.AddSingleton(sp => new SplashStore(paths, sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<SplashStore>>()));
+// Two picture stores: the splash page's pictures, and the grid-wide theme's (the logo).
+builder.Services.AddKeyedSingleton("splash", (sp, _) => new PictureStore(paths.SplashImages, sp.GetRequiredService<TimeProvider>(),
+    sp.GetRequiredService<ILogger<PictureStore>>()));
+builder.Services.AddKeyedSingleton("theme", (sp, _) => new PictureStore(paths.ThemeImages, sp.GetRequiredService<TimeProvider>(),
+    sp.GetRequiredService<ILogger<PictureStore>>()));
+builder.Services.AddSingleton(sp => new SplashStore(paths, sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<SplashStore>>())
+{
+    PictureExists = sp.GetRequiredKeyedService<PictureStore>("splash").Exists,
+});
 builder.Services.AddSingleton<SplashSnapshot>();
+builder.Services.AddSingleton<SplashPictureCleanup>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<SplashPictureCleanup>());
 builder.Services.AddSingleton<GridActions>();
 builder.Services.AddSingleton<RegionActions>();
 builder.Services.AddSingleton<RegionRestarts>();
