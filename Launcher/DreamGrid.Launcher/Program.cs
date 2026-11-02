@@ -274,6 +274,8 @@ builder.Services.AddSingleton<BotGuard>();
 builder.Services.AddSingleton<LegacyCommandApi>();
 builder.Services.AddSingleton<IOnlineUsers>(sp => new OnlineUsers(sp.GetRequiredService<Func<LauncherSettings>>(),
     sp.GetRequiredService<ILogger<OnlineUsers>>()));
+builder.Services.AddSingleton<IGridRegions>(sp => new GridRegions(sp.GetRequiredService<Func<LauncherSettings>>(),
+    sp.GetRequiredService<ILogger<GridRegions>>()));
 builder.Services.AddSingleton<GridActions>();
 builder.Services.AddSingleton<RegionActions>();
 builder.Services.AddSingleton<RegionRestarts>();

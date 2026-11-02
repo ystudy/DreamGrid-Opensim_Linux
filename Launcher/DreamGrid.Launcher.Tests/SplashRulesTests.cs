@@ -158,4 +158,15 @@ public sealed class SplashRulesTests
         var problems = SplashRules.Check(WithBlock(Valid().Blocks[0] with { Id = 7, Colour = "red" }), _ => false);
         Assert.Contains(problems, p => p.Contains("7"));
     }
+
+    [Fact]
+    public void Default_design_passes_the_check()
+    {
+        var d = SplashDefaults.Design();
+        Assert.Empty(SplashRules.Check(d, _ => false));
+        Assert.Equal([SplashBlockKind.GridName, SplashBlockKind.Status, SplashBlockKind.Links], d.Blocks.Select(b => b.Kind).Order().ToArray());
+        Assert.Equal(new SplashStatusLines(true, true, true), d.Blocks.Single(b => b.Kind == SplashBlockKind.Status).Content.Status);
+        var links = d.Blocks.Single(b => b.Kind == SplashBlockKind.Links).Content.Links!;
+        Assert.True(links.SignUp && links.ForgotPassword && links.Terms && links.Privacy);
+    }
 }
