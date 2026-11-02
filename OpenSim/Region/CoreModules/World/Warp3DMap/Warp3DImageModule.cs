@@ -231,7 +231,7 @@ namespace OpenSim.Region.CoreModules.World.Warp3DMap
             if (!string.IsNullOrEmpty(m_mapTilesDirectory))
                 filename = System.IO.Path.Combine(m_mapTilesDirectory, filename);
 
-            tile.Save(filename,ImageFormat.Png);
+            // fkb tile.Save(filename,ImageFormat.Png);
 
             m_primMesher = null;
             return tile;
