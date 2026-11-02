@@ -230,7 +230,7 @@ Decided: build **all three**, each with its own switch. A (honeypot and rate lim
 - OAR download for region owners.
 - Audio alternative for the image CAPTCHA.
 - Mass email to residents (to everyone or to one group), queued and throttled, with an unsubscribe link. Add it only if it's asked for.
-- In-viewer search (places, people, classifieds, events). Keep the `OpenSimSearch` region module (upstream: `kcozens/OpenSimSearch`); it needs a search web service at `SearchURL`. Two ways to provide one:
+- In-viewer search (places, people, classifieds, events). Owner (2026-11-01): wanted later as a full "post an ad and search" built into the grid: look for groups, ads (classifieds), avatar info, land, land for sale and events, and post ads and events. Today `SearchURL=` is empty in the region template, so Search finds nothing. Once there is an events list, the splash page (2.7) can show upcoming events. Keep the `OpenSimSearch` region module (upstream: `kcozens/OpenSimSearch`); it needs a search web service at `SearchURL`. Two ways to provide one:
   - point it at [magicoli/opensim-helpers](https://github.com/magicoli/opensim-helpers), the maintained PHP helpers that work with OpenSimSearch (needs PHP on the host), or
   - have the v7 website provide the search service itself (no PHP; same on Windows and Debian). Recommendation, if search is wanted.
   - Either way: the search service reads only public data, is rate limited, and the region's `data_services` registration accepts only known simulators.
