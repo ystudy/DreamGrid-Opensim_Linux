@@ -1,0 +1,13 @@
+/* What every viewer splash page shares; each design's own sizes, places and colours are in /welcome/page-{version}.css. */
+html, body.splash { margin: 0; padding: 0; }
+body.splash { min-height: 100vh; overflow-x: auto; background-attachment: fixed; color: #ffffff; font-family: system-ui, sans-serif; }
+.splash-page { position: relative; margin: 0 auto; }
+.splash-block { position: absolute; overflow: hidden; box-sizing: border-box; overflow-wrap: anywhere; }
+.splash-block p { margin: 0 0 0.5em; }
+.splash-block a { color: inherit; }
+.splash-list { list-style: none; margin: 0; padding: 0; }
+.splash-list li { margin: 0 0 0.5em; }
+.splash-links { display: flex; flex-wrap: wrap; gap: 0.5em 1.5em; justify-content: inherit; }
+.splash-news-date { display: block; font-size: 0.75em; opacity: 0.8; }
+.splash-heading { font-size: 1.25em; font-weight: bold; margin: 0 0 0.5em; }
+.splash-place-name { font-weight: bold; }
