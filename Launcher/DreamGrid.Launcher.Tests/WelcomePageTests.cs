@@ -4,6 +4,7 @@ using DreamGrid.Launcher.Core;
 using DreamGrid.Launcher.Core.Config;
 using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.Guests;
+using DreamGrid.Launcher.Core.Pictures;
 using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Core.Splash;
 using Microsoft.AspNetCore.Builder;
@@ -93,6 +94,57 @@ public sealed class WelcomePageTests
         Assert.Contains("Party at Sandbox", page.Body!.TextContent);
         Assert.NotNull(page.QuerySelector("link[href='/welcome/page-1.css']"));
         Assert.NotNull(page.QuerySelector(".splash-page .splash-block.b-1"));
+    }
+
+    private static async Task<string> AddPictureAsync(LauncherFactory f) =>
+        Assert.IsType<PictureResult.Added>(await f.Services.GetRequiredKeyedService<PictureStore>("splash")
+            .AddAsync(new MemoryStream(TestPictures.Png(40, 30)), "beach.png", "Test Owner", Ct)).Picture.Name;
+
+    [Fact]
+    public async Task Published_picture_shows()
+    {
+        await using var f = Factory();
+        var name = await AddPictureAsync(f);
+        Publish(f, Design(Block(1, SplashBlockKind.Picture, new(Picture: new SplashPicture(name, SplashFit.Fill), Caption: En("Our beach")))));
+
+        var (_, page, _) = await GetAsync(f);
+        var css = await Client(f).GetStringAsync("/welcome/page-1.css", Ct);
+        using var picture = await Client(f).GetAsync("/welcome/images/" + name, Ct);
+
+        Assert.NotNull(page.QuerySelector(".splash-picture.b-1-pic[role=img][aria-label='Our beach']"));
+        Assert.NotNull(page.QuerySelector(".splash-block.splash-kind-picture.b-1"));
+        Assert.Contains("Our beach", page.QuerySelector(".b-1")!.TextContent);
+        Assert.Contains("/welcome/images/" + name, css);
+        Assert.Equal(HttpStatusCode.OK, picture.StatusCode);
+    }
+
+    [Fact]
+    public async Task Place_pictures_show()
+    {
+        await using var f = Factory();
+        var name = await AddPictureAsync(f);
+        Publish(f, Design(Block(1, SplashBlockKind.Places, new(Places:
+        [
+            new SplashPlace(Guid.NewGuid(), "Sandbox", En("Build here."), name),
+            new SplashPlace(Guid.NewGuid(), "Beach", En("Swim."), null),
+        ]))));
+
+        var (_, page, _) = await GetAsync(f);
+
+        Assert.NotNull(page.QuerySelector(".splash-place-picture.b-1-place-0[role=img][aria-label='Sandbox']"));
+        Assert.Null(page.QuerySelector(".b-1-place-1"));
+    }
+
+    [Fact]
+    public async Task Page_background_picture_shows()
+    {
+        await using var f = Factory();
+        var name = await AddPictureAsync(f);
+        Publish(f, TextDesign("Hello") with { Background = new SplashBackground("#223344", new SplashPicture(name, SplashFit.Fill), 50, 50, 30) });
+
+        var css = (await Client(f).GetStringAsync("/welcome/page-1.css", Ct)).Replace(" ", "");
+
+        Assert.Contains("body.splash{background-color:#223344;background-image:url(\"/welcome/images/" + name + "\")", css);
     }
 
     [Fact]

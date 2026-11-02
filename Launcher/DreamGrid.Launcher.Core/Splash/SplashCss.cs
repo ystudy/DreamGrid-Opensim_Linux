@@ -59,9 +59,24 @@ public static class SplashCss
                     SplashFontFamily.Monospace => "ui-monospace, monospace",
                     _ => "system-ui, sans-serif",
                 }).Append(";}\n");
+
+            // A picture block's picture, and each place's picture, have rules of their own inside the block.
+            if (b.Kind == SplashBlockKind.Picture && b.Content.Picture is { } shown)
+                css.Append('.').Append(PictureClassOf(b)).Append('{').Append(Picture(shown, 50, 50, 0, pictureUrl)).Append("}\n");
+            if (b.Kind == SplashBlockKind.Places)
+                for (var i = 0; i < (b.Content.Places?.Count ?? 0); i++)
+                    if (b.Content.Places![i].Picture is { } placed)
+                        css.Append('.').Append(PlaceClassOf(b, i)).Append('{')
+                            .Append(Picture(new SplashPicture(placed, SplashFit.Fill), 50, 50, 0, pictureUrl)).Append("}\n");
         }
         return css.ToString();
     }
+
+    /// <summary>The class of a picture block's picture.</summary>
+    public static string PictureClassOf(SplashBlock b) => ClassOf(b) + "-pic";
+
+    /// <summary>The class of the picture of place <paramref name="index"/> in a places block.</summary>
+    public static string PlaceClassOf(SplashBlock b, int index) => ClassOf(b) + "-place-" + index.ToString(CultureInfo.InvariantCulture);
 
     private static bool HasText(SplashBlock b) => b.Kind != SplashBlockKind.Picture || b.Content.Caption is not null;
 

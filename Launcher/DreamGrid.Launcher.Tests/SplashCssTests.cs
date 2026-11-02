@@ -110,4 +110,35 @@ public sealed class SplashCssTests
 
     [Fact]
     public void Class_of_a_block() => Assert.Equal("b-17", SplashCss.ClassOf(Text(17, 0, 0, 100, 100, 32)));
+
+    private static readonly string PictureName = new string('a', 32) + ".png";
+
+    [Fact]
+    public void Picture_block_gets_its_own_rule()
+    {
+        var picture = new SplashBlock(1, SplashBlockKind.Picture, 0, 0, 400, 300, 1, "#000000", 100, null, false, 0, Font(24),
+            new SplashContent(Picture: new SplashPicture(PictureName, SplashFit.Fit)));
+
+        var css = Css(Page(1280, picture));
+
+        Assert.Equal("b-1-pic", SplashCss.PictureClassOf(picture));
+        Assert.Contains(".b-1-pic{background-image:url(\"/x/" + PictureName + "\");background-size:contain", css);
+    }
+
+    [Fact]
+    public void Place_pictures_get_rules()
+    {
+        var places = new SplashBlock(1, SplashBlockKind.Places, 0, 0, 400, 300, 1, "#000000", 100, null, false, 0, Font(24),
+            new SplashContent(Places:
+            [
+                new SplashPlace(Guid.NewGuid(), "Beach", new Dictionary<string, string> { ["en"] = "" }, null),
+                new SplashPlace(Guid.NewGuid(), "Sandbox", new Dictionary<string, string> { ["en"] = "" }, PictureName),
+            ]));
+
+        var css = Css(Page(1280, places));
+
+        Assert.Equal("b-1-place-1", SplashCss.PlaceClassOf(places, 1));
+        Assert.DoesNotContain(".b-1-place-0{", css);
+        Assert.Contains(".b-1-place-1{background-image:url(\"/x/" + PictureName + "\");background-size:cover", css);
+    }
 }
