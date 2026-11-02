@@ -1,11 +1,13 @@
 using System.Text.Json;
 using DreamGrid.Launcher.Core.Logs;
+using DreamGrid.Launcher.Core.Pictures;
 using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Core.Splash;
 using DreamGrid.Launcher.Security;
 using DreamGrid.Launcher.Splash;
 using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.AspNetCore.Http.Features;
 
 namespace DreamGrid.Launcher.Endpoints;
 
@@ -38,6 +40,7 @@ public static class SplashApi
             .AddEndpointFilter(async (context, next) =>
                 AdminRule.HasStaffPages(context.HttpContext.RequestServices.GetRequiredService<Func<LauncherSettings>>()())
                     ? await next(context) : Results.NotFound());
+        MapPictures(app, api);
 
         api.MapGet("", (SplashStore store) => Results.Json(new
         {
@@ -90,6 +93,91 @@ public static class SplashApi
             audit.Write(new AuditEntry(name, id, role, ctx.Connection.RemoteIpAddress?.ToString(), "splash-draft-discarded", null, "ok"));
             return Results.NoContent();
         });
+    }
+
+    /// <summary>A picture's address never changes what it holds (a new picture gets a new name), so it may be kept for a year.</summary>
+    private const string Immutable = "public, max-age=31536000, immutable";
+
+    /// <summary>
+    /// The splash pictures (spec §4.4): staff upload (the raw file as the body), list, fetch and delete them; anyone may fetch
+    /// a picture the published page uses, and nothing else.
+    /// </summary>
+    private static void MapPictures(WebApplication app, RouteGroupBuilder api)
+    {
+        app.MapGet("/welcome/images/{name}", async (string name, HttpContext ctx, SplashSnapshot snapshot,
+            [FromKeyedServices("splash")] PictureStore pictures) =>
+        {
+            var view = await snapshot.CurrentAsync(ctx.RequestAborted);
+            if (view.IsDefault || !SplashPictures.UsedBy(view.Design).Contains(name) || pictures.Open(name) is not { } file)
+                return Results.NotFound();
+            ctx.Response.Headers.CacheControl = Immutable;
+            return Results.File(file.Path, file.ContentType);
+        }).AllowAnonymous();
+
+        api.MapGet("/pictures", (SplashStore store, [FromKeyedServices("splash")] PictureStore pictures) =>
+        {
+            var inUse = SplashPictures.InUse(store);
+            return Results.Json(new
+            {
+                pictures = pictures.List().Select(p => new { p.Name, p.Label, p.Width, p.Height, p.Bytes, p.Added, p.AddedBy, inUse = inUse.Contains(p.Name) }),
+            }, Json);
+        });
+
+        api.MapGet("/pictures/{name}", (string name, [FromKeyedServices("splash")] PictureStore pictures) =>
+            pictures.Open(name) is { } file ? Results.File(file.Path, file.ContentType) : Results.NotFound());
+
+        api.MapPost("/pictures", async (string? label, HttpContext ctx, IAntiforgery antiforgery,
+            [FromKeyedServices("splash")] PictureStore pictures, AuditLog audit) =>
+        {
+            var (result, problem) = await UploadAsync(ctx, antiforgery, pictures, label);
+            if (result is null) return problem!;
+            var (name, id, role) = AuditActor.Of(ctx.User);
+            audit.Write(new AuditEntry(name, id, role, ctx.Connection.RemoteIpAddress?.ToString(), "splash-image-uploaded",
+                $"{result.Name} ({result.Label})", "ok"));
+            return Results.Json(result, Json);
+        });
+
+        api.MapDelete("/pictures/{name}", async (string name, HttpContext ctx, IAntiforgery antiforgery, SplashStore store,
+            [FromKeyedServices("splash")] PictureStore pictures, AuditLog audit) =>
+        {
+            if (!await antiforgery.IsRequestValidAsync(ctx)) return TokenProblem();
+            if (pictures.Get(name) is not { } picture) return Results.NotFound();
+            if (SplashPictures.InUse(store).Contains(name))
+                return Results.Json(new { problem = "The page still uses that picture." }, Json, statusCode: StatusCodes.Status409Conflict);
+            if (!pictures.Delete(name)) return Results.NotFound();
+            var (actor, id, role) = AuditActor.Of(ctx.User);
+            audit.Write(new AuditEntry(actor, id, role, ctx.Connection.RemoteIpAddress?.ToString(), "splash-image-deleted",
+                $"{picture.Name} ({picture.Label})", "ok"));
+            return Results.NoContent();
+        });
+    }
+
+    /// <summary>
+    /// Checks the antiforgery header before reading any of the body, then hands the body to <paramref name="pictures"/>. The
+    /// request size limit is set just above <see cref="PictureStore.MaxUploadBytes"/> for this request only, so a bigger body
+    /// is cut off by the server as well as by the store.
+    /// </summary>
+    internal static async Task<(StoredPicture?, IResult?)> UploadAsync(HttpContext ctx, IAntiforgery antiforgery, PictureStore pictures,
+        string? label, Stream? source = null)
+    {
+        if (!await antiforgery.IsRequestValidAsync(ctx)) return (null, TokenProblem());
+        if (source is null && ctx.Features.Get<IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit)
+            limit.MaxRequestBodySize = PictureStore.MaxUploadBytes + 1;
+        PictureResult result;
+        try
+        {
+            result = await pictures.AddAsync(source ?? ctx.Request.Body, label, AuditActor.Of(ctx.User).Name, ctx.RequestAborted);
+        }
+        catch (BadHttpRequestException e)
+        {
+            return (null, Results.StatusCode(e.StatusCode));
+        }
+        return result switch
+        {
+            PictureResult.Added a => (a.Picture, null),
+            PictureResult.Refused r => (null, Results.Json(new { problem = r.Message }, Json, statusCode: StatusCodes.Status400BadRequest)),
+            _ => (null, Results.StatusCode(StatusCodes.Status413PayloadTooLarge)),
+        };
     }
 
     private static IResult TokenProblem() =>
