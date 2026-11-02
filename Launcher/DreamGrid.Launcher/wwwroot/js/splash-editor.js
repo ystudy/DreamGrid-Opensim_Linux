@@ -200,6 +200,7 @@
         if (state.selected !== null && !blockById(state.selected)) state.selected = null;
         render();
         if (!keepPanel) renderSettings();
+        renderPictures();
         scheduleSave();
     }
 
@@ -222,6 +223,7 @@
         if (state.selected !== null && !blockById(state.selected)) state.selected = null;
         render();
         renderSettings();
+        renderPictures();
         scheduleSave();
     }
 
@@ -261,6 +263,7 @@
                 if (state.design === sent) unsaved = false;
                 say("Saved");
                 refreshFromServer();
+                loadPictures();
                 if (saveAgain) { saveAgain = false; return save(); }
                 return true;
             }
@@ -299,7 +302,7 @@
         ready.then(function (ok) {
             if (!ok && unsaved) return;
             return request("POST", api + "/publish").then(function (r) {
-                if (r.status === 200) say("Published. Viewers see it within a minute.");
+                if (r.status === 200) { say("Published. Viewers see it within a minute."); loadPictures(); }
                 else say(r.json && r.json.problem ? r.json.problem : "Not published (HTTP " + r.status + ").", true);
             });
         });
@@ -898,8 +901,20 @@
         });
     }
 
-    // Filled in by the Pictures part: copy a region's map tile into the pictures and use it.
-    function mapTileButton() { }
+    // Copies the region's map tile into the pictures (redrawn like an upload) and uses it for place i.
+    function mapTileButton(parent, place, i) {
+        var b = button(parent, place.picture ? "Refresh from the map" : "Use the map tile", "btn-outline-secondary mb-2", function () {
+            b.disabled = true;
+            request("POST", api + "/pictures/from-region/" + encodeURIComponent(place.regionId)).then(function (r) {
+                b.disabled = false;
+                if (r.status !== 200 || !r.json) {
+                    say(r.json && r.json.problem ? r.json.problem : "The map picture couldn't be copied (HTTP " + r.status + ").", true);
+                    return;
+                }
+                loadPictures().then(function () { setBlock("content.places." + i + ".picture", r.json.name, true); });
+            }, function () { b.disabled = false; });
+        });
+    }
 
     function renderSettings() {
         settings.textContent = "";
@@ -912,8 +927,125 @@
         if (b) blockSettings(b); else pageSettings();
     }
 
-    // Filled in by the Pictures part.
-    function renderPictures() { }
+    // --- The Pictures panel: upload, list, delete; the grid's logo -----------------------------------------------------
+
+    var MAX_UPLOAD = 10 * 1024 * 1024;   // PictureStore.MaxUploadBytes
+    var TOO_BIG = "That file is bigger than 10 MB.";
+    var pictureList = document.getElementById("picture-list");
+    var pictureMessage = document.getElementById("picture-message");
+    var progress = document.getElementById("picture-progress");
+
+    // Where the design being edited uses each picture, in words ("the page background", "Text block 4").
+    function usesOf(name) {
+        var d = state.design, found = [];
+        if (!d) return found;
+        if (d.background.picture && d.background.picture.name === name) found.push("the page background");
+        d.blocks.forEach(function (b) {
+            var label = (KIND_NAMES[b.kind] || b.kind) + " block " + b.id;
+            var uses = (b.background && b.background.name === name) ||
+                (b.content.picture && b.content.picture.name === name) ||
+                (b.content.places || []).some(function (p) { return p.picture === name; });
+            if (uses) found.push(label);
+        });
+        return found;
+    }
+
+    function sizeText(bytes) {
+        return bytes >= 1024 * 1024 ? (bytes / 1024 / 1024).toFixed(1) + " MB" : Math.max(1, Math.round(bytes / 1024)) + " KB";
+    }
+
+    function renderPictures() {
+        pictureList.textContent = "";
+        if (state.pictures.length === 0) {
+            pictureList.appendChild(make("li", "small text-body-secondary", "No pictures yet."));
+            return;
+        }
+        state.pictures.forEach(function (p) {
+            var li = make("li", "d-flex align-items-center gap-3 mb-2");
+            li.appendChild(thumb(p.name, p.label));
+            var text = make("div", "flex-grow-1 small");
+            text.appendChild(make("div", "fw-semibold", p.label));
+            text.appendChild(make("div", "text-body-secondary", p.width + " × " + p.height + " · " + sizeText(p.bytes)));
+            var uses = usesOf(p.name);
+            if (p.inUse && uses.length === 0) uses.push("the published page");
+            text.appendChild(make("div", null, uses.length ? "Used by " + uses.join(", ") : "Not used"));
+            li.appendChild(text);
+            var del = button(li, "Delete", "btn-outline-danger", function () {
+                if (!window.confirm("Delete " + p.label + "?")) return;
+                request("DELETE", api + "/pictures/" + encodeURIComponent(p.name)).then(function (r) {
+                    if (r.status === 204) { pictureMessage.textContent = "Deleted " + p.label + "."; loadPictures().then(renderSettings); }
+                    else if (r.status === 409) pictureMessage.textContent = "This picture is still used on the page.";
+                    else pictureMessage.textContent = "Not deleted (HTTP " + r.status + ").";
+                });
+            });
+            del.disabled = uses.length > 0;
+            if (del.disabled) del.title = "Still used on the page";
+            pictureList.appendChild(li);
+        });
+    }
+
+    // Sends one file as the raw body, with progress; done(json) on success, else the message to show.
+    function upload(url, file, message, done) {
+        if (file.size > MAX_UPLOAD) { message.textContent = TOO_BIG; return; }
+        var xhr = new XMLHttpRequest();
+        xhr.open("POST", url + "?label=" + encodeURIComponent(file.name));
+        xhr.setRequestHeader("RequestVerificationToken", token);
+        xhr.setRequestHeader("Accept", "application/json");
+        var bar = progress.firstElementChild;
+        progress.hidden = false;
+        bar.style.width = "0%";
+        xhr.upload.addEventListener("progress", function (e) {
+            if (e.lengthComputable) bar.style.width = Math.round(e.loaded * 100 / e.total) + "%";
+        });
+        xhr.addEventListener("load", function () {
+            progress.hidden = true;
+            var json = null;
+            try { json = JSON.parse(xhr.responseText); } catch (e) { json = null; }
+            if (xhr.status === 401) signInAgain();
+            else if (xhr.status === 200 && json) done(json);
+            else if (xhr.status === 413) message.textContent = TOO_BIG;
+            else message.textContent = json && json.problem ? json.problem : "Not uploaded (HTTP " + xhr.status + ").";
+        });
+        xhr.addEventListener("error", function () {
+            progress.hidden = true;
+            message.textContent = "Not uploaded: the launcher didn't answer.";
+        });
+        message.textContent = "Uploading " + file.name + "…";
+        xhr.send(file);
+    }
+
+    document.getElementById("picture-file").addEventListener("change", function (e) {
+        var input = e.target, file = input.files && input.files[0];
+        if (!file) return;
+        upload(api + "/pictures", file, pictureMessage, function (p) {
+            input.value = "";
+            pictureMessage.textContent = "Added " + p.label + ". Choose it in the page's or a block's settings.";
+            loadPictures().then(renderSettings);
+        });
+    });
+
+    // The logo is drawn by the server in this panel and in grid-name blocks, so the page is loaded again after a change
+    // (any edit not yet saved is saved first).
+    function reloadSaved() {
+        (unsaved ? save() : Promise.resolve(true)).then(function () {
+            unsaved = false;
+            window.location.reload();
+        });
+    }
+
+    var logoMessage = document.getElementById("logo-message");
+    document.getElementById("logo-file").addEventListener("change", function (e) {
+        var file = e.target.files && e.target.files[0];
+        if (file) upload("/api/theme/logo", file, logoMessage, reloadSaved);
+    });
+    var logoRemove = document.getElementById("logo-remove");
+    if (logoRemove) logoRemove.addEventListener("click", function () {
+        if (!window.confirm(logoRemove.getAttribute("data-confirm"))) return;
+        request("DELETE", "/api/theme/logo").then(function (r) {
+            if (r.status === 204) reloadSaved();
+            else logoMessage.textContent = "Not removed (HTTP " + r.status + ").";
+        });
+    });
 
     // --- Start ------------------------------------------------------------------------------------------------------
 

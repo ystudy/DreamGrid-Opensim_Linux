@@ -78,6 +78,35 @@
 
         <section id="splash-settings" aria-label="Settings"></section>
     </div>
+
+    <section id="splash-pictures" class="mt-4" aria-labelledby="pictures-heading">
+        <h2 id="pictures-heading" class="h5">Pictures</h2>
+        <div class="row g-4">
+            <div class="col-lg-8">
+                <p class="hint form-text">PNG, JPEG or WebP, up to 10 MB. Each picture is redrawn when it arrives, which drops hidden data such as GPS position. Choose them in the page's or a block's settings.</p>
+                <label class="form-label" for="picture-file">Upload a picture</label>
+                <input id="picture-file" class="form-control mb-2" type="file" accept="image/png,image/jpeg,image/webp">
+                <div id="picture-progress" class="progress mb-2" role="progressbar" aria-label="Upload" hidden><div class="progress-bar"></div></div>
+                <p id="picture-message" class="small" role="status"></p>
+                <ul id="picture-list" class="list-unstyled mb-0"></ul>
+            </div>
+            <div class="col-lg-4">
+                <h3 class="h6">The grid's logo</h3>
+                <p class="hint form-text">One logo for the whole grid. The grid name block can show it.</p>
+                @if (Model.View.Logo is { } logo)
+                {
+                    <img id="logo-now" class="picture-thumb mb-2" src="@DreamGrid.Launcher.Splash.SplashSnapshot.LogoUrl(logo)" alt="The grid's logo">
+                }
+                <label class="form-label small" for="logo-file">@(Model.View.Logo is null ? "Upload a logo" : "Upload a new logo")</label>
+                <input id="logo-file" class="form-control form-control-sm mb-2" type="file" accept="image/png,image/jpeg,image/webp">
+                @if (Model.View.Logo is not null)
+                {
+                    <button type="button" id="logo-remove" class="btn btn-outline-danger btn-sm" data-confirm="Remove the grid's logo?">Remove the logo</button>
+                }
+                <p id="logo-message" class="small mt-2" role="status"></p>
+            </div>
+        </div>
+    </section>
 </div>
 
 @section Scripts {

@@ -140,4 +140,24 @@ public sealed class SplashEditorPageTests
 
         Assert.Null(page.QuerySelector("header nav a[href=\"/splash\"]"));
     }
+
+    [Fact]
+    public async Task Editor_has_the_picture_panel()
+    {
+        await using var f = Factory();
+        var client = await StaffAsync(f, "owner");
+
+        var page = Parser.ParseDocument(await client.GetStringAsync("/splash", Ct));
+        var panel = page.QuerySelector("#splash-pictures")!;
+        Assert.Equal("image/png,image/jpeg,image/webp", panel.QuerySelector("input#picture-file[type=file]")?.GetAttribute("accept"));
+        Assert.NotNull(panel.QuerySelector("#picture-list"));
+        Assert.Equal("image/png,image/jpeg,image/webp", panel.QuerySelector("input#logo-file[type=file]")?.GetAttribute("accept"));
+        Assert.Null(panel.QuerySelector("#logo-remove"));
+        Assert.Null(panel.QuerySelector("img#logo-now"));
+
+        var logo = await UploadAsync(client, await TokenAsync(client), TestPictures.Png(40, 30), "logo.png", "/api/theme/logo");
+        page = Parser.ParseDocument(await client.GetStringAsync("/splash", Ct));
+        Assert.NotNull(page.QuerySelector("#splash-pictures #logo-remove"));
+        Assert.Equal("/theme/images/" + logo.Name, page.QuerySelector("#splash-pictures img#logo-now")?.GetAttribute("src"));
+    }
 }
