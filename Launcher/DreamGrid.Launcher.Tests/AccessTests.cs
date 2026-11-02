@@ -284,6 +284,8 @@ public sealed class AccessTests
             "route /api/bots/challenge",
             // Guarded by SetupGate, like the setup pages.
             "route /api/setup/progress",
+            // The viewer splash page's stylesheet: public like /welcome.
+            "route /welcome/page-{version:int}.css",
             // The public front page: SetupGate shows it at "/" to anyone not signed in as staff, where there is a guest side.
             "page home",
             // The guest door: any account at level 0 or more signs in here, to the guest pages only.

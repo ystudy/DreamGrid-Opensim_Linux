@@ -51,6 +51,8 @@ internal sealed class LauncherFactory : WebApplicationFactory<Program>
     public FakeGridController Grid { get; } = new();
     public FakeRobustAccounts Robust { get; } = new();
     public FakeOnlineUsers OnlineUsers { get; } = new();
+    /// <summary>The whole grid's regions as Robust lists them (the splash page counts them).</summary>
+    public FakeGridRegions Regions { get; } = new();
     /// <summary>The staff list the Staff page reads: the fake Robust's accounts.</summary>
     public FakeStaffDirectory Staff { get; }
     /// <summary>Deletes avatars from the fake Robust.</summary>
@@ -84,6 +86,8 @@ internal sealed class LauncherFactory : WebApplicationFactory<Program>
             services.AddSingleton<IRobustClient>(Robust);
             services.RemoveAll<IOnlineUsers>();
             services.AddSingleton<IOnlineUsers>(OnlineUsers);
+            services.RemoveAll<IGridRegions>();
+            services.AddSingleton<IGridRegions>(Regions);
             services.RemoveAll<IStaffDirectory>();
             services.AddSingleton<IStaffDirectory>(Staff);
             services.RemoveAll<IAccountRemover>();

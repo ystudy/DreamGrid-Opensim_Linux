@@ -205,7 +205,7 @@ public sealed class LegacyEndpointsTests : IAsyncLifetime
         var html = await resp.Content.ReadAsStringAsync(Ct);
 
         Assert.Equal("text/html", resp.Content.Headers.ContentType?.MediaType);
-        Assert.Contains("Welcome to Avalon &lt;Isle&gt;", html);
+        Assert.Contains("Avalon &lt;Isle&gt;", html);
         Assert.DoesNotContain("<Isle>", html);
     }
 
@@ -269,7 +269,7 @@ public sealed class LegacyEndpointsTests : IAsyncLifetime
 
         Assert.Equal("Running", await GetAsync("/?command=RegionStatus&RegionName=Cached"));
         Assert.StartsWith("NAK", await GetAsync("/?command=RegionStatus&RegionName=Welcome"));
-        Assert.Contains("Welcome to Cached Name", await GetAsync("/welcome"));
+        Assert.Contains("Cached Name", await GetAsync("/welcome"));
     }
 
     [Fact]

@@ -1,0 +1,92 @@
+@using DreamGrid.Launcher.Core.Guests
+@using DreamGrid.Launcher.Core.Security
+@using DreamGrid.Launcher.Core.Splash
+@model DreamGrid.Launcher.Splash.SplashBlockView
+@{
+    var b = Model.Block;
+    var c = b.Content;
+    var s = Model.Settings;
+    var status = Model.Status;
+    var guestSide = AdminRule.HasStaffPages(s);
+    var links = c.Links;
+    static string En(IReadOnlyDictionary<string, string>? text) => text is not null && text.TryGetValue("en", out var t) ? t : "";
+    static string Count(int n, string one, string many) => n == 1 ? "1 " + one : n + " " + many;
+}
+@* One block of the splash page. Owner text goes through the Legal pages' Markdown, which shows any HTML as text. *@
+<div class="splash-block @SplashCss.ClassOf(b)">
+    @switch (b.Kind)
+    {
+        case SplashBlockKind.Text:
+            @Html.Raw(LegalMarkdown.ToHtml(En(c.Text)))
+            break;
+        case SplashBlockKind.GridName:
+            if (c.ShowName)
+            {
+                <div class="splash-heading">@s.GridName</div>
+            }
+            break;
+        case SplashBlockKind.Status:
+            <ul class="splash-list">
+                @if (c.Status?.Online == true)
+                {
+                    <li>@(status.GridOnline ? "Online" : "Offline")</li>
+                }
+                @if (c.Status?.People == true)
+                {
+                    <li>@(status.PeopleOnline is { } p ? Count(p, "person online", "people online") : "Status unavailable")</li>
+                }
+                @if (c.Status?.Regions == true)
+                {
+                    <li>@(status.RegionsRunning is { } r ? Count(r, "region", "regions") : "Status unavailable")</li>
+                }
+            </ul>
+            break;
+        case SplashBlockKind.News:
+            if (En(c.Heading) is { Length: > 0 } heading)
+            {
+                <div class="splash-heading">@heading</div>
+            }
+            <ul class="splash-list">
+                @foreach (var item in (c.News ?? []).Where(n => !n.Hidden).OrderByDescending(n => n.Date))
+                {
+                    <li>
+                        <span class="splash-news-date">@item.Date.ToString("d MMMM yyyy", System.Globalization.CultureInfo.InvariantCulture)</span>
+                        @Html.Raw(LegalMarkdown.ToHtml(En(item.Text)))
+                    </li>
+                }
+            </ul>
+            break;
+        case SplashBlockKind.Places:
+            <ul class="splash-list">
+                @foreach (var place in c.Places ?? [])
+                {
+                    <li><span class="splash-place-name">@place.RegionName</span> @En(place.Line)</li>
+                }
+            </ul>
+            break;
+        case SplashBlockKind.Links:
+            <nav class="splash-links">
+                @if (links?.SignUp == true && guestSide && SignUpRules.IsOpen(s))
+                {
+                    <a href="/signup">Create an account</a>
+                }
+                @if (links?.ForgotPassword == true && guestSide)
+                {
+                    <a href="/guest/forgot-password">Forgot password</a>
+                }
+                @if (links?.Terms == true && guestSide && LegalPages.Get(s, LegalPages.Terms) is not null)
+                {
+                    <a href="/terms">Terms</a>
+                }
+                @if (links?.Privacy == true && guestSide && LegalPages.Get(s, LegalPages.Privacy) is not null)
+                {
+                    <a href="/privacy">Privacy</a>
+                }
+                @if (links?.FrontPage == true && guestSide)
+                {
+                    <a href="/home">About this grid</a>
+                }
+            </nav>
+            break;
+    }
+</div>

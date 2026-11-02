@@ -117,8 +117,12 @@ Each item says what Wifi did, how v7 should do it better, and the security rules
   - [ ] Store acceptance in a launcher-owned table: avatar, ToS version, time, IP. Move existing values from `GridUser.TOS` into it during the upgrade (Phase 3).
 
 ### 2.7 Viewer splash page (Wifi: `splash`, `welcome`)
-- [ ] A localised welcome page for the viewer's login screen: grid name, online count, region count, news text the admin edits.
-- [ ] **[S]** Read-only and cacheable; no admin data in it.
+> Redesigned with the owner (design `docs/superpowers/specs/2026-11-01-viewer-splash-design.md`): the owner (or an admin) builds the page from blocks placed anywhere, with an optional snap grid; it shrinks to a readable size and then scrolls. Three plans: 12a the stored design and the public page (done, `docs/superpowers/plans/2026-11-01-plan12a-splash-page.md`), 12b pictures, 12c the block editor.
+- [ ] A welcome page for the viewer's login screen: grid name, online count, region count, news text the admin edits. (12a: `/welcome` draws the published design or a built-in default with live counts for the whole grid; designs are saved and published through `/api/splash` until 12c's editor exists. English only until 1.5.)
+- [x] **[S]** Read-only and cacheable; no admin data in it. (12a: counts only, no script, `Cache-Control: public, max-age=60`, layout in a generated stylesheet so `style-src 'self'` holds.)
+- [x] Try it in a real Firestorm. (2026-11-01: Firestorm on Windows against the Debian 12 VM showed the default splash page behind the login boxes and the owner said it looks right; the security headers `frame-ancestors 'none'` and `X-Frame-Options: DENY` don't get in the way.)
+- [ ] Pictures: background, picture blocks, the grid logo, place pictures (12b).
+- [ ] The block editor at `/splash`: shelf, drag, resize, snap, guides, preview sizes, undo (12c).
 
 ### 2.8 Groups (Wifi: `groupslist`, `groupeditform`, `groupmembers-*`)
 - [ ] An admin view of groups: list, rename, change charter, list members, add or remove a member, delete a group.
@@ -230,7 +234,7 @@ Decided: build **all three**, each with its own switch. A (honeypot and rate lim
 - OAR download for region owners.
 - Audio alternative for the image CAPTCHA.
 - Mass email to residents (to everyone or to one group), queued and throttled, with an unsubscribe link. Add it only if it's asked for.
-- In-viewer search (places, people, classifieds, events). Keep the `OpenSimSearch` region module (upstream: `kcozens/OpenSimSearch`); it needs a search web service at `SearchURL`. Two ways to provide one:
+- In-viewer search (places, people, classifieds, events). Owner (2026-11-01): wanted later as a full "post an ad and search" built into the grid: look for groups, ads (classifieds), avatar info, land, land for sale and events, and post ads and events. Today `SearchURL=` is empty in the region template, so Search finds nothing. Once there is an events list, the splash page (2.7) can show upcoming events. Keep the `OpenSimSearch` region module (upstream: `kcozens/OpenSimSearch`); it needs a search web service at `SearchURL`. Two ways to provide one:
   - point it at [magicoli/opensim-helpers](https://github.com/magicoli/opensim-helpers), the maintained PHP helpers that work with OpenSimSearch (needs PHP on the host), or
   - have the v7 website provide the search service itself (no PHP; same on Windows and Debian). Recommendation, if search is wanted.
   - Either way: the search service reads only public data, is rate limited, and the region's `data_services` registration accepts only known simulators.
