@@ -192,13 +192,14 @@
 
     // --- Changing the design ----------------------------------------------------------------------------------------
 
-    // Every edit goes through here: it becomes an undo step, is drawn, and is saved a moment later.
-    function change(design) {
+    // Every edit goes through here: it becomes an undo step, is drawn, and is saved a moment later. An edit typed in the
+    // settings panel keeps the panel as it is (keepPanel), so the field that takes focus next isn't swept away.
+    function change(design, keepPanel) {
         state.design = design;
         history.push(design);
         if (state.selected !== null && !blockById(state.selected)) state.selected = null;
         render();
-        renderSettings();
+        if (!keepPanel) renderSettings();
         scheduleSave();
     }
 
@@ -492,17 +493,427 @@
 
     // --- Settings panel (the page's, or the selected block's) --------------------------------------------------------
 
+    // Every field is built with createElement and its text set as text, never as HTML, so owner text can't become markup.
+    // A field commits on "change" (leaving it, or a pick), through change(…, true).
+
     var settings = document.getElementById("splash-settings");
+    var FITS = [["Fill", "Fill (crop the edges)"], ["Fit", "Fit (show it all)"], ["Stretch", "Stretch"], ["Tile", "Tile"], ["Centre", "Centre, actual size"]];
+    var ALIGNS = [["Left", "Left"], ["Centre", "Centre"], ["Right", "Right"]];
+    var FAMILIES = [["Sans", "Sans-serif"], ["Serif", "Serif"], ["Monospace", "Monospace"]];
+    var fieldCount = 0;
+
+    function make(tag, className, text) {
+        var el = document.createElement(tag);
+        if (className) el.className = className;
+        if (text !== undefined) el.textContent = text;
+        return el;
+    }
+
+    function group(parent, title) {
+        var g = make("div", "settings-group");
+        g.appendChild(make("h3", "h6", title));
+        parent.appendChild(g);
+        return g;
+    }
+
+    function labelled(parent, label, input) {
+        var row = make("div", "mb-2");
+        input.id = "sf-" + (++fieldCount);
+        var l = make("label", "form-label small mb-1", label);
+        l.htmlFor = input.id;
+        row.appendChild(l);
+        row.appendChild(input);
+        parent.appendChild(row);
+        return input;
+    }
+
+    function numberField(parent, label, value, min, max, commit) {
+        var input = make("input", "form-control form-control-sm");
+        input.type = "number";
+        input.min = String(min);
+        input.max = String(max);
+        input.value = String(value);
+        input.addEventListener("change", function () {
+            var n = Math.round(Number(input.value));
+            if (!isFinite(n)) return;
+            commit(Math.min(Math.max(n, min), max));
+        });
+        return labelled(parent, label, input);
+    }
+
+    function textField(parent, label, value, max, commit, rows) {
+        var input = make(rows ? "textarea" : "input", "form-control form-control-sm");
+        if (rows) input.rows = rows; else input.type = "text";
+        input.maxLength = max;
+        input.value = value || "";
+        input.addEventListener("change", function () { commit(input.value.replace(/\r\n?/g, "\n")); });
+        return labelled(parent, label, input);
+    }
+
+    function colourField(parent, label, value, commit) {
+        var input = make("input", "form-control form-control-sm form-control-color");
+        input.type = "color";
+        input.value = value;
+        input.addEventListener("change", function () { commit(input.value.toLowerCase()); });
+        return labelled(parent, label, input);
+    }
+
+    function rangeField(parent, label, value, max, commit) {
+        var input = make("input", "form-range");
+        input.type = "range";
+        input.min = "0";
+        input.max = String(max);
+        input.value = String(value);
+        var shown = make("span", "small ms-1", value + " %");
+        input.addEventListener("input", function () { shown.textContent = input.value + " %"; });
+        input.addEventListener("change", function () { commit(Number(input.value)); });
+        labelled(parent, label, input).parentElement.firstChild.appendChild(shown);
+        return input;
+    }
+
+    function selectField(parent, label, value, options, commit) {
+        var input = make("select", "form-select form-select-sm");
+        options.forEach(function (o) {
+            var option = make("option", null, o[1]);
+            option.value = o[0];
+            input.appendChild(option);
+        });
+        input.value = value;
+        input.addEventListener("change", function () { commit(input.value); });
+        return labelled(parent, label, input);
+    }
+
+    function checkField(parent, label, value, commit) {
+        var row = make("div", "form-check mb-1");
+        var input = make("input", "form-check-input");
+        input.type = "checkbox";
+        input.id = "sf-" + (++fieldCount);
+        input.checked = !!value;
+        input.addEventListener("change", function () { commit(input.checked); });
+        var l = make("label", "form-check-label small", label);
+        l.htmlFor = input.id;
+        row.appendChild(input);
+        row.appendChild(l);
+        parent.appendChild(row);
+        return input;
+    }
+
+    function button(parent, text, className, onClick) {
+        var b = make("button", "btn btn-sm " + (className || "btn-outline-secondary"), text);
+        b.type = "button";
+        b.addEventListener("click", onClick);
+        parent.appendChild(b);
+        return b;
+    }
+
+    function hint(parent, text) {
+        parent.appendChild(make("p", "hint form-text small mb-2", text));
+    }
+
+    // The block being edited, changed at one path, as an edit from the panel.
+    function setBlock(path, value, redraw) {
+        var b = blockById(state.selected);
+        if (b) change(replaceBlock(Core.setPath(b, path, value)), !redraw);
+    }
+
+    function setPage(path, value, redraw) {
+        change(Core.setPath(state.design, path, value), !redraw);
+    }
+
+    // --- Pictures (the list itself and uploading are in the Pictures panel) ---
+
+    state.pictures = [];
+
+    function loadPictures() {
+        return request("GET", api + "/pictures").then(function (r) {
+            if (r.status === 200 && r.json) state.pictures = r.json.pictures || [];
+            renderPictures();
+        });
+    }
+
+    function pictureUrl(name) {
+        return api + "/pictures/" + encodeURIComponent(name);
+    }
+
+    function thumb(name, label) {
+        var img = make("img", "picture-thumb");
+        img.src = pictureUrl(name);
+        img.alt = label || "";
+        img.loading = "lazy";
+        return img;
+    }
+
+    // A picture choice: what is chosen now, and a list to pick from (plus "No picture" where none is allowed).
+    function pictureField(parent, label, current, allowNone, commit) {
+        var box = make("div", "mb-2");
+        box.appendChild(make("div", "form-label small mb-1", label));
+        var row = make("div", "d-flex align-items-center gap-2 mb-1");
+        if (current) row.appendChild(thumb(current, "Chosen picture"));
+        else row.appendChild(make("span", "small text-body-secondary", "No picture"));
+        var choices = make("div", "picture-choices mt-1");
+        choices.hidden = true;
+        button(row, current ? "Change…" : "Choose…", null, function () { choices.hidden = !choices.hidden; });
+        if (current && allowNone) button(row, "Remove", "btn-outline-danger", function () { commit(null); });
+        box.appendChild(row);
+        if (state.pictures.length === 0)
+            choices.appendChild(make("p", "small mb-0", "No pictures yet. Upload one under Pictures."));
+        state.pictures.forEach(function (p) {
+            var pick = make("button", p.name === current ? "chosen" : "");
+            pick.type = "button";
+            pick.title = p.label;
+            pick.appendChild(thumb(p.name, p.label));
+            pick.addEventListener("click", function () { commit(p.name); });
+            choices.appendChild(pick);
+        });
+        box.appendChild(choices);
+        parent.appendChild(box);
+    }
+
+    // --- The page's settings ---
+
+    function pageSettings() {
+        var d = state.design, bg = d.background, lim = state.limits;
+        var g = group(settings, "The page");
+        hint(g, "Click a block to change it, or change the whole page here.");
+        colourField(g, "Background colour", bg.colour, function (v) { setPage("background.colour", v); });
+        pictureField(g, "Background picture", bg.picture && bg.picture.name, true, function (name) {
+            var was = state.design.background.picture;
+            setPage("background.picture", name ? { name: name, fit: (was && was.fit) || "Fill" } : null, true);
+        });
+        if (bg.picture) {
+            selectField(g, "How the picture fills the page", bg.picture.fit, FITS, function (v) { setPage("background.picture.fit", v); });
+            focusPicker(g, bg);
+        }
+        rangeField(g, "Darken the picture", bg.darken, lim.maxDarken || 80, function (v) { setPage("background.darken", v); });
+
+        var size = group(settings, "Design size");
+        hint(size, "The size you design at, in pixels. Viewers' windows shrink or grow it (see the preview).");
+        numberField(size, "Width", d.width, lim.minWidth || 640, lim.maxWidth || 3840, function (v) {
+            change(Core.fitBlocks(Core.setPath(state.design, "width", v)));
+        });
+        numberField(size, "Height", d.height, lim.minHeight || 400, lim.maxHeight || 2160, function (v) {
+            change(Core.fitBlocks(Core.setPath(state.design, "height", v)));
+        });
+    }
+
+    // A click on the picture sets the point that stays in view when it is cropped.
+    function focusPicker(parent, bg) {
+        var box = make("div", "mb-2");
+        box.appendChild(make("div", "form-label small mb-1", "Focus point (click the part that must stay in view)"));
+        var picker = make("div", "focus-picker");
+        var img = thumb(bg.picture.name, "Background picture");
+        img.className = "";
+        var dot = make("span", "focus-dot");
+        dot.style.left = bg.focusX + "%";
+        dot.style.top = bg.focusY + "%";
+        picker.appendChild(img);
+        picker.appendChild(dot);
+        picker.addEventListener("click", function (e) {
+            var r = img.getBoundingClientRect();
+            var x = Math.round(Math.min(Math.max((e.clientX - r.left) / r.width, 0), 1) * 100);
+            var y = Math.round(Math.min(Math.max((e.clientY - r.top) / r.height, 0), 1) * 100);
+            dot.style.left = x + "%";
+            dot.style.top = y + "%";
+            var d = Core.setPath(Core.setPath(state.design, "background.focusX", x), "background.focusY", y);
+            change(d, true);
+        });
+        box.appendChild(picker);
+        parent.appendChild(box);
+    }
+
+    // --- A block's settings ---
+
+    function today() {
+        var d = new Date();
+        return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+    }
+
+    function blockSettings(b) {
+        var lim = state.limits;
+        var head = make("h2", "h6", (KIND_NAMES[b.kind] || b.kind) + " block");
+        settings.appendChild(head);
+        hint(settings, "Drag the block to move it, or its corners and edges to resize it. Arrow keys move it by 1 px (10 px with Shift).");
+
+        kindSettings(b, lim);
+
+        if (b.kind !== "Picture" || b.content.caption) {
+            var t = group(settings, "Text style");
+            numberField(t, "Size (design px)", b.font.size, lim.minFontSize || 8, lim.maxFontSize || 200, function (v) { setBlock("font.size", v); });
+            colourField(t, "Colour", b.font.colour, function (v) { setBlock("font.colour", v); });
+            checkField(t, "Bold", b.font.bold, function (v) { setBlock("font.bold", v); });
+            selectField(t, "Alignment", b.font.align, ALIGNS, function (v) { setBlock("font.align", v); });
+            selectField(t, "Font", b.font.family, FAMILIES, function (v) { setBlock("font.family", v); });
+        }
+
+        var look = group(settings, "Box");
+        colourField(look, "Background colour", b.colour, function (v) { setBlock("colour", v); });
+        rangeField(look, "See-through", b.seeThrough, lim.maxSeeThrough || 100, function (v) { setBlock("seeThrough", v); });
+        pictureField(look, "Background picture", b.background && b.background.name, true, function (name) {
+            var was = blockById(b.id).background;
+            setBlock("background", name ? { name: name, fit: (was && was.fit) || "Fill" } : null, true);
+        });
+        if (b.background)
+            selectField(look, "How the picture fills the box", b.background.fit, FITS, function (v) { setBlock("background.fit", v); });
+        checkField(look, "Rounded corners", b.rounded, function (v) { setBlock("rounded", v); });
+        numberField(look, "Padding (design px)", b.padding, 0, lim.maxPadding || 64, function (v) { setBlock("padding", v); });
+
+        var where = group(settings, "Place and size (design px)");
+        [["x", "Left"], ["y", "Top"], ["w", "Width"], ["h", "Height"]].forEach(function (f) {
+            var max = f[0] === "x" || f[0] === "w" ? state.design.width : state.design.height;
+            numberField(where, f[1], b[f[0]], f[0] === "w" || f[0] === "h" ? Core.MIN_BLOCK : 0, max, function (v) {
+                var moved = Core.inside(Core.setPath(blockById(b.id), f[0], v), state.design);
+                change(replaceBlock(moved));
+            });
+        });
+    }
+
+    function kindSettings(b, lim) {
+        var c = b.content, g;
+        switch (b.kind) {
+            case "Text":
+                g = group(settings, "Text");
+                textField(g, "Text", c.text.en, lim.maxText || 4000, function (v) { setBlock("content.text", { en: v }); }, 8);
+                hint(g, "Markdown: **bold**, *italic*, [link](https://…). A blank line starts a new paragraph.");
+                break;
+            case "Picture":
+                g = group(settings, "Picture");
+                pictureField(g, "Picture", c.picture && c.picture.name, false, function (name) {
+                    var was = blockById(b.id).content.picture;
+                    setBlock("content.picture", { name: name, fit: (was && was.fit) || "Fill" }, true);
+                });
+                if (c.picture)
+                    selectField(g, "How the picture fills the block", c.picture.fit, FITS, function (v) { setBlock("content.picture.fit", v); });
+                textField(g, "Caption (optional)", c.caption && c.caption.en, lim.maxCaption || 200, function (v) {
+                    setBlock("content.caption", v.trim() ? { en: v } : null, true);
+                });
+                break;
+            case "GridName":
+                g = group(settings, "Grid name and logo");
+                checkField(g, "Show the grid's name", c.showName, function (v) { setBlock("content.showName", v); });
+                checkField(g, "Show the grid's logo", c.showLogo, function (v) { setBlock("content.showLogo", v); });
+                hint(g, "The logo is the grid's one logo; set it under Pictures.");
+                break;
+            case "Status":
+                g = group(settings, "Live status");
+                checkField(g, "Grid online or offline", c.status.online, function (v) { setBlock("content.status.online", v); });
+                checkField(g, "People online now", c.status.people, function (v) { setBlock("content.status.people", v); });
+                checkField(g, "Regions running", c.status.regions, function (v) { setBlock("content.status.regions", v); });
+                hint(g, "Counts only, never names. They are at most about a minute old.");
+                break;
+            case "News":
+                newsSettings(b, lim);
+                break;
+            case "Places":
+                placesSettings(b, lim);
+                break;
+            case "Links":
+                g = group(settings, "Links");
+                checkField(g, "Sign up", c.links.signUp, function (v) { setBlock("content.links.signUp", v); });
+                checkField(g, "Forgot password", c.links.forgotPassword, function (v) { setBlock("content.links.forgotPassword", v); });
+                checkField(g, "Terms", c.links.terms, function (v) { setBlock("content.links.terms", v); });
+                checkField(g, "Privacy", c.links.privacy, function (v) { setBlock("content.links.privacy", v); });
+                checkField(g, "The grid's front page", c.links.frontPage, function (v) { setBlock("content.links.frontPage", v); });
+                hint(g, "Sign up and forgot password show only while those pages are open; Terms and privacy only once they are written.");
+                break;
+        }
+    }
+
+    // Moves item i of a list one place up (-1) or down (+1) and returns the new list.
+    function shifted(list, i, by) {
+        var copy = list.slice(), j = i + by;
+        if (j < 0 || j >= copy.length) return copy;
+        var t = copy[i]; copy[i] = copy[j]; copy[j] = t;
+        return copy;
+    }
+
+    // The list as it is now (the panel isn't redrawn after each typed edit, so a list kept from drawing it may be old).
+    function listNow(path) {
+        var at = blockById(state.selected);
+        path.split(".").forEach(function (k) { at = at[k]; });
+        return at;
+    }
+
+    function itemButtons(parent, count, i, path) {
+        var row = make("div", "d-flex gap-1 mb-2");
+        button(row, "Up", null, function () { setBlock(path, shifted(listNow(path), i, -1), true); }).disabled = i === 0;
+        button(row, "Down", null, function () { setBlock(path, shifted(listNow(path), i, 1), true); }).disabled = i === count - 1;
+        button(row, "Remove", "btn-outline-danger", function () {
+            setBlock(path, listNow(path).filter(function (_, j) { return j !== i; }), true);
+        });
+        parent.appendChild(row);
+        return row;
+    }
+
+    function newsSettings(b, lim) {
+        var c = b.content, news = c.news;
+        var g = group(settings, "News");
+        textField(g, "Heading", c.heading && c.heading.en, lim.maxHeading || 120, function (v) { setBlock("content.heading", { en: v }); });
+        hint(g, "Residents see the newest items first. Hidden items stay here but don't show.");
+        var add = button(g, "Add news", "btn-outline-primary mb-2", function () {
+            setBlock("content.news", [{ date: today(), text: { en: "" }, hidden: false }].concat(listNow("content.news")), true);
+        });
+        add.disabled = news.length >= (lim.maxNews || 20);
+        news.forEach(function (item, i) {
+            var box = make("div", "border rounded p-2 mb-2");
+            var date = make("input", "form-control form-control-sm");
+            date.type = "date";
+            date.value = item.date;
+            date.addEventListener("change", function () { if (date.value) setBlock("content.news." + i + ".date", date.value); });
+            labelled(box, "Date", date);
+            textField(box, "Text", item.text.en, lim.maxNewsText || 2000, function (v) { setBlock("content.news." + i + ".text", { en: v }); }, 3);
+            checkField(box, "Hide this item", item.hidden, function (v) { setBlock("content.news." + i + ".hidden", v); });
+            itemButtons(box, news.length, i, "content.news");
+            g.appendChild(box);
+        });
+    }
+
+    function placesSettings(b, lim) {
+        var places = b.content.places;
+        var g = group(settings, "Places to go");
+        hint(g, "Up to " + (lim.maxPlaces || 8) + " regions from the whole grid. Cards show the name, a picture and a line of text.");
+        var chosen = {};
+        places.forEach(function (p) { chosen[p.regionId] = true; });
+        var free = state.regions.filter(function (r) { return !chosen[r.id]; });
+        var full = places.length >= (lim.maxPlaces || 8);
+        if (state.regions.length === 0) {
+            hint(g, "The region list can't be read right now.");
+        } else if (!full && free.length > 0) {
+            var pick = selectField(g, "Add a region", "", [["", "Choose a region…"]].concat(free.map(function (r) { return [r.id, r.name]; })), function (id) {
+                var r = free.filter(function (x) { return x.id === id; })[0];
+                if (!r) return;
+                setBlock("content.places", listNow("content.places").concat([{ regionId: r.id, regionName: r.name, line: { en: "" }, picture: null }]), true);
+            });
+            pick.value = "";
+        } else if (full) {
+            hint(g, "This block has the most places it can hold.");
+        }
+        places.forEach(function (p, i) {
+            var box = make("div", "border rounded p-2 mb-2");
+            box.appendChild(make("div", "fw-semibold small mb-1", p.regionName));
+            textField(box, "Line of text", p.line && p.line.en, lim.maxPlaceLine || 200, function (v) { setBlock("content.places." + i + ".line", { en: v }); });
+            pictureField(box, "Picture", p.picture, true, function (name) { setBlock("content.places." + i + ".picture", name, true); });
+            mapTileButton(box, p, i);
+            itemButtons(box, places.length, i, "content.places");
+            g.appendChild(box);
+        });
+    }
+
+    // Filled in by the Pictures part: copy a region's map tile into the pictures and use it.
+    function mapTileButton() { }
 
     function renderSettings() {
         settings.textContent = "";
-        var p = document.createElement("p");
-        p.className = "hint form-text";
-        p.textContent = preview ? "Go back to editing to change the page." : state.selected === null
-            ? "Click a block to change it."
-            : "Drag the block to move it, or its corners and edges to resize it. Arrow keys move it by 1 px (10 px with Shift).";
-        settings.appendChild(p);
+        if (preview) {
+            hint(settings, "Go back to editing to change the page.");
+            return;
+        }
+        if (!state.design) return;
+        var b = state.selected === null ? null : blockById(state.selected);
+        if (b) blockSettings(b); else pageSettings();
     }
+
+    // Filled in by the Pictures part.
+    function renderPictures() { }
 
     // --- Start ------------------------------------------------------------------------------------------------------
 
@@ -525,6 +936,7 @@
         render();
         renderSettings();
         say(data.draft ? "Draft" : data.published ? "Published page" : "The built-in page");
+        loadPictures().then(renderSettings);
     });
 
     // For the settings and pictures parts below.

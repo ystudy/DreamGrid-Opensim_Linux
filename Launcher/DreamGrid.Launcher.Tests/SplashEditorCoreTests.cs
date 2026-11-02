@@ -186,6 +186,28 @@ public sealed class SplashEditorCoreTests
     }
 
     [Fact]
+    public void Set_path_copies_and_changes_one_field()
+    {
+        var news = new SplashBlock(1, SplashBlockKind.News, 0, 0, 100, 100, 1, "#000000", 50, null, false, 8, Font(24),
+            new SplashContent(Heading: new Dictionary<string, string> { ["en"] = "News" },
+                News: [new SplashNewsItem(new DateOnly(2026, 11, 1), new Dictionary<string, string> { ["en"] = "Hi" }, false)]));
+        _js.Execute($"var b = {J(news)}; var before = JSON.stringify(b);" +
+            "var big = SplashEditorCore.setPath(b, 'font.size', 40); var hidden = SplashEditorCore.setPath(b, 'content.news.0.hidden', true);");
+        Assert.True(_js.Evaluate("before === JSON.stringify(b)").AsBoolean());
+        Assert.Equal(40, (int)Run("big.font.size")!);
+        Assert.Equal(24, (int)Run("hidden.font.size")!);
+        Assert.True((bool)Run("hidden.content.news[0].hidden")!);
+        Assert.Equal("Hi", (string)Run("hidden.content.news[0].text.en")!);
+    }
+
+    [Fact]
+    public void Fit_blocks_keeps_every_block_inside_a_smaller_page()
+    {
+        var d = Run($"SplashEditorCore.fitBlocks(SplashEditorCore.setPath({J(Page(Block(1, 1000, 600, 200, 150)))}, 'width', 800))");
+        Assert.Equal((600, 600, 200, 150), Box(d!["blocks"]!.AsArray()[0]));
+    }
+
+    [Fact]
     public void History_undo_redo()
     {
         _js.Execute("var h = SplashEditorCore.History(100); h.push({ n: 'A' }); h.push({ n: 'B' }); h.push({ n: 'C' });");

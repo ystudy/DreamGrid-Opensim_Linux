@@ -228,6 +228,21 @@ var SplashEditorCore = (function () {
         return clamp(viewerW, minWidth(design), maxWidth(design));
     }
 
+    // A copy of obj with the one field at a dotted path changed ("font.size", "content.news.0.hidden").
+    function setPath(obj, path, value) {
+        var result = copy(obj), at = result, keys = path.split(".");
+        for (var i = 0; i < keys.length - 1; i++) at = at[keys[i]];
+        at[keys[keys.length - 1]] = value;
+        return result;
+    }
+
+    // Every block moved and shrunk back inside the page, after its size changed.
+    function fitBlocks(design) {
+        var d = copy(design);
+        d.blocks = d.blocks.map(function (b) { return inside(b, d); });
+        return d;
+    }
+
     // Undo and redo for one editing visit: push every design as it becomes current, the first one included.
     function History(limit) {
         var states = [], at = -1;
@@ -256,6 +271,6 @@ var SplashEditorCore = (function () {
     return {
         snap: snap, move: move, resize: resize, nudge: nudge, addBlock: addBlock, duplicate: duplicate, remove: remove,
         forward: forward, back: back, minWidth: minWidth, maxWidth: maxWidth, previewWidth: previewWidth, History: History,
-        defaults: defaults, MIN_BLOCK: MIN_BLOCK
+        setPath: setPath, fitBlocks: fitBlocks, inside: inside, defaults: defaults, MIN_BLOCK: MIN_BLOCK
     };
 })();
