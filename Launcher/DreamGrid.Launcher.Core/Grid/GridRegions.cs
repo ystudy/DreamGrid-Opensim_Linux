@@ -5,7 +5,8 @@ using MySqlConnector;
 
 namespace DreamGrid.Launcher.Core.Grid;
 
-public sealed record GridRegion(Guid Id, string Name);
+/// <param name="X">The region's corner on the map, in map squares (Robust keeps it in metres, 256 to a square).</param>
+public sealed record GridRegion(Guid Id, string Name, int X, int Y);
 
 /// <param name="Available">False when the database could not be asked; <see cref="Regions"/> is then empty.</param>
 public sealed record GridRegionList(IReadOnlyList<GridRegion> Regions, bool Available)
@@ -32,7 +33,7 @@ public sealed class GridRegions(Func<LauncherSettings> settings, ILogger<GridReg
     // Short: the splash page asks while viewers wait at the login screen.
     private const uint TimeoutSeconds = 3;
 
-    private const string Query = "SELECT uuid, regionName FROM regions ORDER BY regionName";
+    private const string Query = "SELECT uuid, regionName, locX, locY FROM regions ORDER BY regionName";
 
     public async Task<GridRegionList> ListAsync(CancellationToken ct)
     {
@@ -48,7 +49,8 @@ public sealed class GridRegions(Func<LauncherSettings> settings, ILogger<GridReg
             {
                 // char(36) may come back as a Guid or as text, depending on the connector's GUID handling.
                 var id = reader.GetValue(0) is Guid g ? g : Guid.TryParse(Convert.ToString(reader.GetValue(0)), out var p) ? p : Guid.Empty;
-                list.Add(new GridRegion(id, reader.IsDBNull(1) ? "" : reader.GetString(1)));
+                list.Add(new GridRegion(id, reader.IsDBNull(1) ? "" : reader.GetString(1),
+                    reader.IsDBNull(2) ? 0 : Convert.ToInt32(reader.GetValue(2)) / 256, reader.IsDBNull(3) ? 0 : Convert.ToInt32(reader.GetValue(3)) / 256));
             }
             return new GridRegionList(list, true);
         }

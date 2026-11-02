@@ -1,4 +1,5 @@
 using System.Text.Json;
+using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.Logs;
 using DreamGrid.Launcher.Core.Pictures;
 using DreamGrid.Launcher.Core.Security;
@@ -42,8 +43,10 @@ public static class SplashApi
                     ? await next(context) : Results.NotFound());
         MapPictures(app, api);
 
-        api.MapGet("", (SplashStore store) => Results.Json(new
+        api.MapGet("", async (SplashStore store, IGridRegions regions, HttpContext ctx) => Results.Json(new
         {
+            // The whole grid's regions, for the Places to go picker; empty when the list can't be read.
+            regions = (await regions.ListAsync(ctx.RequestAborted)).Regions.Select(r => new { r.Id, r.Name }),
             draft = store.Draft(),
             // What the next save is based on: the draft's version, or the last one when the draft was discarded.
             draftVersion = store.DraftVersion(),
@@ -133,6 +136,43 @@ public static class SplashApi
             if (result is null) return problem!;
             var (name, id, role) = AuditActor.Of(ctx.User);
             audit.Write(new AuditEntry(name, id, role, ctx.Connection.RemoteIpAddress?.ToString(), "splash-image-uploaded",
+                $"{result.Name} ({result.Label})", "ok"));
+            return Results.Json(result, Json);
+        });
+
+        // A region's map tile, fetched from Robust as the map page's tile proxy does, then kept like any upload (redrawn, new name).
+        api.MapPost("/pictures/from-region/{id:guid}", async (Guid id, HttpContext ctx, IAntiforgery antiforgery, IGridRegions regions,
+            IGridController grid, IHttpClientFactory http, [FromKeyedServices("splash")] PictureStore pictures, AuditLog audit) =>
+        {
+            if (!await antiforgery.IsRequestValidAsync(ctx)) return TokenProblem();
+            var list = await regions.ListAsync(ctx.RequestAborted);
+            if (!list.Available)
+                return Results.Json(new { problem = "The grid's region list can't be read right now. Try again in a minute." }, Json,
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
+            if (list.Regions.FirstOrDefault(r => r.Id == id) is not { } region)
+                return Results.Json(new { problem = "That region isn't registered with the grid." }, Json, statusCode: StatusCodes.Status404NotFound);
+
+            byte[] tile;
+            try
+            {
+                using var client = http.CreateClient(RegionsApi.RobustMapClient);
+                var port = grid.CurrentSettings().RobustPublicPort;
+                using var response = await client.GetAsync($"http://127.0.0.1:{port}/map-1-{region.X}-{region.Y}-objects.jpg", ctx.RequestAborted);
+                // A missing tile can come back as a 200 with text/plain and an empty body.
+                tile = response.IsSuccessStatusCode && response.Content.Headers.ContentType?.MediaType is "image/jpeg" or "image/png"
+                    ? await response.Content.ReadAsByteArrayAsync(ctx.RequestAborted) : [];
+            }
+            catch (Exception e) when (e is HttpRequestException or TaskCanceledException && !ctx.RequestAborted.IsCancellationRequested)
+            {
+                tile = [];
+            }
+            if (tile.Length == 0)
+                return Results.Json(new { problem = "The grid has no map picture for that region yet." }, Json, statusCode: StatusCodes.Status404NotFound);
+
+            var (result, problem) = await UploadAsync(ctx, antiforgery, pictures, $"Map of {region.Name}", new MemoryStream(tile));
+            if (result is null) return problem!;
+            var (name, actorId, role) = AuditActor.Of(ctx.User);
+            audit.Write(new AuditEntry(name, actorId, role, ctx.Connection.RemoteIpAddress?.ToString(), "splash-image-uploaded",
                 $"{result.Name} ({result.Label})", "ok"));
             return Results.Json(result, Json);
         });

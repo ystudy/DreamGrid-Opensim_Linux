@@ -124,7 +124,7 @@ public sealed class WelcomePageTests
     public async Task Regions_count_the_whole_grid()
     {
         await using var f = Factory();
-        f.Regions.Result = new GridRegionList([new(Guid.NewGuid(), "A"), new(Guid.NewGuid(), "B"), new(Guid.NewGuid(), "C")], true);
+        f.Regions.Result = new GridRegionList([new(Guid.NewGuid(), "A", 1000, 1000), new(Guid.NewGuid(), "B", 1001, 1000), new(Guid.NewGuid(), "C", 1002, 1000)], true);
 
         var (_, page, _) = await GetAsync(f);
 
