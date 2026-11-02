@@ -35,3 +35,5 @@
 .picture-choices { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 0.5rem; }
 .picture-choices button { padding: 0; border: 2px solid transparent; background: none; }
 .picture-choices button.chosen { border-color: #0d6efd; }
+/* A block added since the last save, until the server draws it. */
+.splash-canvas .placeholder { display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.5); outline: 1px dashed #ffffff; font-size: 14px; }
