@@ -1,0 +1,6 @@
+@model DreamGrid.Launcher.Splash.SplashBlocksModel
+@* The blocks of one splash view: the public page, the staff preview and the editor's canvas draw them the same way. *@
+@foreach (var block in Model.View.Design.Blocks)
+{
+    <partial name="_SplashBlock" model="new DreamGrid.Launcher.Splash.SplashBlockView(block, Model.View.Status, Model.Settings, Model.View.Logo)" />
+}

@@ -28,13 +28,17 @@ public static class SplashCss
 
     public static string ClassOf(SplashBlock b) => "b-" + b.Id.ToString(CultureInfo.InvariantCulture);
 
+    /// <summary>What the page background is drawn on in the public page.</summary>
+    public const string PublicPage = "body.splash";
+
     /// <param name="pictureUrl">Turns a picture-store name into its address on the page.</param>
-    public static string Build(SplashDesign d, Func<string, string> pictureUrl)
+    /// <param name="pageSelector">What the page background is drawn on: the public page's body, or also the editor's canvas.</param>
+    public static string Build(SplashDesign d, Func<string, string> pictureUrl, string pageSelector = PublicPage)
     {
         var css = new StringBuilder();
         var bg = d.Background;
         var pageBackground = Background(bg.Colour, bg.Picture, bg.FocusX, bg.FocusY, bg.Darken, pictureUrl);
-        css.Append("body.splash{").Append(pageBackground).Append("}\n");
+        css.Append(pageSelector).Append('{').Append(pageBackground).Append("}\n");
         css.Append(".splash-page{width:clamp(").Append(MinWidth(d)).Append("px, 100vw, ").Append(MaxWidth(d)).Append("px);")
             .Append("aspect-ratio:").Append(d.Width).Append(" / ").Append(d.Height).Append(";container-type:inline-size;}\n");
 

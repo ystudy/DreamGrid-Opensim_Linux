@@ -14,6 +14,9 @@ public sealed record SplashStatus(bool GridOnline, int? PeopleOnline, int? Regio
 /// <param name="Logo">The grid's logo picture name, or null when none is set.</param>
 public sealed record SplashView(SplashDesign Design, int Version, bool IsDefault, SplashStatus Status, string Css, string? Logo = null);
 
+/// <summary>What the blocks of a page are drawn from.</summary>
+public sealed record SplashBlocksModel(SplashView View, LauncherSettings Settings);
+
 /// <summary>What one block of the public page is drawn from.</summary>
 public sealed record SplashBlockView(SplashBlock Block, SplashStatus Status, LauncherSettings Settings, string? Logo);
 
@@ -32,6 +35,12 @@ public sealed class SplashSnapshot(SplashStore store, IGridController grid, IOnl
 
     /// <summary>Where the grid's logo is served.</summary>
     public static string LogoUrl(string name) => "/theme/images/" + name;
+
+    /// <summary>Where staff fetch any splash picture, the draft's included.</summary>
+    public static string StaffPictureUrl(string name) => "/api/splash/pictures/" + name;
+
+    /// <summary>The draft's stylesheet draws the page background on the preview page's body and on the editor's canvas.</summary>
+    public const string WorkingPageSelector = "body.splash, .splash-canvas";
 
     private readonly SemaphoreSlim _build = new(1, 1);
     private volatile Cached? _cached;
@@ -72,6 +81,21 @@ public sealed class SplashSnapshot(SplashStore store, IGridController grid, IOnl
     /// <summary>Drops the cached view, so a publish shows at once.</summary>
     public void Invalidate() => _cached = null;
 
+    /// <summary>
+    /// What the editor opens with: the draft, or the published design, or the built-in one, with live counts. Never cached,
+    /// since staff look at it right after each save. Its version is what the next save is based on.
+    /// </summary>
+    public async Task<SplashView> WorkingAsync(CancellationToken ct)
+    {
+        var people = online.ListAsync(ct);
+        var listed = regions.ListAsync(ct);
+        var design = store.Draft()?.Design ?? store.Published()?.Design;
+        var shown = design ?? SplashDefaults.Design();
+        var status = Status(await people, await listed);
+        return new SplashView(shown, store.DraftVersion(), design is null, status,
+            SplashCss.Build(shown, StaffPictureUrl, WorkingPageSelector), theme.Logo());
+    }
+
     private SplashView? Fresh() => _cached is { } c && time.GetUtcNow() < c.Until ? c.View : null;
 
     private async Task<SplashView> BuildAsync(CancellationToken ct)
@@ -80,10 +104,11 @@ public sealed class SplashSnapshot(SplashStore store, IGridController grid, IOnl
         var listed = regions.ListAsync(ct);
         var published = AdminRule.HasStaffPages(settings()) ? store.Published() : null;
         var design = published?.Design ?? SplashDefaults.Design();
-        var who = await people;
-        var where = await listed;
-        var status = new SplashStatus(grid.GetStatus().Robust.State == ProcessState.Running,
-            who.Available ? who.Avatars.Count : null, where.Available ? where.Regions.Count : null);
+        var status = Status(await people, await listed);
         return new SplashView(design, published?.Version ?? 0, published is null, status, SplashCss.Build(design, PictureUrl), theme.Logo());
     }
+
+    private SplashStatus Status(OnlineList who, GridRegionList where) =>
+        new(grid.GetStatus().Robust.State == ProcessState.Running,
+            who.Available ? who.Avatars.Count : null, where.Available ? where.Regions.Count : null);
 }

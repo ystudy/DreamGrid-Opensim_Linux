@@ -65,6 +65,15 @@ public static class SplashApi
             },
         }, Json));
 
+        // The draft drawn by the public page's own code, for the editor's canvas and the preview. The address carries the
+        // draft's version only so the browser fetches it again after a save.
+        api.MapGet("/draft.css", async (HttpContext ctx, SplashSnapshot snapshot) =>
+        {
+            var view = await snapshot.WorkingAsync(ctx.RequestAborted);
+            ctx.Response.Headers.CacheControl = "no-store";
+            return Results.Text(view.Css, "text/css");
+        });
+
         api.MapPut("/draft", async (int basedOn, HttpContext ctx, IAntiforgery antiforgery, SplashStore store) =>
         {
             if (!await antiforgery.IsRequestValidAsync(ctx)) return TokenProblem();

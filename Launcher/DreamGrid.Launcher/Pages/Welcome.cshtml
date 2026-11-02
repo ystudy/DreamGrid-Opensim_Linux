@@ -3,11 +3,8 @@
 @{
     Layout = "_SplashLayout";
     ViewData["Title"] = Model.Settings.GridName;
-    ViewData["SplashVersion"] = Model.View.Version;
+    ViewData["SplashCss"] = $"/welcome/page-{Model.View.Version}.css";
 }
 <div class="splash-page">
-    @foreach (var block in Model.View.Design.Blocks)
-    {
-        <partial name="_SplashBlock" model="new DreamGrid.Launcher.Splash.SplashBlockView(block, Model.View.Status, Model.Settings, Model.View.Logo)" />
-    }
+    <partial name="_SplashBlocks" model="new DreamGrid.Launcher.Splash.SplashBlocksModel(Model.View, Model.Settings)" />
 </div>

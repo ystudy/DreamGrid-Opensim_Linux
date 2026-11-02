@@ -1,0 +1,10 @@
+@page "/splash/preview"
+@model DreamGrid.Launcher.Pages.Splash.PreviewModel
+@{
+    Layout = "_SplashLayout";
+    ViewData["Title"] = "Preview: " + Model.Settings.GridName;
+    ViewData["SplashCss"] = $"/api/splash/draft.css?v={Model.View.Version}";
+}
+<div class="splash-page">
+    <partial name="_SplashBlocks" model="new DreamGrid.Launcher.Splash.SplashBlocksModel(Model.View, Model.Settings)" />
+</div>

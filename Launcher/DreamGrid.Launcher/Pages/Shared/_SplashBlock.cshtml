@@ -13,7 +13,7 @@
     static string Count(int n, string one, string many) => n == 1 ? "1 " + one : n + " " + many;
 }
 @* One block of the splash page. Owner text goes through the Legal pages' Markdown, which shows any HTML as text. *@
-<div class="splash-block splash-kind-@b.Kind.ToString().ToLowerInvariant() @SplashCss.ClassOf(b)">
+<div class="splash-block splash-kind-@b.Kind.ToString().ToLowerInvariant() @SplashCss.ClassOf(b)" data-block-id="@b.Id">
     @switch (b.Kind)
     {
         case SplashBlockKind.Text:
