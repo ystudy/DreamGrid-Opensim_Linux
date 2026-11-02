@@ -148,6 +148,36 @@ public sealed class SplashPicturesTests
     }
 
     [Fact]
+    public async Task Publish_refuses_a_draft_whose_picture_is_gone()
+    {
+        await using var f = new LauncherFactory();
+        var (pictures, store) = (f.Services.GetRequiredKeyedService<PictureStore>("splash"), f.Services.GetRequiredService<SplashStore>());
+        var name = await AddAsync(pictures);
+        store.SaveDraft(PictureDesign(name), 0, "A");
+        // Gone between the save and the publish (another admin, or the clean-up).
+        pictures.Delete(name);
+
+        Assert.Null(store.Publish("A"));
+        Assert.Null(store.Published());
+    }
+
+    [Fact]
+    public async Task RemovePictureIfUnused_keeps_a_picture_the_page_uses()
+    {
+        await using var f = new LauncherFactory();
+        var (pictures, store) = (f.Services.GetRequiredKeyedService<PictureStore>("splash"), f.Services.GetRequiredService<SplashStore>());
+        var name = await AddAsync(pictures);
+        store.SaveDraft(PictureDesign(name), 0, "A");
+
+        Assert.False(store.RemovePictureIfUnused(name, pictures.Delete));
+        Assert.True(pictures.Exists(name));
+
+        store.Discard();
+        Assert.True(store.RemovePictureIfUnused(name, pictures.Delete));
+        Assert.False(pictures.Exists(name));
+    }
+
+    [Fact]
     public void Splash_pictures_live_under_the_splash_folder()
     {
         var paths = new LauncherPaths("data", "program", null);

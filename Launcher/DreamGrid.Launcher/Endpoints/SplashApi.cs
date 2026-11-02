@@ -84,7 +84,10 @@ public static class SplashApi
             if (!await antiforgery.IsRequestValidAsync(ctx)) return TokenProblem();
             var (name, id, role) = AuditActor.Of(ctx.User);
             if (store.Publish(name) is not { } doc)
-                return Results.Json(new { problem = "There is no draft to publish." }, Json, statusCode: StatusCodes.Status409Conflict);
+                return Results.Json(new
+                {
+                    problem = store.Draft() is null ? "There is no draft to publish." : "The draft uses a picture that is no longer there. Choose another picture and save again.",
+                }, Json, statusCode: StatusCodes.Status409Conflict);
             snapshot.Invalidate();
             audit.Write(new AuditEntry(name, id, role, ctx.Connection.RemoteIpAddress?.ToString(), "splash-published", $"version {doc.Version}", "ok"));
             return Results.Json(doc, Json);
@@ -184,9 +187,10 @@ public static class SplashApi
         {
             if (!await antiforgery.IsRequestValidAsync(ctx)) return TokenProblem();
             if (pictures.Get(name) is not { } picture) return Results.NotFound();
-            if (SplashPictures.InUse(store).Contains(name))
-                return Results.Json(new { problem = "The page still uses that picture." }, Json, statusCode: StatusCodes.Status409Conflict);
-            if (!pictures.Delete(name)) return Results.NotFound();
+            if (!store.RemovePictureIfUnused(name, pictures.Delete))
+                return pictures.Get(name) is null
+                    ? Results.NotFound()
+                    : Results.Json(new { problem = "The page still uses that picture." }, Json, statusCode: StatusCodes.Status409Conflict);
             var (actor, id, role) = AuditActor.Of(ctx.User);
             audit.Write(new AuditEntry(actor, id, role, ctx.Connection.RemoteIpAddress?.ToString(), "splash-image-deleted",
                 $"{picture.Name} ({picture.Label})", "ok"));

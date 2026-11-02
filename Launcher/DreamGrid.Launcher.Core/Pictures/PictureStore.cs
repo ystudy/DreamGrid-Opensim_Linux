@@ -43,6 +43,10 @@ public sealed partial class PictureStore
     private readonly JsonStateFile<PictureIndex> _index;
     private readonly Lock _gate = new();
 
+    // One redraw at a time across every store: a large photo needs a few hundred MB while it is drawn, and the launcher
+    // shares a small machine with OpenSim.
+    private static readonly Lock RedrawGate = new();
+
     public PictureStore(string folder, TimeProvider time, ILogger? log = null)
     {
         _folder = folder;
@@ -76,7 +80,9 @@ public sealed partial class PictureStore
                     await file.WriteAsync(buffer.AsMemory(0, n), ct);
                 }
             }
-            return Redraw(part) switch
+            (Drawn?, string?) redrawn;
+            lock (RedrawGate) redrawn = Redraw(part);
+            return redrawn switch
             {
                 (null, var message) => new PictureResult.Refused(message!),
                 ({ } drawn, _) => new PictureResult.Added(Keep(drawn, label, addedBy)),
@@ -156,7 +162,10 @@ public sealed partial class PictureStore
         if (format is null) return (null, NotAPicture);
         if ((long)codec.Info.Width * codec.Info.Height > MaxPixels) return (null, TooManyPixels);
 
-        var info = new SKImageInfo(codec.Info.Width, codec.Info.Height, SKColorType.Rgba8888, SKAlphaType.Premul);
+        // Decoded into sRGB, so a picture with a colour profile (a phone's Display P3 photo) is converted, not reinterpreted:
+        // the redrawn file has no profile and must look as the original did.
+        var srgb = SKColorSpace.CreateSrgb();
+        var info = new SKImageInfo(codec.Info.Width, codec.Info.Height, SKColorType.Rgba8888, SKAlphaType.Premul, srgb);
         using var decoded = new SKBitmap(info);
         // A file cut short decodes as "incomplete input" with part of the picture missing: refused, not kept half-drawn.
         if (codec.GetPixels(info, decoded.GetPixels()) != SKCodecResult.Success) return (null, Damaged);
@@ -167,7 +176,9 @@ public sealed partial class PictureStore
         var scale = Math.Min(1.0, (double)MaxSide / Math.Max(w, h));
         var (outW, outH) = (Math.Max(1, (int)Math.Round(w * scale)), Math.Max(1, (int)Math.Round(h * scale)));
 
-        using var output = new SKBitmap(new SKImageInfo(outW, outH, SKColorType.Rgba8888, SKAlphaType.Premul));
+        // Immutable, so making an image of it shares its pixels instead of copying them.
+        decoded.SetImmutable();
+        using var output = new SKBitmap(new SKImageInfo(outW, outH, SKColorType.Rgba8888, SKAlphaType.Premul, srgb));
         using (var canvas = new SKCanvas(output))
         using (var image = SKImage.FromBitmap(decoded))
         {

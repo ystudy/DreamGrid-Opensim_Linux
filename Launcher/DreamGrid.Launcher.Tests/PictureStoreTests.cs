@@ -91,6 +91,21 @@ public sealed class PictureStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task Display_p3_colours_are_kept_as_seen()
+    {
+        // A phone photo in Display P3: redrawn, it must look the same in a browser (converted to sRGB, not reinterpreted).
+        var source = TestPictures.PngDisplayP3(16, 16, 204, 77, 51);
+        var seen = TestPictures.FirstPixelInSrgb(source);
+        var store = Store();
+
+        var added = Assert.IsType<PictureResult.Added>(await AddAsync(store, source, "phone.png"));
+
+        var stored = TestPictures.FirstPixelInSrgb(File.ReadAllBytes(store.Open(added.Picture.Name)!.Value.Path));
+        Assert.True(Math.Abs(seen.Red - stored.Red) <= 3 && Math.Abs(seen.Green - stored.Green) <= 3 && Math.Abs(seen.Blue - stored.Blue) <= 3,
+            $"seen {seen}, stored {stored}");
+    }
+
+    [Fact]
     public async Task Big_pictures_are_scaled_to_3840()
     {
         var store = Store();

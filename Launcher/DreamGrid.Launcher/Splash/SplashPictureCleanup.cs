@@ -49,7 +49,8 @@ public sealed class SplashPictureCleanup([FromKeyedServices("splash")] PictureSt
             foreach (var p in pictures.List())
             {
                 if (p.UnusedSince is not { } since || now - since < KeepUnused || inUse.Contains(p.Name)) continue;
-                if (pictures.Delete(p.Name))
+                // Checked again under the store's lock: a draft saved since this pass began may use it now.
+                if (store.RemovePictureIfUnused(p.Name, pictures.Delete))
                     audit.Write(new AuditEntry("DreamGrid", null, "system", null, "splash-image-deleted", $"{p.Name} ({p.Label})", "unused for 30 days"));
             }
         }

@@ -40,6 +40,30 @@ internal static class TestPictures
         return [.. png[..33], .. chunk, .. png[33..]];
     }
 
+    /// <summary>A PNG in the Display P3 colour space (with its profile), every pixel the given P3 colour.</summary>
+    public static byte[] PngDisplayP3(int w, int h, byte r, byte g, byte b)
+    {
+        var p3 = SKColorSpace.CreateRgb(SKColorSpaceTransferFn.Srgb, SKColorSpaceXyz.DisplayP3);
+        using var bitmap = new SKBitmap(new SKImageInfo(w, h, SKColorType.Rgba8888, SKAlphaType.Unpremul, p3));
+        var pixels = new byte[w * h * 4];
+        for (var i = 0; i < w * h; i++)
+            (pixels[i * 4], pixels[i * 4 + 1], pixels[i * 4 + 2], pixels[i * 4 + 3]) = (r, g, b, 255);
+        System.Runtime.InteropServices.Marshal.Copy(pixels, 0, bitmap.GetPixels(), pixels.Length);
+        using var image = SKImage.FromBitmap(bitmap);
+        using var data = image.Encode(SKEncodedImageFormat.Png, 100);
+        return data.ToArray();
+    }
+
+    /// <summary>The top-left pixel of an encoded picture, converted to sRGB the way a browser shows it.</summary>
+    public static SKColor FirstPixelInSrgb(byte[] encoded)
+    {
+        using var codec = SKCodec.Create(new MemoryStream(encoded));
+        var info = new SKImageInfo(codec.Info.Width, codec.Info.Height, SKColorType.Rgba8888, SKAlphaType.Unpremul, SKColorSpace.CreateSrgb());
+        using var bitmap = new SKBitmap(info);
+        codec.GetPixels(info, bitmap.GetPixels());
+        return bitmap.GetPixel(0, 0);
+    }
+
     private static byte[] Encode(int w, int h, SKEncodedImageFormat format)
     {
         using var bitmap = new SKBitmap(w, h);
