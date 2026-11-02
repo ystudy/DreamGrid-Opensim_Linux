@@ -25,13 +25,13 @@ public static class SplashApi
 
     public static void Map(WebApplication app)
     {
-        // Only the current version is served: an old address after a publish is a 404, not an old layout.
+        // The current version, and the one before it: a viewer may keep the page for a minute after a publish, and the
+        // stylesheet that page names must still be there. Anything else is a 404, not an old layout.
         app.MapGet("/welcome/page-{version:int}.css", async (int version, HttpContext ctx, SplashSnapshot snapshot) =>
         {
-            var view = await snapshot.CurrentAsync(ctx.RequestAborted);
-            if (view.Version != version) return Results.NotFound();
+            if (await snapshot.CssAsync(version, ctx.RequestAborted) is not { } css) return Results.NotFound();
             ctx.Response.Headers.CacheControl = "public, max-age=60";
-            return Results.Text(view.Css, "text/css");
+            return Results.Text(css, "text/css");
         }).AllowAnonymous();
 
         var api = app.MapGroup("/api/splash").RequireAuthorization(AuthSchemes.AdminPolicy)
@@ -42,6 +42,8 @@ public static class SplashApi
         api.MapGet("", (SplashStore store) => Results.Json(new
         {
             draft = store.Draft(),
+            // What the next save is based on: the draft's version, or the last one when the draft was discarded.
+            draftVersion = store.DraftVersion(),
             published = store.Published(),
             defaultDesign = SplashDefaults.Design(),
             limits = new

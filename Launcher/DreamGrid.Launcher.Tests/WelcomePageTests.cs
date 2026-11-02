@@ -147,6 +147,41 @@ public sealed class WelcomePageTests
     }
 
     [Fact]
+    public async Task Null_block_in_published_file_shows_default()
+    {
+        await using var f = Factory();
+        Publish(f, TextDesign("Should not show"));
+        var file = Path.Combine(f.Paths.Splash, "published.json");
+        File.WriteAllText(file, File.ReadAllText(file).Replace("\"blocks\": [", "\"blocks\": [ null,"));
+
+        var (r, page, _) = await GetAsync(f);
+
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        Assert.DoesNotContain("Should not show", page.Body!.TextContent);
+        Assert.NotNull(page.QuerySelector("link[href='/welcome/page-0.css']"));
+    }
+
+    [Fact]
+    public async Task Previous_stylesheet_still_served_after_publish()
+    {
+        // A viewer may keep the page for a minute; the stylesheet it names must not vanish when a new version is published.
+        await using var f = Factory();
+        Publish(f, TextDesign("First"));
+        (await Client(f).GetAsync("/welcome", Ct)).Dispose();
+        Publish(f, TextDesign("Second"));
+        f.Services.GetRequiredService<DreamGrid.Launcher.Splash.SplashSnapshot>().Invalidate();
+        Assert.Contains("Second", (await GetAsync(f)).Html);
+
+        using var previous = await Client(f).GetAsync("/welcome/page-1.css", Ct);
+        using var current = await Client(f).GetAsync("/welcome/page-2.css", Ct);
+        using var unknown = await Client(f).GetAsync("/welcome/page-7.css", Ct);
+
+        Assert.Equal(HttpStatusCode.OK, previous.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, current.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
+    }
+
+    [Fact]
     public async Task Block_text_is_not_html()
     {
         await using var f = Factory();

@@ -20,8 +20,9 @@ public abstract record SplashSaveResult
 /// </summary>
 public sealed class SplashStore
 {
-    // JsonStateFile needs a value for "no file", so each document sits in a holder.
-    private sealed record SplashFile(SplashDocument? Document);
+    // JsonStateFile needs a value for "no file", so each document sits in a holder. LastVersion outlives a discarded draft, so
+    // a draft number is never used twice and an editor that loaded a discarded draft can't save over the next one.
+    private sealed record SplashFile(SplashDocument? Document, int LastVersion = 0);
 
     private readonly JsonStateFile<SplashFile> _draft, _published;
     private readonly TimeProvider _time;
@@ -42,6 +43,13 @@ public sealed class SplashStore
 
     public SplashDocument? Draft() => _draft.Load().Document;
 
+    /// <summary>The newest draft version, also after a discard: what the editor's next save must be based on.</summary>
+    public int DraftVersion()
+    {
+        var file = _draft.Load();
+        return Math.Max(file.LastVersion, file.Document?.Version ?? 0);
+    }
+
     /// <summary>Null when nothing was published, or when the file fails <see cref="SplashRules.Check"/> (warned once per process).</summary>
     public SplashDocument? Published()
     {
@@ -54,17 +62,17 @@ public sealed class SplashStore
         return null;
     }
 
-    /// <param name="basedOnVersion">The draft version the editor started from; 0 when it started without a draft.</param>
+    /// <param name="basedOnVersion">The <see cref="DraftVersion"/> the editor started from.</param>
     public SplashSaveResult SaveDraft(SplashDesign design, int basedOnVersion, string savedBy)
     {
         var problems = SplashRules.Check(design, PictureExists);
         if (problems.Count > 0) return new SplashSaveResult.Invalid(problems);
         lock (_gate)
         {
-            var current = Draft()?.Version ?? 0;
+            var current = DraftVersion();
             if (basedOnVersion != current) return new SplashSaveResult.Conflict(current);
             var doc = new SplashDocument(design, current + 1, savedBy, _time.GetUtcNow());
-            Write(_draft, doc);
+            Write(_draft, new SplashFile(doc, doc.Version));
             return new SplashSaveResult.Saved(doc);
         }
     }
@@ -78,7 +86,7 @@ public sealed class SplashStore
             // The counter is read from the file even when it fails the check, so a version is never used twice.
             var next = (_published.Load().Document?.Version ?? 0) + 1;
             var doc = new SplashDocument(draft.Design, next, publishedBy, _time.GetUtcNow());
-            Write(_published, doc);
+            Write(_published, new SplashFile(doc, doc.Version));
             return doc;
         }
     }
@@ -86,12 +94,12 @@ public sealed class SplashStore
     /// <summary>Drops the draft; the editor then starts again from the published copy (or the default page).</summary>
     public void Discard()
     {
-        lock (_gate) Write(_draft, null);
+        lock (_gate) Write(_draft, new SplashFile(null, DraftVersion()));
     }
 
     // A design that can't be written would be lost without a word, so a failed write is an error for the caller.
-    private static void Write(JsonStateFile<SplashFile> file, SplashDocument? doc)
+    private static void Write(JsonStateFile<SplashFile> file, SplashFile content)
     {
-        if (!file.Save(new SplashFile(doc))) throw new IOException("The splash page could not be saved.");
+        if (!file.Save(content)) throw new IOException("The splash page could not be saved.");
     }
 }

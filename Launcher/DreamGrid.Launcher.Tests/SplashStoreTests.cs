@@ -100,9 +100,24 @@ public sealed class SplashStoreTests : IDisposable
 
         Assert.Null(_store.Draft());
         Assert.Equal("live", TextOf(_store.Published()));
-        // The published counter carries on after a discard.
-        _store.SaveDraft(Design("again"), 0, "A");
+        // The published counter carries on after a discard, and so does the draft's.
+        Assert.IsType<SplashSaveResult.Saved>(_store.SaveDraft(Design("again"), _store.DraftVersion(), "A"));
         Assert.Equal(2, _store.Publish("A")!.Version);
+    }
+
+    [Fact]
+    public void Discard_does_not_reuse_draft_versions()
+    {
+        // A loaded draft v1; B discarded it and started again; A's save based on v1 must not land on B's new draft.
+        _store.SaveDraft(Design("A's start"), 0, "A");
+        _store.Discard();
+        Assert.Equal(1, _store.DraftVersion());
+        Assert.IsType<SplashSaveResult.Conflict>(_store.SaveDraft(Design("B's"), 0, "B"));
+        var b = Assert.IsType<SplashSaveResult.Saved>(_store.SaveDraft(Design("B's"), 1, "B"));
+        Assert.Equal(2, b.Draft.Version);
+
+        Assert.IsType<SplashSaveResult.Conflict>(_store.SaveDraft(Design("A's late save"), 1, "A"));
+        Assert.Equal("B's", TextOf(_store.Draft()));
     }
 
     [Fact]

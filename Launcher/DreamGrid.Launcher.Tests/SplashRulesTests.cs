@@ -153,6 +153,23 @@ public sealed class SplashRulesTests
     }
 
     [Fact]
+    public void Null_design_or_block_is_a_problem_not_a_crash()
+    {
+        // System.Text.Json fills a stray null in a hand-edited file without complaint.
+        Assert.NotEmpty(SplashRules.Check(null!, _ => false));
+        Assert.NotEmpty(SplashRules.Check(Valid() with { Blocks = [null!] }, _ => false));
+    }
+
+    [Fact]
+    public void Trailing_newline_is_refused()
+    {
+        var name = new string('a', 32) + ".png";
+        Assert.NotEmpty(SplashRules.Check(WithBlock(Valid().Blocks[0] with { Colour = "#123456\n" }), _ => false));
+        var d = Valid() with { Background = Valid().Background with { Picture = new SplashPicture(name + "\n", SplashFit.Fill) } };
+        Assert.NotEmpty(SplashRules.Check(d, _ => true));
+    }
+
+    [Fact]
     public void Problems_name_the_block()
     {
         var problems = SplashRules.Check(WithBlock(Valid().Blocks[0] with { Id = 7, Colour = "red" }), _ => false);

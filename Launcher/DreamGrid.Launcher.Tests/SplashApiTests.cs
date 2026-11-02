@@ -97,6 +97,7 @@ public sealed class SplashApiTests
         using var read = await client.GetAsync("/api/splash", Ct);
         var json = JsonDocument.Parse(await read.Content.ReadAsStringAsync(Ct)).RootElement;
         Assert.Equal(1, json.GetProperty("draft").GetProperty("version").GetInt32());
+        Assert.Equal(1, json.GetProperty("draftVersion").GetInt32());
         Assert.Equal(1, json.GetProperty("published").GetProperty("version").GetInt32());
         Assert.Equal("GridName", json.GetProperty("defaultDesign").GetProperty("blocks")[0].GetProperty("kind").GetString());
         Assert.Equal(SplashRules.MaxBlocks, json.GetProperty("limits").GetProperty("maxBlocks").GetInt32());

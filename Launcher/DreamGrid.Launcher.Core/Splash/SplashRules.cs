@@ -17,15 +17,18 @@ public static partial class SplashRules
     /// <summary>The languages a text may be in (English only until 1.5).</summary>
     public static readonly IReadOnlyList<string> Languages = ["en"];
 
-    [GeneratedRegex("^#[0-9a-fA-F]{6}$")]
+    // \z, not $: $ also matches before a final newline.
+    [GeneratedRegex("^#[0-9a-fA-F]{6}\\z")]
     private static partial Regex ColourPattern();
 
-    [GeneratedRegex("^[0-9a-f]{32}\\.(png|jpg|webp)$")]
+    [GeneratedRegex("^[0-9a-f]{32}\\.(png|jpg|webp)\\z")]
     private static partial Regex PicturePattern();
 
     /// <summary>The problems with <paramref name="d"/> as plain sentences naming the block; empty when it may be saved.</summary>
-    public static IReadOnlyList<string> Check(SplashDesign d, Func<string, bool> pictureExists)
+    public static IReadOnlyList<string> Check(SplashDesign? d, Func<string, bool> pictureExists)
     {
+        // A file or body can hold a null anywhere (System.Text.Json doesn't enforce the annotations): a problem, never a crash.
+        if (d is null) return ["The page could not be read."];
         var problems = new List<string>();
         if (d.Width is < MinWidth or > MaxWidth || d.Height is < MinHeight or > MaxHeight)
             problems.Add($"The page size must be {MinWidth}–{MaxWidth} wide and {MinHeight}–{MaxHeight} high.");
@@ -43,6 +46,11 @@ public static partial class SplashRules
         var seen = new HashSet<int>();
         foreach (var b in d.Blocks)
         {
+            if (b is null)
+            {
+                problems.Add("A block is empty.");
+                continue;
+            }
             var who = $"Block {b.Id}";
             if (b.Id <= 0) problems.Add($"{who}: the id must be positive.");
             else if (!seen.Add(b.Id)) problems.Add($"{who}: two blocks have this id.");
