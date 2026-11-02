@@ -9,6 +9,7 @@ var SplashEditorCore = (function () {
     var MAX_LAYER = 999;     // SplashRules.MaxLayer
     var READABLE_PX = 12;    // SplashCss.ReadableTextPx
     var DUPLICATE_OFFSET = 16;
+    var ROTATE_STEP = 15;     // degrees, with Shift
 
     function copy(value) {
         return JSON.parse(JSON.stringify(value));
@@ -126,6 +127,19 @@ var SplashEditorCore = (function () {
         return inside(b, design);
     }
 
+    // A rotation in whole degrees, -180 (exclusive) to 180 (SplashRules.MaxRotate), in 15° steps when stepped.
+    function angle(degrees, stepped) {
+        var n = num(degrees);
+        n = stepped ? Math.round(n / ROTATE_STEP) * ROTATE_STEP : Math.round(n);
+        n = ((n + 180) % 360 + 360) % 360 - 180;
+        return n === -180 ? 180 : n + 0;
+    }
+
+    // The rotation that points a block's top at the pointer: straight up from the centre is 0, clockwise is positive.
+    function pointerAngle(cx, cy, px, py, stepped) {
+        return angle(Math.atan2(num(px) - num(cx), num(cy) - num(py)) * 180 / Math.PI, stepped);
+    }
+
     function font() {
         return { size: 24, colour: "#ffffff", bold: false, align: "Left", family: "Sans" };
     }
@@ -156,7 +170,7 @@ var SplashEditorCore = (function () {
             id: maxOf(design, "id") + 1, kind: kind,
             x: num(x) - kindDefaults.w / 2, y: num(y) - kindDefaults.h / 2, w: kindDefaults.w, h: kindDefaults.h,
             layer: topLayer(design), colour: "#000000", seeThrough: 50, background: null, rounded: false, padding: 12,
-            font: font(), content: copy(kindDefaults.content)
+            font: font(), content: copy(kindDefaults.content), rotate: 0
         };
         d.blocks.push(inside(block, design));
         return d;
@@ -269,7 +283,7 @@ var SplashEditorCore = (function () {
     }
 
     return {
-        snap: snap, move: move, resize: resize, nudge: nudge, addBlock: addBlock, duplicate: duplicate, remove: remove,
+        snap: snap, move: move, resize: resize, nudge: nudge, angle: angle, pointerAngle: pointerAngle, addBlock: addBlock, duplicate: duplicate, remove: remove,
         forward: forward, back: back, minWidth: minWidth, maxWidth: maxWidth, previewWidth: previewWidth, History: History,
         setPath: setPath, fitBlocks: fitBlocks, inside: inside, defaults: defaults, MIN_BLOCK: MIN_BLOCK
     };

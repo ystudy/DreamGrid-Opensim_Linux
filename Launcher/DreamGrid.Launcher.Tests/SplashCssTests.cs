@@ -40,6 +40,14 @@ public sealed class SplashCssTests
     public void Max_width_is_one_and_a_half() => Assert.Equal(1920, SplashCss.MaxWidth(WithFonts(1280, 16)));
 
     [Fact]
+    public void Rotated_block_is_turned_about_its_centre() =>
+        Assert.Contains("transform:rotate(-30deg)", Css(Page(1280, Text(1, 0, 0, 100, 100, 32) with { Rotate = -30 })));
+
+    [Fact]
+    public void Upright_block_has_no_transform() =>
+        Assert.DoesNotContain("transform", Css(OneBlock(0, 0, 100, 100)));
+
+    [Fact]
     public void Page_selector_is_used_for_the_background() =>
         Assert.StartsWith("body.splash, .splash-canvas{", SplashCss.Build(OneBlock(0, 0, 100, 100), n => "/x/" + n, "body.splash, .splash-canvas"));
 

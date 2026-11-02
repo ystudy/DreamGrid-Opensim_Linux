@@ -99,6 +99,7 @@
         el.style.width = pct(b.w, d.width);
         el.style.height = pct(b.h, d.height);
         el.style.zIndex = String(b.layer);
+        el.style.transform = b.rotate ? "rotate(" + b.rotate + "deg)" : "";
     }
 
     function sizePage() {
@@ -141,7 +142,7 @@
         updateToolbar();
     }
 
-    var HANDLES = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
+    var HANDLES = ["nw", "n", "ne", "e", "se", "s", "sw", "w", "rotate"];
 
     function drawSelection() {
         page.querySelectorAll(".splash-block.selected").forEach(function (el) { el.classList.remove("selected"); });
@@ -154,6 +155,7 @@
             var h = document.createElement("span");
             h.className = "handle";
             h.setAttribute("data-h", name);
+            if (name === "rotate") h.title = "Drag to turn (Shift: 15° steps)";
             el.appendChild(h);
         });
     }
@@ -351,6 +353,12 @@
         if (state.selected !== id) select(id);
         var handle = e.target.classList.contains("handle") ? e.target.getAttribute("data-h") : null;
         drag = { id: id, handle: handle, x: e.clientX, y: e.clientY, start: blockById(id), moved: null, el: elementOf(id) };
+        if (handle === "rotate") {
+            // A turned block's box still has its centre where the block's centre is.
+            var box = drag.el.getBoundingClientRect();
+            drag.cx = box.left + box.width / 2;
+            drag.cy = box.top + box.height / 2;
+        }
         drag.el.setPointerCapture(e.pointerId);
         e.preventDefault();
     });
@@ -358,6 +366,21 @@
     page.addEventListener("pointermove", function (e) {
         if (!drag) return;
         var dx = (e.clientX - drag.x) / scale, dy = (e.clientY - drag.y) / scale;
+        if (drag.handle === "rotate") {
+            var turned = JSON.parse(JSON.stringify(drag.start));
+            turned.rotate = Core.pointerAngle(drag.cx, drag.cy, e.clientX, e.clientY, e.shiftKey);
+            drag.moved = turned;
+            place(drag.el, turned);
+            say(turned.rotate + "°");
+            return;
+        }
+        if (drag.handle && drag.start.rotate) {
+            // An edge of a turned block moves along the block's own axes, not the screen's.
+            var t = -drag.start.rotate * Math.PI / 180;
+            var lx = dx * Math.cos(t) - dy * Math.sin(t);
+            dy = dx * Math.sin(t) + dy * Math.cos(t);
+            dx = lx;
+        }
         var r = drag.handle
             ? Core.resize(drag.start, drag.handle, dx, dy, state.design, opt())
             : Core.move(drag.start, dx, dy, state.design, opt());
@@ -371,7 +394,8 @@
         var moved = drag.moved, start = drag.start;
         drag = null;
         clearGuides();
-        if (moved && (moved.x !== start.x || moved.y !== start.y || moved.w !== start.w || moved.h !== start.h))
+        if (moved && (moved.x !== start.x || moved.y !== start.y || moved.w !== start.w || moved.h !== start.h ||
+            (moved.rotate || 0) !== (start.rotate || 0)))
             change(replaceBlock(moved));
         if (refreshWaiting) { refreshWaiting = false; refreshFromServer(); }
     }
@@ -780,14 +804,18 @@
         checkField(look, "Rounded corners", b.rounded, function (v) { setBlock("rounded", v); });
         numberField(look, "Padding (design px)", b.padding, 0, lim.maxPadding || 64, function (v) { setBlock("padding", v); });
 
-        var where = group(settings, "Place and size (design px)");
-        [["x", "Left"], ["y", "Top"], ["w", "Width"], ["h", "Height"]].forEach(function (f) {
+        var where = group(settings, "Place, size and turn");
+        [["x", "Left (design px)"], ["y", "Top (design px)"], ["w", "Width (design px)"], ["h", "Height (design px)"]].forEach(function (f) {
             var max = f[0] === "x" || f[0] === "w" ? state.design.width : state.design.height;
             numberField(where, f[1], b[f[0]], f[0] === "w" || f[0] === "h" ? Core.MIN_BLOCK : 0, max, function (v) {
                 var moved = Core.inside(Core.setPath(blockById(b.id), f[0], v), state.design);
                 change(replaceBlock(moved));
             });
         });
+        numberField(where, "Rotation (degrees, clockwise)", b.rotate || 0, -(lim.maxRotate || 180), lim.maxRotate || 180, function (v) {
+            change(replaceBlock(Core.setPath(blockById(b.id), "rotate", Core.angle(v, false))), true);
+        });
+        hint(where, "Or drag the round handle above the block. Hold Shift for 15° steps. 0 is upright.");
     }
 
     function kindSettings(b, lim) {

@@ -185,6 +185,30 @@ public sealed class SplashEditorCoreTests
         Assert.True(_js.Evaluate("before === JSON.stringify(d)").AsBoolean());
     }
 
+    [Theory]
+    [InlineData(0, false, 0)]
+    [InlineData(44.6, false, 45)]
+    [InlineData(190, false, -170)]
+    [InlineData(-190, false, 170)]
+    [InlineData(-180, false, 180)]
+    [InlineData(37, true, 30)]
+    [InlineData(38, true, 45)]
+    [InlineData(double.NaN, false, 0)]
+    public void Angle_is_whole_degrees_within_a_half_turn(double raw, bool shift, int expected) =>
+        Assert.Equal(expected, (int)Run($"SplashEditorCore.angle({(double.IsNaN(raw) ? "NaN" : raw.ToString(System.Globalization.CultureInfo.InvariantCulture))}, {(shift ? "true" : "false")})")!);
+
+    [Theory]
+    [InlineData(100, 100, 100, 0, 0)]      // straight above the centre: upright
+    [InlineData(100, 100, 200, 100, 90)]   // to the right: a quarter turn clockwise
+    [InlineData(100, 100, 100, 200, 180)]  // below: half a turn
+    [InlineData(100, 100, 0, 100, -90)]    // to the left: a quarter turn back
+    public void Pointer_angle_is_measured_from_straight_up(double cx, double cy, double px, double py, int expected) =>
+        Assert.Equal(expected, (int)Run($"SplashEditorCore.pointerAngle({cx}, {cy}, {px}, {py}, false)")!);
+
+    [Fact]
+    public void New_blocks_are_upright() =>
+        Assert.Equal(0, (int)Run($"SplashEditorCore.addBlock({J(Page())}, \"Text\", 640, 400).blocks[0].rotate")!);
+
     [Fact]
     public void Set_path_copies_and_changes_one_field()
     {

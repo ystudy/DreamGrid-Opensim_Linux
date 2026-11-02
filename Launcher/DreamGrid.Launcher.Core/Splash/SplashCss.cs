@@ -48,6 +48,8 @@ public static class SplashCss
                 .Append("left:").Append(Pct(b.X, d.Width)).Append(";top:").Append(Pct(b.Y, d.Height))
                 .Append(";width:").Append(Pct(b.W, d.Width)).Append(";height:").Append(Pct(b.H, d.Height))
                 .Append(";z-index:").Append(b.Layer).Append(';')
+                // Turned about its centre (the default origin), so its place on the page stays where it was put.
+                .Append(b.Rotate == 0 ? "" : "transform:rotate(" + b.Rotate.ToString(CultureInfo.InvariantCulture) + "deg);")
                 .Append("background-color:").Append(Rgba(b.Colour, 1 - b.SeeThrough / 100.0)).Append(';');
             if (b.Background is { } pic)
                 css.Append(Picture(pic, 50, 50, 0, pictureUrl));

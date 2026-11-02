@@ -58,7 +58,7 @@ public static class SplashApi
             {
                 SplashRules.MinWidth, SplashRules.MaxWidth, SplashRules.MinHeight, SplashRules.MaxHeight,
                 SplashRules.MaxBlocks, SplashRules.MaxLayer, SplashRules.MinBlockSize, SplashRules.MaxSeeThrough,
-                SplashRules.MaxDarken, SplashRules.MaxPadding, SplashRules.MinFontSize, SplashRules.MaxFontSize,
+                SplashRules.MaxDarken, SplashRules.MaxPadding, SplashRules.MinFontSize, SplashRules.MaxFontSize, SplashRules.MaxRotate,
                 SplashRules.MaxText, SplashRules.MaxCaption, SplashRules.MaxHeading, SplashRules.MaxNewsText,
                 SplashRules.MaxPlaceLine, SplashRules.MaxRegionName, SplashRules.MaxNews, SplashRules.MaxPlaces,
                 SplashRules.SnapSizes, SplashRules.Languages,

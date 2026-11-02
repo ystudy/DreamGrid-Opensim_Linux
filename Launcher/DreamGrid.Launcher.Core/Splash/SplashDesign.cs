@@ -51,8 +51,11 @@ public sealed record SplashContent(
 
 /// <param name="SeeThrough">0 (solid) to 100 (invisible) for <paramref name="Colour"/>.</param>
 /// <param name="Layer">Higher is drawn on top.</param>
+/// <param name="Rotate">Degrees clockwise about the block's centre, -180 to 180; 0 is upright. A design saved before blocks
+/// could turn has no such field and reads as 0.</param>
 public sealed record SplashBlock(int Id, SplashBlockKind Kind, int X, int Y, int W, int H, int Layer,
-    string Colour, int SeeThrough, SplashPicture? Background, bool Rounded, int Padding, SplashFont Font, SplashContent Content);
+    string Colour, int SeeThrough, SplashPicture? Background, bool Rounded, int Padding, SplashFont Font, SplashContent Content,
+    int Rotate = 0);
 
 /// <param name="FocusX">The part of the picture (0–100 % across) that stays in view when it is cropped.</param>
 /// <param name="Darken">0–80 %: a dark layer over the picture so text reads over it.</param>

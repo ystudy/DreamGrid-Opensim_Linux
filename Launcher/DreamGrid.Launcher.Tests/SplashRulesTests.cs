@@ -30,6 +30,32 @@ public sealed class SplashRulesTests
     public void Valid_design_passes() => Assert.Empty(SplashRules.Check(Valid(), _ => false));
 
     [Theory]
+    [InlineData(-180)]
+    [InlineData(0)]
+    [InlineData(45)]
+    [InlineData(180)]
+    public void Rotation_within_a_half_turn_passes(int degrees) =>
+        Assert.Empty(SplashRules.Check(WithBlock(Valid().Blocks[0] with { Rotate = degrees }), _ => false));
+
+    [Theory]
+    [InlineData(-181)]
+    [InlineData(181)]
+    [InlineData(720)]
+    public void Rotation_beyond_a_half_turn_is_refused(int degrees) =>
+        Assert.Contains(SplashRules.Check(WithBlock(Valid().Blocks[0] with { Rotate = degrees }), _ => false),
+            p => p.Contains("rotation", StringComparison.OrdinalIgnoreCase));
+
+    [Fact]
+    public void A_stored_block_without_rotation_reads_as_upright()
+    {
+        var json = System.Text.Json.JsonSerializer.Serialize(Valid().Blocks[0], new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+        var withoutRotate = System.Text.RegularExpressions.Regex.Replace(json, ",\"rotate\":0", "");
+        Assert.DoesNotContain("rotate", withoutRotate);
+        var read = System.Text.Json.JsonSerializer.Deserialize<SplashBlock>(withoutRotate, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+        Assert.Equal(0, read!.Rotate);
+    }
+
+    [Theory]
     [InlineData(639, 800)]
     [InlineData(3841, 800)]
     [InlineData(1280, 399)]
