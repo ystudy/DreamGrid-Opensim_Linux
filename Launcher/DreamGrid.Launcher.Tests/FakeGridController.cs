@@ -661,3 +661,10 @@ internal sealed class FakeOnlineUsers : IOnlineUsers
 
     public Task<OnlineList> ListAsync(CancellationToken ct) => Task.FromResult(Result);
 }
+
+internal sealed class FakeGridRegions : IGridRegions
+{
+    public GridRegionList Result { get; set; } = new([], true);
+
+    public Task<GridRegionList> ListAsync(CancellationToken ct) => Task.FromResult(Result);
+}

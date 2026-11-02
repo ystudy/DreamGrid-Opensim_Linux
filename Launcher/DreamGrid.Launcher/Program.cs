@@ -13,7 +13,9 @@ using DreamGrid.Launcher.Core.OpenSim;
 using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Core.Setup;
+using DreamGrid.Launcher.Core.Splash;
 using DreamGrid.Launcher.Security;
+using DreamGrid.Launcher.Splash;
 using DreamGrid.Launcher.Email;
 using DreamGrid.Launcher.Guests;
 using DreamGrid.Launcher.Setup;
@@ -274,6 +276,11 @@ builder.Services.AddSingleton<BotGuard>();
 builder.Services.AddSingleton<LegacyCommandApi>();
 builder.Services.AddSingleton<IOnlineUsers>(sp => new OnlineUsers(sp.GetRequiredService<Func<LauncherSettings>>(),
     sp.GetRequiredService<ILogger<OnlineUsers>>()));
+builder.Services.AddSingleton<IGridRegions>(sp => new GridRegions(sp.GetRequiredService<Func<LauncherSettings>>(),
+    sp.GetRequiredService<ILogger<GridRegions>>()));
+// The viewer splash page: its saved design, and what /welcome shows (rebuilt at most once a minute).
+builder.Services.AddSingleton(sp => new SplashStore(paths, sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<SplashStore>>()));
+builder.Services.AddSingleton<SplashSnapshot>();
 builder.Services.AddSingleton<GridActions>();
 builder.Services.AddSingleton<RegionActions>();
 builder.Services.AddSingleton<RegionRestarts>();
@@ -321,6 +328,7 @@ RegionsApi.Map(app);
 LibraryApi.Map(app);
 StatusApi.Map(app);
 SetupApi.Map(app);
+SplashApi.Map(app);
 app.MapRazorPages();
 
 app.Lifetime.ApplicationStarted.Register(() =>
