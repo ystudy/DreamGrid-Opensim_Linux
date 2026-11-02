@@ -18,7 +18,7 @@ public sealed class LayoutTests : IAsyncLifetime
     public async Task Layout_has_viewport_meta_and_no_external_urls()
     {
         using var client = _factory.CreateClient();
-        var html = await client.GetStringAsync("/welcome", Ct);
+        var html = await client.GetStringAsync("/waiting", Ct);
         var doc = new HtmlParser().ParseDocument(html);
 
         Assert.Equal("width=device-width, initial-scale=1",
@@ -36,19 +36,22 @@ public sealed class LayoutTests : IAsyncLifetime
     public async Task Navigation_links_are_hidden_when_not_signed_in()
     {
         using var client = _factory.CreateClient();
-        var doc = new HtmlParser().ParseDocument(await client.GetStringAsync("/welcome", Ct));
+        var doc = new HtmlParser().ParseDocument(await client.GetStringAsync("/waiting", Ct));
 
         Assert.Empty(doc.QuerySelectorAll("header nav a"));
         Assert.Contains("Avalon", doc.QuerySelector("header")!.TextContent);
     }
 
     [Fact]
-    public async Task Welcome_page_tells_the_person_how_to_log_in()
+    public async Task Welcome_page_is_the_viewer_splash_page()
     {
         using var client = _factory.CreateClient();
-        var html = await client.GetStringAsync("/welcome", Ct);
+        var doc = new HtmlParser().ParseDocument(await client.GetStringAsync("/welcome", Ct));
 
-        Assert.Contains("Log in with your avatar name and password.", html);
+        // The splash page has its own layout: no staff header or menu, and the grid's name on the built-in page.
+        Assert.NotNull(doc.QuerySelector("body.splash .splash-page"));
+        Assert.Null(doc.QuerySelector("header"));
+        Assert.Contains("Avalon", doc.Body!.TextContent);
     }
 
     [Fact]

@@ -1,7 +1,13 @@
 @page "/welcome"
-@inject Func<DreamGrid.Launcher.Core.Settings.LauncherSettings> Settings
+@model DreamGrid.Launcher.Pages.WelcomeModel
 @{
-    ViewData["Title"] = "Welcome";
+    Layout = "_SplashLayout";
+    ViewData["Title"] = Model.Settings.GridName;
+    ViewData["SplashVersion"] = Model.View.Version;
 }
-<h1>Welcome to @Settings().GridName</h1>
-<p>Log in with your avatar name and password.</p>
+<div class="splash-page">
+    @foreach (var block in Model.View.Design.Blocks)
+    {
+        <partial name="_SplashBlock" model="new DreamGrid.Launcher.Splash.SplashBlockView(block, Model.View.Status, Model.Settings)" />
+    }
+</div>
