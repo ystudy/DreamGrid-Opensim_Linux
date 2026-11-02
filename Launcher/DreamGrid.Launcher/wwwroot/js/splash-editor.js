@@ -27,7 +27,8 @@
     var scale = 1;
     var preview = null;          // { w, h } while previewing
     var blocked = false;         // a save was refused as stale: nothing more is saved until reload
-    var saveTimer = null, saving = false, saveAgain = false, unsaved = false;
+    var saveTimer = null, inFlight = null, unsaved = false;
+    var refreshWaiting = false;  // the server's drawing came back during a drag: it is fetched once the drag ends
 
     // --- Talking to the launcher ----------------------------------------------------------------------------------
 
@@ -199,7 +200,7 @@
         history.push(design);
         if (state.selected !== null && !blockById(state.selected)) state.selected = null;
         render();
-        if (!keepPanel) renderSettings();
+        if (!keepPanel) renderSettingsWhenFree();
         renderPictures();
         scheduleSave();
     }
@@ -245,27 +246,27 @@
         return state.design.blocks.some(function (b) { return b.kind === "Picture" && !(b.content && b.content.picture); });
     }
 
+    // Saves the design as it is now. The promise says whether it is saved: true only once nothing is left unsaved. A call
+    // during a save waits for it, then saves whatever changed meanwhile.
     function save() {
         clearTimeout(saveTimer);
         if (blocked) return Promise.resolve(false);
-        if (saving) { saveAgain = true; return Promise.resolve(false); }
+        if (inFlight) return inFlight.then(function (ok) { return ok && unsaved ? save() : ok && !unsaved; });
         if (waitingForPicture()) {
             say("Choose a picture for the new picture block.", true);
             return Promise.resolve(false);
         }
-        saving = true;
         say("Saving…");
         var sent = state.design;
-        return request("PUT", api + "/draft?basedOn=" + state.version, sent).then(function (r) {
-            saving = false;
+        inFlight = request("PUT", api + "/draft?basedOn=" + state.version, sent).then(function (r) {
+            inFlight = null;
             if (r.status === 200) {
                 state.version = r.json.version;
                 if (state.design === sent) unsaved = false;
-                say("Saved");
+                say(unsaved ? "Saving…" : "Saved");
                 refreshFromServer();
                 loadPictures();
-                if (saveAgain) { saveAgain = false; return save(); }
-                return true;
+                return unsaved ? save() : true;
             }
             if (r.status === 409) {
                 blocked = true;
@@ -277,20 +278,24 @@
             }
             return false;
         }, function () {
-            saving = false;
+            inFlight = null;
             say("Not saved: the launcher didn't answer. Your changes are still here; try Save again.", true);
             return false;
         });
+        return inFlight;
     }
 
     // The draft as the server draws it: its stylesheet, then its blocks' HTML.
     function refreshFromServer() {
+        // Replacing the blocks would take the one being dragged out from under the pointer: wait for the drag to end.
+        if (drag) { refreshWaiting = true; return Promise.resolve(); }
         draftCss.href = api + "/draft.css?v=" + state.version;
         return fetch(blocksUrl, { credentials: "same-origin", headers: { Accept: "text/html" } }).then(function (r) {
             if (r.status === 401) { signInAgain(); throw new Error("signed out"); }
             return r.ok ? r.text() : null;
         }).then(function (html) {
             if (html === null) return;
+            if (drag) { refreshWaiting = true; return; }
             // The launcher's own HTML for the saved draft; owner text in it is already escaped by the server.
             page.innerHTML = html;
             render();
@@ -298,26 +303,37 @@
     }
 
     function publish() {
-        var ready = unsaved ? save() : Promise.resolve(true);
+        var ready = unsaved || inFlight ? save() : Promise.resolve(true);
         ready.then(function (ok) {
-            if (!ok && unsaved) return;
+            if (!ok) {
+                if (!blocked) say("Not published: " + saveState.textContent, true);
+                return;
+            }
             return request("POST", api + "/publish").then(function (r) {
                 if (r.status === 200) { say("Published. Viewers see it within a minute."); loadPictures(); }
                 else say(r.json && r.json.problem ? r.json.problem : "Not published (HTTP " + r.status + ").", true);
             });
-        });
+        }).catch(function () { say("Not published: the launcher didn't answer.", true); });
     }
 
     function discard(button) {
         if (!window.confirm(button.getAttribute("data-confirm"))) return;
         clearTimeout(saveTimer);
-        request("POST", api + "/discard").then(function (r) {
+        // No save may land after the discard and bring the draft back: stop saving, and let one already sent finish first.
+        blocked = true;
+        (inFlight || Promise.resolve()).then(function () {
+            return request("POST", api + "/discard");
+        }).then(function (r) {
             if (r.status === 204) {
                 unsaved = false;
                 window.location.reload();
             } else {
+                blocked = false;
                 say("Not discarded (HTTP " + r.status + ").", true);
             }
+        }, function () {
+            blocked = false;
+            say("Not discarded: the launcher didn't answer.", true);
         });
     }
 
@@ -357,11 +373,13 @@
         clearGuides();
         if (moved && (moved.x !== start.x || moved.y !== start.y || moved.w !== start.w || moved.h !== start.h))
             change(replaceBlock(moved));
+        if (refreshWaiting) { refreshWaiting = false; refreshFromServer(); }
     }
 
-    page.addEventListener("pointerup", endDrag);
-    page.addEventListener("pointercancel", endDrag);
-    page.addEventListener("lostpointercapture", endDrag);
+    // On the document, so the end of a drag is heard wherever the pointer is let go.
+    document.addEventListener("pointerup", endDrag);
+    document.addEventListener("pointercancel", endDrag);
+    document.addEventListener("lostpointercapture", endDrag, true);
 
     // A click on the empty page (outside every block) clears the selection.
     canvas.addEventListener("pointerdown", function (e) {
@@ -409,7 +427,7 @@
     function typing(target) {
         if (!target) return false;
         if (target.isContentEditable || target.tagName === "TEXTAREA" || target.tagName === "SELECT") return true;
-        return target.tagName === "INPUT" && !/^(checkbox|radio|button|submit|range|color|file)$/.test(target.type);
+        return target.tagName === "INPUT" && !/^(checkbox|radio|button|submit|color|file)$/.test(target.type);
     }
 
     document.addEventListener("keydown", function (e) {
@@ -418,6 +436,8 @@
         if ((e.ctrlKey || e.metaKey) && key === "z" && !e.shiftKey) { e.preventDefault(); restore(history.undo()); return; }
         if ((e.ctrlKey || e.metaKey) && (key === "y" || (key === "z" && e.shiftKey))) { e.preventDefault(); restore(history.redo()); return; }
         if (state.selected === null || e.ctrlKey || e.metaKey || e.altKey) return;
+        // A key on something in the settings or pictures panel is for that control, not the block.
+        if (e.target.closest && e.target.closest("#splash-settings, #splash-pictures")) return;
         if (e.key.indexOf("Arrow") === 0) {
             e.preventDefault();
             change(replaceBlock(Core.nudge(blockById(state.selected), e.key, e.shiftKey, state.design)));
@@ -614,8 +634,8 @@
     }
 
     // The block being edited, changed at one path, as an edit from the panel.
-    function setBlock(path, value, redraw) {
-        var b = blockById(state.selected);
+    function setBlock(path, value, redraw, id) {
+        var b = blockById(id === undefined ? state.selected : id);
         if (b) change(replaceBlock(Core.setPath(b, path, value)), !redraw);
     }
 
@@ -903,6 +923,7 @@
 
     // Copies the region's map tile into the pictures (redrawn like an upload) and uses it for place i.
     function mapTileButton(parent, place, i) {
+        var blockId = state.selected;
         var b = button(parent, place.picture ? "Refresh from the map" : "Use the map tile", "btn-outline-secondary mb-2", function () {
             b.disabled = true;
             request("POST", api + "/pictures/from-region/" + encodeURIComponent(place.regionId)).then(function (r) {
@@ -911,10 +932,31 @@
                     say(r.json && r.json.problem ? r.json.problem : "The map picture couldn't be copied (HTTP " + r.status + ").", true);
                     return;
                 }
-                loadPictures().then(function () { setBlock("content.places." + i + ".picture", r.json.name, true); });
+                loadPictures().then(function () {
+                    // The block the button belongs to, even if another is selected by now (and if it still has place i).
+                    var b = blockById(blockId);
+                    if (b && b.content.places && b.content.places[i] && b.content.places[i].regionId === place.regionId)
+                        setBlock("content.places." + i + ".picture", r.json.name, true, blockId);
+                });
             }, function () { b.disabled = false; });
         });
     }
+
+    // A rebuild that isn't the owner's own doing (pictures loaded, a map tile copied) waits while they type in the panel,
+    // since rebuilding would throw the typed text away; it runs once they leave the field.
+    function renderSettingsWhenFree() {
+        var at = document.activeElement;
+        if (at && settings.contains(at) && typing(at)) {
+            at.addEventListener("blur", function () { setTimeout(renderSettingsWhenFree, 0); }, { once: true });
+            return;
+        }
+        renderSettings();
+    }
+
+    // Text typed but not yet committed (the field is still focused) counts as unsaved, so leaving the page asks first.
+    settings.addEventListener("input", function (e) {
+        if (typing(e.target)) unsaved = true;
+    });
 
     function renderSettings() {
         settings.textContent = "";
@@ -973,7 +1015,7 @@
             var del = button(li, "Delete", "btn-outline-danger", function () {
                 if (!window.confirm("Delete " + p.label + "?")) return;
                 request("DELETE", api + "/pictures/" + encodeURIComponent(p.name)).then(function (r) {
-                    if (r.status === 204) { pictureMessage.textContent = "Deleted " + p.label + "."; loadPictures().then(renderSettings); }
+                    if (r.status === 204) { pictureMessage.textContent = "Deleted " + p.label + "."; loadPictures().then(renderSettingsWhenFree); }
                     else if (r.status === 409) pictureMessage.textContent = "This picture is still used on the page.";
                     else pictureMessage.textContent = "Not deleted (HTTP " + r.status + ").";
                 });
@@ -1020,15 +1062,19 @@
         upload(api + "/pictures", file, pictureMessage, function (p) {
             input.value = "";
             pictureMessage.textContent = "Added " + p.label + ". Choose it in the page's or a block's settings.";
-            loadPictures().then(renderSettings);
+            loadPictures().then(renderSettingsWhenFree);
         });
     });
 
     // The logo is drawn by the server in this panel and in grid-name blocks, so the page is loaded again after a change
     // (any edit not yet saved is saved first).
     function reloadSaved() {
-        (unsaved ? save() : Promise.resolve(true)).then(function () {
-            unsaved = false;
+        (unsaved || inFlight ? save() : Promise.resolve(true)).then(function (ok) {
+            if (!ok) {
+                logoMessage.textContent = "Logo changed. Your page edits aren't saved yet (" + saveState.textContent +
+                    "); save them, then reload the page to see the logo.";
+                return;
+            }
             window.location.reload();
         });
     }
@@ -1068,7 +1114,7 @@
         render();
         renderSettings();
         say(data.draft ? "Draft" : data.published ? "Published page" : "The built-in page");
-        loadPictures().then(renderSettings);
+        loadPictures().then(renderSettingsWhenFree);
     });
 
     // For the settings and pictures parts below.
