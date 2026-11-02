@@ -11,6 +11,8 @@
     <PackageReference Include="Markdig" Version="1.5.1" />
     <!-- IHttpClientFactory only; no ASP.NET dependency. -->
     <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.13" />
+    <PackageReference Include="SkiaSharp" Version="4.154.0" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="4.154.0" />
   </ItemGroup>
 
   <ItemGroup>
