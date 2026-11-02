@@ -20,10 +20,16 @@
             @Html.Raw(LegalMarkdown.ToHtml(En(c.Text)))
             break;
         case SplashBlockKind.GridName:
-            if (c.ShowName)
-            {
-                <div class="splash-heading">@s.GridName</div>
-            }
+            <div class="splash-name">
+                @if (c.ShowLogo && Model.Logo is { } logo)
+                {
+                    <img class="splash-logo" src="@DreamGrid.Launcher.Splash.SplashSnapshot.LogoUrl(logo)" alt="@s.GridName">
+                }
+                @if (c.ShowName)
+                {
+                    <div class="splash-heading">@s.GridName</div>
+                }
+            </div>
             break;
         case SplashBlockKind.Status:
             <ul class="splash-list">

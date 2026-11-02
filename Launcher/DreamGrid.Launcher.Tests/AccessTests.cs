@@ -288,6 +288,8 @@ public sealed class AccessTests
             "route /welcome/page-{version:int}.css",
             // A picture the published splash page uses (nothing else answers).
             "route /welcome/images/{name}",
+            // The grid's current logo (nothing else answers).
+            "route /theme/images/{name}",
             // The public front page: SetupGate shows it at "/" to anyone not signed in as staff, where there is a guest side.
             "page home",
             // The guest door: any account at level 0 or more signs in here, to the guest pages only.

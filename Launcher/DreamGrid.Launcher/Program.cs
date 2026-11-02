@@ -15,6 +15,7 @@ using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Core.Setup;
 using DreamGrid.Launcher.Core.Pictures;
 using DreamGrid.Launcher.Core.Splash;
+using DreamGrid.Launcher.Core.Theme;
 using DreamGrid.Launcher.Security;
 using DreamGrid.Launcher.Splash;
 using DreamGrid.Launcher.Email;
@@ -289,6 +290,7 @@ builder.Services.AddSingleton(sp => new SplashStore(paths, sp.GetRequiredService
 {
     PictureExists = sp.GetRequiredKeyedService<PictureStore>("splash").Exists,
 });
+builder.Services.AddSingleton(sp => new ThemeStore(paths, sp.GetRequiredKeyedService<PictureStore>("theme"), sp.GetRequiredService<ILogger<ThemeStore>>()));
 builder.Services.AddSingleton<SplashSnapshot>();
 builder.Services.AddSingleton<SplashPictureCleanup>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<SplashPictureCleanup>());

@@ -5,6 +5,7 @@ using DreamGrid.Launcher.Core.Pictures;
 using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Core.Splash;
+using DreamGrid.Launcher.Core.Theme;
 using DreamGrid.Launcher.Security;
 using DreamGrid.Launcher.Splash;
 using Microsoft.AspNetCore.Antiforgery;
@@ -42,6 +43,7 @@ public static class SplashApi
                 AdminRule.HasStaffPages(context.HttpContext.RequestServices.GetRequiredService<Func<LauncherSettings>>()())
                     ? await next(context) : Results.NotFound());
         MapPictures(app, api);
+        MapTheme(app);
 
         api.MapGet("", async (SplashStore store, IGridRegions regions, HttpContext ctx) => Results.Json(new
         {
@@ -188,6 +190,53 @@ public static class SplashApi
             var (actor, id, role) = AuditActor.Of(ctx.User);
             audit.Write(new AuditEntry(actor, id, role, ctx.Connection.RemoteIpAddress?.ToString(), "splash-image-deleted",
                 $"{picture.Name} ({picture.Label})", "ok"));
+            return Results.NoContent();
+        });
+    }
+
+    /// <summary>
+    /// The grid's logo (spec §4.2): the owner and admins set or remove it; anyone may fetch the current one, and nothing else.
+    /// Stored in the theme's picture store, checked and redrawn like any upload. Not there where there is no guest side.
+    /// </summary>
+    private static void MapTheme(WebApplication app)
+    {
+        app.MapGet("/theme/images/{name}", (string name, HttpContext ctx, ThemeStore theme,
+            [FromKeyedServices("theme")] PictureStore pictures) =>
+        {
+            if (theme.Logo() != name || pictures.Open(name) is not { } file) return Results.NotFound();
+            ctx.Response.Headers.CacheControl = Immutable;
+            return Results.File(file.Path, file.ContentType);
+        }).AllowAnonymous();
+
+        var api = app.MapGroup("/api/theme").RequireAuthorization(AuthSchemes.AdminPolicy)
+            .AddEndpointFilter(async (context, next) =>
+                AdminRule.HasStaffPages(context.HttpContext.RequestServices.GetRequiredService<Func<LauncherSettings>>()())
+                    ? await next(context) : Results.NotFound());
+
+        api.MapPost("/logo", async (string? label, HttpContext ctx, IAntiforgery antiforgery, ThemeStore theme,
+            [FromKeyedServices("theme")] PictureStore pictures, SplashSnapshot snapshot, AuditLog audit) =>
+        {
+            var (result, problem) = await UploadAsync(ctx, antiforgery, pictures, label);
+            if (result is null) return problem!;
+            var old = theme.Logo();
+            theme.SetLogo(result.Name);
+            if (old is not null) pictures.Delete(old);
+            snapshot.Invalidate();
+            var (name, id, role) = AuditActor.Of(ctx.User);
+            audit.Write(new AuditEntry(name, id, role, ctx.Connection.RemoteIpAddress?.ToString(), "theme-logo-set", $"{result.Name} ({result.Label})", "ok"));
+            return Results.Json(result, Json);
+        });
+
+        api.MapDelete("/logo", async (HttpContext ctx, IAntiforgery antiforgery, ThemeStore theme,
+            [FromKeyedServices("theme")] PictureStore pictures, SplashSnapshot snapshot, AuditLog audit) =>
+        {
+            if (!await antiforgery.IsRequestValidAsync(ctx)) return TokenProblem();
+            var old = theme.Logo();
+            theme.SetLogo(null);
+            if (old is not null) pictures.Delete(old);
+            snapshot.Invalidate();
+            var (name, id, role) = AuditActor.Of(ctx.User);
+            audit.Write(new AuditEntry(name, id, role, ctx.Connection.RemoteIpAddress?.ToString(), "theme-logo-removed", old, "ok"));
             return Results.NoContent();
         });
     }

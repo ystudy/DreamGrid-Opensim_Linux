@@ -3,6 +3,7 @@ using DreamGrid.Launcher.Core.Processes;
 using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Core.Splash;
+using DreamGrid.Launcher.Core.Theme;
 
 namespace DreamGrid.Launcher.Splash;
 
@@ -10,10 +11,11 @@ namespace DreamGrid.Launcher.Splash;
 public sealed record SplashStatus(bool GridOnline, int? PeopleOnline, int? RegionsRunning);
 
 /// <param name="Version">The published version, or 0 for the built-in page; the stylesheet's address carries it.</param>
-public sealed record SplashView(SplashDesign Design, int Version, bool IsDefault, SplashStatus Status, string Css);
+/// <param name="Logo">The grid's logo picture name, or null when none is set.</param>
+public sealed record SplashView(SplashDesign Design, int Version, bool IsDefault, SplashStatus Status, string Css, string? Logo = null);
 
 /// <summary>What one block of the public page is drawn from.</summary>
-public sealed record SplashBlockView(SplashBlock Block, SplashStatus Status, LauncherSettings Settings);
+public sealed record SplashBlockView(SplashBlock Block, SplashStatus Status, LauncherSettings Settings, string? Logo);
 
 /// <summary>
 /// What /welcome shows (spec 2026-11-01-viewer-splash-design §4.7): the published design, or the built-in page when there is
@@ -21,12 +23,15 @@ public sealed record SplashBlockView(SplashBlock Block, SplashStatus Status, Lau
 /// injected clock, so viewers waiting at a login screen don't each ask the database; concurrent callers share one build.
 /// </summary>
 public sealed class SplashSnapshot(SplashStore store, IGridController grid, IOnlineUsers online, IGridRegions regions,
-    Func<LauncherSettings> settings, TimeProvider time)
+    Func<LauncherSettings> settings, TimeProvider time, ThemeStore theme)
 {
     public static readonly TimeSpan Lifetime = TimeSpan.FromSeconds(60);
 
-    /// <summary>Where the page's pictures are served (plan 12b).</summary>
+    /// <summary>Where the page's pictures are served.</summary>
     public static string PictureUrl(string name) => "/welcome/images/" + name;
+
+    /// <summary>Where the grid's logo is served.</summary>
+    public static string LogoUrl(string name) => "/theme/images/" + name;
 
     private readonly SemaphoreSlim _build = new(1, 1);
     private volatile Cached? _cached;
@@ -79,6 +84,6 @@ public sealed class SplashSnapshot(SplashStore store, IGridController grid, IOnl
         var where = await listed;
         var status = new SplashStatus(grid.GetStatus().Robust.State == ProcessState.Running,
             who.Available ? who.Avatars.Count : null, where.Available ? where.Regions.Count : null);
-        return new SplashView(design, published?.Version ?? 0, published is null, status, SplashCss.Build(design, PictureUrl));
+        return new SplashView(design, published?.Version ?? 0, published is null, status, SplashCss.Build(design, PictureUrl), theme.Logo());
     }
 }
