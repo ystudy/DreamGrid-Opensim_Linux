@@ -188,6 +188,8 @@ builder.Services.AddRazorPages(o =>
         o.Conventions.AddPageApplicationModelConvention(publicPage, m => m.Filters.Add(new GuestSideOnly()));
     // The owner's legal editor: the Security folder's owner policy, and not there where there is no guest side.
     o.Conventions.AddPageApplicationModelConvention("/Security/Legal", m => m.Filters.Add(new GuestSideOnly()));
+    // The splash page editor: the page it builds is the guest side's (AdminPolicy comes from the folder rule above).
+    o.Conventions.AddFolderApplicationModelConvention("/Splash", m => m.Filters.Add(new GuestSideOnly()));
     // The same for the bot-protection page.
     o.Conventions.AddPageApplicationModelConvention("/Security/Bots", m => m.Filters.Add(new GuestSideOnly()));
     o.Conventions.AddPageApplicationModelConvention("/People/SignUps", m => m.Filters.Add(new GuestSideOnly()));

@@ -1,5 +1,6 @@
 @{
-    var version = ViewData["SplashVersion"] is int v ? v : 0;
+    // The design's stylesheet: the published one's on /welcome, the draft's on the staff preview.
+    var css = ViewData["SplashCss"] as string ?? "/welcome/page-0.css";
 }
 <!DOCTYPE html>
 <html lang="en">
@@ -8,7 +9,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>@ViewData["Title"]</title>
     <link rel="stylesheet" href="/css/splash.css">
-    <link rel="stylesheet" href="/welcome/page-@(version).css">
+    <link rel="stylesheet" href="@css">
 </head>
 @* The viewer's login screen: the owner's design and nothing else, no menu and no script. *@
 <body class="splash">

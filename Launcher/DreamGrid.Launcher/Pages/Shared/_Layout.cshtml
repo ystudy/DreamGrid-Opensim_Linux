@@ -49,6 +49,11 @@
                         <a class="nav-link@(Active("/regions"))" href="/regions">Regions</a>
                         <a class="nav-link@(Active("/advanced"))" href="/advanced">Advanced</a>
                         <a class="nav-link@(Active("/logs"))" href="/logs">Logs</a>
+                        // The splash page belongs to the guest side, like the People pages.
+                        if (hasStaffPages)
+                        {
+                            <a class="nav-link@(Active("/splash"))" href="/splash">Splash page</a>
+                        }
                     }
                     // The Staff and People pages exist only where there are supervisors (not on a Region Server or a Connected Server).
                     if (hasStaffPages)

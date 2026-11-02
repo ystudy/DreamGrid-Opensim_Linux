@@ -19,14 +19,14 @@ public sealed class SplashPictureApiTests
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    internal static LauncherFactory Factory(Action<IServiceCollection>? extra = null)
+    internal static LauncherFactory Factory(Action<IServiceCollection>? extra = null, Func<LauncherSettings, LauncherSettings>? settings = null)
     {
-        var f = new LauncherFactory(s => s with
+        var f = new LauncherFactory(s => (settings ?? (x => x))(s with
         {
             GridName = "Avalon",
             SetupToken = null,
             Setup = s.Setup with { OwnerCreated = true, Finished = true, Owner = new OwnerInfo("Test", "Owner", TestAuth.OwnerId) },
-        })
+        }))
         {
             Before = TestAuth.Apply,
             ExtraServices = extra,

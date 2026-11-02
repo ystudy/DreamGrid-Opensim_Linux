@@ -10,7 +10,7 @@ public static partial class SplashRules
 {
     public const int MinWidth = 640, MaxWidth = 3840, MinHeight = 400, MaxHeight = 2160;
     public const int MaxBlocks = 100, MaxLayer = 999, MinBlockSize = 16;
-    public const int MaxSeeThrough = 100, MaxDarken = 80, MaxPadding = 64, MinFontSize = 8, MaxFontSize = 200;
+    public const int MaxSeeThrough = 100, MaxDarken = 80, MaxPadding = 64, MinFontSize = 8, MaxFontSize = 200, MaxRotate = 180;
     public const int MaxText = 4000, MaxCaption = 200, MaxHeading = 120, MaxNewsText = 2000, MaxPlaceLine = 200, MaxRegionName = 64;
     public const int MaxNews = 20, MaxPlaces = 8;
     public static readonly IReadOnlyList<int> SnapSizes = [8, 16, 32, 64];
@@ -60,6 +60,7 @@ public static partial class SplashRules
             if (!IsColour(b.Colour)) problems.Add($"{who}: the colour must look like #1a2b3c.");
             if (b.SeeThrough is < 0 or > MaxSeeThrough) problems.Add($"{who}: see-through must be 0–{MaxSeeThrough} %.");
             if (b.Padding is < 0 or > MaxPadding) problems.Add($"{who}: padding must be 0–{MaxPadding}.");
+            if (b.Rotate is < -MaxRotate or > MaxRotate) problems.Add($"{who}: the rotation must be -{MaxRotate}–{MaxRotate} degrees.");
             if (b.Background is { } bg) CheckPicture(bg, who, problems, pictureExists);
             if (b.Font is null) problems.Add($"{who}: it has no font.");
             else
