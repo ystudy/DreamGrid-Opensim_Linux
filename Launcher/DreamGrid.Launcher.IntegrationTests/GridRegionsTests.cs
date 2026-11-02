@@ -46,7 +46,8 @@ public sealed class GridRegionsTests : IDisposable
             }.ConnectionString))
             {
                 await conn.OpenAsync(ct);
-                await using var cmd = new MySqlCommand("INSERT INTO regions (uuid, regionHandle, regionName) VALUES (@u, 1, 'Far Away')", conn);
+                // uuid, regionHandle and Token are the columns without a default.
+                await using var cmd = new MySqlCommand("INSERT INTO regions (uuid, regionHandle, regionName, Token) VALUES (@u, 1, 'Far Away', '')", conn);
                 cmd.Parameters.AddWithValue("@u", elsewhere.ToString());
                 await cmd.ExecuteNonQueryAsync(ct);
             }
