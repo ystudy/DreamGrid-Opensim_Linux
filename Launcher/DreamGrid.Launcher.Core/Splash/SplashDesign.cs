@@ -1,15 +1,22 @@
+using System.Text.Json.Serialization;
+
 namespace DreamGrid.Launcher.Core.Splash;
 
 // The viewer splash page the owner builds from blocks (spec 2026-11-01-viewer-splash-design). Positions and sizes are in
 // design pixels; the public page turns them into proportions (SplashCss). Text is keyed by language ("en" until 1.5).
+// Enums are stored by name, so the files read well and the editor's JSON says "Text" rather than 0.
 
 /// <summary>How a picture fills its box: crop the edges, show it all, stretch, repeat it, or centre it at actual size.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<SplashFit>))]
 public enum SplashFit { Fill, Fit, Stretch, Tile, Centre }
 
+[JsonConverter(typeof(JsonStringEnumConverter<SplashBlockKind>))]
 public enum SplashBlockKind { Text, Picture, GridName, Status, News, Places, Links }
 
+[JsonConverter(typeof(JsonStringEnumConverter<SplashAlign>))]
 public enum SplashAlign { Left, Centre, Right }
 
+[JsonConverter(typeof(JsonStringEnumConverter<SplashFontFamily>))]
 public enum SplashFontFamily { Sans, Serif, Monospace }
 
 public sealed record SplashFont(int Size, string Colour, bool Bold, SplashAlign Align, SplashFontFamily Family);
