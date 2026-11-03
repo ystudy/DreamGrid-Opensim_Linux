@@ -46,7 +46,7 @@ public sealed record SignUpLimits(ResetLimits Counts);
 /// </summary>
 public sealed class SignUps(Func<LauncherSettings> settings, IGridController grid, IRobustClient robust, IStaffDirectory directory,
     IAccountRemover remover, IRobustPasswords passwords, SignUpBoard pending, SignUpLimits limits, EmailTokens tokens,
-    EmailSender sender, TermsAcceptances terms, SignUpLock gate, AuditLog audit, GroupsAdmin groups, ILogger<SignUps> log)
+    EmailSender sender, TermsAcceptances terms, SignUpLock gate, AuditLog audit, GroupsAdmin groups, HeldNames heldNames, ILogger<SignUps> log)
 {
     public const string Purpose = "confirm-signup";
     public static readonly TimeSpan LinkLifetime = TimeSpan.FromHours(24);
@@ -71,7 +71,7 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
 
         var first = form.First?.Trim() ?? "";
         var last = form.Last?.Trim() ?? "";
-        var problem = SignUpRules.NameProblem(first, last, s)
+        var problem = SignUpRules.NameProblem(first, last, s, heldNames.IsHeld)
             ?? PasswordRules.Problem(form.Password, form.Again, first, last)
             ?? SignUpRules.EmailProblem(form.Email)
             ?? (form.AcceptTerms ? null : TermsProblem);
