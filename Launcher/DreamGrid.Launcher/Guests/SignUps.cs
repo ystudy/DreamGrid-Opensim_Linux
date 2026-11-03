@@ -10,6 +10,7 @@ using DreamGrid.Launcher.Core.OpenSim;
 using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Email;
+using DreamGrid.Launcher.Groups;
 
 namespace DreamGrid.Launcher.Guests;
 
@@ -45,7 +46,7 @@ public sealed record SignUpLimits(ResetLimits Counts);
 /// </summary>
 public sealed class SignUps(Func<LauncherSettings> settings, IGridController grid, IRobustClient robust, IStaffDirectory directory,
     IAccountRemover remover, IRobustPasswords passwords, SignUpBoard pending, SignUpLimits limits, EmailTokens tokens,
-    EmailSender sender, TermsAcceptances terms, SignUpLock gate, AuditLog audit, ILogger<SignUps> log)
+    EmailSender sender, TermsAcceptances terms, SignUpLock gate, AuditLog audit, GroupsAdmin groups, ILogger<SignUps> log)
 {
     public const string Purpose = "confirm-signup";
     public static readonly TimeSpan LinkLifetime = TimeSpan.FromHours(24);
@@ -151,7 +152,12 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
         audit.Write(new AuditEntry(Full(account), account.PrincipalId, StaffRole.None.AuditName(), ip?.ToString(), "signup-made",
             withEmail ? "waiting for email" : waitsForStaff ? "waiting for staff" : "ready", "ok"));
         if (waitsForStaff) return new(SignUpOutcome.WaitingForStaff);
-        if (!withEmail) return new(SignUpOutcome.SignedUp, Account: account);
+        if (!withEmail)
+        {
+            // Active at once: they join the default group now (never throws).
+            await groups.JoinNewResidentAsync(account, none);
+            return new(SignUpOutcome.SignedUp, Account: account);
+        }
 
         SendLink(s, account, email);
         return new(SignUpOutcome.CheckEmail);
@@ -192,6 +198,7 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
             }
             tokens.TryRedeem(Purpose, principal, token);
             audit.Write(new AuditEntry(Full(account), principal, StaffRole.None.AuditName(), ip?.ToString(), "signup-confirmed", null, "ok"));
+            await groups.JoinNewResidentAsync(account, CancellationToken.None);
             return (ConfirmResult.Confirmed, account);
         }
         finally { gate.Gate.Release(); }

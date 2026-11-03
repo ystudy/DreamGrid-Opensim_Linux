@@ -6,6 +6,7 @@ using DreamGrid.Launcher.Core.Email;
 using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.Guests;
 using DreamGrid.Launcher.Core.Logs;
+using DreamGrid.Launcher.Groups;
 using DreamGrid.Launcher.Core.OpenSim;
 using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Core.Settings;
@@ -38,7 +39,7 @@ public sealed record ApprovalOutcome(ApprovalResult Result, string? Message = nu
 /// <c>signup-denied</c>); the note never is.
 /// </summary>
 public sealed class SignUpApprovals(Func<LauncherSettings> settings, IGridController grid, IRobustClient robust, IAccountRemover remover,
-    IStaffDirectory directory, SignUpBoard board, SignUpLock gate, EmailSender sender, AuditLog audit, ILogger<SignUpApprovals> log)
+    IStaffDirectory directory, SignUpBoard board, SignUpLock gate, EmailSender sender, AuditLog audit, GroupsAdmin groups, ILogger<SignUpApprovals> log)
 {
     public const int NoteLimit = 500;
     public const string ApproveBusy = "Couldn't approve right now. Try again in a few minutes.";
@@ -76,6 +77,7 @@ public sealed class SignUpApprovals(Func<LauncherSettings> settings, IGridContro
             // Audited as soon as Robust took it, so a board that can't be written never hides who let someone in.
             audit.Write(new AuditEntry(staffName, null, role.AuditName(), ip?.ToString(), "signup-approved", Full(account), "ok"));
             Finish(principal, SignUpState.Approved, staffName);
+            await groups.JoinNewResidentAsync(account, CancellationToken.None);
             var s = settings();
             if (sender.IsReady && account.Email.Trim().Length > 0)
             {
