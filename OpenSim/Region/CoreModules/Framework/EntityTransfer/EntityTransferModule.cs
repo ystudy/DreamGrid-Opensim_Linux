@@ -610,7 +610,7 @@ namespace OpenSim.Region.CoreModules.Framework.EntityTransfer
             string homeURI = m_scene.GetAgentHomeURI(sp.ControllingClient.AgentId);
 
             string reason = String.Empty;
-            finalDestination = GetFinalDestination(reg, sp.ControllingClient.AgentId, homeURI, out _);
+            finalDestination = GetFinalDestination(reg, sp.ControllingClient.AgentId, homeURI, out reason);
 
             if (finalDestination == null)
             {
@@ -621,7 +621,7 @@ namespace OpenSim.Region.CoreModules.Framework.EntityTransfer
                 return;
             }
 
-            if (!ValidateGenericConditions(sp, reg, finalDestination, teleportFlags, out _))
+            if (!ValidateGenericConditions(sp, reg, finalDestination, teleportFlags, out reason))
             {
                 sp.ControllingClient.SendTeleportFailed(reason);
                 return;

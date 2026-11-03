@@ -1157,6 +1157,58 @@ namespace OpenSim.Framework
             return true;
         }
 
+        /// <summary>
+        /// Call first in Main. DllmapConfigHelper, in OpenMetaverse.dll, opens each .dll.config for read and write while
+        /// it builds an XmlSerializer, so a second process starting at that moment gets a sharing violation. It drops
+        /// that error and sets no map, and dotnet then looks for the DLL in bin, not lib64. That is the "Unable to load
+        /// DLL" crash at boot, Mantis 9177. This event is the last try dotnet makes, so it covers every assembly.
+        /// </summary>
+        public static void InstallNativeDllFallback()
+        {
+            System.Runtime.Loader.AssemblyLoadContext.Default.ResolvingUnmanagedDll += LoadNativeDllFallback;
+        }
+
+        private static IntPtr LoadNativeDllFallback(Assembly assembly, string libraryName)
+        {
+            const int attempts = 5;
+            string configPath = assembly.Location + ".config";
+            if (!File.Exists(configPath))
+                return IntPtr.Zero;
+
+            for (int attempt = 1; attempt <= attempts; attempt++)
+            {
+                try
+                {
+                    string target = NativeDllTarget(configPath, libraryName);
+                    if (string.IsNullOrEmpty(target))
+                        return IntPtr.Zero;
+
+                    string path = Path.Combine(Path.GetDirectoryName(assembly.Location), target);
+                    IntPtr handle = NativeLibrary.Load(path);
+                    m_log.Info($"[UTIL]: Native library {libraryName} loaded from {path} on attempt {attempt}");
+                    return handle;
+                }
+                catch (Exception e)
+                {
+                    m_log.Warn($"[UTIL]: Native library {libraryName} attempt {attempt} of {attempts} failed: {e.Message}");
+                }
+
+                if (attempt < attempts)
+                    Thread.Sleep(200);
+            }
+            return IntPtr.Zero;
+        }
+
+        private static string NativeDllTarget(string configPath, string libraryName)
+        {
+            DllmapConfigHelper.configuration config;
+            using (FileStream stream = new FileStream(configPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                config = (DllmapConfigHelper.configuration)new System.Xml.Serialization.XmlSerializer(typeof(DllmapConfigHelper.configuration)).Deserialize(stream);
+
+            config.maps.RemoveAll(map => map.dll != libraryName);
+            return DllmapConfigHelper.ProcessDllConfiguration(config);
+        }
+
         public static bool IsEnvironmentSupported(ref string reason)
         {
             if (Environment.Version.Major < 8)

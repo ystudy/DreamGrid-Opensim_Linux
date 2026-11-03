@@ -56,6 +56,9 @@ namespace osWebRtcVoice
         private bool _JanusDebug = false;
         private bool _MessageDetails = false;
 
+        // [JanusWebRtcVoice] SpatialAudio. False (default) makes region and parcel rooms mono.
+        private bool _SpatialAudio = false;
+
         // Maximum ICE candidates accepted from one VoiceSignalingRequest call.
         // <= 0 means no limit.
         private int _MaxSignalingCandidatesPerRequest = 20;
@@ -85,8 +88,9 @@ namespace osWebRtcVoice
                     _JanusAdminURI = janusConfig.GetString("JanusGatewayAdminURI", string.Empty);
                     _JanusAdminToken = janusConfig.GetString("AdminAPIToken", string.Empty);
 
-                    if (string.IsNullOrEmpty(_JanusServerURI) || string.IsNullOrEmpty(_JanusAPIToken) ||
-                        string.IsNullOrEmpty(_JanusAdminURI) || string.IsNullOrEmpty(_JanusAdminToken))
+                    // Only the gateway URI and API token are needed for voice. The admin URI and token are used
+                    //     only by the "janus list sessions" console command, and belong to the Janus server's owner.
+                    if (string.IsNullOrEmpty(_JanusServerURI) || string.IsNullOrEmpty(_JanusAPIToken))
                     {
                         _log.Error($"{LogHeader} JanusWebRtcVoice configuration section missing required fields");
                         _Enabled = false;
@@ -96,6 +100,8 @@ namespace osWebRtcVoice
                     // Debugging options
                     _JanusDebug = janusConfig.GetBoolean("JanusDebug", false);
                     _MessageDetails = janusConfig.GetBoolean("MessageDetails", false);
+
+                    _SpatialAudio = janusConfig.GetBoolean("SpatialAudio", false);
 
                     _MaxSignalingCandidatesPerRequest = janusConfig.GetInt("MaxSignalingCandidatesPerRequest", 20);
                     if (_MaxSignalingCandidatesPerRequest < 0)
@@ -252,7 +258,65 @@ namespace osWebRtcVoice
                     _ = pViewerSession.Shutdown();
                 });
             }
-        }   
+        }
+
+        // Some viewers append Opus settings to their SDP offer with a bare \r or \n instead of \r\n,
+        //     e.g. "a=fmtp:111 minptime=10;useinbandfec=1\ra=fmtp:111 ...;stereo=1;sprop-stereo=1".
+        //     Janus stops reading the line at the bare \r and never sees stereo=1, so the two ends
+        //     disagree about mono vs stereo (heard as a buzz).
+        // Make every line end in \r\n, then merge repeated a=fmtp lines for the same payload type
+        //     into the first one (later values win) so Janus sees all the settings.
+        private static string RepairSdp(string pSdp)
+        {
+            if (string.IsNullOrEmpty(pSdp))
+                return pSdp;
+
+            string[] lines = pSdp.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+            List<string> outLines = new List<string>();
+            // payload type -> (index in outLines, ordered list of param keys, key -> param text)
+            Dictionary<string, (int index, List<string> keys, Dictionary<string, string> parms)> fmtps =
+                new Dictionary<string, (int, List<string>, Dictionary<string, string>)>();
+
+            foreach (string line in lines)
+            {
+                if (line.Length == 0)
+                    continue;
+
+                if (line.StartsWith("a=fmtp:"))
+                {
+                    int space = line.IndexOf(' ');
+                    if (space > 7)
+                    {
+                        string pt = line.Substring(7, space - 7);
+                        if (!fmtps.TryGetValue(pt, out var entry))
+                        {
+                            entry = (outLines.Count, new List<string>(), new Dictionary<string, string>());
+                            fmtps[pt] = entry;
+                            outLines.Add(line);
+                        }
+                        foreach (string p in line.Substring(space + 1).Split(';'))
+                        {
+                            string param = p.Trim();
+                            if (param.Length == 0)
+                                continue;
+                            int eq = param.IndexOf('=');
+                            string key = eq > 0 ? param.Substring(0, eq) : param;
+                            if (!entry.parms.ContainsKey(key))
+                                entry.keys.Add(key);
+                            entry.parms[key] = param;
+                        }
+                        List<string> merged = new List<string>();
+                        foreach (string key in entry.keys)
+                            merged.Add(entry.parms[key]);
+                        outLines[entry.index] = $"a=fmtp:{pt} {string.Join(";", merged)}";
+                        continue;
+                    }
+                }
+                outLines.Add(line);
+            }
+
+            return string.Join("\r\n", outLines) + "\r\n";
+        }
 
         // The pRequest parameter is a straight conversion of the JSON request from the client.
         // This is the logic that takes the client's request and converts it into
@@ -319,7 +383,7 @@ namespace osWebRtcVoice
                 string channel_credentials = pRequest.TryGetString("credentials", out string cred) ? cred : string.Empty;
                 string channel_type = pRequest["channel_type"].AsString();
                 string gridHash = pRequest.TryGetValue("gridhash", out OSD ghash) ? ghash.AsString() : string.Empty;
-                bool isSpatial = channel_type == "local";
+                bool isSpatial = _SpatialAudio && channel_type == "local";
 
                 _log.DebugFormat("{0} ProvisionVoiceAccountRequest: parcel_id={1} channel_id={2} channel_type={3} voice_server_type={4}", LogHeader, parcel_local_id, channel_id, channel_type, voice_server_type); 
 
@@ -345,8 +409,10 @@ namespace osWebRtcVoice
                             }
                             else
                             {
-                                viewerSession.Offer = jsepSdp;
+                                viewerSession.Offer = RepairSdp(jsepSdp);
                                 viewerSession.OfferOrig = jsepSdp;
+                                if (viewerSession.Offer != jsepSdp)
+                                    _log.Debug($"{LogHeader} ProvisionVoiceAccountRequest: repaired viewer SDP line endings / duplicate fmtp lines");
                                 viewerSession.AgentId = pUserID;
                                 if (await viewerSession.Room.JoinRoom(viewerSession).ConfigureAwait(false))
                                 {
@@ -750,6 +816,12 @@ namespace osWebRtcVoice
         {
             if (_ViewerSession is null || _ViewerSession.Session is null)
                 return;
+
+            if (string.IsNullOrEmpty(_JanusAdminURI) || string.IsNullOrEmpty(_JanusAdminToken))
+            {
+                WriteOut("Janus admin is not configured (JanusGatewayAdminURI and AdminAPIToken in [JanusWebRtcVoice])");
+                return;
+            }
 
             JanusMessageResp resp = await _ViewerSession.Session.SendToJanusAdmin(new JanusMessageReq("list_sessions")).ConfigureAwait(false);
             if (resp is null)

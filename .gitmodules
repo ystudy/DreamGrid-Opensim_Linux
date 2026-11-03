@@ -1,6 +1,3 @@
-[submodule "addon-modules/os-webrtc-janus"]
-	path = addon-modules/os-webrtc-janus
-	url = https://github.com/Outworldz/os-webrtc-janus.git
 [submodule "addon-modules/dtl-paypal"]
 	path = addon-modules/dtl-paypal
 	url = https://github.com/Outworldz/DTL-PayPal.git

@@ -27,8 +27,10 @@
 
 using System;
 using System.Reflection;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Data;
+using System.Threading;
 using OpenSim.Framework;
 using OpenSim.Framework.Console;
 using log4net;
@@ -49,6 +51,12 @@ namespace OpenSim.Data.MySQL
         /// Config option to change this is "DaysBetweenAccessTimeUpdates"
         /// </summary>
         private int DaysBetweenAccessTimeUpdates = 0;
+
+        // fkb: access-time updates are queued and written in batches off the request thread, so a burst
+        // of asset fetches (regions booting on a cold cache) doesn't pay a DB write per fetch
+        private readonly ConcurrentDictionary<string, byte> m_PendingAccessTimes = new ConcurrentDictionary<string, byte>();
+        private int m_AccessTimeFlushRunning = 0;
+        private const int AccessTimeBatchSize = 500;
 
         protected virtual Assembly Assembly
         {
@@ -138,6 +146,7 @@ namespace OpenSim.Data.MySQL
 
         public AssetMetadata Get(string id, out string hash)
         {
+            int accessTime;
             hash = String.Empty;
 
             AssetMetadata meta = new AssetMetadata();
@@ -176,13 +185,13 @@ namespace OpenSim.Data.MySQL
                         meta.CreationDate = Util.ToDateTime(Convert.ToInt32(reader["create_time"]));
                         meta.Flags = (AssetFlags)Convert.ToInt32(reader["asset_flags"]);
 
-                        int AccessTime = Convert.ToInt32(reader["access_time"]);
-                        UpdateAccessTime(id, AccessTime);
+                        accessTime = Convert.ToInt32(reader["access_time"]);
                     }
                 }
                 conn.Close();
             }
 
+            UpdateAccessTime(id, accessTime);
             return meta;
         }
 
@@ -193,26 +202,67 @@ namespace OpenSim.Data.MySQL
             if (DaysBetweenAccessTimeUpdates > 0 && (DateTime.UtcNow - Utils.UnixTimeToDateTime(AccessTime)).TotalDays < DaysBetweenAccessTimeUpdates)
                 return;
 
-            using (MySqlConnection conn = new MySqlConnection(m_ConnectionString))
-            {
-                try
-                {
-                    conn.Open();
-                }
-                catch (MySqlException e)
-                {
-                    m_log.ErrorFormat("[FSASSETS]: Database open failed with {0}", e.ToString());
-                    return;
-                }
+            if (m_PendingAccessTimes.TryAdd(AssetID, 0))
+                StartAccessTimeFlush();
+        }
 
-                using (MySqlCommand cmd = conn.CreateCommand())
+        private void StartAccessTimeFlush()
+        {
+            if (Interlocked.CompareExchange(ref m_AccessTimeFlushRunning, 1, 0) == 0)
+                Util.FireAndForget(FlushAccessTimes, null, "FSAssetAccessTimes", false);
+        }
+
+        private void FlushAccessTimes(object o)
+        {
+            bool failed = false;
+            try
+            {
+                Thread.Sleep(1000); // let a burst collect into a few large batches
+
+                while (!m_PendingAccessTimes.IsEmpty)
                 {
-                    cmd.CommandText = String.Format("UPDATE {0} SET `access_time` = UNIX_TIMESTAMP() WHERE `id` = ?id", m_Table);
-                    cmd.Parameters.AddWithValue("?id", AssetID);
-                    cmd.ExecuteNonQuery();
+                    List<string> ids = new List<string>(AccessTimeBatchSize);
+                    foreach (string key in m_PendingAccessTimes.Keys)
+                    {
+                        ids.Add(key);
+                        if (ids.Count == AccessTimeBatchSize)
+                            break;
+                    }
+                    foreach (string key in ids)
+                        m_PendingAccessTimes.TryRemove(key, out _);
+
+                    using (MySqlConnection conn = new MySqlConnection(m_ConnectionString))
+                    using (MySqlCommand cmd = conn.CreateCommand())
+                    {
+                        string[] names = new string[ids.Count];
+                        for (int i = 0; i < ids.Count; i++)
+                        {
+                            names[i] = "?id" + i;
+                            cmd.Parameters.AddWithValue(names[i], ids[i]);
+                        }
+                        cmd.CommandText = String.Format("UPDATE {0} SET `access_time` = UNIX_TIMESTAMP() WHERE `id` IN ({1})", m_Table, string.Join(",", names));
+
+                        conn.Open();
+                        cmd.ExecuteNonQuery();
+                        conn.Close();
+                    }
                 }
-                conn.Close();
             }
+            catch (Exception e)
+            {
+                // access_time only drives cleanup of unused assets; losing a batch is harmless
+                m_log.ErrorFormat("[FSASSETS]: Access time update failed with {0}", e.Message);
+                failed = true;
+            }
+            finally
+            {
+                Interlocked.Exchange(ref m_AccessTimeFlushRunning, 0);
+            }
+
+            // an id queued between the last pass and the flag reset would otherwise wait for the next fetch;
+            // after a failure, leave the rest for the next fetch to retry rather than spinning on a dead DB
+            if (!failed && !m_PendingAccessTimes.IsEmpty)
+                StartAccessTimeFlush();
         }
 
         public bool Store(AssetMetadata meta, string hash)

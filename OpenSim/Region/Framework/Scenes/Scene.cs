@@ -1869,6 +1869,10 @@ namespace OpenSim.Region.Framework.Scenes
                             // Region ready should always be set
                             Ready = true;
 
+                            // fkb: no RegionReady module here, so draw any postponed map tile ourselves
+                            if (MaptilePending)
+                                Util.FireAndForget(o => GenerateDeferredMaptile(), null, "DeferredMaptile", false);
+
                             IConfig restartConfig = m_config.Configs["RestartModule"];
                             if (restartConfig is not null)
                             {
@@ -2322,7 +2326,14 @@ namespace OpenSim.Region.Framework.Scenes
             //// stored in the GridService, because that's what the world map module uses
             //// to send the map image UUIDs (of other regions) to the viewer...
             if (m_generateMaptiles)
-                RegenerateMaptile();
+            {
+                // fkb: drawing the tile here blocks boot - Best maps fetch every prim texture and mesh, minutes on a
+                // cold asset cache. If the region already has a tile, register with it and redraw once it is ready.
+                if (RegionInfo.RegionSettings.TerrainImageID.IsZero())
+                    RegenerateMaptile();
+                else
+                    m_deferredMaptile = 1;
+            }
 
             GridRegion region = new(RegionInfo);
             string error = GridService.RegisterRegion(RegionInfo.ScopeID, region);
@@ -5969,6 +5980,34 @@ Environment.Exit(1);
         {
             IWorldMapModule mapModule = RequestModuleInterface<IWorldMapModule>();
             mapModule?.GenerateMaptile();
+        }
+
+        // fkb: 1 while a map tile postponed from boot (see RegisterRegionWithGrid) is still to be drawn
+        private int m_deferredMaptile = 0;
+
+        public bool MaptilePending
+        {
+            get { return m_deferredMaptile != 0; }
+        }
+
+        /// <summary>
+        /// Draws the map tile postponed from boot and re-registers so the grid gets its new image. Runs at most once;
+        /// returns when the tile is done (or immediately if none was postponed). Call off the main thread.
+        /// </summary>
+        public void GenerateDeferredMaptile()
+        {
+            if (Interlocked.Exchange(ref m_deferredMaptile, 0) == 0)
+                return;
+
+            m_log.Info($"[SCENE]: Drawing map tile postponed from boot for {Name}");
+            try
+            {
+                RegenerateMaptileAndReregister(null, null);
+            }
+            catch (Exception e)
+            {
+                m_log.Warn($"[SCENE]: Postponed map tile for {Name} failed: {e.Message}");
+            }
         }
 
         //        public void CleanDroppedAttachments()

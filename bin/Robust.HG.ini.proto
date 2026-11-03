@@ -109,7 +109,7 @@ NoVerifyCertHostname=true
 [ServiceList]
 AssetServiceConnector="${Const|PrivatePort}/OpenSim.Server.Handlers.dll:AssetServiceConnector"
 InventoryInConnector="${Const|PrivatePort}/OpenSim.Server.Handlers.dll:XInventoryInConnector"
-
+VoiceConnector=
 
 ;; Uncomment if you have set up Freeswitch (see [FreeswitchService] below)
 ;VoiceConnector = "8004/OpenSim.Server.Handlers.dll:FreeswitchServerConnector"
@@ -310,7 +310,7 @@ FallbackService=OpenSim.Services.AssetService.dll:AssetService
 
 ;; How many days since last updating the access time before its updated again by FSAssets when accessing an asset
 ;; Reduces DB calls if asset is requested often. Default value 0 will always update access time
-DaysBetweenAccessTimeUpdates=1
+DaysBetweenAccessTimeUpdates=30
 
 ;; Should FSAssets print read/write stats to the robust console, default is true
 ShowConsoleStats=False
@@ -781,13 +781,19 @@ ShowUserDetailsInHGProfile=True
 
 ; For the InventoryServiceInConnector
 ;; set by Dreamgrid
-LocalServiceModule=OpenSim.Services.HypergridService.dll:HGSuitcaseInventoryService
+;; The gate refuses every request unless the inventory's owner is visiting another grid, and passes the
+;; rest to InnerServiceModule. Do not remove it: this public port has no caller identity.
+LocalServiceModule=OpenSim.Services.HypergridService.dll:HGTravelGateInventoryService
+InnerServiceModule=OpenSim.Services.HypergridService.dll:HGSuitcaseInventoryService
 
-;; alternatives:
+;; alternatives for InnerServiceModule:
 ;;  HG1.5, more permissive, not recommended, but still supported
-;LocalServiceModule    = "OpenSim.Services.HypergridService.dll:HGInventoryService"
+;InnerServiceModule    = "OpenSim.Services.HypergridService.dll:HGInventoryService"
 ;;  HG1.0, totally permissive, not recommended, but OK for grids with 100% trust
-;LocalServiceModule    = "OpenSim.Services.InventoryService.dll:XInventoryService"
+;InnerServiceModule    = "OpenSim.Services.InventoryService.dll:XInventoryService"
+
+;; Seconds the inventory stays open after logout on a foreign grid, for attachments to save
+; GraceSeconds = 120
 UserAccountsService="OpenSim.Services.UserAccountService.dll:UserAccountService"
 AvatarService="OpenSim.Services.AvatarService.dll:AvatarService"
 
