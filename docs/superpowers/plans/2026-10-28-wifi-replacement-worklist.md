@@ -126,9 +126,12 @@ Each item says what Wifi did, how v7 should do it better, and the security rules
 - [x] The owner's checks: build a page on the VM, publish it, and look at it in Firestorm (pictures, logo, shrink then scroll in a small window, numbers within about a minute, what the links do). (2026-11-02: Firestorm against the Debian 12 VM running `36e7a93`; the owner said it works.)
 
 ### 2.8 Groups (Wifi: `groupslist`, `groupeditform`, `groupmembers-*`)
-- [ ] An admin view of groups: list, rename, change charter, list members, add or remove a member, delete a group.
-- [ ] Robust already runs core OpenSim groups (`OpenSim.Addons.Groups.dll`). `1DivaOpenSimServices` is loaded only by Wifi. Its `GroupsService` adds just three admin actions that core OpenSim doesn't offer: rename/charter, delete a group, remove a member. It also has no permission checks of its own.
-- [ ] Decided: the launcher does those three actions itself, in one database transaction each, on the core `os_groups_*` tables. Only signed-in admins can use them, and each one goes in the audit log. `1DivaOpenSimServices` is deleted in Phase 3.
+> Designed with the owner (`docs/superpowers/specs/2026-11-02-groups-admin-design.md`), built in plan 13 (`docs/superpowers/plans/2026-11-02-plan13-groups-admin.md`).
+- [x] An admin view of groups: list, rename, change charter, list members, add or remove a member, delete a group. (Plan 13: "Groups" in the menu for the owner and admins, on the guest side. A member is added by avatar name straight into the Everyone role, with no invitation and their active group unchanged; hypergrid visitors are shown and can be removed but not added; removing a group's last owner needs a second press, deleting a group a ticked box. Changes reach the viewer within about a minute.)
+- [x] A default group for messaging: an admin marks one group the default; residents join it when their website sign-up becomes active (open, confirmed by email, or approved by staff), and **Add everyone now** puts in everyone else. Leaving is the resident's choice: the launcher remembers who has been in it (`guests/group-joins.json`, written before the group) and never puts them back.
+- [x] Robust already runs core OpenSim groups (`OpenSim.Addons.Groups.dll`). `1DivaOpenSimServices` is loaded only by Wifi. Its `GroupsService` adds just three admin actions that core OpenSim doesn't offer: rename/charter, delete a group, remove a member. It also has no permission checks of its own.
+- [x] Decided: the launcher does those three actions itself, in one database transaction each, on the core `os_groups_*` tables. Only signed-in admins can use them, and each one goes in the audit log. `1DivaOpenSimServices` is deleted in Phase 3.
+- [ ] The owner's check on the VM, in Firestorm: rename a group, add and remove someone, make a default group and press Add everyone now, sign up a new resident, and see the group change in the viewer.
 
 ### 2.9 Hypergrid links (Wifi: `linkregion*`, `HyperlinkServiceUserLevel`)
 - [ ] Privileged users (level setting, default 50) add or remove hypergrid links; admins see all of them.
