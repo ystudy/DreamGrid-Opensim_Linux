@@ -57,20 +57,33 @@ namespace Diva.OpenSimServices
             return m_HypergridLinker.TryUnlinkRegion(mapName);
         }
 
+        private static bool m_CastWarned = false;
+
         public long GetLocalRegionsCount(UUID scopeID)
         {
-            try
+            // fkb DreamGrid SmartStart mod to show smart boot regions on home page
+            const RegionFlags flags = RegionFlags.RegionOnline | RegionFlags.Persistent;
+            const RegionFlags excludeFlags = RegionFlags.Hyperlink;
+
+            if (m_Database is Diva.Data.IRegionData divaData)
+                return divaData.GetCount(scopeID, (int)flags, (int)excludeFlags);
+
+            // fkb: store isn't Diva.Data (e.g. Wifi.ini StorageProvider not Diva.Data.MySQL.dll); count the slow
+            // way instead of showing "Regions: 0", and warn once rather than on every page view
+            if (!m_CastWarned)
             {
-                // fkb DreamGrid SmartStart mod to show smart boot regions on home page
-                const RegionFlags flags = RegionFlags.RegionOnline | RegionFlags.Persistent;
-                const RegionFlags excludeFlags = RegionFlags.Hyperlink;
-                return ((Diva.Data.IRegionData)m_Database).GetCount(scopeID, (int)flags, (int)excludeFlags);
+                m_CastWarned = true;
+                m_log.WarnFormat(m_CastWarning + " Counting regions without it.", MethodBase.GetCurrentMethod().Name);
             }
-            catch (InvalidCastException)
+
+            long count = 0;
+            foreach (OpenSim.Data.RegionData rdata in m_Database.Get(0, 0, int.MaxValue, int.MaxValue, scopeID))
             {
-                m_log.WarnFormat(m_CastWarning, MethodBase.GetCurrentMethod().Name);
+                int regionFlags = Convert.ToInt32(rdata.Data["flags"]);
+                if ((regionFlags & (int)flags) != 0 && (regionFlags & (int)excludeFlags) == 0)
+                    count++;
             }
-            return 0;
+            return count;
         }
 
         public void SetFallback(UUID regionID, Boolean fallback)
