@@ -131,7 +131,7 @@ Each item says what Wifi did, how v7 should do it better, and the security rules
 - [x] A default group for messaging: an admin marks one group the default; residents join it when their website sign-up becomes active (open, confirmed by email, or approved by staff), and **Add everyone now** puts in everyone else. Leaving is the resident's choice: the launcher remembers who has been in it (`guests/group-joins.json`, written before the group) and never puts them back.
 - [x] Robust already runs core OpenSim groups (`OpenSim.Addons.Groups.dll`). `1DivaOpenSimServices` is loaded only by Wifi. Its `GroupsService` adds just three admin actions that core OpenSim doesn't offer: rename/charter, delete a group, remove a member. It also has no permission checks of its own.
 - [x] Decided: the launcher does those three actions itself, in one database transaction each, on the core `os_groups_*` tables. Only signed-in admins can use them, and each one goes in the audit log. `1DivaOpenSimServices` is deleted in Phase 3.
-- [ ] The owner's check on the VM, in Firestorm: rename a group, add and remove someone, make a default group and press Add everyone now, sign up a new resident, and see the group change in the viewer.
+- [x] The owner's check on the VM, in Firestorm: rename a group, add and remove someone, make a default group and press Add everyone now, sign up a new resident, and see the group change in the viewer. (2026-11-02: Firestorm against the Debian 12 VM running `b16af25`, PR 28 on V7; the owner said it works.)
 
 ### 2.9 Hypergrid links (Wifi: `linkregion*`, `HyperlinkServiceUserLevel`)
 - [ ] Privileged users (level setting, default 50) add or remove hypergrid links; admins see all of them.
