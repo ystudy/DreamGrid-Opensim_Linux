@@ -207,6 +207,11 @@ port=${Const|PrivatePort}
 ;; This can be overriden in individual private service sections if necessary
 AllowllHTTPRequestIn=true
 
+;; X-Forwarded-For is trusted only from the proxies listed here (their addresses as Robust sees them).
+;; Leave it commented unless Robust runs behind a reverse proxy that sets the header safely.
+;; Separate entries with a bar; each is a host name, an IP address or a CIDR range.
+; XFFTrustedProxies = 127.0.0.1|192.168.1.0/24
+
 
 ; * The following are for the remote console
 ; * They have no effect for the local or basic console types
@@ -349,6 +354,10 @@ AllowDelete=true
 ; *
 [GridService]
 LocalServiceModule="OpenSim.Services.GridService.dll:GridService"
+
+;; A region the grid doesn't know yet is added when it starts. DreamGrid relies on this: leave it on.
+;; Set to false only if every region is already in the database (see DeleteOnUnregister in Robust.HG.ini.example).
+; RegionsAutoRegistration = true
 
 ; Realm = "regions"
 ; AllowDuplicateNames = "True"
@@ -562,8 +571,6 @@ DestinationGuide="http://www.outworldz.com/destination-guide/"
 
 ; For V3 avatar picker (( work in progress ))
 ; AvatarPicker = "${Const|BaseURL}/avatars"
-; If you run this login server behind a proxy, set this to true
-; HasProxy = false
 ; Defaults for the users, if none is specified in the useraccounts table entry (ServiceURLs)
 ;; If you have GatekeeperURI set under [Hypergrid], no need to set it here, leave it commented
 ; GatekeeperURI = "${Const|BaseURL}:${Const|PublicPort}"
@@ -589,10 +596,7 @@ DSTZone="America/Los_Angeles;Pacific Standard Time"
 
 ;Basic Login Service Dos Protection Tweaks
 ;;
-;; Some Grids/Users use a transparent proxy that makes use of the X-Forwarded-For HTTP Header, If you do, set this to true
-;; If you set this to true and you don't have a transparent proxy, it may allow attackers to put random things in the X-Forwarded-For header to
-;;     get around this basic DOS protection.
-DOSAllowXForwardedForHeader=false
+;; Behind a proxy that sets X-Forwarded-For, list it in XFFTrustedProxies in [Network].
 
 ;;
 ;; The protector adds up requests during this rolling period of time, default 10 seconds
@@ -628,9 +632,6 @@ LocalServiceModule="OpenSim.Services.MapImageService.dll:MapImageService"
 ; If for some reason you have the AddMapTile service outside the firewall (e.g. ${Const|PublicPort}),
 ; you may want to set this. Otherwise, don't set it, because it's already protected.
 ; GridService = "OpenSim.Services.GridService.dll:GridService"
-;
-; Additionally, if you run this server behind a proxy, set this to true
-; HasProxy = false
 [GridInfoService]
 
 ; These settings are used to return information on a get_grid_info call.
@@ -702,8 +703,6 @@ SimulationService="OpenSim.Services.Connectors.dll:SimulationServiceConnector"
 ; If false, HG TPs happen only to the Default regions specified in [GridService] section
 AllowTeleportsToAnyRegion=true
 
-; If you run this gatekeeper server behind a proxy, set this to true
-; HasProxy = false
 ;; Are foreign visitors allowed?
 ;ForeignAgentsAllowed = true
 ;;
@@ -741,8 +740,6 @@ PresenceService="OpenSim.Services.PresenceService.dll:PresenceService"
 FriendsService="OpenSim.Services.FriendsService.dll:FriendsService"
 UserAccountService="OpenSim.Services.UserAccountService.dll:UserAccountService"
 
-; If you run this user agent server behind a proxy, set this to true
-; HasProxy = false
 ;;
 ;; If you separate the UserAgentService from the LoginService, set this to
 ;; the IP address of the machine where your LoginService is
