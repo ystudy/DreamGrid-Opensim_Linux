@@ -1,6 +1,8 @@
-# Work list — replace Wifi with the v7 website, add languages, remove Wifi
+# Work list — replace Wifi with GridGate, add languages, remove Wifi
 
-Goal: the launcher website (v7) takes over what the Diva Wifi add-on did. Each feature is redesigned with security first, not copied. The site supports more than one language. Afterwards Wifi is removed from the tree completely. Everything works on Windows and on Debian 12 and 13.
+**GridGate** is the name of the launcher website (v7), the replacement for the Diva Wifi add-on (owner, 2026-11-03). Use it for the new site in docs and UI text; "Wifi" and "Diva" mean only the old add-on.
+
+Goal: GridGate takes over what the Diva Wifi add-on did. Each feature is redesigned with security first, not copied. The site supports more than one language. Afterwards Wifi is removed from the tree completely. Everything works on Windows and on Debian 12 and 13.
 
 This list is the backlog. Each phase becomes its own plan (`docs/superpowers/plans/…`) before work starts.
 
