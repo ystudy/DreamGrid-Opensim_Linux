@@ -236,6 +236,7 @@ builder.Services.AddSingleton<IRobustPasswords>(sp => new RobustPasswords(sp.Get
 builder.Services.AddSingleton<IRobustEmails>(sp => new RobustEmails(sp.GetRequiredService<Func<LauncherSettings>>()));
 builder.Services.AddSingleton<IAccountRemover>(sp => new AccountRemover(sp.GetRequiredService<Func<LauncherSettings>>()));
 builder.Services.AddSingleton<StaffActions>();
+builder.Services.AddSingleton<PeopleActions>();
 builder.Services.AddSingleton<StaffPrincipalValidator>();
 builder.Services.AddSingleton(sp => new GuestStamps(Path.Combine(paths.Guests, "stamps.json"), sp.GetRequiredService<ILogger<GuestStamps>>()));
 builder.Services.AddSingleton<GuestPrincipalValidator>();

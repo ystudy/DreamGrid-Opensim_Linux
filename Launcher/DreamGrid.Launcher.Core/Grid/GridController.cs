@@ -950,6 +950,22 @@ public sealed partial class GridController(
         finally { _ops.Release(); }
     }
 
+    public async Task KickAsync(Guid regionId, string first, string last, string message, CancellationToken ct)
+    {
+        GridConsoleCommands.ValidateAvatarName(first, last);
+        if (message.Any(c => char.IsControl(c) || c == '"')) throw new ArgumentException("The message can't hold quotes or line breaks.", nameof(message));
+        await _ops.WaitAsync(ct);
+        try
+        {
+            var s = LoadSettings();
+            var region = RegionModel.Find(s, regionId) ?? throw new InvalidOperationException("There is no such region.");
+            ThrowIfBusy(region.Instance);
+            var program = RunningProgramOf(s, region) ?? throw new InvalidOperationException($"{region.Name} isn't running.");
+            await OnRegionConsoleAsync(program, region, s, console => console.RunAsync($"kick user {first} {last} {message}", ConsoleSettle, ct), ct);
+        }
+        finally { _ops.Release(); }
+    }
+
     /// <summary>
     /// Under the operation lock: the console of the program that runs the region, for an estate command. OpenSim's estate
     /// commands need no <c>change region</c>: <c>estate create</c> works on any scene, <c>estate link region</c> names its region.

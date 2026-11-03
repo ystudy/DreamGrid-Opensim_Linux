@@ -105,6 +105,8 @@ internal sealed class LauncherFactory : WebApplicationFactory<Program>
             services.AddSingleton<IRobustPasswords>(Robust);
             services.RemoveAll<IRobustEmails>();
             services.AddSingleton<IRobustEmails>(Robust);
+            services.RemoveAll<IRobustNames>();
+            services.AddSingleton<IRobustNames>(Robust);
             services.RemoveAll<IGridJoinClient>();
             services.AddSingleton<IGridJoinClient>(Join);
             services.RemoveAll<IOtherGridClient>();

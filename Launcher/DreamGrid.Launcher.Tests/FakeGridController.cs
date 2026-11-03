@@ -419,6 +419,15 @@ internal sealed class FakeGridController : IGridController
         catch (Exception e) { return Task.FromException<(int, string)>(e); }
     }
 
+    /// <summary>Thrown by <see cref="KickAsync"/> when set (the region isn't ours or isn't running).</summary>
+    public Exception? KickError { get; set; }
+
+    public Task KickAsync(Guid regionId, string first, string last, string message, CancellationToken ct)
+    {
+        Record($"Kick {regionId} {first} {last}");
+        return KickError is { } e ? Task.FromException(e) : Task.CompletedTask;
+    }
+
     public Task LinkEstateAsync(Guid regionId, int estateId, CancellationToken ct)
     {
         Record($"LinkEstate {regionId} {estateId}");
@@ -507,8 +516,25 @@ internal sealed class FakePublicAddressFinder : DreamGrid.Launcher.Core.Config.I
 }
 
 /// <summary>Robust with a fixed set of avatars: (first, last) → (level, password).</summary>
-internal sealed class FakeRobustAccounts : IRobustClient, IRobustPasswords, IRobustEmails
+internal sealed class FakeRobustAccounts : IRobustClient, IRobustPasswords, IRobustEmails, IRobustNames
 {
+    /// <summary>Simulates the database being down for <see cref="IRobustNames.SetAsync"/>, as <see cref="RobustNames"/> throws.</summary>
+    public bool NamesDown { get; set; }
+
+    Task IRobustNames.SetAsync(Guid principal, string first, string last, CancellationToken ct)
+    {
+        if (NamesDown) throw new RobustNamesUnavailableException("The name could not be written.", new TimeoutException());
+        if (_accounts.Values.Any(a => a.Account.PrincipalId != principal
+                                      && string.Equals(a.Account.FirstName, first, StringComparison.OrdinalIgnoreCase)
+                                      && string.Equals(a.Account.LastName, last, StringComparison.OrdinalIgnoreCase)))
+            throw new NameTakenException(first, last);
+        var (key, found) = _accounts.FirstOrDefault(a => a.Value.Account.PrincipalId == principal);
+        if (found.Account is null) throw new RobustNamesUnavailableException("The account wasn't found.");
+        _accounts.Remove(key);
+        _accounts[(first, last)] = (found.Account with { FirstName = first, LastName = last }, found.Password);
+        return Task.CompletedTask;
+    }
+
     private readonly Dictionary<(string, string), (RobustAccount Account, string Password)> _accounts = new();
 
     public int Lookups { get; private set; }
