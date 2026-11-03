@@ -101,10 +101,29 @@ Each item says what Wifi did, how v7 should do it better, and the security rules
 - Decided: residents **cannot** delete their own account. Only an admin can (2.5).
 
 ### 2.5 Admin user management (Wifi: `userlist`, `usersearchform`, `usereditform`, `userdeleteform`)
-- [ ] Search with paging (no "list everyone" query against a big table), and edit name, email and level.
-- [ ] **[S]** Changing an avatar's level is audited. An admin can't raise anyone above their own level or demote the last admin.
-- [ ] Delete is two steps: disable first, then a purge after confirmation, with a clear list of what gets removed (inventory, assets left as they are).
-- [ ] An admin can set a password, which forces the session out; better, send the user a reset link instead.
+> Designed with the owner (`docs/superpowers/specs/2026-11-03-people-admin-design.md`) in three parts. On a public grid, protecting people is the owner's duty (owner, 2026-11-03).
+
+#### 2.5a People admin — built in plan 14 (`docs/superpowers/plans/2026-11-03-plan14-people-admin.md`)
+- [x] Search with paging (no "list everyone" query against a big table). `/people` is a list searched by part of a name, filtered by role, 25 to a page, with last seen. Each row has task icons: edit, reset link, sign out everywhere, suspend or unsuspend, delete. A greyed icon says why.
+- [x] Edit name and email on the person's request, on `/people/{id}/edit`. The old name is held for 30 days, the person is told by email, and an email change tells the old and the new address. Roles stay on the Staff page; there is no free-form level (owner: the grid uses only resident, supervisor, admin and owner).
+- [x] **[S]** Every task is checked again on the post and audited. Nobody changes their own account or the owner here, and staff are made residents on the Staff page first.
+- [x] Delete is delete (owner): only for someone already suspended, after "Are you sure?". It removes everything in Robust tied to the account, sends their regions back to their home estates, and removes their empty estate. Assets stay.
+- [x] No admin-set passwords. Staff send a reset link, which also clears two-factor once used (owner), so a hijacked account can be given back.
+- [ ] The owner's check on the VM, in Firestorm:
+  - search and page
+  - rename and log in again
+  - an email change with both notices
+  - a reset link with two-factor on
+  - sign out someone in-world
+  - suspend, then delete
+
+#### 2.5b Inventory takedown — not started
+- [ ] Open a person's inventory, find the item a takedown notice names, and remove it. Record what was removed, when, by whom and why, to show the sender.
+- [ ] A **hold** on the account, so it can't be deleted while the takedown is open. `AccountHolds` is the one place delete asks.
+
+#### 2.5c History for legal requests — not started
+- [ ] Collect what the grid holds about an avatar and save it as a file to hand over: logins and their addresses, account changes, staff actions, regions and groups. First check what OpenSim really records; chat isn't stored.
+- [ ] The same hold as 2.5b, so a suspend-then-delete can't destroy what a request needs.
 
 ### 2.6 Terms of service (Wifi: `termsofservice`, `tos`)
 - [ ] The admin edits a ToS text per language, with a version number.
@@ -136,7 +155,7 @@ Each item says what Wifi did, how v7 should do it better, and the security rules
 - [x] The owner's check on the VM, in Firestorm: rename a group, add and remove someone, make a default group and press Add everyone now, sign up a new resident, and see the group change in the viewer. (2026-11-02: Firestorm against the Debian 12 VM running `b16af25`, PR 28 on V7; the owner said it works.)
 
 ### 2.9 Hypergrid links (Wifi: `linkregion*`, `HyperlinkServiceUserLevel`)
-- [ ] Privileged users (level setting, default 50) add or remove hypergrid links; admins see all of them.
+- [ ] The owner, admins and supervisors add or remove hypergrid links (owner, 2026-11-03); no extra "privileged" level is needed.
 - [ ] **[S]** Check the address format and allow only http or https; the link test runs with a timeout and never follows redirects to private networks.
 
 ### 2.10 Estates (Wifi: `estatelist`, `estateeditform`)
