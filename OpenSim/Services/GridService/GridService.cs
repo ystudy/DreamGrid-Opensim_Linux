@@ -27,7 +27,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Net;
 using System.Reflection;
 using System.Text;
 using Nini.Config;
@@ -53,6 +52,7 @@ namespace OpenSim.Services.GridService
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
         private string LogHeader = "[GRID SERVICE]";
 
+        private bool m_RegionsAutoRegistration = true;
         private bool m_DeleteOnUnregister = true;
         private static GridService m_RootInstance = null;
         protected IConfigSource m_config;
@@ -82,13 +82,15 @@ namespace OpenSim.Services.GridService
 
             if (gridConfig != null)
             {
-                m_DeleteOnUnregister = gridConfig.GetBoolean("DeleteOnUnregister", true);
+                m_RegionsAutoRegistration = gridConfig.GetBoolean("RegionsAutoRegistration", true);
+                m_DeleteOnUnregister = m_RegionsAutoRegistration &&
+                    gridConfig.GetBoolean("DeleteOnUnregister", true);
 
-                string authService = gridConfig.GetString("AuthenticationService", String.Empty);
+                string authService = gridConfig.GetString("AuthenticationService", string.Empty);
 
-                if (authService != String.Empty)
+                if (!string.IsNullOrEmpty(authService))
                 {
-                    Object[] args = new Object[] { config };
+                    object[] args = [config];
                     m_AuthenticationService = ServerUtils.LoadPlugin<IAuthenticationService>(authService, args);
                 }
                 m_AllowDuplicateNames = gridConfig.GetBoolean("AllowDuplicateNames", m_AllowDuplicateNames);
@@ -137,14 +139,14 @@ namespace OpenSim.Services.GridService
                             "deregister region id",
                             "deregister region id <region-id>+",
                             "Deregister a region manually.",
-                            String.Empty,
+                            string.Empty,
                             HandleDeregisterRegion);
 
                     MainConsole.Instance.Commands.AddCommand("Regions", true,
                             "show regions",
                             "show regions",
                             "Show details on all regions",
-                            String.Empty,
+                            string.Empty,
                             HandleShowRegions);
 
                     MainConsole.Instance.Commands.AddCommand("Regions", true,
@@ -165,14 +167,14 @@ namespace OpenSim.Services.GridService
                             "show grid size",
                             "show grid size",
                             "Show the current grid size (excluding hyperlink references)",
-                            String.Empty,
+                            string.Empty,
                             HandleShowGridSize);
 
                     MainConsole.Instance.Commands.AddCommand("Regions", true,
                              "set region flags",
                              "set region flags <Region name> <flags>",
                              "Set database flags for region",
-                             String.Empty,
+                             string.Empty,
                              HandleSetFlags);
                 }
 
@@ -212,39 +214,39 @@ namespace OpenSim.Services.GridService
                 m_ExtraFeatures["destination-guide-url"] = configVal;
 
             configVal = Util.GetConfigVarFromSections<string>(
-                    config, "GatekeeperURI", new string[] { "Startup", "Hypergrid" }, string.Empty);
+                    config, "GatekeeperURI", ["Startup", "Hypergrid"], string.Empty);
             if (!string.IsNullOrEmpty(configVal))
                 m_ExtraFeatures["GridURL"] = configVal;
 
             configVal = Util.GetConfigVarFromSections<string>(
-                config, "GridName", new string[] { "Const", "Hypergrid" }, string.Empty);
+                config, "GridName", ["Const", "Hypergrid"], string.Empty);
             if (string.IsNullOrEmpty(configVal))
                 configVal = Util.GetConfigVarFromSections<string>(
-                    config, "gridname", new string[] { "GridInfo", "GridInfoService" }, string.Empty);
+                    config, "gridname", ["GridInfo", "GridInfoService"], string.Empty);
             if (!string.IsNullOrEmpty(configVal))
                 m_ExtraFeatures["GridName"] = configVal;
 
             configVal = Util.GetConfigVarFromSections<string>(
-                config, "GridNick", new string[] { "Const", "Hypergrid" }, string.Empty);
+                config, "GridNick", ["Const", "Hypergrid"], string.Empty);
             if (string.IsNullOrEmpty(configVal))
                 configVal = Util.GetConfigVarFromSections<string>(
-                    config, "gridnick", new string[] { "GridInfo", "GridInfoService" }, string.Empty);
+                    config, "gridnick", ["GridInfo", "GridInfoService"], string.Empty);
             if (!string.IsNullOrEmpty(configVal))
                 m_ExtraFeatures["GridNick"] = configVal;
 
             configVal = Util.GetConfigVarFromSections<string>(
-                config, "GridStatus", new string[] { "GridInfo", "GridInfoService" }, string.Empty);
+                config, "GridStatus", ["GridInfo", "GridInfoService"], string.Empty);
             if (!string.IsNullOrEmpty(configVal))
                 m_ExtraFeatures["GridStatus"] = configVal;
 
             configVal = Util.GetConfigVarFromSections<string>(
-                config, "GridStatusRSS", new string[] { "GridInfo", "GridInfoService" }, string.Empty);
+                config, "GridStatusRSS", ["GridInfo", "GridInfoService"], string.Empty);
             if (!string.IsNullOrEmpty(configVal))
                 m_ExtraFeatures["GridStatusRSS"] = configVal;
 
             m_ExtraFeatures["ExportSupported"] = gridConfig.GetString("ExportSupported", "true");
 
-            string[] sections = new string[] { "Const, Startup", "Hypergrid", "GatekeeperService" };
+            string[] sections = ["Const, Startup", "Hypergrid", "GatekeeperService"];
             string gatekeeperURIAlias = Util.GetConfigVarFromSections<string>(config, "GatekeeperURIAlias", sections, string.Empty);
 
             if (!string.IsNullOrWhiteSpace(gatekeeperURIAlias))
@@ -274,17 +276,23 @@ namespace OpenSim.Services.GridService
 
         #region IGridService
 
+        public static bool ValidateRegionName(string regionName)
+        {
+            // needs more checks
+            return !string.IsNullOrEmpty(regionName);
+        }
+
         public string RegisterRegion(UUID scopeID, GridRegion regionInfos)
         {
             IConfig gridConfig = m_config.Configs["GridService"];
 
             if (regionInfos.RegionID.IsZero())
                 return "Invalid RegionID - cannot be zero UUID";
+            if (!ValidateRegionName(regionInfos.RegionName))
+                return "Ilegal region name";
 
             if (regionInfos.RegionLocY <= Constants.MaximumRegionSize)
                 return "Region location reserved for HG links coord Y must be higher than " + (Constants.MaximumRegionSize/256).ToString();
-
-            String reason = "Region overlaps another region";
 
             List<RegionData> rdatas = m_Database.Get(
                         regionInfos.RegionLocX,
@@ -296,8 +304,8 @@ namespace OpenSim.Services.GridService
             RegionData region = null;
             if(rdatas.Count > 1)
             {
-                m_log.WarnFormat("{0} Register region overlaps with {1} regions", LogHeader, scopeID, rdatas.Count);
-                return reason;
+                m_log.Warn($"{LogHeader} Register region {regionInfos.RegionID} overlaps with {rdatas.Count} regions");
+                return "Region overlaps another region";
             }
             else if(rdatas.Count == 1)
                 region = rdatas[0];
@@ -305,11 +313,18 @@ namespace OpenSim.Services.GridService
             if ((region != null) && (region.RegionID != regionInfos.RegionID))
             {
                 // If not same ID and same coordinates, this new region has conflicts and can't be registered.
-                m_log.WarnFormat("{0} Register region conflict in scope {1}. {2}", LogHeader, scopeID, reason);
-                return reason;
+                m_log.Warn($"{LogHeader} Register region {regionInfos.RegionID} overlaps {region.RegionID}");
+                return "Region overlaps another region";
             }
 
-            if (region != null)
+            if(!m_RegionsAutoRegistration && region is null)
+            {
+                // If not found and automatic registration disable deny.
+                m_log.Warn($"{LogHeader} Register denied, region {regionInfos.RegionID} not found auto register disabled{1}. {2}");
+                return "Region not found and automatic register disabled";
+            }
+
+            if (region is not null)
             {
                 // There is a preexisting record
                 //
@@ -354,7 +369,7 @@ namespace OpenSim.Services.GridService
                 {
                     foreach (RegionData d in dupe)
                     {
-                        if (d.RegionID != regionInfos.RegionID)
+                        if (regionInfos.RegionID.NotEqual(d.RegionID))
                         {
                             m_log.WarnFormat("[GRID SERVICE]: Region tried to register using a duplicate name. New region: {0} ({1}), existing region: {2} ({3}).",
                                 regionInfos.RegionName, regionInfos.RegionID, d.RegionName, d.RegionID);
@@ -386,6 +401,7 @@ namespace OpenSim.Services.GridService
                 catch (Exception e)
                 {
                     m_log.DebugFormat("[GRID SERVICE]: Database exception: {0}", e);
+                    return $"[GRID SERVICE] Register failed to delete to update region {regionInfos.RegionID}";
                 }
             }
 
@@ -422,6 +438,7 @@ namespace OpenSim.Services.GridService
             catch (Exception e)
             {
                 m_log.DebugFormat("[GRID SERVICE]: Database exception: {0}", e);
+                return $"[GRID SERVICE] Register failed to update region {rdata.RegionID}";
             }
 
             m_log.DebugFormat
@@ -798,14 +815,16 @@ namespace OpenSim.Services.GridService
 
         public RegionData RegionInfo2RegionData(GridRegion rinfo)
         {
-            RegionData rdata = new RegionData();
-            rdata.posX = (int)rinfo.RegionLocX;
-            rdata.posY = (int)rinfo.RegionLocY;
-            rdata.sizeX = rinfo.RegionSizeX;
-            rdata.sizeY = rinfo.RegionSizeY;
-            rdata.RegionID = rinfo.RegionID;
-            rdata.RegionName = rinfo.RegionName;
-            rdata.Data = rinfo.ToKeyValuePairs();
+            RegionData rdata = new()
+            {
+                posX = rinfo.RegionLocX,
+                posY = rinfo.RegionLocY,
+                sizeX = rinfo.RegionSizeX,
+                sizeY = rinfo.RegionSizeY,
+                RegionID = rinfo.RegionID,
+                RegionName = rinfo.RegionName,
+                Data = rinfo.ToKeyValuePairs()
+            };
             rdata.Data["regionHandle"] = Utils.UIntsToLong((uint)rdata.posX, (uint)rdata.posY);
             rdata.Data["owner_uuid"] = rinfo.EstateOwner.ToString();
             return rdata;
@@ -813,14 +832,16 @@ namespace OpenSim.Services.GridService
 
         public GridRegion RegionData2RegionInfo(RegionData rdata)
         {
-            GridRegion rinfo = new GridRegion(rdata.Data);
-            rinfo.RegionLocX = rdata.posX;
-            rinfo.RegionLocY = rdata.posY;
-            rinfo.RegionSizeX = rdata.sizeX;
-            rinfo.RegionSizeY = rdata.sizeY;
-            rinfo.RegionID = rdata.RegionID;
-            rinfo.RegionName = rdata.RegionName;
-            rinfo.ScopeID = rdata.ScopeID;
+            GridRegion rinfo = new GridRegion(rdata.Data)
+            {
+                RegionLocX = rdata.posX,
+                RegionLocY = rdata.posY,
+                RegionSizeX = rdata.sizeX,
+                RegionSizeY = rdata.sizeY,
+                RegionID = rdata.RegionID,
+                RegionName = rdata.RegionName,
+                ScopeID = rdata.ScopeID
+            };
 
             return rinfo;
         }

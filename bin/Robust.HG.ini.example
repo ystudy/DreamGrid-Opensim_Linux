@@ -118,7 +118,8 @@
     GridServiceConnector = "${Const|PrivatePort}/OpenSim.Server.Handlers.dll:GridServiceConnector"
     GridInfoServerInConnector = "${Const|PublicPort}/OpenSim.Server.Handlers.dll:GridInfoServerInConnector"
     AuthenticationServiceConnector = "${Const|PrivatePort}/OpenSim.Server.Handlers.dll:AuthenticationServiceConnector"
-    OpenIdServerConnector = "${Const|PublicPort}/OpenSim.Server.Handlers.dll:OpenIdServerConnector"
+    ;; Uncomment if you need to use OpenID
+    ;OpenIdServerConnector = "${Const|PublicPort}/OpenSim.Server.Handlers.dll:OpenIdServerConnector"
     AvatarServiceConnector = "${Const|PrivatePort}/OpenSim.Server.Handlers.dll:AvatarServiceConnector"
     LLLoginServiceInConnector = "${Const|PublicPort}/OpenSim.Server.Handlers.dll:LLLoginServiceInConnector"
     PresenceServiceConnector = "${Const|PrivatePort}/OpenSim.Server.Handlers.dll:PresenceServiceConnector"
@@ -209,6 +210,12 @@
     ;ConsolePass = secret
     ;ConsolePort = 0
 
+    ;; If you have a transparent proxy or proxies, you need to configure them to process http header X-Forwarded-For in a secure way
+    ;; In order for OpenSim to trust them add their addresses (as seen by robust) to this setting
+    ;; You can specify multiple addresses by separating them with a bar
+    ;; Each address can be a hostname (heavier), an IP address or a network range in CIDR format
+    ;; example
+    ;XFFTrustedProxies = 127.0.0.1|194.32.21.0/24|194.32.100.2|myproxy.org
 
 [Hypergrid]
     ;# {HomeURI} {Hypergrid} {The Home URL of this grid} {}
@@ -344,8 +351,22 @@
 [GridService]
     LocalServiceModule = "OpenSim.Services.GridService.dll:GridService"
 
+    ;; by default a unknown region is automatically added to the grid when it starts
+    ;; uncomment and set this to false to disable that
+    ;; in that case you will need to add regions to gridservice db by other means
+    ;; see warning on DeleteOnUnregister before changing.
+    ;RegionsAutoRegistration = false
+
+    ;; By default regions are forgotten when they shutdown
+    ;; Set this to false to remember them
+    ;; WARNING: on older grids you need to set this to false and let all valid regions restart
+    ;; before setting RegionsAutoRegistration to false
+    ;; or you will need to add the regions to database by other means.
+    ;; DeleteOnUnregister = false
+
     ; Realm = "regions"
-    ; AllowDuplicateNames = ""
+
+    ; AllowDuplicateNames = false
 
     ;; Perform distance check for the creation of a linked region
     ; Check4096 = "True"
@@ -603,10 +624,9 @@
 
     ;Basic Login Service Dos Protection Tweaks
     ;;
-    ;; Some Grids/Users use a transparent proxy that makes use of the X-Forwarded-For HTTP Header, If you do, set this to true
-    ;; If you set this to true and you don't have a transparent proxy, it may allow attackers to put random things in the X-Forwarded-For header to
-    ;;     get around this basic DOS protection.
-    ;DOSAllowXForwardedForHeader = false
+    ;; Some Grids/Users use a transparent proxy that makes use of the X-Forwarded-For HTTP Header, If you do
+    ;; fix option XFFTrustedProxies in [Network] section
+
     ;;
     ;; The protector adds up requests during this rolling period of time, default 10 seconds
     ;DOSRequestTimeFrameMS = 10000
