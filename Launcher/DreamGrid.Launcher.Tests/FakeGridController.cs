@@ -660,6 +660,31 @@ internal sealed class FakeAccountRemover(FakeRobustAccounts robust) : IAccountRe
         robust.RemoveById(principal);
         return Task.CompletedTask;
     }
+
+    /// <summary>Everyone <see cref="DeleteEverythingAsync"/> deleted, in order.</summary>
+    public List<Guid> Everything { get; } = [];
+
+    public Task<IReadOnlyList<string>> DeleteEverythingAsync(Guid principal, CancellationToken ct)
+    {
+        if (Down) throw new StaffDirectoryUnavailableException("The database isn't running.");
+        Everything.Add(principal);
+        robust.RemoveById(principal);
+        return Task.FromResult<IReadOnlyList<string>>(["UserAccounts"]);
+    }
+}
+
+/// <summary>Removing estates without a database: records the estates removed; <see cref="Down"/> is a database that isn't running.</summary>
+internal sealed class FakeEstateRemover : IEstateRemover
+{
+    public bool Down { get; set; }
+    public List<int> Removed { get; } = [];
+
+    public Task<bool> RemoveIfEmptyAsync(int estateId, CancellationToken ct)
+    {
+        if (Down) throw new StaffDirectoryUnavailableException("The database isn't running.");
+        Removed.Add(estateId);
+        return Task.FromResult(true);
+    }
 }
 
 /// <summary>The staff list without a database: the fake Robust's accounts at or above the level; <see cref="Down"/> is a database that isn't running.</summary>

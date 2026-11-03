@@ -104,6 +104,16 @@ public sealed class RegionRights
         }
     }
 
+    /// <summary>Drops the person's estate and any right still theirs (their account is deleted, their regions back in the grid's).</summary>
+    public void ForgetOwner(Guid owner)
+    {
+        lock (_gate)
+        {
+            var changed = _data.Estates.RemoveAll(e => e.Owner == owner) + _data.Rights.RemoveAll(r => r.Owner == owner && r.Pending is null);
+            if (changed > 0) Save();
+        }
+    }
+
     /// <summary>The estate the person owns on this grid, or null before their first region moved.</summary>
     public int? EstateOf(Guid owner)
     {

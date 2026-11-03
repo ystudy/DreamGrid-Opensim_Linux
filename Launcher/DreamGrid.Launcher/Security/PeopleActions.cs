@@ -26,10 +26,14 @@ public sealed record PersonView(PersonRow Row, PersonFacts Facts, RoleView Role)
 /// tells the person by email where the spec says so, and writes the audit log (<c>name-changed</c>, <c>email-changed</c>,
 /// <c>reset-sent</c>, <c>signed-out</c>; suspensions are <see cref="StaffActions"/>'s). Nothing here takes a password.
 /// </summary>
-public sealed partial class PeopleActions(IPeopleDirectory people, StaffActions staff, Func<LauncherSettings> settings, SignUpBoard pending,
+public sealed class PeopleActions(IPeopleDirectory people, StaffActions staff, Func<LauncherSettings> settings, SignUpBoard pending,
     EmailSender sender, IRobustClient robust, IRobustNames names, IRobustEmails emails, IStaffDirectory directory, HeldNames held,
-    PasswordResets resets, StaffSessions sessions, GuestStamps stamps, IGridController grid, AuditLog audit, ILogger<PeopleActions> log)
+    PasswordResets resets, StaffSessions sessions, GuestStamps stamps, IGridController grid, IAccountRemover remover, IEstateRemover estates,
+    RegionRights rights, AccountHolds holds, SuspendedStore suspended, AuditLog audit, ILogger<PeopleActions> log)
 {
+    public const string OnHold = "This account is on hold.";
+    public const string Moving = "Their regions are moving back to the grid's estate. Try again in a minute.";
+
     public const string Gone = "That person isn't on the grid any more.";
     public const string DatabaseDown = "Your world's database isn't answering. Start your world, then try again.";
     public const string InWorld = "Sign them out first: they are in-world.";
@@ -212,6 +216,79 @@ public sealed partial class PeopleActions(IPeopleDirectory people, StaffActions 
         if (outcome.Done && change == StaffChange.Suspend && !await KickAsync(person, ct))
             return outcome with { Message = outcome.Message + " They are still in-world: the region they are in couldn't be reached." };
         return outcome;
+    }
+
+    /// <summary>What the "Are you sure?" page shows: the person, the names of their regions that go back to the grid, and why not, if not.</summary>
+    public sealed record DeletePreview(PersonView Person, IReadOnlyList<string> RegionsMoving, string? Refusal);
+
+    public async Task<DeletePreview?> PreviewDeleteAsync(ClaimsPrincipal actor, Guid principal, CancellationToken ct)
+    {
+        if (await FindAsync(actor, principal, ct) is not { } person) return null;
+        var s = settings();
+        var regions = rights.OwnedBy(principal).Select(r => s.Regions.FirstOrDefault(x => x.Uuid == r.Region)?.Name ?? r.Region.ToString()).ToList();
+        return new DeletePreview(person, regions, DeleteRefusal(actor, person));
+    }
+
+    private string? DeleteRefusal(ClaimsPrincipal actor, PersonView person) =>
+        Refusal(actor, person, PersonTask.Delete) ?? (holds.IsHeld(person.Row.Account.PrincipalId) ? OnHold : null);
+
+    /// <summary>
+    /// Deletes a suspended resident for good: their regions go back to the estate they came from first (the delete waits until
+    /// they have), then everything in Robust tied to them, their now empty estate, and what the launcher kept about them.
+    /// </summary>
+    public async Task<ChangeOutcome> DeleteAsync(ClaimsPrincipal actor, string? ip, Guid principal, CancellationToken ct)
+    {
+        if (await FindAsync(actor, principal, ct) is not { } person) return new(false, Gone);
+        var name = person.FullName;
+        var target = LogText.Clean(name, 64);
+        if (DeleteRefusal(actor, person) is { } refusal)
+        {
+            Write(actor, ip, "deleted", target, "refused");
+            return new(false, refusal);
+        }
+        foreach (var right in rights.OwnedBy(principal).Where(r => r.Pending != EstateMove.ToGrid)) rights.Remove(right.Region);
+        if (rights.PendingMoves().Any(r => r.Owner == principal)) return new(false, Moving);
+        await KickAsync(person, ct);
+
+        try
+        {
+            await remover.DeleteEverythingAsync(principal, ct);
+        }
+        catch (StaffDirectoryUnavailableException e)
+        {
+            log.LogWarning("People: an avatar couldn't be deleted: {Message}", e.InnerException?.Message ?? e.Message);
+            Write(actor, ip, "deleted", target, "failed");
+            return new(false, DatabaseDown);
+        }
+
+        var estateLeft = false;
+        if (rights.EstateOf(principal) is { } estate)
+        {
+            try
+            {
+                if (!await estates.RemoveIfEmptyAsync(estate, ct))
+                    log.LogWarning("People: estate {Estate} still has a region in it, so it was kept.", estate);
+            }
+            catch (StaffDirectoryUnavailableException e)
+            {
+                log.LogWarning("People: estate {Estate} couldn't be removed: {Message}", estate, e.InnerException?.Message ?? e.Message);
+                estateLeft = true;
+            }
+        }
+        rights.ForgetOwner(principal);
+        if (!held.Release(principal)) log.LogWarning("People: the held-names file couldn't be saved.");
+        try { suspended.Forget(principal); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            log.LogWarning("People: the suspended list couldn't be saved ({Error}).", e.GetType().Name);
+        }
+        stamps.Rotate(principal);
+        sessions.EndAll(principal);
+
+        Write(actor, ip, "deleted", target, estateLeft ? "failed" : "ok");
+        return estateLeft
+            ? new(true, $"{name} was deleted, but their empty estate couldn't be removed. Check the log.")
+            : new(true, $"{name} is deleted.");
     }
 
     /// <summary>Logs the person out of the region they are in, if any; false when they are in-world and that failed.</summary>

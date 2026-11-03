@@ -235,6 +235,8 @@ builder.Services.AddSingleton<IPeopleDirectory>(sp => new PeopleDirectory(sp.Get
 builder.Services.AddSingleton<IRobustPasswords>(sp => new RobustPasswords(sp.GetRequiredService<Func<LauncherSettings>>()));
 builder.Services.AddSingleton<IRobustEmails>(sp => new RobustEmails(sp.GetRequiredService<Func<LauncherSettings>>()));
 builder.Services.AddSingleton<IAccountRemover>(sp => new AccountRemover(sp.GetRequiredService<Func<LauncherSettings>>()));
+builder.Services.AddSingleton<IEstateRemover>(sp => new EstateRemover(sp.GetRequiredService<Func<LauncherSettings>>()));
+builder.Services.AddSingleton<AccountHolds>();
 builder.Services.AddSingleton<StaffActions>();
 builder.Services.AddSingleton<PeopleActions>();
 builder.Services.AddSingleton<StaffPrincipalValidator>();
