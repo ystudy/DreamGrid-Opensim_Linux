@@ -325,7 +325,7 @@ namespace OpenSim.Region.CoreModules.Asset
                                 m_assetLoaderArgs,
                                 delegate (AssetBase a)
                                 {
-                                    Cache(a, true);
+                                    Cache(a, false); // fkb: one shared cache for every region; rewriting ~680 library files on each boot was pure disk churn
                                     ids.Add(a.ID);
                                 });
                             m_defaultAssets = ids;

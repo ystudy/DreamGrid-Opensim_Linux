@@ -359,7 +359,7 @@ namespace OpenSim.Services.HypergridService
             UUID? result = SmartStartAltClient.Query(regionID, agentID,
                 m_SmartStartEnabled, m_SmartStartUrl, m_SmartStartMachineID,
                 requireNonZeroAgent: true, logTag: "[GatekeeperService]");
-            return result ?? UUID.Zero;
+            return result ?? regionID;
         }
 
         #region Login Agent

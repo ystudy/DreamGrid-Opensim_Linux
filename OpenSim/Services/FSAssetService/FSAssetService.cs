@@ -64,7 +64,6 @@ namespace OpenSim.Services.FSAssetService
         protected Thread m_WriterThread;
         protected Thread m_StatsThread;
         protected string m_SpoolDirectory;
-        protected object m_readLock = new object();
         protected object m_statsLock = new object();
         protected int m_readCount = 0;
         protected int m_readTicks = 0;
@@ -550,10 +549,9 @@ namespace OpenSim.Services.FSAssetService
             int startTime = System.Environment.TickCount;
             AssetMetadata metadata;
 
-            lock (m_readLock)
-            {
-                metadata = m_DataConnector.Get(id, out hash);
-            }
+            // fkb: no global lock - each Get opens its own pooled connection, and serializing every
+            // asset lookup made Robust fall behind and starve its listener during region boot storms
+            metadata = m_DataConnector.Get(id, out hash);
 
             sha = hash;
 

@@ -93,6 +93,8 @@ namespace OpenSim.Server
         public static int Main(string[] args)
         {
             global::OpenSim.Framework.BinaryFormatterCompat.Register(); // DreamGrid: .NET 10 BinaryFormatter package
+            Util.InstallNativeDllFallback();
+
             Culture.SetCurrentCulture();
             Culture.SetDefaultCurrentCulture();
 
@@ -102,7 +104,12 @@ namespace OpenSim.Server
             ServicePointManager.Expect100Continue = false;
             ServicePointManager.UseNagleAlgorithm = false;
             ServicePointManager.ServerCertificateValidationCallback = ValidateServerCertificate;
-           
+
+            // fkb: a region boot storm blocks many pool threads on asset/DB calls; the pool grows slowly past
+            // its minimum, so the HTTP accept loop starves and the port looks dead. Start with plenty.
+            System.Threading.ThreadPool.GetMinThreads(out int minWorkerThreads, out int minIocpThreads);
+            System.Threading.ThreadPool.SetMinThreads(Math.Max(minWorkerThreads, 200), Math.Max(minIocpThreads, 200));
+
             m_Server = new HttpServerBase("R.O.B.U.S.T.", args);
 
             string registryLocation;

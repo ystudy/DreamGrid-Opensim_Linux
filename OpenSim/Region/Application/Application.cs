@@ -74,6 +74,8 @@ namespace OpenSim
             AppDomain.CurrentDomain.UnhandledException += new UnhandledExceptionEventHandler(CurrentDomain_UnhandledException);
             global::OpenSim.Framework.BinaryFormatterCompat.Register(); // DreamGrid: .NET 10 BinaryFormatter package
 
+            Util.InstallNativeDllFallback();
+
             Culture.SetCurrentCulture();
             Culture.SetDefaultCurrentCulture();
 
