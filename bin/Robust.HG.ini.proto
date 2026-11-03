@@ -305,7 +305,7 @@ FallbackService=OpenSim.Services.AssetService.dll:AssetService
 
 ;; How many days since last updating the access time before its updated again by FSAssets when accessing an asset
 ;; Reduces DB calls if asset is requested often. Default value 0 will always update access time
-DaysBetweenAccessTimeUpdates=1
+DaysBetweenAccessTimeUpdates=30
 
 ;; Should FSAssets print read/write stats to the robust console, default is true
 ShowConsoleStats=False
