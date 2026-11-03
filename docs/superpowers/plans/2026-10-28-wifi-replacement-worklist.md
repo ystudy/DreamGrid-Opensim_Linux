@@ -156,12 +156,19 @@ Each item says what Wifi did, how v7 should do it better, and the security rules
 - [ ] **Bulk user creation** (`gridusers-creation-progress`). Dropped unless asked for.
 - [ ] **Destinations list** (`destinationlist`). Folded into the splash page as "popular regions" if wanted.
 
+### 2.14 Landing regions (Wifi: `1DivaOpenSimServices` fallback regions) — not started, owner said later
+- Today the launcher writes no landing lines: the "Set by Dreamgrid" slot in `Robust.HG.ini.proto` (`; START` … `; END`) is empty. If someone's home region is stopped and no default region is set, their login can fail instead of landing them somewhere. Not yet checked on the VM.
+- [ ] A **Landing** section on the Regions page: pick one default region, where people land when their home or last region can't take them, and an ordered list of fallback regions tried when the default is down too.
+- [ ] Hypergrid visitors who name no region land on the default region too, unless the owner decides otherwise when this is designed.
+- [ ] The launcher writes OpenSim's own `Region_<name> = "DefaultRegion, DefaultHGRegion, FallbackRegion"` lines into that slot. No change to OpenSim code. Robust reads them at start, so a change applies at the next grid restart; the page says so.
+- [ ] Check on the VM: stop someone's home region, log in, and see them land on the default, then on a fallback with the default stopped too.
+
 ## Phase 3 — Remove Wifi completely
 
 Do this only after Phase 2 has shipped the features people use, and after 2.2's migration has run.
 
 - [ ] Remove the projects from `DreamGrid.sln` and delete the folders: `addon-modules/21Wifi`, `20WifiScriptEngine`, `ProcessorTest`, `00DivaInterfaces`, `01DivaUtils`, `02AddinExample`, `00Data` (`Diva.Data`, `.MySQL`, `.SQLite`).
-  - [ ] Also delete `1DivaOpenSimServices`, once the launcher's group actions (2.8) work.
+  - [ ] Also delete `1DivaOpenSimServices`, once the launcher's group actions (2.8) work and landing regions (2.14) replace its fallback regions.
   - [ ] Before deleting, prove nothing else references them.
 - [ ] Remove jOpenSim too. It is end of life: the last release was 0.3.2.0 for Joomla 3, October 2020, and no public source repository could be found.
   - [ ] Remove `jOpenSimSearch` from `DreamGrid.sln`, and delete `addon-modules/jOpenSimSearch` and `addon-modules/jOpenSimProfile` (the profile module isn't in the solution).
@@ -199,7 +206,7 @@ Do this only after Phase 2 has shipped the features people use, and after 2.2's 
 2. 1.1 HTTPS, 1.3 security baseline, 1.5 languages — so every new page is born secure and translated.
 3. 1.2 audiences and roles, 1.4 email.
 4. 2.3 password recovery → 2.1 sign-up → 2.2 pending → 2.4 account page → 2.6 ToS → 2.7 splash.
-5. 2.5 admin users → 2.8 groups → 2.9 hypergrid → 2.10 estates → 2.11 IAR → 2.12 notices.
+5. 2.5 admin users → 2.8 groups → 2.9 hypergrid → 2.10 estates → 2.14 landing regions → 2.11 IAR → 2.12 notices.
 6. Phase 3 removal, then a Phase 4 release check.
 
 Phase 4's CI matrix should be set up early (alongside step 2) so every phase is tested on all three systems as it lands.
