@@ -2012,7 +2012,8 @@ namespace OpenSim.Framework.Servers.HttpServer
                 }
 
                 m_httpListener.RequestReceived += OnRequest;
-                m_httpListener.Start(64);
+                // fkb: 64 overflowed when many regions booted at once; Windows then refused new connections
+                m_httpListener.Start(1024);
 
                 lock (m_generalLock)
                 {
