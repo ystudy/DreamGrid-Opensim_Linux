@@ -11,3 +11,6 @@ bin/config-include/Gloebit.ini:generic-api-key:33
 # Upstream's live Robust.HG.ini (identical on Outworldz V7). Not read by the v7 launcher, which writes its own from
 # Robust.HG.ini.proto. Whether this SMTP value is real is upstream's to check.
 bin/Robust.HG.ini:dreamgrid-ini-mail-or-admin-password:922
+# The same SMTP value in Fred's 2c0fcab6, brought in by the fred/V7 merge (it was already in older history here).
+# This tree keeps its own Robust.HG.ini; only the commit carries it.
+2c0fcab617406f2f3436c508f3afc57d5efdc68c:bin/Robust.HG.ini:dreamgrid-ini-mail-or-admin-password:1397
