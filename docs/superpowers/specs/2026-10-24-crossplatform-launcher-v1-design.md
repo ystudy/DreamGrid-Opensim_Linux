@@ -108,7 +108,7 @@ Follow Fred's fork, not upstream OpenSim directly; his fork already carries the 
 - **Windows:** a single installer `.exe` that installs the launcher as a Windows service, sets up MariaDB, and opens the browser on the setup link.
 
 ### 4.8 Old Wifi: kept in the repo, switched off
-The Diva Wifi add-on (`addon-modules/21Wifi` and friends) stays in the tree but is disabled in generated configs. The new web site rebuilds its features one at a time (user accounts first, when internet access arrives). Wifi is deleted once nothing useful in it remains.
+The Diva Wifi add-on (`addon-modules/21Wifi` and friends) stays in the tree but is disabled in generated configs. The new web site, named **GridGate** (owner, 2026-11-03), rebuilds its features one at a time (user accounts first, when internet access arrives). Wifi is deleted once nothing useful in it remains.
 
 ### 4.9 `System.Drawing` on Linux: keep the workaround, test it first, SkiaSharp as fallback
 OpenSim uses `System.Drawing` in ~52 files (map tiles, terrain import/export, meshing/sculpts, dynamic textures, archives). The repo works around Microsoft's Windows-only restriction by shipping a Linux build (`bin/System.Drawing.Common.dll.linux`) and setting `System.Drawing.EnableUnixSupport` in the runtimeconfig files.
