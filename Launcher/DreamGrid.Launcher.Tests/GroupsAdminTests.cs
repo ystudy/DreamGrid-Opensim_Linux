@@ -256,8 +256,19 @@ public sealed class GroupsAdminTests : IDisposable
         Assert.False(outcome.Done);
         Assert.Equal(2, outcome.Added);
         Assert.Equal("Added 2 before the database stopped answering. Press the button again once the world is running.", outcome.Message);
-        // Everyone it was about to add is remembered, so a resident who leaves now is never pulled back.
-        Assert.All(people, p => Assert.True(_joins.Has(g, p.PrincipalId.ToString())));
+        // Each person is remembered just before they are added: the two added and the one whose add failed (it may have
+        // gone in), but not the one it never reached, so pressing again adds them.
+        var added = people.Where(p => _groups.IsMember(g, p.PrincipalId)).ToList();
+        Assert.Equal(2, added.Count);
+        Assert.All(added, p => Assert.True(_joins.Has(g, p.PrincipalId.ToString())));
+        Assert.Equal(3, people.Count(p => _joins.Has(g, p.PrincipalId.ToString())));
+        var never = people.Single(p => !_joins.Has(g, p.PrincipalId.ToString()));
+
+        var again = await _admins.AddEveryoneAsync(_admin, null, Ct);
+
+        Assert.True(again.Done, again.Message);
+        Assert.Equal(1, again.Added);
+        Assert.True(_groups.IsMember(g, never.PrincipalId));
     }
 
     [Fact]

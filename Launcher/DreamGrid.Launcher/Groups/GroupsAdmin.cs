@@ -121,10 +121,15 @@ public sealed class GroupsAdmin(IGridGroups groups, GroupJoins joins, AuditLog a
                 var residents = await groups.ActiveResidentsAsync(ct);
                 var toAdd = residents.Where(r => !inGroup.Contains(r.ToString()) && !joins.Has(group, r.ToString())).ToList();
                 var skipped = residents.Count - toAdd.Count;
-                // Remembered first, in one save: a resident who leaves from now on is never pulled back, even if this stops half-way.
-                if (!joins.Remember(group, members.Concat(toAdd.Select(r => r.ToString())))) return new(false, 0, 0, NotSaved);
+                // The members now are remembered, so one who leaves from now on is never pulled back. Each new one is remembered just
+                // before they are added: a stop half-way leaves out only the one whose add failed, and the next press reaches the rest.
+                if (!joins.Remember(group, members)) return new(false, 0, 0, NotSaved);
                 foreach (var resident in toAdd)
+                {
+                    if (!joins.Remember(group, [resident.ToString()]))
+                        return new(false, added, skipped, added == 0 ? NotSaved : $"Added {added}, then the change couldn't be saved. Try again.");
                     if (await groups.AddMemberAsync(group, resident, ct) == AddResult.Added) added++;
+                }
                 Write(actor, ip, "group-add-everyone", $"{group} added {added} skipped {skipped}");
                 return new(true, added, skipped,
                     $"Added {added} residents to {g.Name}; skipped {skipped} who are already in it or were in it before. {Delay}");

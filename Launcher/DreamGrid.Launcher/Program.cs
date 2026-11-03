@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using DreamGrid.Launcher;
 using DreamGrid.Launcher.Core;
 using DreamGrid.Launcher.Core.Api;

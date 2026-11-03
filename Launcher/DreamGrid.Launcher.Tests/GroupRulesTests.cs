@@ -15,6 +15,8 @@ public sealed class GroupRulesTests
     [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "A group name can be at most 35 characters.")]
     [InlineData("a\tb", "A group name can't contain line breaks or tabs.")]
     [InlineData("a\nb", "A group name can't contain line breaks or tabs.")]
+    [InlineData("Builders 🔨", "A group name can't contain emoji or other symbols the grid can't store.")]
+    [InlineData("Café Société", null)]
     [InlineData("  Builders  ", null)]
     [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", null)]
     public void Name_problem(string? name, string? expected) => Assert.Equal(expected, GroupRules.NameProblem(name));
@@ -25,6 +27,14 @@ public sealed class GroupRulesTests
         Assert.Null(GroupRules.CharterProblem(new string('c', 4000)));
         Assert.Null(GroupRules.CharterProblem(null));
         Assert.Equal("The charter can be at most 4000 characters.", GroupRules.CharterProblem(new string('c', 4001)));
+    }
+
+    [Fact]
+    public void Charter_with_emoji_is_refused()
+    {
+        // The columns are 3-byte utf8: MariaDB refuses a 4-byte character, which would read as the database being down.
+        Assert.Equal("The charter can't contain emoji or other symbols the grid can't store.", GroupRules.CharterProblem("We build 🏗 things."));
+        Assert.Null(GroupRules.CharterProblem("Ünïcödé — fine…"));
     }
 
     [Fact]

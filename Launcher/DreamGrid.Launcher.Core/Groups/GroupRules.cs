@@ -22,11 +22,17 @@ public static class GroupRules
         if (n.Length == 0) return "Type a group name.";
         if (n.Length > MaxName) return $"A group name can be at most {MaxName} characters.";
         if (n.Any(char.IsControl)) return "A group name can't contain line breaks or tabs.";
+        if (n.Any(char.IsSurrogate)) return "A group name can't contain emoji or other symbols the grid can't store.";
         return null;
     }
 
-    public static string? CharterProblem(string? charter) =>
-        (charter?.Length ?? 0) > MaxCharter ? $"The charter can be at most {MaxCharter} characters." : null;
+    public static string? CharterProblem(string? charter)
+    {
+        if ((charter?.Length ?? 0) > MaxCharter) return $"The charter can be at most {MaxCharter} characters.";
+        // Name and Charter are 3-byte utf8 columns: MariaDB refuses a 4-byte character (emoji and the like).
+        if (charter is not null && charter.Any(char.IsSurrogate)) return "The charter can't contain emoji or other symbols the grid can't store.";
+        return null;
+    }
 
     /// <summary>Whether <paramref name="principalId"/> is a resident of this grid (a plain UUID), and which.</summary>
     public static bool IsLocal(string principalId, out Guid id) => Guid.TryParse(principalId, out id) && !principalId.Contains(';');
