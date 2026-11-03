@@ -236,6 +236,22 @@ namespace OpenSim.Region.OptionalModules.Scripting.RegionReady
             }
 
             m_scene.Ready = true;
+
+            // fkb: logins are open, but a map tile postponed from boot may still be drawing. "freezeok" tells
+            // DreamGrid it may now freeze this region without leaving it with no map.
+            if (m_scene.MaptilePending)
+            {
+                Util.FireAndForget(o =>
+                {
+                    m_scene.GenerateDeferredMaptile();
+                    if (m_uri != string.Empty)
+                        RRAlert("freezeok");
+                }, null, "DeferredMaptile", false);
+            }
+            else if (m_uri != string.Empty)
+            {
+                RRAlert("freezeok");
+            }
         }
 
         public void OarLoadingAlert(string msg)
