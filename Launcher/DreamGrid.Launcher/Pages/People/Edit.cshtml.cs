@@ -1,4 +1,3 @@
-using DreamGrid.Launcher.Core.Database;
 using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Security;
 using Microsoft.AspNetCore.Mvc;
@@ -10,7 +9,7 @@ namespace DreamGrid.Launcher.Pages.People;
 /// Editing a resident's name and email (<c>/people/{id}/edit</c>): the owner and admins only (a supervisor gets 403 on the page and
 /// the post). <see cref="PeopleActions.EditAsync"/> checks the rules again, writes, tells the person by email and audits.
 /// </summary>
-public sealed class EditModel(PeopleActions people, ILogger<EditModel> log) : PageModel
+public sealed class EditModel(PeopleActions people) : PageModel
 {
     public PersonView? Person { get; private set; }
 
@@ -25,7 +24,7 @@ public sealed class EditModel(PeopleActions people, ILogger<EditModel> log) : Pa
     public async Task<IActionResult> OnGetAsync(Guid id, CancellationToken ct)
     {
         if (!MayEdit()) return StatusCode(StatusCodes.Status403Forbidden);
-        if (!await LoadAsync(id, ct)) return NotFound();
+        if (!await LoadAsync(id, ct)) return Error is null ? NotFound() : Page();
         First = Person!.Row.Account.FirstName;
         Last = Person.Row.Account.LastName;
         Email = Person.Row.Account.Email;
@@ -38,7 +37,7 @@ public sealed class EditModel(PeopleActions people, ILogger<EditModel> log) : Pa
         var outcome = await people.EditAsync(User, HttpContext.Connection.RemoteIpAddress?.ToString(), id, First, Last, Email, ct);
         if (outcome.Done) Notice = outcome.Message;
         else Error = outcome.Message;
-        if (!await LoadAsync(id, ct)) return outcome.Done ? Page() : NotFound();
+        if (!await LoadAsync(id, ct)) return outcome.Done || Error is not null ? Page() : NotFound();
         if (outcome.Done)
         {
             First = Person!.Row.Account.FirstName;
@@ -52,16 +51,9 @@ public sealed class EditModel(PeopleActions people, ILogger<EditModel> log) : Pa
 
     private async Task<bool> LoadAsync(Guid id, CancellationToken ct)
     {
-        try
-        {
-            Person = await people.ViewAsync(User, id, ct);
-        }
-        catch (PeopleDirectoryUnavailableException e)
-        {
-            log.LogWarning("People: a person could not be read: {Message}", e.InnerException?.Message ?? e.Message);
-            Error ??= PeopleActions.DatabaseDown;
-            return false;
-        }
+        var (person, problem) = await people.LookAsync(User, id, ct);
+        Person = person;
+        Error ??= problem;
         if (Person is null) return false;
         Refusal = people.Refusal(User, Person, PersonTask.Edit);
         return true;

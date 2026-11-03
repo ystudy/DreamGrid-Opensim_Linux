@@ -174,7 +174,8 @@ public sealed class PasswordResets(Func<LauncherSettings> settings, IRobustClien
         if (account is null || account.UserLevel < 0) return null;
         var s = settings();
         var role = AdminRule.RoleOf(s, account);
-        if (byStaff) return new ResetLink(principal, account, role, NeedsCode: false, ByStaff: true);
+        // Staff send these to residents only; one made staff since the link was sent uses Forgot password, with their own rule.
+        if (byStaff) return role == StaffRole.None ? new ResetLink(principal, account, role, NeedsCode: false, ByStaff: true) : null;
         var rule = Recovery.RuleFor(s, role);
         if (rule == RecoveryRule.Off) return null;
         var needsCode = rule == RecoveryRule.EmailLinkAndCode && StoreFor(role).StateOf(principal) != TwoFactorState.Off;

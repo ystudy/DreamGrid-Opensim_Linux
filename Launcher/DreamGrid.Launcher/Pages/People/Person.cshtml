@@ -1,11 +1,19 @@
 @page "/people/{id:guid}"
 @model DreamGrid.Launcher.Pages.People.PersonModel
 @{
-    var p = Model.Person!;
-    var a = p.Row.Account;
-    ViewData["Title"] = p.FullName;
+    ViewData["Title"] = Model.Person?.FullName ?? "Person";
 }
 <p><a href="/people">‹ People</a></p>
+@if (Model.Person is null)
+{
+    <h1>Person</h1>
+    <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
+}
+else
+{
+    var p = Model.Person;
+    var a = p.Row.Account;
+    <text>
 <h1>
     @p.FullName
     @if (p.Role.IsOwner) { <span class="badge text-bg-primary ms-2">Owner</span> }
@@ -63,3 +71,5 @@
         </table>
     }
 </div>
+</text>
+}

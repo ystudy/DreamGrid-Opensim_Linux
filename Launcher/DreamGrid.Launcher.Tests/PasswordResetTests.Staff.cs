@@ -76,6 +76,15 @@ public sealed partial class PasswordResetTests
     }
 
     [Fact]
+    public async Task Staff_link_stops_when_the_person_becomes_staff()
+    {
+        await using var rig = Factory();
+        var token = await StaffLinkAsync(rig);
+        rig.F.Robust.SetLevel("Ann", "Smith", 100);
+        Assert.Null(await Resets(rig).OpenAsync(token, Ct));
+    }
+
+    [Fact]
     public async Task Unused_staff_link_changes_nothing()
     {
         await using var rig = Factory(CodeForAll);

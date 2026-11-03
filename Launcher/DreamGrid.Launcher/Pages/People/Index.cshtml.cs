@@ -156,7 +156,11 @@ public sealed class IndexModel(IRobustClient robust, StaffActions actions, Regio
         }
         else if (account is not null)
         {
-            var outcome = await actions.ApplyAsync(User, HttpContext.Connection.RemoteIpAddress?.ToString(), account, change, ct);
+            // Through PeopleActions, so a suspension also logs the avatar out in-world.
+            var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
+            var outcome = change == StaffChange.Suspend
+                ? await people.SuspendAsync(User, ip, account.PrincipalId, ct)
+                : await people.UnsuspendAsync(User, ip, account.PrincipalId, ct);
             if (outcome.Done) Notice = outcome.Message;
             else Error = outcome.Message;
             // Show the person as they are now.

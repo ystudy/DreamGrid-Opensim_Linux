@@ -202,6 +202,34 @@ public sealed class PeoplePagesTests
     }
 
     [Fact]
+    public async Task Person_history_is_only_theirs()
+    {
+        await using var f = Factory();
+        var audit = f.Services.GetRequiredService<Core.Logs.AuditLog>();
+        audit.Write(new Core.Logs.AuditEntry("Test Admin", null, "admin", null, "suspended", "Gail Guestly", "ok"));
+        audit.Write(new Core.Logs.AuditEntry("Test Admin", null, "admin", null, "name-changed", "Gail Guest -> Gail Guests", "ok"));
+        audit.Write(new Core.Logs.AuditEntry("Test Admin", null, "admin", null, "reset-sent", "Gail Guest", "ok"));
+        var admin = await SignedInAsync(f, "admin");
+
+        var history = (await PageAsync(admin, $"/people/{GailId}")).QuerySelector("#person-history")!.TextContent;
+
+        Assert.Contains("reset-sent", history);
+        Assert.Contains("name-changed", history);
+        Assert.DoesNotContain("suspended", history);
+    }
+
+    [Fact]
+    public async Task Old_card_suspend_kicks_in_world()
+    {
+        await using var f = Factory();
+        var region = Guid.NewGuid();
+        f.People.Online[GailId] = region;
+        var admin = await SignedInAsync(f, "admin");
+        using (await PostAsync(admin, "/people?handler=Suspend", new() { ["name"] = "Gail Guest" }, "/people?name=Gail+Guest")) { }
+        Assert.Contains($"Kick {region} Gail Guest", f.Grid.Snapshot());
+    }
+
+    [Fact]
     public async Task Icons_have_accessible_names()
     {
         await using var f = Factory();

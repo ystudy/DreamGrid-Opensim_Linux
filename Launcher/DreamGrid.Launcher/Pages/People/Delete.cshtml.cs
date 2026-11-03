@@ -19,6 +19,11 @@ public sealed class DeleteModel(PeopleActions people) : PageModel
     public async Task<IActionResult> OnGetAsync(Guid id, CancellationToken ct)
     {
         if (!MayDelete()) return StatusCode(StatusCodes.Status403Forbidden);
+        if ((await people.LookAsync(User, id, ct)).Problem is { } problem)
+        {
+            Error = problem;
+            return Page();
+        }
         Preview = await people.PreviewDeleteAsync(User, id, ct);
         return Preview is null ? NotFound() : Page();
     }

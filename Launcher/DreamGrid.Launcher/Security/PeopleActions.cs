@@ -29,7 +29,8 @@ public sealed record PersonView(PersonRow Row, PersonFacts Facts, RoleView Role)
 public sealed class PeopleActions(IPeopleDirectory people, StaffActions staff, Func<LauncherSettings> settings, SignUpBoard pending,
     EmailSender sender, IRobustClient robust, IRobustNames names, IRobustEmails emails, IStaffDirectory directory, HeldNames held,
     PasswordResets resets, StaffSessions sessions, GuestStamps stamps, IGridController grid, IAccountRemover remover, IEstateRemover estates,
-    RegionRights rights, AccountHolds holds, SuspendedStore suspended, AuditLog audit, ILogger<PeopleActions> log)
+    RegionRights rights, AccountHolds holds, SuspendedStore suspended, EmailTokens tokens, PendingEmailChanges emailChanges, AuditLog audit,
+    ILogger<PeopleActions> log)
 {
     public const string OnHold = "This account is on hold.";
     public const string Moving = "Their regions are moving back to the grid's estate. Try again in a minute.";
@@ -65,7 +66,8 @@ public sealed class PeopleActions(IPeopleDirectory people, StaffActions staff, F
     public async Task<ChangeOutcome> EditAsync(ClaimsPrincipal actor, string? ip, Guid principal, string? first, string? last, string? email,
         CancellationToken ct)
     {
-        if (await FindAsync(actor, principal, ct) is not { } person) return new(false, Gone);
+        var (person, problem) = await LookAsync(actor, principal, ct);
+        if (person is null) return new(false, problem ?? Gone);
         var a = person.Row.Account;
         var oldName = person.FullName;
         first = first?.Trim() ?? "";
@@ -87,7 +89,7 @@ public sealed class PeopleActions(IPeopleDirectory people, StaffActions staff, F
         {
             // A change of case only is the same name to the login, and to the held list.
             var sameName = string.Equals(newName, oldName, StringComparison.OrdinalIgnoreCase);
-            if (SignUpRules.NameProblem(first, last, s, sameName ? null : held.IsHeld) is { } problem) return new(false, problem);
+            if (SignUpRules.NameProblem(first, last, s, sameName ? null : held.IsHeld) is { } badName) return new(false, badName);
             if (person.Row.OnlineRegion is not null) return new(false, InWorld);
             try
             {
@@ -102,7 +104,7 @@ public sealed class PeopleActions(IPeopleDirectory people, StaffActions staff, F
         }
         if (changingEmail && newEmail.Length > 0)
         {
-            if (SignUpRules.EmailProblem(newEmail) is { } problem) return new(false, problem);
+            if (SignUpRules.EmailProblem(newEmail) is { } badEmail) return new(false, badEmail);
             try
             {
                 if (await directory.FindByEmailAsync(newEmail, ct) is { } other && other.PrincipalId != principal)
@@ -150,6 +152,11 @@ public sealed class PeopleActions(IPeopleDirectory people, StaffActions staff, F
                 Write(actor, ip, "email-changed", LogText.Clean(newName, 64), "failed");
                 return new(said.Count > 0, string.Join(" ", [.. said, "The email address couldn't be saved. Try again."]));
             }
+            // Links already sent went to whoever had the address: a waiting email change and every reset link stop working, so a
+            // hijacker can't take the account back with one after staff gave it back.
+            AccountChanges.CancelEmailChange(tokens, emailChanges, principal);
+            tokens.Revoke(PasswordResets.Purpose, principal);
+            tokens.Revoke(PasswordResets.StaffPurpose, principal);
             var forgot = $"http://{HostAddress.Effective(s.Hostname)}:{s.WebPort}{PasswordResets.AskPath}";
             if (a.Email.Trim() is { Length: > 0 } old)
                 sender.Queue(EmailTemplates.EmailChangedByStaff, old, newName, new Dictionary<string, string> { ["AvatarName"] = newName, ["Link"] = forgot });
@@ -163,7 +170,8 @@ public sealed class PeopleActions(IPeopleDirectory people, StaffActions staff, F
 
     public async Task<ChangeOutcome> SendResetAsync(ClaimsPrincipal actor, string? ip, Guid principal, CancellationToken ct)
     {
-        if (await FindAsync(actor, principal, ct) is not { } person) return new(false, Gone);
+        var (person, problem) = await LookAsync(actor, principal, ct);
+        if (person is null) return new(false, problem ?? Gone);
         var target = LogText.Clean(person.FullName, 64);
         if (Refusal(actor, person, PersonTask.ResetLink) is { } refusal)
         {
@@ -183,7 +191,8 @@ public sealed class PeopleActions(IPeopleDirectory people, StaffActions staff, F
 
     public async Task<ChangeOutcome> SignOutAsync(ClaimsPrincipal actor, string? ip, Guid principal, CancellationToken ct)
     {
-        if (await FindAsync(actor, principal, ct) is not { } person) return new(false, Gone);
+        var (person, problem) = await LookAsync(actor, principal, ct);
+        if (person is null) return new(false, problem ?? Gone);
         var target = LogText.Clean(person.FullName, 64);
         if (Refusal(actor, person, PersonTask.SignOut) is { } refusal)
         {
@@ -215,7 +224,8 @@ public sealed class PeopleActions(IPeopleDirectory people, StaffActions staff, F
 
     private async Task<ChangeOutcome> SuspensionAsync(ClaimsPrincipal actor, string? ip, Guid principal, StaffChange change, CancellationToken ct)
     {
-        if (await FindAsync(actor, principal, ct) is not { } person) return new(false, Gone);
+        var (person, problem) = await LookAsync(actor, principal, ct);
+        if (person is null) return new(false, problem ?? Gone);
         // Waiting sign-ups are the Sign-ups page's; every other refusal is StaffActions' own, which it audits.
         if (person.Facts.Waiting)
         {
@@ -233,7 +243,7 @@ public sealed class PeopleActions(IPeopleDirectory people, StaffActions staff, F
 
     public async Task<DeletePreview?> PreviewDeleteAsync(ClaimsPrincipal actor, Guid principal, CancellationToken ct)
     {
-        if (await FindAsync(actor, principal, ct) is not { } person) return null;
+        if ((await LookAsync(actor, principal, ct)).Person is not { } person) return null;
         var s = settings();
         var regions = rights.OwnedBy(principal).Select(r => s.Regions.FirstOrDefault(x => x.Uuid == r.Region)?.Name ?? r.Region.ToString()).ToList();
         return new DeletePreview(person, regions, DeleteRefusal(actor, person));
@@ -248,7 +258,8 @@ public sealed class PeopleActions(IPeopleDirectory people, StaffActions staff, F
     /// </summary>
     public async Task<ChangeOutcome> DeleteAsync(ClaimsPrincipal actor, string? ip, Guid principal, CancellationToken ct)
     {
-        if (await FindAsync(actor, principal, ct) is not { } person) return new(false, Gone);
+        var (person, problem) = await LookAsync(actor, principal, ct);
+        if (person is null) return new(false, problem ?? Gone);
         var name = person.FullName;
         var target = LogText.Clean(name, 64);
         if (DeleteRefusal(actor, person) is { } refusal)
@@ -318,15 +329,24 @@ public sealed class PeopleActions(IPeopleDirectory people, StaffActions staff, F
         }
     }
 
-    private async Task<PersonView?> FindAsync(ClaimsPrincipal actor, Guid principal, CancellationToken ct)
+    /// <summary>
+    /// The person, or null with why: no such account (no reason), the database not answering, or the suspended list unreadable
+    /// (who may change a suspended person depends on the level they get back).
+    /// </summary>
+    public async Task<(PersonView? Person, string? Problem)> LookAsync(ClaimsPrincipal actor, Guid principal, CancellationToken ct)
     {
         try
         {
-            return await ViewAsync(actor, principal, ct);
+            return (await ViewAsync(actor, principal, ct), null);
         }
         catch (PeopleDirectoryUnavailableException)
         {
-            return null;
+            return (null, DatabaseDown);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            log.LogWarning("People: the suspended list could not be read ({Error}).", e.GetType().Name);
+            return (null, StaffActions.SuspendedUnreadable);
         }
     }
 

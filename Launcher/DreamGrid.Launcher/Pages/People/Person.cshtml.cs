@@ -14,8 +14,7 @@ namespace DreamGrid.Launcher.Pages.People;
 /// One person (<c>/people/{id}</c>, StaffPolicy by the folder rule): their details, the same task icons as the list with their
 /// words, and the last <see cref="HistoryCount"/> audit lines about them, so staff see what was done to the account before.
 /// </summary>
-public sealed class PersonModel(PeopleActions people, RegionRights rights, Func<LauncherSettings> settings, AuditLog audit,
-    ILogger<PersonModel> log) : PageModel
+public sealed class PersonModel(PeopleActions people, RegionRights rights, Func<LauncherSettings> settings, AuditLog audit) : PageModel
 {
     public const int HistoryCount = 20;
 
@@ -32,28 +31,28 @@ public sealed class PersonModel(PeopleActions people, RegionRights rights, Func<
     public static string When(DateTimeOffset? at) =>
         at is { } t ? t.UtcDateTime.ToString("d MMMM yyyy, HH:mm 'UTC'", CultureInfo.InvariantCulture) : "Never";
 
-    public async Task<IActionResult> OnGetAsync(Guid id, CancellationToken ct) => await LoadAsync(id, ct) ? Page() : NotFound();
+    public async Task<IActionResult> OnGetAsync(Guid id, CancellationToken ct) => await LoadAsync(id, ct) || Error is not null ? Page() : NotFound();
 
     public async Task<IActionResult> OnPostTaskAsync(Guid id, PersonTask task, CancellationToken ct)
     {
         var outcome = await people.RunAsync(User, HttpContext.Connection.RemoteIpAddress?.ToString(), id, task, ct);
         if (outcome.Done) Notice = outcome.Message;
         else Error = outcome.Message;
-        return await LoadAsync(id, ct) ? Page() : NotFound();
+        return await LoadAsync(id, ct) || Error is not null ? Page() : NotFound();
     }
+
+    /// <summary>The audit lines about <paramref name="name"/>: exactly them, a change to them ("Name: 0 -> 100"), or a rename from or to them.</summary>
+    public static bool IsAbout(string? target, string name) =>
+        target is not null && (string.Equals(target, name, StringComparison.OrdinalIgnoreCase)
+                               || target.StartsWith(name + ":", StringComparison.OrdinalIgnoreCase)
+                               || target.StartsWith(name + " -> ", StringComparison.OrdinalIgnoreCase)
+                               || target.EndsWith(" -> " + name, StringComparison.OrdinalIgnoreCase));
 
     private async Task<bool> LoadAsync(Guid id, CancellationToken ct)
     {
-        try
-        {
-            Person = await people.ViewAsync(User, id, ct);
-        }
-        catch (PeopleDirectoryUnavailableException e)
-        {
-            log.LogWarning("People: a person could not be read: {Message}", e.InnerException?.Message ?? e.Message);
-            Error = PeopleActions.DatabaseDown;
-            return false;
-        }
+        var (person, problem) = await people.LookAsync(User, id, ct);
+        Person = person;
+        Error ??= problem;
         if (Person is null) return false;
         var s = settings();
         var owned = rights.OwnedBy(id).Select(r => r.Region).ToHashSet();
@@ -62,7 +61,7 @@ public sealed class PersonModel(PeopleActions people, RegionRights rights, Func<
         if (Person.Row.OnlineRegion is { } region)
             OnlineIn = s.Regions.FirstOrDefault(r => r.Uuid == region)?.Name ?? "a region on another computer";
         var name = Person.FullName;
-        History = audit.Recent(e => e.Entry.Target?.StartsWith(name, StringComparison.OrdinalIgnoreCase) == true, HistoryCount);
+        History = audit.Recent(e => IsAbout(e.Entry.Target, name), HistoryCount);
         return true;
     }
 }

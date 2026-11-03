@@ -227,6 +227,45 @@ public sealed class PeopleActionsTests
     }
 
     [Fact]
+    public async Task Email_change_ends_links_already_sent()
+    {
+        await using var rig = Factory();
+        var tokens = rig.F.Services.GetRequiredService<EmailTokens>();
+        var staffLink = tokens.Issue(PasswordResets.StaffPurpose, GailId, TimeSpan.FromMinutes(30));
+        var ownLink = tokens.Issue(PasswordResets.Purpose, GailId, TimeSpan.FromMinutes(30));
+        var change = tokens.Issue(AccountChanges.Purpose, GailId, TimeSpan.FromHours(24));
+
+        var r = await rig.Actions.EditAsync(As(StaffRole.Admin), null, GailId, "Gail", "Guest", "real@example.com", Ct);
+
+        Assert.True(r.Done, r.Message);
+        Assert.Null(tokens.Find(PasswordResets.StaffPurpose, staffLink));
+        Assert.Null(tokens.Find(PasswordResets.Purpose, ownLink));
+        Assert.Null(tokens.Find(AccountChanges.Purpose, change));
+    }
+
+    [Fact]
+    public async Task Database_down_is_not_said_to_be_gone()
+    {
+        await using var rig = Factory();
+        rig.F.People.Down = true;
+        Assert.Equal(PeopleActions.DatabaseDown, (await rig.Actions.SignOutAsync(As(StaffRole.Admin), null, GailId, Ct)).Message);
+        Assert.Equal(PeopleActions.DatabaseDown, (await rig.Actions.DeleteAsync(As(StaffRole.Admin), null, GailId, Ct)).Message);
+    }
+
+    [Fact]
+    public async Task Unreadable_suspended_list_is_a_message()
+    {
+        await using var rig = Factory();
+        rig.F.Robust.SetLevel("Gail", "Guest", -1);
+        var file = Path.Combine(rig.F.Paths.Security, "suspended.json");
+        if (File.Exists(file)) File.Delete(file);
+        Directory.CreateDirectory(file);
+        Assert.Equal(StaffActions.SuspendedUnreadable, (await rig.Actions.UnsuspendAsync(As(StaffRole.Admin), null, GailId, Ct)).Message);
+        Assert.Equal(StaffActions.SuspendedUnreadable, (await rig.Actions.DeleteAsync(As(StaffRole.Admin), null, GailId, Ct)).Message);
+        Assert.Equal(StaffActions.SuspendedUnreadable, (await rig.Actions.LookAsync(As(StaffRole.Admin), GailId, Ct)).Problem);
+    }
+
+    [Fact]
     public async Task Someone_gone_is_a_message()
     {
         await using var rig = Factory();
