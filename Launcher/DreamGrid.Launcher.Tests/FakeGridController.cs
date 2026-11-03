@@ -654,6 +654,40 @@ internal sealed class FakeStaffDirectory(FakeRobustAccounts robust) : IStaffDire
             : Task.FromResult<IReadOnlyList<RobustAccount>>([.. robust.All.Where(a => a.Email.Trim().ToLowerInvariant() == normalEmail)]);
 }
 
+/// <summary>
+/// The People list without a database: the fake Robust's accounts, with last logins and online regions set by the test;
+/// <see cref="Down"/> is a database that isn't running.
+/// </summary>
+internal sealed class FakePeopleDirectory(FakeRobustAccounts robust) : IPeopleDirectory
+{
+    public bool Down { get; set; }
+    public Dictionary<Guid, DateTimeOffset> LastLogin { get; } = [];
+    public Dictionary<Guid, Guid> Online { get; } = [];
+
+    public Task<PeoplePage> SearchAsync(string? text, PeopleFilter filter, IReadOnlyCollection<Guid> waiting, int staffLevel, int page, CancellationToken ct)
+    {
+        if (Down) throw new PeopleDirectoryUnavailableException("The database isn't running.");
+        page = Math.Max(1, page);
+        var t = (text ?? "").Trim();
+        var all = robust.All.Where(a => $"{a.FirstName} {a.LastName}".Contains(t, StringComparison.OrdinalIgnoreCase)).Where(a => filter switch
+        {
+            PeopleFilter.Staff => a.UserLevel >= staffLevel,
+            PeopleFilter.Suspended => a.UserLevel < 0 && !waiting.Contains(a.PrincipalId),
+            PeopleFilter.Waiting => waiting.Contains(a.PrincipalId),
+            _ => true,
+        }).OrderBy(a => a.LastName).ThenBy(a => a.FirstName).ToList();
+        var rows = all.Skip((page - 1) * PeopleDirectory.PageSize).Take(PeopleDirectory.PageSize).Select(Row).ToList();
+        return Task.FromResult(new PeoplePage(rows, all.Count, page, PeopleDirectory.PageSize));
+    }
+
+    public Task<PersonRow?> GetAsync(Guid principal, CancellationToken ct) =>
+        Down ? throw new PeopleDirectoryUnavailableException("The database isn't running.")
+            : Task.FromResult(robust.All.FirstOrDefault(a => a.PrincipalId == principal) is { } a ? Row(a) : null);
+
+    private PersonRow Row(RobustAccount a) =>
+        new(a, LastLogin.TryGetValue(a.PrincipalId, out var at) ? at : null, null, Online.TryGetValue(a.PrincipalId, out var r) ? r : null);
+}
+
 /// <summary>Who's online without a database: returns <see cref="Result"/>.</summary>
 internal sealed class FakeOnlineUsers : IOnlineUsers
 {

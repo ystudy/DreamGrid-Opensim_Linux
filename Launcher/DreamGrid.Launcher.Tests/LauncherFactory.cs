@@ -34,6 +34,7 @@ internal sealed class LauncherFactory : WebApplicationFactory<Program>
         // Robust's console sets the level the fake account service then reports.
         Grid.OnSetUserLevel = (first, last, level) => Robust.SetLevel(first, last, level);
         Staff = new FakeStaffDirectory(Robust);
+        People = new FakePeopleDirectory(Robust);
         Remover = new FakeAccountRemover(Robust);
         Groups = new FakeGridGroups(Robust);
         // Robust's console makes the avatar (with a password nobody knows) the fake account service then reports.
@@ -56,6 +57,7 @@ internal sealed class LauncherFactory : WebApplicationFactory<Program>
     public FakeGridRegions Regions { get; } = new();
     /// <summary>The staff list the Staff page reads: the fake Robust's accounts.</summary>
     public FakeStaffDirectory Staff { get; }
+    public FakePeopleDirectory People { get; }
     /// <summary>Deletes avatars from the fake Robust.</summary>
     public FakeAccountRemover Remover { get; }
     /// <summary>The grid's group tables, in memory.</summary>
@@ -93,6 +95,8 @@ internal sealed class LauncherFactory : WebApplicationFactory<Program>
             services.AddSingleton<IGridRegions>(Regions);
             services.RemoveAll<IStaffDirectory>();
             services.AddSingleton<IStaffDirectory>(Staff);
+            services.RemoveAll<IPeopleDirectory>();
+            services.AddSingleton<IPeopleDirectory>(People);
             services.RemoveAll<IAccountRemover>();
             services.AddSingleton<IAccountRemover>(Remover);
             services.RemoveAll<DreamGrid.Launcher.Core.Groups.IGridGroups>();

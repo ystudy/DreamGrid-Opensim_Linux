@@ -231,6 +231,7 @@ builder.Services.AddSingleton(sp => new ResidentTwoFactor(new TwoFactorStore(Pat
     sp.GetRequiredService<IDataProtectionProvider>(), sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<TwoFactorStore>>()), Path.Combine(paths.Guests, "twofactor.json")));
 builder.Services.AddSingleton(sp => new SuspendedStore(Path.Combine(paths.Security, "suspended.json"), sp.GetRequiredService<ILogger<SuspendedStore>>()));
 builder.Services.AddSingleton<IStaffDirectory>(sp => new StaffDirectory(sp.GetRequiredService<Func<LauncherSettings>>()));
+builder.Services.AddSingleton<IPeopleDirectory>(sp => new PeopleDirectory(sp.GetRequiredService<Func<LauncherSettings>>()));
 builder.Services.AddSingleton<IRobustPasswords>(sp => new RobustPasswords(sp.GetRequiredService<Func<LauncherSettings>>()));
 builder.Services.AddSingleton<IRobustEmails>(sp => new RobustEmails(sp.GetRequiredService<Func<LauncherSettings>>()));
 builder.Services.AddSingleton<IAccountRemover>(sp => new AccountRemover(sp.GetRequiredService<Func<LauncherSettings>>()));
