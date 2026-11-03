@@ -391,6 +391,9 @@
     <Compile Include="NetworkUtil.cs">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="NetworkXffUtil.cs">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="ObjectChangeData.cs">
       <SubType>Code</SubType>
     </Compile>

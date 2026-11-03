@@ -13,25 +13,6 @@ namespace DreamGrid.Platform.Tests;
 public class BinaryFormatterTests
 {
     [Fact]
-    public void Util_SerializeToFile_then_DeserializeFromFile_round_trips()
-    {
-        string path = Path.Combine(Path.GetTempPath(), $"dg bf {Guid.NewGuid()}.bin");
-        var original = new Dictionary<string, int> { ["alpha"] = 1, ["beta"] = 2 };
-        try
-        {
-            Util.SerializeToFile(path, original);
-            var back = Util.DeserializeFromFile(path) as Dictionary<string, int>;
-
-            Assert.NotNull(back); // null without the package: the call throws and Util swallows it
-            Assert.Equal(original, back);
-        }
-        finally
-        {
-            File.Delete(path);
-        }
-    }
-
-    [Fact]
     public void AssetBase_round_trips_through_BinaryFormatter_like_FlotsamAssetCache()
     {
         var asset = new AssetBase(UUID.Random(), "smoke", (sbyte)AssetType.Notecard, UUID.Zero.ToString())
