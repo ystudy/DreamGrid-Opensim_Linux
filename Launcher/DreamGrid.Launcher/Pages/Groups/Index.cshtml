@@ -1,0 +1,53 @@
+@page "/groups"
+@model DreamGrid.Launcher.Pages.Groups.IndexModel
+@{
+    ViewData["Title"] = "Groups";
+}
+<h1>Groups</h1>
+<p>The groups on your grid. Open one to change its name or charter, add or remove members, delete it, or make it the default group every new resident joins.</p>
+@if (Model.Notice is not null)
+{
+    <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
+}
+@if (Model.Unavailable)
+{
+    <p id="groups-unavailable">@DreamGrid.Launcher.Groups.GroupsAdmin.DatabaseDown</p>
+}
+else if (!Model.Any)
+{
+    <p id="groups-none">No groups yet. Groups are made in the viewer.</p>
+}
+else
+{
+    <form method="get" action="/groups" class="d-flex flex-wrap gap-2 mb-3">
+        <label class="visually-hidden" for="q">Find a group</label>
+        <input class="form-control w-auto" id="q" name="q" value="@Model.Query" placeholder="Part of a name" autocomplete="off">
+        <button type="submit" class="btn btn-outline-primary">Find</button>
+    </form>
+    <div class="table-responsive">
+        <table id="groups-list" class="table align-middle">
+            <thead><tr><th>Name</th><th>Founder</th><th>Members</th><th>Open to join</th></tr></thead>
+            <tbody>
+            @foreach (var g in Model.Rows)
+            {
+                <tr>
+                    <td>
+                        <a href="/groups/group?id=@g.Id">@g.Name</a>
+                        @if (g.Id == Model.DefaultGroup)
+                        {
+                            <span class="default-badge badge text-bg-info ms-1">Default</span>
+                        }
+                    </td>
+                    <td>@g.Founder</td>
+                    <td class="members">@g.Members</td>
+                    <td class="open">@(g.OpenToJoin ? "Yes" : "No")</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+    @if (Model.Rows.Count == 0)
+    {
+        <p>No group's name has "@Model.Query" in it.</p>
+    }
+}

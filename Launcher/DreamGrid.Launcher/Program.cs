@@ -5,6 +5,7 @@ using DreamGrid.Launcher.Core.Api;
 using DreamGrid.Launcher.Core.Config;
 using DreamGrid.Launcher.Core.Database;
 using DreamGrid.Launcher.Core.Grid;
+using DreamGrid.Launcher.Core.Groups;
 using DreamGrid.Launcher.Core.Guests;
 using DreamGrid.Launcher.Core.Logs;
 using DreamGrid.Launcher.Endpoints;
@@ -19,6 +20,7 @@ using DreamGrid.Launcher.Core.Theme;
 using DreamGrid.Launcher.Security;
 using DreamGrid.Launcher.Splash;
 using DreamGrid.Launcher.Email;
+using DreamGrid.Launcher.Groups;
 using DreamGrid.Launcher.Guests;
 using DreamGrid.Launcher.Setup;
 using Microsoft.AspNetCore.Authentication;
@@ -190,6 +192,8 @@ builder.Services.AddRazorPages(o =>
     o.Conventions.AddPageApplicationModelConvention("/Security/Legal", m => m.Filters.Add(new GuestSideOnly()));
     // The splash page editor: the page it builds is the guest side's (AdminPolicy comes from the folder rule above).
     o.Conventions.AddFolderApplicationModelConvention("/Splash", m => m.Filters.Add(new GuestSideOnly()));
+    // The Groups pages: the grid's own groups, so only where this computer runs the grid (AdminPolicy from the folder rule above).
+    o.Conventions.AddFolderApplicationModelConvention("/Groups", m => m.Filters.Add(new GuestSideOnly()));
     // The same for the bot-protection page.
     o.Conventions.AddPageApplicationModelConvention("/Security/Bots", m => m.Filters.Add(new GuestSideOnly()));
     o.Conventions.AddPageApplicationModelConvention("/People/SignUps", m => m.Filters.Add(new GuestSideOnly()));
@@ -253,6 +257,10 @@ builder.Services.AddSingleton(sp => new SignUpLimits(new ResetLimits(sp.GetRequi
 builder.Services.AddSingleton<SignUpLock>();
 builder.Services.AddSingleton<SignUps>();
 builder.Services.AddSingleton<SignUpApprovals>();
+// The admin's Groups pages and the default group (spec 2026-11-02-groups-admin-design).
+builder.Services.AddSingleton<IGridGroups>(sp => new GridGroups(sp.GetRequiredService<Func<LauncherSettings>>()));
+builder.Services.AddSingleton(sp => new GroupJoins(Path.Combine(paths.Guests, "group-joins.json"), sp.GetRequiredService<ILogger<GroupJoins>>()));
+builder.Services.AddSingleton<GroupsAdmin>();
 builder.Services.AddSingleton(sp => new ApprovalNotices(Path.Combine(paths.Guests, "approval-notices.json")));
 builder.Services.AddSingleton<SignUpNotices>();
 // The resident account page (plan 10): email changes waiting for their link, and their own request counts.

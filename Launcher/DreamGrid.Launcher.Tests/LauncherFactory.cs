@@ -35,6 +35,7 @@ internal sealed class LauncherFactory : WebApplicationFactory<Program>
         Grid.OnSetUserLevel = (first, last, level) => Robust.SetLevel(first, last, level);
         Staff = new FakeStaffDirectory(Robust);
         Remover = new FakeAccountRemover(Robust);
+        Groups = new FakeGridGroups(Robust);
         // Robust's console makes the avatar (with a password nobody knows) the fake account service then reports.
         Grid.OnCreateResident = (first, last, email, level) =>
         {
@@ -57,6 +58,8 @@ internal sealed class LauncherFactory : WebApplicationFactory<Program>
     public FakeStaffDirectory Staff { get; }
     /// <summary>Deletes avatars from the fake Robust.</summary>
     public FakeAccountRemover Remover { get; }
+    /// <summary>The grid's group tables, in memory.</summary>
+    public FakeGridGroups Groups { get; }
     /// <summary>The host's clock: starts at the real time and moves only when a test advances it.</summary>
     public FakeTimeProvider Time { get; } = new(DateTimeOffset.UtcNow);
     /// <summary>The Grid Asset Server's join information the host reads (no network).</summary>
@@ -92,6 +95,8 @@ internal sealed class LauncherFactory : WebApplicationFactory<Program>
             services.AddSingleton<IStaffDirectory>(Staff);
             services.RemoveAll<IAccountRemover>();
             services.AddSingleton<IAccountRemover>(Remover);
+            services.RemoveAll<DreamGrid.Launcher.Core.Groups.IGridGroups>();
+            services.AddSingleton<DreamGrid.Launcher.Core.Groups.IGridGroups>(Groups);
             services.RemoveAll<IRobustPasswords>();
             services.AddSingleton<IRobustPasswords>(Robust);
             services.RemoveAll<IRobustEmails>();
