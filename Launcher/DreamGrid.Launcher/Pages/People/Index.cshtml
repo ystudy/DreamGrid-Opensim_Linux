@@ -1,10 +1,12 @@
 @page "/people"
 @model DreamGrid.Launcher.Pages.People.IndexModel
+@using DreamGrid.Launcher.Core.Database
+@using DreamGrid.Launcher.Pages.People
 @{
     ViewData["Title"] = "People";
 }
 <h1>People</h1>
-<p>Find an avatar on your grid by name.</p>
+<p>Find someone on your grid by part of their name.</p>
 @if (Model.Error is not null)
 {
     <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
@@ -13,13 +15,50 @@
 {
     <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
 }
-<form id="people-find" method="get" action="/people" class="mb-4">
-    <label class="form-label" for="Name">Avatar name</label>
+<form id="people-search" method="get" action="/people" class="mb-3">
+    <label class="form-label" for="q">Name</label>
     <div class="input-group">
-        <input class="form-control" id="Name" name="name" value="@Model.Name" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="First Last">
-        <button type="submit" class="btn btn-primary">Find</button>
+        <input class="form-control" id="q" name="q" value="@Model.Q" maxlength="64" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Part of a name">
+        <select class="form-select people-filter" name="filter" aria-label="Show">
+            @foreach (var (value, label) in new[] { (PeopleFilter.Everyone, "Everyone"), (PeopleFilter.Staff, "Staff"), (PeopleFilter.Suspended, "Suspended"), (PeopleFilter.Waiting, "Waiting for approval") })
+            {
+                <option value="@value" selected="@(Model.Filter == value)">@label</option>
+            }
+        </select>
+        <button type="submit" class="btn btn-primary">Search</button>
     </div>
 </form>
+@if (Model.Rows is { } rows)
+{
+    <div class="table-responsive">
+        <table id="people-list" class="table align-middle">
+            <thead><tr><th>Name</th><th>Role</th><th>Email</th><th>Last seen</th><th>Tasks</th></tr></thead>
+            <tbody>
+                @foreach (var row in rows)
+                {
+                    var account = row.Row.Account;
+                    <tr data-id="@account.PrincipalId">
+                        <td>
+                            <a class="person-name" href="/people/@account.PrincipalId">@row.FullName</a>
+                            @if (row.Role.IsOwner) { <span class="badge text-bg-primary ms-1">Owner</span> }
+                            @if (row.Facts.Waiting) { <span class="badge text-bg-secondary ms-1">Waiting for approval</span> }
+                            else if (row.Facts.Suspended) { <span class="badge text-bg-danger ms-1">Suspended</span> }
+                        </td>
+                        <td>@IndexModel.RoleWord(row)</td>
+                        <td>@(string.IsNullOrWhiteSpace(account.Email) ? "None" : account.Email)</td>
+                        <td>@Model.LastSeen(row.Row)</td>
+                        <td><partial name="_TaskIcons" model="Model.IconsFor(row)" /></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <div class="d-flex gap-3 align-items-center">
+        <span id="people-count" class="text-body-secondary">@Model.CountText</span>
+        @if (Model.PageNumber > 1) { <a href="@Model.PageLink(Model.PageNumber - 1)">‹ Previous</a> }
+        @if (Model.HasNext) { <a href="@Model.PageLink(Model.PageNumber + 1)">Next ›</a> }
+    </div>
+}
 @if (Model.Found is { } p)
 {
     <div id="person" class="card">

@@ -19,6 +19,19 @@ public sealed class SignUpBoardTests : IDisposable
     private SignUpBoard Board() => new(File_, _time);
 
     [Fact]
+    public void Listed_is_everyone_at_minus_one_on_the_board()
+    {
+        var (waiting, unlisted, approved) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var board = Board();
+        board.Add(waiting, "Ann Example", SignUpState.WaitingForStaff);
+        board.Add(unlisted, "Bob Example", SignUpState.Unlisted);
+        board.Add(approved, "Cat Example", SignUpState.WaitingForEmail);
+        Assert.True(board.TryFinish(approved, SignUpState.Approved, "Test Admin"));
+
+        Assert.Equal(new HashSet<Guid> { waiting, unlisted }, board.Listed().ToHashSet());
+    }
+
+    [Fact]
     public void Add_and_get_round_trip()
     {
         var a = Guid.NewGuid();

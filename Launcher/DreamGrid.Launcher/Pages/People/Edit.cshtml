@@ -1,0 +1,58 @@
+@page "/people/{id:guid}/edit"
+@model DreamGrid.Launcher.Pages.People.EditModel
+@{
+    var p = Model.Person;
+    ViewData["Title"] = p is null ? "Edit" : $"Edit {p.FullName}";
+}
+@if (p is not null)
+{
+    <p><a href="/people/@p.Row.Account.PrincipalId">‹ @p.FullName</a></p>
+}
+<h1>Edit @(p?.FullName)</h1>
+@if (Model.Error is not null)
+{
+    <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
+}
+@if (Model.Notice is not null)
+{
+    <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
+}
+@if (p is not null && Model.Refusal is { } why)
+{
+    <p class="error">@why</p>
+}
+else if (p is not null)
+{
+    @if (p.Row.OnlineRegion is not null)
+    {
+        <div class="alert alert-warning" role="status">
+            @p.FullName is in-world. Sign them out first: they are in-world, and a name can only change while they are offline.
+            <form method="post" action="/people/@p.Row.Account.PrincipalId?handler=Task" asp-antiforgery="true" class="d-inline ms-2">
+                <input type="hidden" name="id" value="@p.Row.Account.PrincipalId">
+                <input type="hidden" name="task" value="SignOut">
+                <button type="submit" class="btn btn-sm btn-outline-secondary">Sign out everywhere</button>
+            </form>
+        </div>
+    }
+    <form method="post" asp-antiforgery="true">
+        <div class="row g-3">
+            <div class="col-sm-6">
+                <label class="form-label" for="First">First name</label>
+                <input class="form-control" id="First" name="First" value="@Model.First" maxlength="31" autocomplete="off" spellcheck="false">
+            </div>
+            <div class="col-sm-6">
+                <label class="form-label" for="Last">Last name</label>
+                <input class="form-control" id="Last" name="Last" value="@Model.Last" maxlength="31" autocomplete="off" spellcheck="false">
+            </div>
+        </div>
+        <p class="form-text">Change the name only when the person asks. Viewers may show the old name until they log in again, and other
+            grids they visited by hypergrid may show it for longer. The old name is kept from others for 30 days.</p>
+        <label class="form-label mt-2" for="Email">Email address</label>
+        <input class="form-control" id="Email" name="Email" type="email" value="@Model.Email" maxlength="64" autocomplete="off">
+        <p class="form-text">The old address is told it changed, and the new one gets a short notice. Leave it empty to remove it.</p>
+        <div class="d-flex gap-2 mt-3">
+            <button type="submit" class="btn btn-primary">Save</button>
+            <a class="btn btn-outline-secondary" href="/people/@p.Row.Account.PrincipalId">Cancel</a>
+        </div>
+    </form>
+}

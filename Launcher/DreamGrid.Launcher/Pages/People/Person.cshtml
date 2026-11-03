@@ -1,0 +1,65 @@
+@page "/people/{id:guid}"
+@model DreamGrid.Launcher.Pages.People.PersonModel
+@{
+    var p = Model.Person!;
+    var a = p.Row.Account;
+    ViewData["Title"] = p.FullName;
+}
+<p><a href="/people">‹ People</a></p>
+<h1>
+    @p.FullName
+    @if (p.Role.IsOwner) { <span class="badge text-bg-primary ms-2">Owner</span> }
+    @if (p.Facts.Waiting) { <span class="badge text-bg-secondary ms-2">Waiting for approval</span> }
+    else if (p.Facts.Suspended) { <span class="badge text-bg-danger ms-2">Suspended</span> }
+</h1>
+@if (Model.Error is not null)
+{
+    <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
+}
+@if (Model.Notice is not null)
+{
+    <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
+}
+<dl id="person-details" class="row">
+    <dt class="col-sm-3">Role</dt>
+    <dd class="col-sm-9">@DreamGrid.Launcher.Pages.People.IndexModel.RoleWord(p)</dd>
+    <dt class="col-sm-3">Level</dt>
+    <dd class="col-sm-9">@a.UserLevel</dd>
+    <dt class="col-sm-3">Email</dt>
+    <dd class="col-sm-9">@(string.IsNullOrWhiteSpace(a.Email) ? "None" : a.Email)</dd>
+    <dt class="col-sm-3">Created</dt>
+    <dd class="col-sm-9">@DreamGrid.Launcher.Pages.People.PersonModel.When(a.Created)</dd>
+    <dt class="col-sm-3">Last login</dt>
+    <dd class="col-sm-9">@DreamGrid.Launcher.Pages.People.PersonModel.When(p.Row.LastLogin)</dd>
+    <dt class="col-sm-3">Online now</dt>
+    <dd class="col-sm-9">@(Model.OnlineIn is { } where ? $"Yes, in {where}" : "No")</dd>
+    <dt class="col-sm-3">Region rights</dt>
+    <dd class="col-sm-9">@(Model.Regions.Count == 0 ? "None" : string.Join(", ", Model.Regions))</dd>
+    <dt class="col-sm-3">Estate</dt>
+    <dd class="col-sm-9">@(Model.Estate ?? "None")</dd>
+</dl>
+<partial name="_TaskIcons" model="Model.Icons" />
+<h2 class="h4 mt-4">Recent changes</h2>
+<div id="person-history">
+    @if (Model.History.Count == 0)
+    {
+        <p class="text-body-secondary">Nothing in the audit log about @p.FullName yet.</p>
+    }
+    else
+    {
+        <table class="table table-sm">
+            <thead><tr><th>When</th><th>Who</th><th>What</th><th>Result</th></tr></thead>
+            <tbody>
+                @foreach (var h in Model.History)
+                {
+                    <tr>
+                        <td>@DreamGrid.Launcher.Pages.People.PersonModel.When(h.At)</td>
+                        <td>@h.Entry.Actor</td>
+                        <td>@h.Entry.Action</td>
+                        <td>@h.Entry.Result</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>

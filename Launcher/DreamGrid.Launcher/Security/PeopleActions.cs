@@ -197,6 +197,16 @@ public sealed class PeopleActions(IPeopleDirectory people, StaffActions staff, F
         return kicked ? new(true, $"{person.FullName} is signed out everywhere.") : new(true, StillInWorld);
     }
 
+    /// <summary>The tasks an icon posts straight from a list or a person's page (edit and delete have pages of their own).</summary>
+    public Task<ChangeOutcome> RunAsync(ClaimsPrincipal actor, string? ip, Guid principal, PersonTask task, CancellationToken ct) => task switch
+    {
+        PersonTask.ResetLink => SendResetAsync(actor, ip, principal, ct),
+        PersonTask.SignOut => SignOutAsync(actor, ip, principal, ct),
+        PersonTask.Suspend => SuspendAsync(actor, ip, principal, ct),
+        PersonTask.Unsuspend => UnsuspendAsync(actor, ip, principal, ct),
+        _ => Task.FromResult(new ChangeOutcome(false, "Use the page for that.")),
+    };
+
     public Task<ChangeOutcome> SuspendAsync(ClaimsPrincipal actor, string? ip, Guid principal, CancellationToken ct) =>
         SuspensionAsync(actor, ip, principal, StaffChange.Suspend, ct);
 

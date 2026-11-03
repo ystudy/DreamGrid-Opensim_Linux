@@ -83,4 +83,32 @@ public sealed class AuditLogTests : IDisposable
         Assert.Equal(200, lines.Length);
         Assert.All(lines, l => JsonDocument.Parse(l).Dispose());
     }
+
+    [Fact]
+    public void Recent_reads_newest_first_across_rolled_files()
+    {
+        var path = Path.Combine(_dir, "audit.log");
+        var time = new FakeTimeProvider(new DateTimeOffset(2026, 11, 3, 12, 0, 0, TimeSpan.Zero));
+        // Small files, so the lines below roll over into audit.1.log and audit.2.log.
+        using var log = new AuditLog(path, time, maxBytes: 400, files: 5);
+        for (var i = 0; i < 12; i++)
+        {
+            time.Advance(TimeSpan.FromMinutes(1));
+            log.Write(new AuditEntry("Test Admin", null, "admin", null, "suspended", i % 2 == 0 ? $"Gail Guest {i}" : "Other Person", "ok"));
+        }
+        Assert.True(File.Exists(Path.Combine(_dir, "audit.1.log")));
+
+        var gail = log.Recent(e => e.Entry.Target?.StartsWith("Gail Guest", StringComparison.Ordinal) == true, 4);
+
+        Assert.Equal(["Gail Guest 10", "Gail Guest 8", "Gail Guest 6", "Gail Guest 4"], gail.Select(e => e.Entry.Target));
+        Assert.Equal(new DateTimeOffset(2026, 11, 3, 12, 11, 0, TimeSpan.Zero), gail[0].At);
+        Assert.Equal("suspended", gail[0].Entry.Action);
+    }
+
+    [Fact]
+    public void Recent_with_no_file_is_empty()
+    {
+        using var log = new AuditLog(Path.Combine(_dir, "none", "audit.log"), TimeProvider.System);
+        Assert.Empty(log.Recent(_ => true, 20));
+    }
 }

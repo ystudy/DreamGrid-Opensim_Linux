@@ -89,6 +89,12 @@ public sealed class SignUpBoard(string file, TimeProvider time, ILogger<SignUpBo
         }
     }
 
+    /// <summary>Everyone <see cref="Contains"/> is true for: on the list at −1, waiting or unlisted.</summary>
+    public IReadOnlyList<Guid> Listed()
+    {
+        lock (_gate) return Read().All.Values.Where(e => e.Waiting || e.State == SignUpState.Unlisted).Select(e => e.Principal).ToList();
+    }
+
     /// <summary>Every entry the board shows: all but the unlisted.</summary>
     public IReadOnlyList<SignUpEntry> Shown()
     {

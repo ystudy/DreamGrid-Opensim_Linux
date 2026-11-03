@@ -1,3 +1,4 @@
+using DreamGrid.Launcher.Core.Database;
 using DreamGrid.Launcher.Core.Guests;
 using System.Globalization;
 using DreamGrid.Launcher.Core;
@@ -21,8 +22,56 @@ namespace DreamGrid.Launcher.Pages.People;
 /// pages bring it). The regions the person has rights over are listed under the facts.
 /// </summary>
 public sealed class IndexModel(IRobustClient robust, StaffActions actions, RegionRights rights, Func<LauncherSettings> settings,
-    SignUpBoard pending, ILogger<IndexModel> log) : PageModel
+    SignUpBoard pending, PeopleActions people, IPeopleDirectory directory, TimeProvider time, ILogger<IndexModel> log) : PageModel
 {
+    /// <summary>The list's search text (part of a name), filter and page (from 1; read as <c>page</c>, a word Razor Pages keeps for itself).</summary>
+    [BindProperty(SupportsGet = true)] public string? Q { get; set; }
+
+    [BindProperty(SupportsGet = true)] public PeopleFilter Filter { get; set; }
+
+    public int PageNumber { get; private set; } = 1;
+
+    /// <summary>The list's rows with what the signed-in person may do to each, or null when <see cref="Name"/> asked for one person.</summary>
+    public IReadOnlyList<PersonView>? Rows { get; private set; }
+
+    public int Total { get; private set; }
+
+    public TaskIcons IconsFor(PersonView p) => TaskIcons.For(people, User, p, "/people?handler=Task", Back);
+
+    /// <summary>The list's search, filter and page, sent back with a task so the answer shows the same list.</summary>
+    public IReadOnlyDictionary<string, string> Back => new Dictionary<string, string>
+    {
+        ["q"] = Q ?? "", ["filter"] = Filter.ToString(), ["page"] = PageNumber.ToString(CultureInfo.InvariantCulture),
+    };
+
+    /// <summary>"1–25 of 132", or "No one found".</summary>
+    public string CountText => Total == 0 ? "No one found"
+        : $"{(PageNumber - 1) * PeopleDirectory.PageSize + 1}–{Math.Min(Total, PageNumber * PeopleDirectory.PageSize)} of {Total}";
+
+    public bool HasNext => PageNumber * PeopleDirectory.PageSize < Total;
+
+    public string PageLink(int page) =>
+        $"/people?q={Uri.EscapeDataString(Q ?? "")}&filter={Filter}&page={page.ToString(CultureInfo.InvariantCulture)}";
+
+    /// <summary>"Online now", "Today", "Yesterday", the date, or "Never".</summary>
+    public string LastSeen(PersonRow row)
+    {
+        if (row.OnlineRegion is not null) return "Online now";
+        var seen = new[] { row.LastLogin, row.LastLogout }.Max();
+        if (seen is not { } at) return "Never";
+        var today = time.GetUtcNow().UtcDateTime.Date;
+        var day = at.UtcDateTime.Date;
+        return day == today ? "Today" : day == today.AddDays(-1) ? "Yesterday" : day.ToString("d MMMM yyyy", CultureInfo.InvariantCulture);
+    }
+
+    public static string RoleWord(PersonView p) => p.Role.Current switch
+    {
+        StaffRole.Owner => "Owner",
+        StaffRole.Admin => "Admin",
+        StaffRole.Supervisor => "Supervisor",
+        _ => "Resident",
+    };
+
     /// <summary>The name to look up, as typed (a GET, so a person can be linked to).</summary>
     [BindProperty(SupportsGet = true)] public string? Name { get; set; }
 
@@ -56,6 +105,40 @@ public sealed class IndexModel(IRobustClient robust, StaffActions actions, Regio
     public async Task OnGetAsync(CancellationToken ct)
     {
         if (!string.IsNullOrWhiteSpace(Name)) await LookUpAsync(ct);
+        else await ListAsync(Request.Query["page"], ct);
+    }
+
+    /// <summary>An icon's task (reset link, sign out, suspend, unsuspend) for one person, then the same list again.</summary>
+    public async Task<IActionResult> OnPostTaskAsync(Guid id, PersonTask task, CancellationToken ct)
+    {
+        var outcome = await people.RunAsync(User, HttpContext.Connection.RemoteIpAddress?.ToString(), id, task, ct);
+        if (outcome.Done) Notice = outcome.Message;
+        else Error = outcome.Message;
+        await ListAsync(Request.Form["page"], ct);
+        return Page();
+    }
+
+    private async Task ListAsync(string? page, CancellationToken ct)
+    {
+        PageNumber = int.TryParse(page, NumberStyles.None, CultureInfo.InvariantCulture, out var n) && n is > 0 and < 100000 ? n : 1;
+        try
+        {
+            var found = await directory.SearchAsync(Q, Filter, pending.Listed(), settings().Security.SupervisorLevel, PageNumber, ct);
+            Rows = people.Views(User, found);
+            Total = found.Total;
+        }
+        catch (PeopleDirectoryUnavailableException e)
+        {
+            log.LogWarning("People: the list could not be read: {Message}", e.InnerException?.Message ?? e.Message);
+            Rows = [];
+            Error ??= PeopleActions.DatabaseDown;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            log.LogWarning("People: the suspended or sign-up list could not be read ({Error}).", e.GetType().Name);
+            Rows = [];
+            Error ??= "The list of suspended people couldn't be read. Try again.";
+        }
     }
 
     public Task<IActionResult> OnPostSuspendAsync(CancellationToken ct) => ChangeAsync(StaffChange.Suspend, ct);

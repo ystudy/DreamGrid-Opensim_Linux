@@ -1,0 +1,29 @@
+@model DreamGrid.Launcher.Pages.People.TaskIcons
+<div class="people-tasks">
+    @foreach (var icon in Model.Icons)
+    {
+        var name = $"{icon.Label}: {Model.Person.FullName}";
+        var symbol = "/img/people-icons.svg#" + icon.Symbol;
+        var danger = icon.Task == DreamGrid.Launcher.Core.Security.PersonTask.Delete ? " btn-outline-danger" : " btn-outline-secondary";
+        if (icon.Refusal is { } why)
+        {
+            <button type="button" class="btn btn-sm people-icon@(danger)" data-task="@icon.Task" disabled title="@why" aria-label="@($"{icon.Label}: {why}")"><svg aria-hidden="true"><use href="@symbol"></use></svg>@if (Model.Words) {<span class="ms-1">@icon.Label</span>}</button>
+        }
+        else if (Model.LinkOf(icon) is { } link)
+        {
+            <a class="btn btn-sm people-icon@(danger)" data-task="@icon.Task" href="@link" title="@icon.Label" aria-label="@name"><svg aria-hidden="true"><use href="@symbol"></use></svg>@if (Model.Words) {<span class="ms-1">@icon.Label</span>}</a>
+        }
+        else
+        {
+            <form method="post" action="@Model.PostTo" asp-antiforgery="true" class="d-inline">
+                <input type="hidden" name="id" value="@Model.Person.Row.Account.PrincipalId">
+                <input type="hidden" name="task" value="@icon.Task">
+                @foreach (var (key, value) in Model.Back)
+                {
+                    <input type="hidden" name="@key" value="@value">
+                }
+                <button type="submit" class="btn btn-sm people-icon@(danger)" data-task="@icon.Task" title="@icon.Label" aria-label="@name"><svg aria-hidden="true"><use href="@symbol"></use></svg>@if (Model.Words) {<span class="ms-1">@icon.Label</span>}</button>
+            </form>
+        }
+    }
+</div>
