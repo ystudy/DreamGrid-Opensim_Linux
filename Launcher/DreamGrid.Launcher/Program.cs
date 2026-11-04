@@ -242,6 +242,7 @@ builder.Services.AddSingleton<IEstateRemover>(sp => new EstateRemover(sp.GetRequ
 builder.Services.AddSingleton<AccountHolds>();
 builder.Services.AddSingleton<StaffActions>();
 builder.Services.AddSingleton<PeopleActions>();
+builder.Services.AddSingleton<TakedownActions>();
 builder.Services.AddSingleton<StaffPrincipalValidator>();
 builder.Services.AddSingleton(sp => new GuestStamps(Path.Combine(paths.Guests, "stamps.json"), sp.GetRequiredService<ILogger<GuestStamps>>()));
 builder.Services.AddSingleton<GuestPrincipalValidator>();

@@ -765,6 +765,9 @@ internal sealed class FakeInventoryStore(FakeRobustAccounts robust) : IInventory
 
     public bool Down { get; set; }
 
+    /// <summary>Only <see cref="RemoveAsync"/> fails, as a database that stopped answering half-way.</summary>
+    public bool FailRemove { get; set; }
+
     /// <summary>Hashes <see cref="AssetHashAsync"/> knows, by asset id.</summary>
     public Dictionary<string, string> Hashes { get; } = [];
 
@@ -840,6 +843,7 @@ internal sealed class FakeInventoryStore(FakeRobustAccounts robust) : IInventory
     public Task RemoveAsync(Guid owner, IReadOnlyCollection<Guid> items, CancellationToken ct)
     {
         Check();
+        if (FailRemove) throw new StaffDirectoryUnavailableException("The database stopped answering.");
         lock (_gate)
         {
             foreach (var row in _items.Where(i => i.Owner == owner && items.Contains(i.ItemId)).ToList())

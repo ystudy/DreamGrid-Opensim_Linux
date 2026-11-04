@@ -7,8 +7,8 @@ namespace DreamGrid.Launcher.Tests;
 /// <summary>Takedown wording, limits and what the sender sees (spec 2026-11-04-inventory-takedown-design).</summary>
 public sealed class TakedownRulesTests
 {
-    private static readonly Guid Ann = Guid.Parse("0a000000-0000-0000-0000-00000000000a");
-    private static readonly Guid Stranger = Guid.Parse("0e000000-0000-0000-0000-00000000000e");
+    private static readonly Guid Ann = Guid.Parse("1a000000-0000-0000-0000-00000000001a");
+    private static readonly Guid Stranger = Guid.Parse("1e000000-0000-0000-0000-00000000001e");
 
     private static readonly TakedownNotice Notice = new(TakedownReason.Copyright, "Rita Rights", null, null, null, new DateOnly(2026, 11, 3), "Ours.");
 
