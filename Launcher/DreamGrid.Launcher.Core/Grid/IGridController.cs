@@ -79,6 +79,13 @@ public interface IGridController
     Task LinkEstateAsync(Guid regionId, int estateId, CancellationToken ct);
 
     /// <summary>
+    /// Logs the avatar out of the grid from the region it is in (<c>kick user</c>), showing <paramref name="message"/>. Throws
+    /// <see cref="ArgumentException"/> for a name the console would split, and <see cref="InvalidOperationException"/> when the
+    /// region isn't one of this computer's, isn't running, or its program runs an OAR job.
+    /// </summary>
+    Task KickAsync(Guid regionId, string first, string last, string message, CancellationToken ct);
+
+    /// <summary>
     /// On a plan that runs Robust, how many regions on its map are not this computer's: the regions other computers joined
     /// to this grid. 0 on a plan that doesn't run Robust. Throws <see cref="InvalidOperationException"/> when Robust
     /// doesn't answer.

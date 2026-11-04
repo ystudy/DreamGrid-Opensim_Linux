@@ -34,7 +34,9 @@ internal sealed class LauncherFactory : WebApplicationFactory<Program>
         // Robust's console sets the level the fake account service then reports.
         Grid.OnSetUserLevel = (first, last, level) => Robust.SetLevel(first, last, level);
         Staff = new FakeStaffDirectory(Robust);
+        People = new FakePeopleDirectory(Robust);
         Remover = new FakeAccountRemover(Robust);
+        Estates = new FakeEstateRemover();
         Groups = new FakeGridGroups(Robust);
         // Robust's console makes the avatar (with a password nobody knows) the fake account service then reports.
         Grid.OnCreateResident = (first, last, email, level) =>
@@ -56,8 +58,10 @@ internal sealed class LauncherFactory : WebApplicationFactory<Program>
     public FakeGridRegions Regions { get; } = new();
     /// <summary>The staff list the Staff page reads: the fake Robust's accounts.</summary>
     public FakeStaffDirectory Staff { get; }
+    public FakePeopleDirectory People { get; }
     /// <summary>Deletes avatars from the fake Robust.</summary>
     public FakeAccountRemover Remover { get; }
+    public FakeEstateRemover Estates { get; }
     /// <summary>The grid's group tables, in memory.</summary>
     public FakeGridGroups Groups { get; }
     /// <summary>The host's clock: starts at the real time and moves only when a test advances it.</summary>
@@ -93,14 +97,20 @@ internal sealed class LauncherFactory : WebApplicationFactory<Program>
             services.AddSingleton<IGridRegions>(Regions);
             services.RemoveAll<IStaffDirectory>();
             services.AddSingleton<IStaffDirectory>(Staff);
+            services.RemoveAll<IPeopleDirectory>();
+            services.AddSingleton<IPeopleDirectory>(People);
             services.RemoveAll<IAccountRemover>();
             services.AddSingleton<IAccountRemover>(Remover);
+            services.RemoveAll<IEstateRemover>();
+            services.AddSingleton<IEstateRemover>(Estates);
             services.RemoveAll<DreamGrid.Launcher.Core.Groups.IGridGroups>();
             services.AddSingleton<DreamGrid.Launcher.Core.Groups.IGridGroups>(Groups);
             services.RemoveAll<IRobustPasswords>();
             services.AddSingleton<IRobustPasswords>(Robust);
             services.RemoveAll<IRobustEmails>();
             services.AddSingleton<IRobustEmails>(Robust);
+            services.RemoveAll<IRobustNames>();
+            services.AddSingleton<IRobustNames>(Robust);
             services.RemoveAll<IGridJoinClient>();
             services.AddSingleton<IGridJoinClient>(Join);
             services.RemoveAll<IOtherGridClient>();

@@ -28,12 +28,16 @@ public static class EmailTemplates
     public const string EmailChangeNotice = "email-change-notice";
     public const string SignUpDenied = "signup-denied";
     public const string SignUpsWaiting = "signups-waiting";
+    public const string NameChanged = "name-changed";
+    public const string EmailChangedByStaff = "email-changed-by-staff";
+    public const string EmailSetByStaff = "email-set-by-staff";
+    public const string StaffResetPassword = "staff-reset-password";
 
     /// <summary>Until languages arrive (worklist 1.5) every template is in this one.</summary>
     public const string DefaultLanguage = LegalPages.DefaultLanguage;
 
     public static IReadOnlyList<string> All { get; } = [Test, ConfirmEmail, ResetPassword, AccountApproved, PasswordChanged, AlreadyHaveAccount,
-        ConfirmNewEmail, EmailChangeNotice, SignUpDenied, SignUpsWaiting];
+        ConfirmNewEmail, EmailChangeNotice, SignUpDenied, SignUpsWaiting, NameChanged, EmailChangedByStaff, EmailSetByStaff, StaffResetPassword];
 
     private static readonly DateTimeOffset Shipped = DateTimeOffset.UnixEpoch;
 
@@ -70,6 +74,19 @@ public static class EmailTemplates
         [SignUpDenied] = new("Sign-up not approved", ["{GridName}", "{AvatarName}", "{Note}"], [],
             "Your sign-up on {GridName}",
             "Hello {AvatarName},\n\nYour sign-up on {GridName} wasn't approved.\n\n{Note}"),
+        [NameChanged] = new("Name changed by staff", ["{GridName}", "{OldName}", "{AvatarName}"], [],
+            "Your name on {GridName} was changed",
+            "Hello {AvatarName},\n\nStaff on {GridName} changed your avatar's name from {OldName} to {AvatarName}. Log in with the new name from now on. Your friends, groups, inventory and regions stay as they were.\n\nIf you didn't ask for this, contact the grid owner."),
+        // To the old address: never names the new one.
+        [EmailChangedByStaff] = new("Email changed by staff", ["{GridName}", "{AvatarName}", "{Link}"], [],
+            "Your email address on {GridName} was changed",
+            "Hello {AvatarName},\n\nStaff on {GridName} changed the email address for {AvatarName}, so emails from the grid no longer come here.\n\nIf you didn't ask for this, contact the grid owner, and choose a new password:\n\n{Link}"),
+        [EmailSetByStaff] = new("Email set by staff", ["{GridName}", "{AvatarName}"], [],
+            "Your email address on {GridName}",
+            "Hello {AvatarName},\n\nStaff on {GridName} set this as the email address for {AvatarName}. Password resets and notices from the grid come here from now on.\n\nIf you don't know {AvatarName}, you can ignore this email."),
+        [StaffResetPassword] = new("Password reset from staff", ["{GridName}", "{AvatarName}", "{Link}", "{ExpiresIn}"], ["{Link}", "{ExpiresIn}"],
+            "Choose a new password for {GridName}",
+            "Hello {AvatarName},\n\nStaff on {GridName} sent you this link to choose a new password:\n\n{Link}\n\nThe link works once, for {ExpiresIn}. When you set the new password, two-factor sign-in is turned off for your account, and you can turn it on again from your account page. If you didn't ask staff for this, ignore this email: nothing changes."),
         // To staff: names only, never an applicant's email address.
         [SignUpsWaiting] = new("Sign-ups waiting", ["{GridName}", "{Count}", "{Names}", "{Link}"], ["{Link}"],
             "{Count} waiting for approval on {GridName}",
@@ -129,6 +146,7 @@ public static class EmailTemplates
             ["Note"] = "Sample note from staff.",
             ["Count"] = "2",
             ["Names"] = "Sample Avatar\nOther Avatar",
+            ["OldName"] = "Former Name",
         };
         return Get(id).Words.Select(w => w.Trim('{', '}')).ToDictionary(w => w, w => all[w]);
     }

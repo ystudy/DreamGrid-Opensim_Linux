@@ -177,5 +177,8 @@ public sealed partial class ResidentAvatarsTests
             Deleted.Add(principal);
             return Task.CompletedTask;
         }
+
+        public Task<IReadOnlyList<string>> DeleteEverythingAsync(Guid principal, CancellationToken ct) =>
+            throw new NotSupportedException("A sign-up is removed with DeleteAsync.");
     }
 }

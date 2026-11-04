@@ -13,7 +13,8 @@ public sealed class EmailTemplatesTests
     public void Defaults_contain_their_required_words()
     {
         Assert.Equal(["test", "confirm-email", "reset-password", "account-approved", "password-changed", "already-have-account",
-            "confirm-new-email", "email-change-notice", "signup-denied", "signups-waiting"], EmailTemplates.All);
+            "confirm-new-email", "email-change-notice", "signup-denied", "signups-waiting", "name-changed", "email-changed-by-staff",
+            "email-set-by-staff", "staff-reset-password"], EmailTemplates.All);
         foreach (var id in EmailTemplates.All)
         {
             var d = EmailTemplates.Default(id);
@@ -139,6 +140,19 @@ public sealed class EmailTemplatesTests
         Assert.DoesNotContain("{Link}", d.Body);
         Assert.Contains("{GridName}", d.Subject);
         Assert.Contains("{AvatarName}", d.Body);
+    }
+
+    [Fact]
+    public void Staff_notice_templates()
+    {
+        Assert.Equal(["{GridName}", "{OldName}", "{AvatarName}"], EmailTemplates.Words(EmailTemplates.NameChanged));
+        Assert.Equal(["{GridName}", "{AvatarName}", "{Link}"], EmailTemplates.Words(EmailTemplates.EmailChangedByStaff));
+        Assert.Equal(["{GridName}", "{AvatarName}"], EmailTemplates.Words(EmailTemplates.EmailSetByStaff));
+        Assert.Equal(["{GridName}", "{AvatarName}", "{Link}", "{ExpiresIn}"], EmailTemplates.Words(EmailTemplates.StaffResetPassword));
+        Assert.Equal(["{Link}", "{ExpiresIn}"], EmailTemplates.Required(EmailTemplates.StaffResetPassword));
+        Assert.Contains("two-factor", EmailTemplates.Default(EmailTemplates.StaffResetPassword).Body);
+        foreach (var id in new[] { EmailTemplates.NameChanged, EmailTemplates.EmailChangedByStaff, EmailTemplates.EmailSetByStaff, EmailTemplates.StaffResetPassword })
+            Assert.Contains(id, EmailTemplates.All);
     }
 
     [Fact]

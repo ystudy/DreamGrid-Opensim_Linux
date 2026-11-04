@@ -15,8 +15,14 @@ namespace DreamGrid.Launcher.Guests;
 /// <summary>What the Forgot password page shows after a request.</summary>
 public enum ResetAsk { Sent, GridOff }
 
-/// <summary>A live reset link: whose it is, and whether the owner's rule wants their two-factor code (only when they have it on).</summary>
-public sealed record ResetLink(Guid Principal, RobustAccount Account, StaffRole Role, bool NeedsCode);
+/// <summary>
+/// A live reset link: whose it is, whether the owner's rule wants their two-factor code (only when they have it on), and whether
+/// staff sent it from the People page (<see cref="PasswordResets.SendByStaff"/>).
+/// </summary>
+public sealed record ResetLink(Guid Principal, RobustAccount Account, StaffRole Role, bool NeedsCode, bool ByStaff);
+
+/// <summary>What sending a staff reset link came to.</summary>
+public enum StaffResetResult { Sent, NoEmail, Limited, EmailOff }
 
 /// <summary>How a reset went.</summary>
 public enum ResetResult { Done, Expired, WrongCode, Locked, BadPassword, WriteFailed, CodeUnknown }
@@ -43,6 +49,12 @@ public sealed class PasswordResets(Func<LauncherSettings> settings, IRobustClien
     ILogger<PasswordResets> log)
 {
     public const string Purpose = "reset-password";
+
+    /// <summary>
+    /// A link staff sent (owner, 2026-11-03): it works whatever the owner's recovery rule, asks no code, and turns two-factor off
+    /// once the new password is written, so a hijacked account can be given back.
+    /// </summary>
+    public const string StaffPurpose = "staff-reset-password";
     public static readonly TimeSpan LinkLifetime = TimeSpan.FromMinutes(30);
     public const string ExpiresIn = "30 minutes";
     public const string ResetPath = "/guest/reset-password";
@@ -116,10 +128,38 @@ public sealed class PasswordResets(Func<LauncherSettings> settings, IRobustClien
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Sends <paramref name="account"/> a <see cref="StaffPurpose"/> link to its own address, replacing any earlier one. It keeps
+    /// the per-account limit (so busy staff can't flood an inbox) but not the per-address one: the request comes from staff, not
+    /// the person. The caller checks who may send it and writes the audit.
+    /// </summary>
+    public StaffResetResult SendByStaff(RobustAccount account)
+    {
+        if (!sender.IsReady) return StaffResetResult.EmailOff;
+        var to = account.Email.Trim();
+        if (to.Length == 0) return StaffResetResult.NoEmail;
+        if (!limits.SendAllowed(account.PrincipalId, to)) return StaffResetResult.Limited;
+        limits.CountSend(account.PrincipalId, to);
+        var token = tokens.Issue(StaffPurpose, account.PrincipalId, LinkLifetime);
+        var s = settings();
+        var link = $"http://{HostAddress.Effective(s.Hostname)}:{s.WebPort}{ResetPath}?token={token}";
+        var full = $"{account.FirstName} {account.LastName}";
+        var queued = sender.Queue(EmailTemplates.StaffResetPassword, to, full,
+            new Dictionary<string, string> { ["AvatarName"] = full, ["Link"] = link, ["ExpiresIn"] = ExpiresIn }, LinkLifetime);
+        if (queued == QueueResult.Queued) return StaffResetResult.Sent;
+        tokens.Revoke(StaffPurpose, account.PrincipalId);
+        return StaffResetResult.EmailOff;
+    }
+
     /// <summary>The live link behind <paramref name="token"/>, or null (used, expired, unknown, the account gone or its rule off).</summary>
     public async Task<ResetLink?> OpenAsync(string? token, CancellationToken ct)
     {
-        if (tokens.Find(Purpose, token) is not { } principal) return null;
+        var byStaff = false;
+        if (tokens.Find(Purpose, token) is not { } principal)
+        {
+            if (tokens.Find(StaffPurpose, token) is not { } staffSent) return null;
+            (principal, byStaff) = (staffSent, true);
+        }
         RobustAccount? account;
         try
         {
@@ -134,10 +174,12 @@ public sealed class PasswordResets(Func<LauncherSettings> settings, IRobustClien
         if (account is null || account.UserLevel < 0) return null;
         var s = settings();
         var role = AdminRule.RoleOf(s, account);
+        // Staff send these to residents only; one made staff since the link was sent uses Forgot password, with their own rule.
+        if (byStaff) return role == StaffRole.None ? new ResetLink(principal, account, role, NeedsCode: false, ByStaff: true) : null;
         var rule = Recovery.RuleFor(s, role);
         if (rule == RecoveryRule.Off) return null;
         var needsCode = rule == RecoveryRule.EmailLinkAndCode && StoreFor(role).StateOf(principal) != TwoFactorState.Off;
-        return new ResetLink(principal, account, role, needsCode);
+        return new ResetLink(principal, account, role, needsCode, ByStaff: false);
     }
 
     public async Task<(ResetResult Result, ResetLink? Link, string? Problem)> ResetAsync(string? token, string? code, string? password,
@@ -197,7 +239,22 @@ public sealed class PasswordResets(Func<LauncherSettings> settings, IRobustClien
         // The password is changed now, so everything below happens whatever else does: the link is spent (it may have run out,
         // or been replaced by a newer one, while the write took its time), the code is used up, sessions end, the change is
         // audited and the person told.
-        tokens.TryRedeem(Purpose, link.Principal, token);
+        tokens.TryRedeem(link.ByStaff ? StaffPurpose : Purpose, link.Principal, token);
+        string? cleared = null;
+        if (link.ByStaff && store.StateOf(link.Principal) != TwoFactorState.Off)
+        {
+            try
+            {
+                store.Disable(link.Principal);
+                cleared = "two-factor cleared";
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException)
+            {
+                log.LogWarning("Password reset: two-factor for first name {First} couldn't be turned off: {Message}",
+                    LogText.Clean(a.FirstName, 32), e.Message);
+                cleared = "two-factor not cleared";
+            }
+        }
         if (link.NeedsCode)
         {
             try
@@ -216,7 +273,7 @@ public sealed class PasswordResets(Func<LauncherSettings> settings, IRobustClien
         guestStamps.Rotate(link.Principal);
         if (a.Email.Trim() is { Length: > 0 } to)
             sender.Queue(EmailTemplates.PasswordChanged, to, full, new Dictionary<string, string> { ["AvatarName"] = full });
-        audit.Write(new AuditEntry(full, link.Principal, link.Role.AuditName(), ip?.ToString(), "password-reset", null, "ok"));
+        audit.Write(new AuditEntry(full, link.Principal, link.Role.AuditName(), ip?.ToString(), "password-reset", cleared, "ok"));
         return (ResetResult.Done, link, null);
     }
 

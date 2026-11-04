@@ -38,6 +38,13 @@ public sealed class SignUpRulesTests
     public void A_good_name_has_no_problem() => Assert.Null(SignUpRules.NameProblem("Ann", "Example", Settings()));
 
     [Fact]
+    public void Held_name_counts_as_taken()
+    {
+        Assert.Equal("That name is taken. Try another.", SignUpRules.NameProblem("Ann", "Example", Settings(), n => n == "Ann Example"));
+        Assert.Null(SignUpRules.NameProblem("Ann", "Other", Settings(), n => n == "Ann Example"));
+    }
+
+    [Fact]
     public void Name_32_chars_refused()
     {
         Assert.NotNull(SignUpRules.NameProblem(new string('a', 32), "Example", Settings()));

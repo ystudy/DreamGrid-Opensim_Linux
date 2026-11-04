@@ -419,6 +419,15 @@ internal sealed class FakeGridController : IGridController
         catch (Exception e) { return Task.FromException<(int, string)>(e); }
     }
 
+    /// <summary>Thrown by <see cref="KickAsync"/> when set (the region isn't ours or isn't running).</summary>
+    public Exception? KickError { get; set; }
+
+    public Task KickAsync(Guid regionId, string first, string last, string message, CancellationToken ct)
+    {
+        Record($"Kick {regionId} {first} {last}");
+        return KickError is { } e ? Task.FromException(e) : Task.CompletedTask;
+    }
+
     public Task LinkEstateAsync(Guid regionId, int estateId, CancellationToken ct)
     {
         Record($"LinkEstate {regionId} {estateId}");
@@ -507,8 +516,25 @@ internal sealed class FakePublicAddressFinder : DreamGrid.Launcher.Core.Config.I
 }
 
 /// <summary>Robust with a fixed set of avatars: (first, last) → (level, password).</summary>
-internal sealed class FakeRobustAccounts : IRobustClient, IRobustPasswords, IRobustEmails
+internal sealed class FakeRobustAccounts : IRobustClient, IRobustPasswords, IRobustEmails, IRobustNames
 {
+    /// <summary>Simulates the database being down for <see cref="IRobustNames.SetAsync"/>, as <see cref="RobustNames"/> throws.</summary>
+    public bool NamesDown { get; set; }
+
+    Task IRobustNames.SetAsync(Guid principal, string first, string last, CancellationToken ct)
+    {
+        if (NamesDown) throw new RobustNamesUnavailableException("The name could not be written.", new TimeoutException());
+        if (_accounts.Values.Any(a => a.Account.PrincipalId != principal
+                                      && string.Equals(a.Account.FirstName, first, StringComparison.OrdinalIgnoreCase)
+                                      && string.Equals(a.Account.LastName, last, StringComparison.OrdinalIgnoreCase)))
+            throw new NameTakenException(first, last);
+        var (key, found) = _accounts.FirstOrDefault(a => a.Value.Account.PrincipalId == principal);
+        if (found.Account is null) throw new RobustNamesUnavailableException("The account wasn't found.");
+        _accounts.Remove(key);
+        _accounts[(first, last)] = (found.Account with { FirstName = first, LastName = last }, found.Password);
+        return Task.CompletedTask;
+    }
+
     private readonly Dictionary<(string, string), (RobustAccount Account, string Password)> _accounts = new();
 
     public int Lookups { get; private set; }
@@ -634,6 +660,31 @@ internal sealed class FakeAccountRemover(FakeRobustAccounts robust) : IAccountRe
         robust.RemoveById(principal);
         return Task.CompletedTask;
     }
+
+    /// <summary>Everyone <see cref="DeleteEverythingAsync"/> deleted, in order.</summary>
+    public List<Guid> Everything { get; } = [];
+
+    public Task<IReadOnlyList<string>> DeleteEverythingAsync(Guid principal, CancellationToken ct)
+    {
+        if (Down) throw new StaffDirectoryUnavailableException("The database isn't running.");
+        Everything.Add(principal);
+        robust.RemoveById(principal);
+        return Task.FromResult<IReadOnlyList<string>>(["UserAccounts"]);
+    }
+}
+
+/// <summary>Removing estates without a database: records the estates removed; <see cref="Down"/> is a database that isn't running.</summary>
+internal sealed class FakeEstateRemover : IEstateRemover
+{
+    public bool Down { get; set; }
+    public List<int> Removed { get; } = [];
+
+    public Task<bool> RemoveIfEmptyAsync(int estateId, CancellationToken ct)
+    {
+        if (Down) throw new StaffDirectoryUnavailableException("The database isn't running.");
+        Removed.Add(estateId);
+        return Task.FromResult(true);
+    }
 }
 
 /// <summary>The staff list without a database: the fake Robust's accounts at or above the level; <see cref="Down"/> is a database that isn't running.</summary>
@@ -652,6 +703,40 @@ internal sealed class FakeStaffDirectory(FakeRobustAccounts robust) : IStaffDire
     public Task<IReadOnlyList<RobustAccount>> ListByEmailAsync(string normalEmail, CancellationToken ct) =>
         Down ? throw new StaffDirectoryUnavailableException("The database isn't running.")
             : Task.FromResult<IReadOnlyList<RobustAccount>>([.. robust.All.Where(a => a.Email.Trim().ToLowerInvariant() == normalEmail)]);
+}
+
+/// <summary>
+/// The People list without a database: the fake Robust's accounts, with last logins and online regions set by the test;
+/// <see cref="Down"/> is a database that isn't running.
+/// </summary>
+internal sealed class FakePeopleDirectory(FakeRobustAccounts robust) : IPeopleDirectory
+{
+    public bool Down { get; set; }
+    public Dictionary<Guid, DateTimeOffset> LastLogin { get; } = [];
+    public Dictionary<Guid, Guid> Online { get; } = [];
+
+    public Task<PeoplePage> SearchAsync(string? text, PeopleFilter filter, IReadOnlyCollection<Guid> waiting, int staffLevel, int page, CancellationToken ct)
+    {
+        if (Down) throw new PeopleDirectoryUnavailableException("The database isn't running.");
+        page = Math.Max(1, page);
+        var t = (text ?? "").Trim();
+        var all = robust.All.Where(a => $"{a.FirstName} {a.LastName}".Contains(t, StringComparison.OrdinalIgnoreCase)).Where(a => filter switch
+        {
+            PeopleFilter.Staff => a.UserLevel >= staffLevel,
+            PeopleFilter.Suspended => a.UserLevel < 0 && !waiting.Contains(a.PrincipalId),
+            PeopleFilter.Waiting => waiting.Contains(a.PrincipalId),
+            _ => true,
+        }).OrderBy(a => a.LastName).ThenBy(a => a.FirstName).ToList();
+        var rows = all.Skip((page - 1) * PeopleDirectory.PageSize).Take(PeopleDirectory.PageSize).Select(Row).ToList();
+        return Task.FromResult(new PeoplePage(rows, all.Count, page, PeopleDirectory.PageSize));
+    }
+
+    public Task<PersonRow?> GetAsync(Guid principal, CancellationToken ct) =>
+        Down ? throw new PeopleDirectoryUnavailableException("The database isn't running.")
+            : Task.FromResult(robust.All.FirstOrDefault(a => a.PrincipalId == principal) is { } a ? Row(a) : null);
+
+    private PersonRow Row(RobustAccount a) =>
+        new(a, LastLogin.TryGetValue(a.PrincipalId, out var at) ? at : null, null, Online.TryGetValue(a.PrincipalId, out var r) ? r : null);
 }
 
 /// <summary>Who's online without a database: returns <see cref="Result"/>.</summary>

@@ -23,7 +23,8 @@ public static class SignUpRules
     /// <summary>Whether people can sign up now: the owner's switch is on and the legal pages are written.</summary>
     public static bool IsOpen(LauncherSettings s) => s.SignUp?.Open == true && LegalPages.SignUpGateOpen(s);
 
-    public static string? NameProblem(string? first, string? last, LauncherSettings s)
+    /// <summary>Null when the name can be used, else the sentence; a name <paramref name="held"/> says is held counts as taken.</summary>
+    public static string? NameProblem(string? first, string? last, LauncherSettings s, Func<string, bool>? held = null)
     {
         if (string.IsNullOrEmpty(first) || string.IsNullOrEmpty(last)) return "Type a first name and a last name.";
         if (first.Length > MaxNamePart || last.Length > MaxNamePart) return $"Each name can have at most {MaxNamePart} characters.";
@@ -32,7 +33,7 @@ public static class SignUpRules
         catch (ArgumentException) { return "Use only letters A to Z, digits and hyphens in the name."; }
         var full = first + " " + last;
         if (s.Setup.Owner is { } owner && string.Equals(full, owner.FirstName + " " + owner.LastName, StringComparison.OrdinalIgnoreCase)
-            || Reserved.Contains(full))
+            || Reserved.Contains(full) || held?.Invoke(full) == true)
             return "That name is taken. Try another.";
         return null;
     }
