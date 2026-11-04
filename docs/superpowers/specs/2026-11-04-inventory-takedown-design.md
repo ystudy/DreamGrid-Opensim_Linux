@@ -37,13 +37,13 @@ A public grid gets notices about things in people's inventories: a copyright hol
 
 ## Who may do it
 
-- **The owner and admins.** Supervisors keep only what 2.5a gave them (looking people up, suspending), so they don't see inventories or takedowns.
+- **The owner and admins.** Supervisors keep only what 2.5a gave them (looking people up, suspending), so they don't see inventories or takedowns. That includes the person's page: for a supervisor, the history leaves out the `takedown-*` and `inventory-viewed` audit lines, and the Takedowns and On hold lines aren't shown. Supervisors can't delete, so they don't need the hold.
 - On **residents and suspended residents**, like the 2.5a tasks. Staff accounts are made residents on the Staff page first; the owner's inventory isn't touched here. Nobody uses this on their own inventory.
 - These rules are added to `PeopleRules` as a new task, so the greyed icon reasons work as they do for the other tasks.
 
 ## Where it lives
 
-- **Person's page** (`/people/{id}`): a new **Inventory** task (a box icon in the same sprite), and a line "Takedowns: N cases (M open)", linking to them. The count helps staff spot a repeat offender and decide on a suspension.
+- **Person's page** (`/people/{id}`): a new **Inventory** task (a box icon in the same sprite), and a line "Takedowns: named in N (M open); held a copy in K", linking to them. The first count helps staff spot a repeat offender and decide on a suspension. Copy holders are counted apart because they are often innocent buyers of a stolen product.
 - **Inventory page** (`/people/{id}/inventory`): the person's folders, one folder at a time, with a breadcrumb back to My Inventory. Each folder lists its subfolders and its items. A search box finds items by part of their name anywhere in the inventory, Trash included. Results are paged (50 at a time). Each item row shows name, type (texture, object, notecard, script and so on, in words), creator, created date, and a checkbox. A button **Take down selected** goes on.
 - **Takedowns list** (`/people/takedowns`, linked from `/people`): every case, open ones first, newest first, with number, opened date, reason, sender, items, people, status.
 - **A case** (`/people/takedowns/{number}`): everything below, with Put back per item, Find copies, Add a note, and Close.
@@ -71,7 +71,7 @@ A public grid gets notices about things in people's inventories: a copyright hol
 
 - On the case page, **Find copies** looks for items with the same asset id as a removed item, in every account's inventory. Copying an item in-world keeps its asset id; changing it makes a new asset, so a changed copy isn't found. The page says so.
 - It lists each holder (name, item name, folder) with a checkbox, and **Take these down too** removes the ticked ones into the same case, by the same steps. Holders who are in-world, staff, or the owner are listed but can't be ticked, with the reason, as on the task icons.
-- Each holder added becomes a person on the case and is held too. Each one is told, or not, by the case's Tell the resident choice.
+- Each holder added becomes a person on the case, marked **copy holder** (the people the notice is about are marked **named**), and is held too. Each one is told, or not, by the case's Tell the resident choice.
 
 ## Evidence
 
@@ -93,7 +93,7 @@ A public grid gets notices about things in people's inventories: a copyright hol
 Kept in `case.json` and shown on the case page, oldest event first:
 
 - number, status (Open or Closed), reason, the notice (sender, organisation, address, reference, date received, the text), tell-resident choice
-- each person on the case: principal id and their name at the time
+- each person on the case: principal id, their name at the time, and whether they are named in the notice or a copy holder
 - each item: item id, name, description, type, creator (name and id; a hypergrid creator's name from the creator field), holder, folder path at the time, asset id, the saved inventory row, the evidence file and its hash or why there isn't one
 - each event, with time (UTC), staff name and id, and the why where there is one: opened, item removed, copies searched, item put back, note added, resident emailed, closed
 
@@ -103,7 +103,7 @@ Kept in `case.json` and shown on the case page, oldest event first:
 
 ## The sender's page
 
-Shows the grid's name, the case number, the notice as received (sender, reference, date), and for each item its name, type, creator, and the date and time it was removed, or put back with the date. It ends with "Objects already placed in regions are not covered by this list." It doesn't show the holders' names, ids, folders, or anything staff wrote in notes.
+Shows the grid's name, the case number, the notice as received (sender, reference, date), and for each item its name, type, creator, and the date and time it was removed, or put back with the date. The creator is left out ("a resident") when the creator is one of the case's holders, because often the holder made the item, and naming them would name the resident. It ends with "Objects already placed in regions are not covered by this list." It doesn't show the holders' names, ids, folders, or anything staff wrote in notes.
 
 ## The hold
 
