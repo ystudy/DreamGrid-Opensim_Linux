@@ -117,9 +117,18 @@ Each item says what Wifi did, how v7 should do it better, and the security rules
   - sign out someone in-world
   - suspend, then delete
 
-#### 2.5b Inventory takedown — not started
-- [ ] Open a person's inventory, find the item a takedown notice names, and remove it. Record what was removed, when, by whom and why, to show the sender.
-- [ ] A **hold** on the account, so it can't be deleted while the takedown is open. `AccountHolds` is the one place delete asks.
+#### 2.5b Inventory takedown — built in plan 15 (`docs/superpowers/plans/2026-11-04-plan15-inventory-takedown.md`)
+- [x] The owner and admins open a resident's inventory (`/people/{id}/inventory`), by folder or by searching item names (Trash too), and take down the items a notice names. Item names, types and creators only; content is never shown.
+- [x] Each takedown is a case (`TD-2026-001`) with the notice, the people, the items, the evidence copy (the stored asset file and its SHA-256) and every event. A printable page for the sender leaves out the holders. Put back restores an item exactly as it was; Find copies takes down copies others hold; Close ends the case.
+- [x] **[S]** The resident is told by email for copyright and rules cases, never for illegal content. Opening an inventory and every step is audited, with names and the case number only.
+- [x] A **hold**: anyone an open case names can't be deleted, and unreadable case files hold everyone. `AccountHolds` is the one place delete asks; 2.5c adds its own reasons there.
+- [ ] Not covered: objects already rezzed in regions (staff return them in-world), and copies taken to other grids. Exporting evidence for a legal request is 2.5c.
+- [ ] The owner's check on the VM, in Firestorm:
+  - take an item down from a signed-out test resident, log in as them and see it gone
+  - Find copies on a second resident and take that down too
+  - try to delete the first resident and be refused because of the hold
+  - put one item back and see it in the same folder
+  - close the case, print the sender's page, and then delete works
 
 #### 2.5c History for legal requests — not started
 - [ ] Collect what the grid holds about an avatar and save it as a file to hand over: logins and their addresses, account changes, staff actions, regions and groups. First check what OpenSim really records; chat isn't stored.
