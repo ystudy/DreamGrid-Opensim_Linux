@@ -1,7 +1,7 @@
 namespace DreamGrid.Launcher.Core.Security;
 
 /// <summary>A task on the People list and a person's page.</summary>
-public enum PersonTask { Edit, ResetLink, SignOut, Suspend, Unsuspend, Delete }
+public enum PersonTask { Edit, ResetLink, SignOut, Suspend, Unsuspend, Delete, Inventory }
 
 /// <summary>
 /// What the rules need to know about a person: the role they are judged by (the higher of their current role and the one they
