@@ -8,7 +8,7 @@ namespace DreamGrid.Launcher.Pages.People;
 public sealed record TaskIcon(PersonTask Task, string Symbol, string Label, string? Refusal);
 
 /// <summary>
-/// The row of five task icons for a person (<c>_TaskIcons.cshtml</c>), on the list and the person's page. Edit and Delete link to
+/// The row of task icons for a person (<c>_TaskIcons.cshtml</c>), on the list and the person's page. Edit and Delete link to
 /// their pages; the others post <paramref name="PostTo"/> with the person's id, the task, and <paramref name="Back"/> (the list's
 /// search, filter and page) so the answer shows the same list. <paramref name="Words"/> puts the label next to each icon.
 /// </summary>
@@ -28,6 +28,7 @@ public sealed record TaskIcons(PersonView Person, IReadOnlyList<TaskIcon> Icons,
             Icon(PersonTask.SignOut, "signout", "Sign out everywhere"),
             suspension,
             Icon(PersonTask.Delete, "trash", "Delete"),
+            Icon(PersonTask.Inventory, "box", "Inventory"),
         ], postTo, back ?? new Dictionary<string, string>(), words);
     }
 
@@ -36,6 +37,7 @@ public sealed record TaskIcons(PersonView Person, IReadOnlyList<TaskIcon> Icons,
     {
         PersonTask.Edit => $"/people/{Person.Row.Account.PrincipalId}/edit",
         PersonTask.Delete => $"/people/{Person.Row.Account.PrincipalId}/delete",
+        PersonTask.Inventory => $"/people/{Person.Row.Account.PrincipalId}/inventory",
         _ => null,
     };
 }

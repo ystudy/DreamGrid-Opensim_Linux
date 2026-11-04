@@ -236,7 +236,7 @@ public sealed class PeoplePagesTests
         var admin = await SignedInAsync(f, "admin");
         var page = await PageAsync(admin, "/people?q=gail");
         var icons = page.QuerySelectorAll($"tr[data-id='{GailId}'] [data-task]");
-        Assert.Equal(5, icons.Length);
+        Assert.Equal(6, icons.Length);
         Assert.All(icons, i => Assert.False(string.IsNullOrWhiteSpace(i.GetAttribute("aria-label"))));
         Assert.All(icons, i => Assert.StartsWith("/img/people-icons.svg#", i.QuerySelector("use")!.GetAttribute("href")));
     }

@@ -1,0 +1,62 @@
+@page "/people/{id:guid}/takedown"
+@model DreamGrid.Launcher.Pages.People.TakedownNewModel
+@using DreamGrid.Launcher.Core.Security
+@{
+    ViewData["Title"] = "Take down";
+    var id = Model.Person?.Row.Account.PrincipalId;
+}
+<p><a href="/people/@id/inventory">‹ Inventory</a></p>
+<h1>Take down@(Model.Person is { } who ? $" from {who.FullName}" : "")</h1>
+@if (Model.Error is not null)
+{
+    <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
+}
+@if (Model.Chosen.Count > 0)
+{
+    <form method="post" asp-antiforgery="true">
+        <div id="takedown-items" class="mb-3">
+            <p>These items leave their inventory. They are kept in the case, with a copy of their content, and can be put back.</p>
+            <ul>
+                @foreach (var item in Model.Chosen)
+                {
+                    <li>@item.Row.Name <span class="text-body-secondary">(@TakedownRules.TypeWords(item.Row.AssetType), in @item.FolderPath)</span><input type="hidden" name="items" value="@item.Row.ItemId"></li>
+                }
+            </ul>
+        </div>
+        @if (Model.OpenCases.Count > 0)
+        {
+            <div class="mb-3">
+                <label class="form-label" for="IntoCase">Add to an open case instead</label>
+                <select class="form-select" id="IntoCase" name="IntoCase">
+                    <option value="">No, this is a new notice</option>
+                    @foreach (var n in Model.OpenCases) { <option value="@n" selected="@(Model.IntoCase == n)">@n</option> }
+                </select>
+            </div>
+        }
+        <fieldset class="mb-3">
+            <legend class="h5">The notice</legend>
+            <div class="mb-2">
+                <label class="form-label" for="Reason">Reason</label>
+                <select class="form-select" id="Reason" name="Reason">
+                    @foreach (var r in Enum.GetValues<TakedownReason>()) { <option value="@r" selected="@(Model.Reason == r)">@TakedownRules.ReasonWords(r)</option> }
+                </select>
+            </div>
+            <div class="mb-2"><label class="form-label" for="SenderName">Sent by</label><input class="form-control" id="SenderName" name="SenderName" value="@Model.SenderName" maxlength="1000"></div>
+            <div class="mb-2"><label class="form-label" for="Organisation">Organisation (optional)</label><input class="form-control" id="Organisation" name="Organisation" value="@Model.Organisation" maxlength="1000"></div>
+            <div class="mb-2"><label class="form-label" for="Address">Email or postal address</label><input class="form-control" id="Address" name="Address" value="@Model.Address" maxlength="1000"></div>
+            <div class="mb-2"><label class="form-label" for="Reference">Their reference (optional)</label><input class="form-control" id="Reference" name="Reference" value="@Model.Reference" maxlength="1000"></div>
+            <div class="mb-2"><label class="form-label" for="Received">Date the notice arrived</label><input class="form-control" type="date" id="Received" name="Received" value="@(Model.Received?.ToString("yyyy-MM-dd"))"></div>
+            <div class="mb-2"><label class="form-label" for="Text">What the notice says</label><textarea class="form-control" id="Text" name="Text" rows="5" maxlength="4000">@Model.Text</textarea></div>
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="Tell" name="Tell" value="true" checked="@Model.Tell">
+                <label class="form-check-label" for="Tell">Tell the resident by email</label>
+                <div class="form-text">Never for illegal content, whatever is ticked: a suspect isn't warned.</div>
+            </div>
+        </fieldset>
+        <p>They must be signed out of the grid first.</p>
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-danger">Take down</button>
+            <a class="btn btn-outline-secondary" href="/people/@id/inventory">Cancel</a>
+        </div>
+    </form>
+}

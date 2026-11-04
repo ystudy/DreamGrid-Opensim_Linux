@@ -46,6 +46,14 @@ else
     <dt class="col-sm-3">Estate</dt>
     <dd class="col-sm-9">@(Model.Estate ?? "None")</dd>
 </dl>
+@if (Model.HeldBy is { } held)
+{
+    <p id="person-hold" class="alert alert-warning">On hold: takedown <a href="/people/takedowns/@held">@held</a></p>
+}
+@if (Model.Takedowns is { } t)
+{
+    <p id="person-takedowns">Takedowns: <a href="/people/takedowns">named in @t.Named (@t.NamedOpen open); held a copy in @t.Copies</a></p>
+}
 <partial name="_TaskIcons" model="Model.Icons" />
 <h2 class="h4 mt-4">Recent changes</h2>
 <div id="person-history">

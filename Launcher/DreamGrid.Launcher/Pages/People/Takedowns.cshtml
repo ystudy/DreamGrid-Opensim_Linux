@@ -1,0 +1,40 @@
+@page "/people/takedowns"
+@model DreamGrid.Launcher.Pages.People.TakedownsModel
+@using DreamGrid.Launcher.Core.Security
+@using DreamGrid.Launcher.Pages.People
+@{
+    ViewData["Title"] = "Takedowns";
+}
+<p><a href="/people">‹ People</a></p>
+<h1>Takedowns</h1>
+<p>To start one, open a person's inventory from their page and tick the items a notice names.</p>
+@if (Model.Unreadable)
+{
+    <div class="error-box error alert alert-danger" role="alert">@DreamGrid.Launcher.Security.AccountHolds.Unreadable Check the launcher log.</div>
+}
+@if (Model.Cases.Count == 0)
+{
+    <p class="text-body-secondary">No takedowns yet.</p>
+}
+else
+{
+    <div class="table-responsive">
+        <table id="takedown-list" class="table align-middle">
+            <thead><tr><th>Case</th><th>Opened</th><th>Reason</th><th>Sent by</th><th>Items</th><th>People</th><th>Status</th></tr></thead>
+            <tbody>
+                @foreach (var c in Model.Cases)
+                {
+                    <tr>
+                        <td><a href="/people/takedowns/@c.Number">@c.Number</a></td>
+                        <td>@(c.Events.FirstOrDefault() is { } e ? PersonModel.When(e.At) : "")</td>
+                        <td>@TakedownRules.ReasonWords(c.Notice.Reason)</td>
+                        <td>@c.Notice.SenderName</td>
+                        <td>@c.Items.Count</td>
+                        <td>@c.People.Count</td>
+                        <td>@(c.Open ? "Open" : "Closed")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
