@@ -266,6 +266,12 @@ Decided: build **all three**, each with its own switch. A (honeypot and rate lim
 - OAR download for region owners.
 - Audio alternative for the image CAPTCHA.
 - Mass email to residents (to everyone or to one group), queued and throttled, with an unsubscribe link. Add it only if it's asked for.
+- Faster asset loading through Cloudflare (owner, 2026-11-04: "we will be testing this out and moving in that direction"). Viewers download textures and meshes from Cloudflare's cache instead of the grid machine's upload, on the free plan, through a Cloudflare Tunnel to Robust. Notes, OpenSim changes and stages: `docs/superpowers/specs/2026-11-04-cloudflare-assets-design.md`.
+  - [x] Robust's GetTexture connector didn't load on Linux (misspelled DLL and class name), so `/CAPS/GetTexture/` answered 404. Fixed in PR 35.
+  - [ ] Stage 1, by hand on the VM: the owner sets up the tunnel, WAF rule and cache rule; Welcome's caps point at `assets.<domain>`; Firestorm check. Answers which caps Firestorm uses and whether hypergrid visitors still load.
+  - [ ] OpenSim: Robust mesh connector on; a Robust `ViewerAsset` connector that serves only drawable types (never scripts or notecards), if Firestorm needs it; `Cache-Control` on asset answers.
+  - [ ] Launcher: an "Asset address (CDN)" setting that writes the region caps, and a test button.
+  - [ ] **[S]** Before any public grid turns it on: taken-down assets are blocked in Robust and purged from Cloudflare.
 - In-viewer search (places, people, classifieds, events). Owner (2026-11-01): wanted later as a full "post an ad and search" built into the grid: look for groups, ads (classifieds), avatar info, land, land for sale and events, and post ads and events. Today `SearchURL=` is empty in the region template, so Search finds nothing. Once there is an events list, the splash page (2.7) can show upcoming events. Keep the `OpenSimSearch` region module (upstream: `kcozens/OpenSimSearch`); it needs a search web service at `SearchURL`. Two ways to provide one:
   - point it at [magicoli/opensim-helpers](https://github.com/magicoli/opensim-helpers), the maintained PHP helpers that work with OpenSimSearch (needs PHP on the host), or
   - have the v7 website provide the search service itself (no PHP; same on Windows and Debian). Recommendation, if search is wanted.
