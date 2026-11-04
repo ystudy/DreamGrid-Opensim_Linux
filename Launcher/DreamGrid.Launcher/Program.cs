@@ -236,6 +236,8 @@ builder.Services.AddSingleton<IRobustPasswords>(sp => new RobustPasswords(sp.Get
 builder.Services.AddSingleton<IRobustEmails>(sp => new RobustEmails(sp.GetRequiredService<Func<LauncherSettings>>()));
 builder.Services.AddSingleton<IAccountRemover>(sp => new AccountRemover(sp.GetRequiredService<Func<LauncherSettings>>()));
 builder.Services.AddSingleton<IInventoryStore>(sp => new InventoryStore(sp.GetRequiredService<Func<LauncherSettings>>()));
+builder.Services.AddSingleton(sp => new TakedownStore(paths.Takedowns, sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<TakedownStore>>()));
+builder.Services.AddSingleton(new EvidenceCopier(paths.FsAssetsData));
 builder.Services.AddSingleton<IEstateRemover>(sp => new EstateRemover(sp.GetRequiredService<Func<LauncherSettings>>()));
 builder.Services.AddSingleton<AccountHolds>();
 builder.Services.AddSingleton<StaffActions>();

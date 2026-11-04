@@ -12,6 +12,8 @@ public sealed record LauncherPaths(string Data, string OpenSimProgram, string? M
     public string AssetCache => Path.Combine(Data, "state", "assetcache");
     public string FsAssetsData => Path.Combine(Data, "state", "fsassets", "data");
     public string FsAssetsSpool => Path.Combine(Data, "state", "fsassets", "tmp");
+    /// <summary>Takedown cases and their evidence (spec 2026-11-04-inventory-takedown-design); readable only by the launcher.</summary>
+    public string Takedowns => Path.Combine(Data, "state", "takedowns");
     public string ScriptEngines => Path.Combine(Data, "state", "scriptengines");
     public string Logs => Path.Combine(Data, "state", "logs");
     public string Pids => Path.Combine(Data, "state", "pids");
