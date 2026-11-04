@@ -31,6 +31,8 @@ public sealed class AccountRemoverIntegrationTests : IDisposable
         var grid = NewController(paths, store, robust);
         var ct = TestContext.Current.CancellationToken;
         await grid.StartAsync(ct);
+        // The owner first, as on a real grid: its create waits for Robust to answer, and the strict name check needs that.
+        await grid.CreateOwnerAsync("Test", "Owner", "pass-word1", null, ct);
         var sue = await grid.CreateResidentAsync("Sue", "Gone", null, -1, ct);
         var ann = await grid.CreateResidentAsync("Ann", "Stays", null, 0, ct);
         var id = sue.PrincipalId.ToString();

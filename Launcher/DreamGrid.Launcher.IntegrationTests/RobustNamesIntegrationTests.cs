@@ -31,6 +31,8 @@ public sealed class RobustNamesIntegrationTests : IDisposable
         var ct = TestContext.Current.CancellationToken;
         var names = new RobustNames(store.LoadOrCreate);
         await grid.StartAsync(ct);
+        // The owner first, as on a real grid: its create waits for Robust to answer, and the strict name check needs that.
+        await grid.CreateOwnerAsync("Test", "Owner", "pass-word1", null, ct);
         var ann = await grid.CreateResidentAsync("Ann", "Baker", null, 0, ct);
         await grid.CreateResidentAsync("Bob", "Jones", null, 0, ct);
 
