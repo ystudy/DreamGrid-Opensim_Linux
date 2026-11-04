@@ -753,3 +753,121 @@ internal sealed class FakeGridRegions : IGridRegions
 
     public Task<GridRegionList> ListAsync(CancellationToken ct) => Task.FromResult(Result);
 }
+
+/// <summary>People's inventories without a database; <see cref="Down"/> is a database that isn't running.</summary>
+internal sealed class FakeInventoryStore(FakeRobustAccounts robust) : IInventoryStore
+{
+    private readonly Lock _gate = new();
+    private readonly List<InventoryFolder> _folders = [];
+    private readonly Dictionary<Guid, Guid> _folderOwner = [];
+    private readonly Dictionary<Guid, int> _versions = [];
+    private readonly List<InventoryItemRow> _items = [];
+
+    public bool Down { get; set; }
+
+    /// <summary>Hashes <see cref="AssetHashAsync"/> knows, by asset id.</summary>
+    public Dictionary<string, string> Hashes { get; } = [];
+
+    public int VersionOf(Guid folder) { lock (_gate) return _versions.GetValueOrDefault(folder); }
+
+    public IReadOnlyList<InventoryItemRow> Items { get { lock (_gate) return [.. _items]; } }
+
+    public void AddFolder(Guid owner, InventoryFolder folder) { lock (_gate) { _folders.Add(folder); _folderOwner[folder.Id] = owner; _versions[folder.Id] = 1; } }
+
+    /// <summary>Gives <paramref name="owner"/> the usual three folders and returns their root.</summary>
+    public Guid AddDefaultFolders(Guid owner)
+    {
+        var root = Guid.NewGuid();
+        AddFolder(owner, new InventoryFolder(root, null, "My Inventory", 8));
+        AddFolder(owner, new InventoryFolder(Guid.NewGuid(), root, "Trash", 14));
+        AddFolder(owner, new InventoryFolder(Guid.NewGuid(), root, "Lost And Found", 16));
+        return root;
+    }
+
+    public InventoryItemRow Add(Guid owner, Guid folder, string name, string? assetId = null, int assetType = 0, string? creator = null)
+    {
+        var row = new InventoryItemRow(assetId ?? Guid.NewGuid().ToString(), assetType, name, "", 0, 0, assetType, creator ?? owner.ToString(),
+            0, 0, 0, 0, 1762214400, Guid.Empty.ToString(), 0, 0, Guid.NewGuid(), owner, folder, 0);
+        lock (_gate) _items.Add(row);
+        return row;
+    }
+
+    private void Check() { if (Down) throw new StaffDirectoryUnavailableException("The database isn't running."); }
+
+    private InventoryItemView View(InventoryItemRow r)
+    {
+        var folders = _folders.Where(f => _folderOwner[f.Id] == r.Owner).ToDictionary(f => f.Id);
+        var creator = Guid.TryParse(r.CreatorId, out var c) && robust.All.FirstOrDefault(a => a.PrincipalId == c) is { } a ? $"{a.FirstName} {a.LastName}" : null;
+        return new InventoryItemView(r, InventoryStore.CreatorName(r.CreatorId, creator), InventoryStore.PathOf(folders, r.Folder));
+    }
+
+    public Task<IReadOnlyList<InventoryFolder>> FoldersAsync(Guid owner, CancellationToken ct)
+    {
+        Check();
+        lock (_gate) return Task.FromResult<IReadOnlyList<InventoryFolder>>([.. _folders.Where(f => _folderOwner[f.Id] == owner)]);
+    }
+
+    public Task<IReadOnlyList<InventoryItemView>> ItemsInAsync(Guid owner, Guid folder, int skip, int take, CancellationToken ct)
+    {
+        Check();
+        lock (_gate)
+            return Task.FromResult<IReadOnlyList<InventoryItemView>>([.. _items.Where(i => i.Owner == owner && i.Folder == folder)
+                .OrderBy(i => i.Name, StringComparer.OrdinalIgnoreCase).Skip(skip).Take(take).Select(View)]);
+    }
+
+    public Task<IReadOnlyList<InventoryItemView>> SearchAsync(Guid owner, string text, int skip, int take, CancellationToken ct)
+    {
+        Check();
+        lock (_gate)
+            return Task.FromResult<IReadOnlyList<InventoryItemView>>([.. _items.Where(i => i.Owner == owner && (i.Name ?? "").Contains(text.Trim(), StringComparison.OrdinalIgnoreCase))
+                .OrderBy(i => i.Name, StringComparer.OrdinalIgnoreCase).Skip(skip).Take(take).Select(View)]);
+    }
+
+    public Task<IReadOnlyList<InventoryItemView>> ItemsAsync(Guid owner, IReadOnlyCollection<Guid> items, CancellationToken ct)
+    {
+        Check();
+        lock (_gate) return Task.FromResult<IReadOnlyList<InventoryItemView>>([.. _items.Where(i => i.Owner == owner && items.Contains(i.ItemId)).Select(View)]);
+    }
+
+    public Task<IReadOnlyList<InventoryHolding>> CopiesAsync(string assetId, int max, CancellationToken ct)
+    {
+        Check();
+        lock (_gate)
+            return Task.FromResult<IReadOnlyList<InventoryHolding>>([.. _items.Where(i => i.AssetId == assetId && i.AssetType is not (24 or 25)).Take(max)
+                .Select(i => new InventoryHolding(i.Owner, robust.All.FirstOrDefault(a => a.PrincipalId == i.Owner) is { } a ? $"{a.FirstName} {a.LastName}" : "unknown", View(i)))]);
+    }
+
+    public Task RemoveAsync(Guid owner, IReadOnlyCollection<Guid> items, CancellationToken ct)
+    {
+        Check();
+        lock (_gate)
+        {
+            foreach (var row in _items.Where(i => i.Owner == owner && items.Contains(i.ItemId)).ToList())
+            {
+                _items.Remove(row);
+                _versions[row.Folder] = _versions.GetValueOrDefault(row.Folder) + 1;
+            }
+        }
+        return Task.CompletedTask;
+    }
+
+    public Task<Guid> PutBackAsync(InventoryItemRow row, CancellationToken ct)
+    {
+        Check();
+        lock (_gate)
+        {
+            var mine = _folders.Where(f => _folderOwner[f.Id] == row.Owner).ToList();
+            var into = mine.FirstOrDefault(f => f.Id == row.Folder) ?? mine.FirstOrDefault(f => f.Type == 16) ?? mine.FirstOrDefault(f => f.Type == 8)
+                       ?? throw new NoInventoryException();
+            _items.Add(row with { Folder = into.Id });
+            _versions[into.Id] = _versions.GetValueOrDefault(into.Id) + 1;
+            return Task.FromResult(into.Id);
+        }
+    }
+
+    public Task<string?> AssetHashAsync(string assetId, CancellationToken ct)
+    {
+        Check();
+        return Task.FromResult(Hashes.GetValueOrDefault(assetId));
+    }
+}
