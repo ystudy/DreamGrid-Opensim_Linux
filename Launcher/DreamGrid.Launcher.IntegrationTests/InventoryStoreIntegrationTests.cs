@@ -175,7 +175,7 @@ public sealed class InventoryStoreIntegrationTests : IDisposable
         await using var cmd = new MySqlCommand("SELECT folderID FROM inventoryfolders WHERE agentID = @a AND type = @t LIMIT 1", conn);
         cmd.Parameters.AddWithValue("@a", owner.ToString());
         cmd.Parameters.AddWithValue("@t", type);
-        return Guid.Parse((string)(await cmd.ExecuteScalarAsync(ct))!);
+        return InventoryStore.IdOf(await cmd.ExecuteScalarAsync(ct));
     }
 
     private async Task<int> VersionAsync(Guid folder, CancellationToken ct)

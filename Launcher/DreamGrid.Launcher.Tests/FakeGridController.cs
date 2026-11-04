@@ -768,6 +768,15 @@ internal sealed class FakeInventoryStore(FakeRobustAccounts robust) : IInventory
     /// <summary>Only <see cref="RemoveAsync"/> fails, as a database that stopped answering half-way.</summary>
     public bool FailRemove { get; set; }
 
+    /// <summary>The removal commits, then the answer is lost (a timeout after the commit).</summary>
+    public bool FailAfterRemove { get; set; }
+
+    /// <summary>The put-back commits, then the database stops answering.</summary>
+    public bool FailFoldersAfterPutBack { get; set; }
+
+    /// <summary>Runs while <see cref="CopiesAsync"/> is waiting for the database, as another staff member's step would.</summary>
+    public Func<Task>? DuringCopies { get; set; }
+
     /// <summary>Hashes <see cref="AssetHashAsync"/> knows, by asset id.</summary>
     public Dictionary<string, string> Hashes { get; } = [];
 
@@ -832,18 +841,20 @@ internal sealed class FakeInventoryStore(FakeRobustAccounts robust) : IInventory
         lock (_gate) return Task.FromResult<IReadOnlyList<InventoryItemView>>([.. _items.Where(i => i.Owner == owner && items.Contains(i.ItemId)).Select(View)]);
     }
 
-    public Task<IReadOnlyList<InventoryHolding>> CopiesAsync(string assetId, int max, CancellationToken ct)
+    public async Task<IReadOnlyList<InventoryHolding>> CopiesAsync(string assetId, int max, CancellationToken ct)
     {
         Check();
+        if (DuringCopies is { } during) await during();
         lock (_gate)
-            return Task.FromResult<IReadOnlyList<InventoryHolding>>([.. _items.Where(i => i.AssetId == assetId && i.AssetType is not (24 or 25)).Take(max)
-                .Select(i => new InventoryHolding(i.Owner, robust.All.FirstOrDefault(a => a.PrincipalId == i.Owner) is { } a ? $"{a.FirstName} {a.LastName}" : "unknown", View(i)))]);
+            return [.. _items.Where(i => i.AssetId == assetId && i.AssetType is not (24 or 25)).Take(max)
+                .Select(i => new InventoryHolding(i.Owner, robust.All.FirstOrDefault(a => a.PrincipalId == i.Owner) is { } a ? $"{a.FirstName} {a.LastName}" : "unknown", View(i)))];
     }
 
     public Task RemoveAsync(Guid owner, IReadOnlyCollection<Guid> items, CancellationToken ct)
     {
         Check();
         if (FailRemove) throw new StaffDirectoryUnavailableException("The database stopped answering.");
+        ct.ThrowIfCancellationRequested();
         lock (_gate)
         {
             foreach (var row in _items.Where(i => i.Owner == owner && items.Contains(i.ItemId)).ToList())
@@ -852,6 +863,7 @@ internal sealed class FakeInventoryStore(FakeRobustAccounts robust) : IInventory
                 _versions[row.Folder] = _versions.GetValueOrDefault(row.Folder) + 1;
             }
         }
+        if (FailAfterRemove) throw new StaffDirectoryUnavailableException("The answer was lost after the commit.");
         return Task.CompletedTask;
     }
 
@@ -865,6 +877,7 @@ internal sealed class FakeInventoryStore(FakeRobustAccounts robust) : IInventory
                        ?? throw new NoInventoryException();
             _items.Add(row with { Folder = into.Id });
             _versions[into.Id] = _versions.GetValueOrDefault(into.Id) + 1;
+            if (FailFoldersAfterPutBack) Down = true;
             return Task.FromResult(into.Id);
         }
     }

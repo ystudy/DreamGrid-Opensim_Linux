@@ -219,7 +219,7 @@ public sealed class TakedownActionsTests
         var adminRoot = (await rig.F.Inventory.FoldersAsync(admin, Ct)).Single(f => f.Type == 8).Id;
         rig.F.Inventory.Add(admin, adminRoot, "Admin's sword", Asset, 6);
 
-        var rows = await rig.Actions.FindCopiesAsync(As(StaffRole.Owner), null, first.Number!, Ct);
+        var rows = (await rig.Actions.FindCopiesAsync(As(StaffRole.Owner), null, first.Number!, Ct))!;
 
         Assert.Equal(2, rows.Count);
         Assert.Null(rows.Single(r => r.Holding.Owner == BobId).Refusal);
@@ -227,7 +227,7 @@ public sealed class TakedownActionsTests
         Assert.Contains(rig.Store.Get(first.Number!)!.Events, e => e.What == "copies-searched");
 
         rig.F.People.Online[BobId] = RegionId;
-        rows = await rig.Actions.FindCopiesAsync(As(StaffRole.Owner), null, first.Number!, Ct);
+        rows = (await rig.Actions.FindCopiesAsync(As(StaffRole.Owner), null, first.Number!, Ct))!;
         Assert.Equal(PeopleActions.InWorld, rows.Single(r => r.Holding.Owner == BobId).Refusal);
     }
 
@@ -315,5 +315,79 @@ public sealed class TakedownActionsTests
         Assert.DoesNotContain("private", all);
         Assert.Single(Audit(rig.F, "takedown-note"));
         Assert.Single(Audit(rig.F, "takedown-closed"));
+    }
+
+    [Fact]
+    public async Task A_step_during_find_copies_is_not_lost()
+    {
+        await using var rig = Factory();
+        var (first, _) = await TakeSwordAsync(rig);
+        rig.F.Inventory.DuringCopies = () =>
+        {
+            rig.Actions.AddNote(As(StaffRole.Admin), null, first.Number!, "Written meanwhile");
+            return Task.CompletedTask;
+        };
+
+        await rig.Actions.FindCopiesAsync(As(StaffRole.Admin), null, first.Number!, Ct);
+
+        var c = rig.Store.Get(first.Number!)!;
+        Assert.Contains(c.Events, e => e.What == "note" && e.Why == "Written meanwhile");
+        Assert.Contains(c.Events, e => e.What == "copies-searched");
+    }
+
+    [Fact]
+    public async Task Removal_lost_after_the_commit_keeps_the_items_on_the_case()
+    {
+        await using var rig = Factory();
+        rig.F.Inventory.FailAfterRemove = true;
+
+        var (outcome, sword) = await TakeSwordAsync(rig);
+
+        Assert.DoesNotContain(rig.F.Inventory.Items, i => i.ItemId == sword.ItemId);
+        var c = Assert.Single(rig.Store.All());
+        Assert.Equal(sword, Assert.Single(c.Items).Row);
+        Assert.True(outcome.Done, outcome.Message);
+    }
+
+    [Fact]
+    public async Task A_cancelled_request_still_finishes_the_removal()
+    {
+        await using var rig = Factory();
+        var sword = rig.F.Inventory.Add(AnnId, rig.AnnRoot, "Sword", Asset, 6);
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        var outcome = await rig.Actions.TakeDownAsync(As(StaffRole.Admin), null, AnnId, [sword.ItemId], null, Notice(), false, cts.Token);
+
+        Assert.True(outcome.Done, outcome.Message);
+        Assert.DoesNotContain(rig.F.Inventory.Items, i => i.ItemId == sword.ItemId);
+        Assert.Equal(sword, Assert.Single(Assert.Single(rig.Store.All()).Items).Row);
+    }
+
+    [Fact]
+    public async Task Put_back_that_worked_is_recorded_even_when_the_folder_name_cannot_be_read()
+    {
+        await using var rig = Factory();
+        var (first, sword) = await TakeSwordAsync(rig);
+        rig.F.Inventory.FailFoldersAfterPutBack = true;
+
+        var outcome = await rig.Actions.PutBackAsync(As(StaffRole.Admin), null, first.Number!, sword.ItemId, "Counter-notice", Ct);
+
+        Assert.True(outcome.Done, outcome.Message);
+        Assert.Equal("Put back Sword in their inventory.", outcome.Message);
+        Assert.NotNull(rig.Store.Get(first.Number!)!.Items[0].PutBackAt);
+    }
+
+    [Fact]
+    public async Task Find_copies_with_the_database_down_says_so_and_records_nothing()
+    {
+        await using var rig = Factory();
+        var (first, _) = await TakeSwordAsync(rig);
+        rig.F.Inventory.Down = true;
+
+        var rows = await rig.Actions.FindCopiesAsync(As(StaffRole.Admin), null, first.Number!, Ct);
+
+        Assert.Null(rows);
+        Assert.DoesNotContain(rig.Store.Get(first.Number!)!.Events, e => e.What == "copies-searched");
     }
 }

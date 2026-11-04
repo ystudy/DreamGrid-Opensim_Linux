@@ -121,7 +121,7 @@ public sealed class InventoryStore(Func<LauncherSettings> settings) : IInventory
                 {
                     find.Parameters.AddWithValue("@i", Id(item));
                     find.Parameters.AddWithValue("@o", Id(owner));
-                    if (await find.ExecuteScalarAsync(ct) is string folder) folders.Add(folder);
+                    if (IdText(await find.ExecuteScalarAsync(ct)) is { } folder) folders.Add(folder);
                 }
                 await Exec(conn, tx, "DELETE FROM robust.inventoryitems WHERE inventoryID = @i AND avatarID = @o", ct, ("@i", Id(item)), ("@o", Id(owner)));
             }
@@ -214,9 +214,10 @@ public sealed class InventoryStore(Func<LauncherSettings> settings) : IInventory
             string? S(int i) => r.IsDBNull(i) ? null : r.GetString(i);
             int? I(int i) => r.IsDBNull(i) ? null : r.GetInt32(i);
             uint? U(int i) => r.IsDBNull(i) ? null : r.GetUInt32(i);
-            var row = new InventoryItemRow(S(0), I(1), S(2), S(3), U(4), U(5), I(6), r.GetString(7), r.GetUInt32(8), r.GetUInt32(9), r.GetInt32(10),
-                r.GetSByte(11), r.GetInt32(12), r.GetString(13), r.GetSByte(14), r.GetUInt32(15), Guid.Parse(r.GetString(16)),
-                Guid.TryParse(S(17), out var o) ? o : Guid.Empty, Guid.TryParse(S(18), out var f) ? f : Guid.Empty, r.GetUInt32(19));
+            // inventoryID, avatarID and parentFolderID are char(36): the connector may hand them back as Guids.
+            var row = new InventoryItemRow(IdText(r.GetValue(0)), I(1), S(2), S(3), U(4), U(5), I(6), Convert.ToString(r.GetValue(7)) ?? "",
+                r.GetUInt32(8), r.GetUInt32(9), r.GetInt32(10), r.GetSByte(11), r.GetInt32(12), IdText(r.GetValue(13)) ?? "", r.GetSByte(14),
+                r.GetUInt32(15), IdOf(r.GetValue(16)), IdOf(r.GetValue(17)), IdOf(r.GetValue(18)), r.GetUInt32(19));
             list.Add((row, S(20), S(21)));
         }
         return list;
@@ -230,8 +231,8 @@ public sealed class InventoryStore(Func<LauncherSettings> settings) : IInventory
         var list = new List<InventoryFolder>();
         while (await r.ReadAsync(ct))
         {
-            Guid? parent = !r.IsDBNull(1) && Guid.TryParse(r.GetString(1), out var p) && p != Guid.Empty ? p : null;
-            list.Add(new InventoryFolder(Guid.Parse(r.GetString(0)), parent, r.IsDBNull(2) ? "" : r.GetString(2), r.GetInt16(3)));
+            Guid? parent = IdOf(r.GetValue(1)) is var p && p != Guid.Empty ? p : null;
+            list.Add(new InventoryFolder(IdOf(r.GetValue(0)), parent, r.IsDBNull(2) ? "" : r.GetString(2), r.GetInt16(3)));
         }
         return list;
     }
@@ -244,6 +245,22 @@ public sealed class InventoryStore(Func<LauncherSettings> settings) : IInventory
     }
 
     private static string Id(Guid id) => id.ToString("D");
+
+    /// <summary>An id column as OpenSim's lower-case text: char(36) may come back as a Guid or as text, depending on the connector.</summary>
+    public static string? IdText(object? value) => value switch
+    {
+        Guid g => g.ToString("D"),
+        null or DBNull => null,
+        _ => Guid.TryParse(Convert.ToString(value), out var g) ? g.ToString("D") : Convert.ToString(value),
+    };
+
+    /// <summary>An id column as a Guid; <see cref="Guid.Empty"/> when it is empty or not an id.</summary>
+    public static Guid IdOf(object? value) => value switch
+    {
+        Guid g => g,
+        null or DBNull => Guid.Empty,
+        _ => Guid.TryParse(Convert.ToString(value), out var g) ? g : Guid.Empty,
+    };
 
     private async Task<T> Run<T>(Func<MySqlConnection, Task<T>> work, CancellationToken ct)
     {

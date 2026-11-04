@@ -25,6 +25,7 @@ public sealed class TakedownModel(TakedownStore store, TakedownActions takedowns
     {
         if (!TakedownAccess.MayUse(User)) return Forbid403();
         Copies = await takedowns.FindCopiesAsync(User, Ip, number, ct);
+        if (Copies is null) Error = PeopleActions.DatabaseDown;
         return Load(number);
     }
 

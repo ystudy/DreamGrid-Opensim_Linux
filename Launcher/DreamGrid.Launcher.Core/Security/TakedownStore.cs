@@ -115,6 +115,30 @@ public sealed class TakedownStore
         }
     }
 
+    /// <summary>
+    /// Applies <paramref name="change"/> to the case as it is now and saves it, under the same lock as every other write, so two
+    /// staff working on one case never overwrite each other's steps. <paramref name="change"/> returns null to change nothing.
+    /// Returns the saved case, or null when there is no such case, nothing was changed, or it couldn't be written.
+    /// </summary>
+    public TakedownCase? Update(string number, Func<TakedownCase, TakedownCase?> change)
+    {
+        lock (_gate)
+        {
+            if (!_cases.TryGetValue(number, out var now) || change(now) is not { } next) return null;
+            try
+            {
+                Write(next);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                _log.LogWarning("Takedowns: case {Number} could not be saved ({Error}).", number, e.GetType().Name);
+                return null;
+            }
+            _cases[number] = next;
+            return next;
+        }
+    }
+
     private void Write(TakedownCase c)
     {
         try

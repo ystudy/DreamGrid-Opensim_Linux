@@ -93,7 +93,8 @@ public sealed class TakedownActions(PeopleActions people, IInventoryStore invent
         return new(done, message, c.Number);
     }
 
-    public async Task<IReadOnlyList<CopyRow>> FindCopiesAsync(ClaimsPrincipal actor, string? ip, string number, CancellationToken ct)
+    /// <summary>The copies others hold of the case's items, or null when the database couldn't be asked (nothing is recorded then).</summary>
+    public async Task<IReadOnlyList<CopyRow>?> FindCopiesAsync(ClaimsPrincipal actor, string? ip, string number, CancellationToken ct)
     {
         if (!MayAct(actor) || store.Get(number) is not { Open: true } c) return [];
         var onCase = c.Items.Select(i => i.ItemId).ToHashSet();
@@ -108,7 +109,8 @@ public sealed class TakedownActions(PeopleActions people, IInventoryStore invent
             }
             catch (StaffDirectoryUnavailableException)
             {
-                break;
+                Write(actor, ip, "takedown-copies", c.Number, "failed");
+                return null;
             }
             foreach (var h in holdings.Where(h => !onCase.Contains(h.Item.Row.ItemId)))
             {
@@ -119,7 +121,8 @@ public sealed class TakedownActions(PeopleActions people, IInventoryStore invent
             }
         }
         var (who, id, _) = AuditActor.Of(actor);
-        store.Save(c with { Events = [.. c.Events, new CaseEvent(time.GetUtcNow(), who, id, "copies-searched", $"{rows.Count} found")] });
+        var searched = new CaseEvent(time.GetUtcNow(), who, id, "copies-searched", $"{rows.Count} found");
+        store.Update(number, now => now with { Events = [.. now.Events, searched] });
         Write(actor, ip, "takedown-copies", c.Number, "ok");
         return rows;
     }
@@ -175,31 +178,40 @@ public sealed class TakedownActions(PeopleActions people, IInventoryStore invent
 
         var (view, problem) = await CheckPersonAsync(actor, ip, entry.Holder, "takedown-restored", number, ct);
         if (view is null) return new(false, problem == PeopleActions.Gone ? Deleted : problem!, number);
-        Guid into;
-        string folder;
+        Guid? into = null;
         try
         {
-            into = await inventory.PutBackAsync(entry.Row, ct);
-            folder = (await inventory.FoldersAsync(entry.Holder, ct)).FirstOrDefault(f => f.Id == into) is { } f
-                ? f.Type == 8 ? "My Inventory" : f.Name : "their inventory";
+            // Not the request's token: once the row is written, the case must say so.
+            into = await inventory.PutBackAsync(entry.Row, CancellationToken.None);
         }
         catch (NoInventoryException)
         {
             return new(false, Deleted, number);
         }
+        catch (Exception e) when (e is StaffDirectoryUnavailableException or OperationCanceledException)
+        {
+            // The answer may have been lost after the row went in: look before saying it failed.
+            if (!await IsInInventoryAsync(entry.Holder, item)) return new(false, PeopleActions.DatabaseDown, number);
+        }
+        var folder = "their inventory";
+        try
+        {
+            if (into is { } f && (await inventory.FoldersAsync(entry.Holder, CancellationToken.None)).FirstOrDefault(x => x.Id == f) is { } found)
+                folder = found.Type == 8 ? "My Inventory" : found.Name;
+        }
         catch (StaffDirectoryUnavailableException)
         {
-            return new(false, PeopleActions.DatabaseDown, number);
+            // Only the folder's name is missing from the message.
         }
         var (who, id, _) = AuditActor.Of(actor);
         var now = time.GetUtcNow();
-        var events = new List<CaseEvent>(c.Events) { new(now, who, id, "put-back", why) };
-        if (c.TellResident && Email(view, EmailTemplates.TakedownRestored, c, [entry.Name])) events.Add(new(now, who, id, "emailed", view.FullName));
-        var saved = store.Save(c with
+        List<CaseEvent> added = [new(now, who, id, "put-back", why)];
+        if (c.TellResident && Email(view, EmailTemplates.TakedownRestored, c, [entry.Name])) added.Add(new(now, who, id, "emailed", view.FullName));
+        var saved = store.Update(number, cur => cur with
         {
-            Items = [.. c.Items.Select(i => i.ItemId == item ? i with { PutBackAt = now } : i)],
-            Events = events,
-        });
+            Items = [.. cur.Items.Select(i => i.ItemId == item && i.PutBackAt is null ? i with { PutBackAt = now } : i)],
+            Events = [.. cur.Events, .. added],
+        }) is not null;
         if (!saved) log.LogWarning("Takedowns: case {Number} couldn't record a put-back that happened.", number);
         Write(actor, ip, "takedown-restored", LogText.Clean($"{view.FullName}: {number} {entry.Name}", 140), saved ? "ok" : "failed");
         return new(true, $"Put back {entry.Name} in {folder}.", number);
@@ -224,8 +236,15 @@ public sealed class TakedownActions(PeopleActions people, IInventoryStore invent
         var why = Limit(text);
         if (why.Length == 0) return new(false, WhyNeeded, number);
         var (who, id, _) = AuditActor.Of(actor);
-        var next = change(c) with { Events = [.. c.Events, new CaseEvent(time.GetUtcNow(), who, id, what, why)] };
-        if (!store.Save(next))
+        var happened = new CaseEvent(time.GetUtcNow(), who, id, what, why);
+        var closedMeanwhile = false;
+        var saved = store.Update(number, cur =>
+        {
+            if (!cur.Open) { closedMeanwhile = true; return null; }
+            return change(cur) with { Events = [.. cur.Events, happened] };
+        });
+        if (closedMeanwhile) return new(false, Closed, number);
+        if (saved is null)
         {
             Write(actor, ip, action, number, "failed");
             return new(false, "The case couldn't be saved. Check the log.", number);
@@ -262,29 +281,68 @@ public sealed class TakedownActions(PeopleActions people, IInventoryStore invent
             added.Add(new CaseItem(r.ItemId, principal, r.Name ?? "", r.Description, r.AssetType, r.CreatorId, v.CreatorName, v.FolderPath, r.AssetId, r,
                 e.File, e.Sha256, e.NotKept, now, null));
         }
-        var people = c.People.Any(p => p.Principal == principal) ? c.People : [.. c.People, new CasePerson(principal, person.FullName, kind)];
-        var withItems = c with
+        var removedEvents = added.Select(i => new CaseEvent(now, who, staffId, "removed", $"{person.FullName}: {i.Name}")).ToList();
+        var newPerson = new CasePerson(principal, person.FullName, kind);
+        var withItems = store.Update(c.Number, cur => cur.Open ? cur with
         {
-            People = people,
-            Items = [.. c.Items, .. added],
-            Events = [.. c.Events, .. added.Select(i => new CaseEvent(now, who, staffId, "removed", $"{person.FullName}: {i.Name}"))],
-        };
-        if (!store.Save(withItems)) return (false, NotSaved);
+            People = cur.People.Any(p => p.Principal == principal) ? cur.People : [.. cur.People, newPerson],
+            Items = [.. cur.Items, .. added],
+            Events = [.. cur.Events, .. removedEvents],
+        } : null);
+        if (withItems is null) return (false, store.Get(c.Number) is { Open: false } ? Closed : NotSaved);
+        var ids = added.Select(i => i.ItemId).ToList();
         try
         {
-            await inventory.RemoveAsync(principal, [.. added.Select(i => i.ItemId)], ct);
+            // Not the request's token: a closed tab must not leave the case and the inventory disagreeing.
+            await inventory.RemoveAsync(principal, ids, CancellationToken.None);
         }
         catch (StaffDirectoryUnavailableException e)
         {
             log.LogWarning("Takedowns: items couldn't be removed: {Message}", e.InnerException?.Message ?? e.Message);
-            if (!store.Save(c)) log.LogWarning("Takedowns: case {Number} lists items that are still in the inventory.", c.Number);
-            return (false, PeopleActions.DatabaseDown);
+            // The answer may have been lost after the commit: keep on the case every item that really left the inventory.
+            IReadOnlyList<Guid>? still = null;
+            try
+            {
+                still = [.. (await inventory.ItemsAsync(principal, ids, CancellationToken.None)).Select(v => v.Row.ItemId)];
+            }
+            catch (StaffDirectoryUnavailableException)
+            {
+                log.LogWarning("Takedowns: case {Number} may list items still in the inventory: the database stopped answering.", c.Number);
+            }
+            if (still is not null && still.Count > 0)
+            {
+                var keep = still.ToHashSet();
+                var hadOthers = c.People.Any(p => p.Principal == principal);
+                store.Update(c.Number, cur => cur with
+                {
+                    Items = [.. cur.Items.Where(i => !(i.Holder == principal && keep.Contains(i.ItemId) && i.RemovedAt == now))],
+                    Events = [.. cur.Events.Where(ev => !removedEvents.Contains(ev) || !keep.Contains(added[removedEvents.IndexOf(ev)].ItemId))],
+                    People = still.Count == ids.Count && !hadOthers ? [.. cur.People.Where(p => p.Principal != principal)] : cur.People,
+                });
+                return (false, PeopleActions.DatabaseDown);
+            }
+            if (still is null) return (false, PeopleActions.DatabaseDown);
         }
         foreach (var i in added)
             Write(actor, ip, "takedown-removed", LogText.Clean($"{person.FullName}: {c.Number} {i.Name}", 140), "ok");
         if (withItems.TellResident && Email(person, EmailTemplates.TakedownRemoved, withItems, [.. added.Select(i => i.Name)]))
-            store.Save(withItems with { Events = [.. withItems.Events, new CaseEvent(now, who, staffId, "emailed", person.FullName)] });
+        {
+            var emailed = new CaseEvent(now, who, staffId, "emailed", person.FullName);
+            store.Update(c.Number, cur => cur with { Events = [.. cur.Events, emailed] });
+        }
         return (true, $"Removed {added.Count} item(s) from {person.FullName}. Case {c.Number}.");
+    }
+
+    private async Task<bool> IsInInventoryAsync(Guid holder, Guid item)
+    {
+        try
+        {
+            return (await inventory.ItemsAsync(holder, [item], CancellationToken.None)).Count > 0;
+        }
+        catch (StaffDirectoryUnavailableException)
+        {
+            return false;
+        }
     }
 
     private bool Email(PersonView person, string template, TakedownCase c, IReadOnlyList<string> items)
