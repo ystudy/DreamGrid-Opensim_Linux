@@ -39,6 +39,9 @@ public sealed partial class GridController(
 {
     private static readonly TimeSpan ConsoleSettle = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan LoginWait = TimeSpan.FromSeconds(300);
+
+    /// <summary>How long a region's island terrain may take to show in <c>terrain stats</c>; tests of a failed load shorten it.</summary>
+    internal TimeSpan IslandTerrainWait { get; set; } = GridConsoleCommands.TerrainStatsWait;
     private static readonly TimeSpan LoginPoll = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan AccountWait = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan AccountPoll = TimeSpan.FromMilliseconds(500);
@@ -1763,7 +1766,7 @@ public sealed partial class GridController(
         // loaded has relief of its own that would pass for the island if this load failed.
         await console.RunAsync("terrain fill 0", ConsoleSettle, ct);
         await console.RunAsync($"terrain load \"{Fwd(r32)}\"", ConsoleSettle, ct);
-        if (!await GridConsoleCommands.IslandTerrainLoadedAsync(console, ConsoleSettle, time, ct))
+        if (!await GridConsoleCommands.IslandTerrainLoadedAsync(console, ConsoleSettle, time, ct, IslandTerrainWait))
             throw new InvalidOperationException($"The region did not load the island terrain {r32}; see the region log.");
     }
 
