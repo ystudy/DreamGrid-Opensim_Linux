@@ -161,3 +161,11 @@ form[role=search] .btn { flex-shrink: 0; white-space: nowrap; }
 header .signout { margin: 0; }
 .back-link { margin-bottom: 0.25rem; }
 .hub-links { margin-bottom: 1rem; }
+
+/* Panels: a titled card of rows, as on the guest Connect page (and the dashboard to come). */
+.panel { padding: 1rem 1.1rem; background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color); border-radius: var(--bs-border-radius-lg); }
+.panel-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem; margin-bottom: .6rem; }
+.panel-head h2 { margin: 0; font-size: 1.1rem; }
+.panel-rows { list-style: none; margin: 0 0 .5rem; padding: 0; }
+.panel-rows li { display: flex; align-items: center; gap: .5rem; padding: .45rem .75rem; margin-bottom: .35rem; background: var(--bs-body-bg); border: 1px solid var(--bs-border-color); border-radius: var(--bs-border-radius); }
+.panel-pre { margin: 0 0 .5rem; padding: .75rem 1rem; white-space: pre-wrap; word-break: break-all; background: var(--bs-body-bg); border: 1px solid var(--bs-border-color); border-radius: var(--bs-border-radius); }

@@ -4,26 +4,80 @@
     ViewData["Title"] = "How to connect";
 }
 <h1>How to connect to @Model.GridName</h1>
+<p class="text-body-secondary">Choose a viewer, then add @Model.GridName in its Grid Manager.</p>
 @if (Model.Approved)
 {
     <div class="alert alert-success" role="status">You're approved. Log in as @Model.DisplayName.</div>
 }
-@await Html.PartialAsync("_LoginAddress", ("The grid's login address:", Model.LoginUri))
-<h2>With Firestorm</h2>
-<ol class="steps list-group list-group-numbered mb-3">
-    <li class="list-group-item">Download Firestorm from <a href="https://www.firestormviewer.org/downloads/" rel="noopener noreferrer">https://www.firestormviewer.org/downloads/</a>. Choose the OpenSim version, not the Second Life one.</li>
-    <li class="list-group-item">Open it and go to Preferences, then OpenSim, then Grid Manager. Paste the login address in "Add new grid" and press Apply.</li>
-    <li class="list-group-item">On the login screen, pick @Model.GridName from the grid list.</li>
-    @if (Model.DisplayName.Length > 0)
-    {
-        <li class="list-group-item">Log in as @Model.DisplayName with your password.</li>
-    }
-    else
-    {
-        <li class="list-group-item">Log in with your avatar's first and last name and your password.</li>
-    }
-</ol>
-<p>Any OpenSim viewer works: add the login address as a new grid.</p>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-6">
+        <section id="viewer-firestorm" class="panel h-100">
+            <div class="panel-head"><h2>Firestorm</h2><span class="badge state-running">Recommended</span></div>
+            <ul class="panel-rows">
+                <li><span>Windows, macOS and Linux</span><a class="ms-auto" href="@ConnectModel.Firestorm.Url" rel="noopener noreferrer">@ConnectModel.Firestorm.LinkText</a></li>
+            </ul>
+            <p class="form-text mb-0">On Firestorm's page, pick your system and the OpenSim version, not the Second Life one.</p>
+        </section>
+    </div>
+    <div class="col-md-6">
+        <section id="viewer-others" class="panel h-100">
+            <div class="panel-head"><h2>Other viewers</h2><span class="form-text m-0">Any OpenSim viewer works</span></div>
+            <ul class="panel-rows">
+                @foreach (var v in ConnectModel.Others)
+                {
+                    <li><span>@v.Name</span><a class="ms-auto" href="@v.Url" rel="noopener noreferrer">@v.LinkText</a></li>
+                }
+            </ul>
+            <p class="form-text mb-0">The links go to each viewer's own site. This grid doesn't host viewers.</p>
+        </section>
+    </div>
+</div>
+
+<section id="grid-settings-panel" class="panel mb-3">
+    <div class="panel-head"><h2>Grid manager settings</h2><button type="button" id="copy-settings" class="btn btn-sm btn-outline-primary" hidden>Copy</button></div>
+    <pre id="grid-settings" class="panel-pre">@Model.SettingsText()</pre>
+    <p class="form-text mb-0">Most viewers fill in the rest themselves once you give them the Login URI.</p>
+</section>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-6">
+        <section id="steps" class="panel h-100">
+            <div class="panel-head"><h2>Steps in Firestorm</h2></div>
+            <ol class="steps mb-0">
+                <li>Open Preferences, then OpenSim, then Grid Manager.</li>
+                <li>Paste the Login URI, <code id="login-uri">@Model.LoginUri</code>, in "Add new grid" and press Apply.</li>
+                <li>On the login screen, pick @Model.GridName from the grid list.</li>
+                @if (Model.DisplayName.Length > 0)
+                {
+                    <li>Log in as @Model.DisplayName with your password.</li>
+                }
+                else
+                {
+                    <li>Log in with your avatar's first and last name and your password.</li>
+                }
+            </ol>
+        </section>
+    </div>
+    <div class="col-md-6">
+        <section id="help" class="panel h-100">
+            <div class="panel-head"><h2>Help</h2></div>
+            <ul class="panel-rows">
+                <li><a href="@ConnectModel.FirestormHelp" rel="noopener noreferrer">Firestorm's own help pages</a></li>
+                @if (Model.DisplayName.Length == 0)
+                {
+                    <li><a href="/signup">Make an account</a></li>
+                }
+                <li><a href="/guest/forgot-password">Forgot your password</a></li>
+                @foreach (var (id, title) in Model.HelpPages)
+                {
+                    <li><a href="/@id">@title</a></li>
+                }
+            </ul>
+        </section>
+    </div>
+</div>
+<p class="text-body-secondary text-center small">@Model.GridName doesn't give technical support for viewers.</p>
 
 @section Scripts {
 <script src="/js/connect.js"></script>
