@@ -55,14 +55,14 @@ public sealed class GridConfigWriter(LauncherPaths paths)
         SetFsAssetsDirectories(robust);
         SetSmartStartAndWifi(robust, s);
         robust.Set("GatekeeperService", "ForeignAgentsAllowed", Bool(hypergrid));
-        robust.Set("GridInfoService", "welcome", $"http://{host}:{s.WebPort}/welcome");
+        robust.Set("GridInfoService", "welcome", WebsiteAddress.Welcome(s));
         // The viewer's "forgot password" link: the website's page, not Wifi's. Robust's own setpassword (AllowSetPassword) stays
         // off: the website writes the new password itself.
         // The viewer's "create account" link: the website's sign-up page (it says so when sign-up is closed).
         if (AdminRule.HasStaffPages(s))
         {
-            robust.Set("GridInfoService", "password", $"http://{host}:{s.WebPort}/guest/forgot-password");
-            robust.Set("GridInfoService", "register", $"http://{host}:{s.WebPort}/signup");
+            robust.Set("GridInfoService", "password", WebsiteAddress.ForgotPassword(s));
+            robust.Set("GridInfoService", "register", WebsiteAddress.SignUp(s));
             // The grid's Terms at login (patched LLLoginService): Robust asks the launcher on this machine, and a viewer that
             // must accept them first is shown the public Terms page in its Terms window.
             robust.Set("LoginService", "TermsCheckURL", $"http://127.0.0.1:{s.WebPort}/dreamgrid/terms");

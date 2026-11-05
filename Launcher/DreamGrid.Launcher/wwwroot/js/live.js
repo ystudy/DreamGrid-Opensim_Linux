@@ -20,27 +20,6 @@ function signInAgain() {
     window.location.href = "/login?ReturnUrl=" + encodeURIComponent(window.location.pathname + window.location.search);
 }
 
-// copyButton(source, button) shows button, which copies the text of source. The clipboard API needs a secure
-// context (localhost); elsewhere the text is selected for Ctrl+C.
-function copyButton(source, button) {
-    function select() {
-        var range = document.createRange();
-        range.selectNodeContents(source);
-        var sel = window.getSelection();
-        sel.removeAllRanges();
-        sel.addRange(range);
-    }
-    button.hidden = false;
-    button.addEventListener("click", function () {
-        if (navigator.clipboard && window.isSecureContext) {
-            navigator.clipboard.writeText(source.textContent).then(function () { button.textContent = "Copied"; }, select);
-        } else {
-            select();
-            button.textContent = "Selected: press Ctrl+C";
-        }
-    });
-}
-
 // The Power and OAR menus are <details> elements, which stay open until their button is clicked again. A click
 // outside an open menu closes it, and so does Escape (which puts the focus back on that menu's button).
 function openMenus() {
