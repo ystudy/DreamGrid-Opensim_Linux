@@ -250,7 +250,7 @@ public sealed class PeopleActions(IPeopleDirectory people, StaffActions staff, F
     }
 
     private string? DeleteRefusal(ClaimsPrincipal actor, PersonView person) =>
-        Refusal(actor, person, PersonTask.Delete) ?? (holds.IsHeld(person.Row.Account.PrincipalId) ? OnHold : null);
+        Refusal(actor, person, PersonTask.Delete) ?? holds.Refusal(person.Row.Account.PrincipalId);
 
     /// <summary>
     /// Deletes a suspended resident for good: their regions go back to the estate they came from first (the delete waits until

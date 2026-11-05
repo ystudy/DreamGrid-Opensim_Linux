@@ -1,0 +1,149 @@
+@page "/people/takedowns/{number:regex(^TD-\d{{4}}-\d{{3,}}$)}"
+@model DreamGrid.Launcher.Pages.People.TakedownModel
+@using DreamGrid.Launcher.Core.Security
+@using DreamGrid.Launcher.Pages.People
+@{
+    var c = Model.Case!;
+    ViewData["Title"] = c.Number;
+    var n = c.Notice;
+}
+<p><a href="/people/takedowns">‹ Takedowns</a></p>
+<h1>@c.Number <span class="badge @(c.Open ? "text-bg-warning" : "text-bg-secondary") ms-2">@(c.Open ? "Open" : "Closed")</span></h1>
+@if (Model.Error is not null)
+{
+    <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
+}
+@if (Model.Notice is not null)
+{
+    <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
+}
+@if (!c.Open)
+{
+    <p id="case-outcome"><strong>Outcome:</strong> @c.Outcome</p>
+}
+<p><a href="/people/takedowns/@c.Number/sender">The page for the sender</a> (print it or save it as a PDF from the browser).</p>
+
+<h2 class="h4">The notice</h2>
+<dl id="case-notice" class="row">
+    <dt class="col-sm-3">Reason</dt><dd class="col-sm-9">@TakedownRules.ReasonWords(n.Reason)</dd>
+    <dt class="col-sm-3">Sent by</dt><dd class="col-sm-9">@n.SenderName@(n.Organisation is { } o ? $", {o}" : "")</dd>
+    <dt class="col-sm-3">Address</dt><dd class="col-sm-9">@(n.Address ?? "None")</dd>
+    <dt class="col-sm-3">Their reference</dt><dd class="col-sm-9">@(n.Reference ?? "None")</dd>
+    <dt class="col-sm-3">Arrived</dt><dd class="col-sm-9">@TakedownAccess.Day(n.Received)</dd>
+    <dt class="col-sm-3">Resident told</dt><dd class="col-sm-9">@(c.TellResident ? "Yes" : "No")</dd>
+    <dt class="col-sm-3">What it says</dt><dd class="col-sm-9 case-text">@n.Text</dd>
+</dl>
+
+<h2 class="h4">People</h2>
+<ul id="case-people">
+    @foreach (var p in c.People)
+    {
+        <li><a href="/people/@p.Principal">@p.Name</a> <span class="text-body-secondary">(@TakedownAccess.Kind(p.Kind))</span></li>
+    }
+</ul>
+
+<h2 class="h4">Items</h2>
+<div id="case-items" class="table-responsive">
+    <table class="table table-sm align-middle">
+        <thead><tr><th>Item</th><th>Type</th><th>Creator</th><th>Held by, in</th><th>Removed</th><th>Content kept</th><th><span class="visually-hidden">Put back</span></th></tr></thead>
+        <tbody>
+            @foreach (var i in c.Items)
+            {
+                var holder = c.People.FirstOrDefault(p => p.Principal == i.Holder)?.Name ?? i.Holder.ToString();
+                <tr>
+                    <td>@i.Name</td>
+                    <td>@TakedownRules.TypeWords(i.AssetType)</td>
+                    <td>@i.CreatorName</td>
+                    <td>@holder, @i.FolderPath</td>
+                    <td>@PersonModel.When(i.RemovedAt)</td>
+                    <td>@(i.EvidenceSha256 is { } sha ? $"Yes (SHA-256 {sha[..12]}…)" : $"No: {i.NotKept}")</td>
+                    <td>
+                        @if (i.PutBackAt is { } back)
+                        {
+                            <span>Put back @PersonModel.When(back)</span>
+                        }
+                        else if (c.Open)
+                        {
+                            <form method="post" asp-page-handler="PutBack" asp-antiforgery="true" class="put-back d-flex gap-1">
+                                <input type="hidden" name="item" value="@i.ItemId">
+                                <input class="form-control form-control-sm" name="why" maxlength="1000" placeholder="Why" aria-label="Why put @i.Name back">
+                                <button type="submit" class="btn btn-sm btn-outline-secondary">Put back</button>
+                            </form>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+<p id="case-regions-note" class="text-body-secondary">Objects already placed in regions aren't covered. Return them in-world with the viewer's region tools.</p>
+
+@if (c.Open)
+{
+    <h2 class="h4">Copies held by others</h2>
+    <p>A copy has the same content as the removed item. A copy someone changed is a new thing and isn't found.</p>
+    <form id="find-copies" method="post" asp-page-handler="Copies" asp-antiforgery="true" class="mb-2">
+        <button type="submit" class="btn btn-outline-secondary">Find copies</button>
+    </form>
+    @if (Model.Copies is { } copies)
+    {
+        if (copies.Count == 0)
+        {
+            <p id="copies-none">No copies found.</p>
+        }
+        else
+        {
+            <form id="take-copies" method="post" asp-page-handler="TakeCopies" asp-antiforgery="true">
+                <table class="table table-sm align-middle">
+                    <thead><tr><th><span class="visually-hidden">Pick</span></th><th>Held by</th><th>Item</th><th>Folder</th></tr></thead>
+                    <tbody>
+                        @foreach (var row in copies)
+                        {
+                            var h = row.Holding;
+                            <tr>
+                                <td>
+                                    @if (row.Refusal is null)
+                                    {
+                                        <input class="form-check-input" type="checkbox" name="picks" value="@($"{h.Owner}:{h.Item.Row.ItemId}")" aria-label="Pick @h.Item.Row.Name held by @h.OwnerName">
+                                    }
+                                    else
+                                    {
+                                        <span class="text-body-secondary">@row.Refusal</span>
+                                    }
+                                </td>
+                                <td>@h.OwnerName</td>
+                                <td>@h.Item.Row.Name</td>
+                                <td>@h.Item.FolderPath</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                <button type="submit" class="btn btn-danger">Take these down too</button>
+            </form>
+        }
+    }
+
+    <h2 class="h4 mt-4">Add a note</h2>
+    <form method="post" asp-page-handler="Note" asp-antiforgery="true" class="mb-3">
+        <textarea class="form-control mb-2" name="text" rows="2" maxlength="1000" aria-label="Note"></textarea>
+        <button type="submit" class="btn btn-outline-secondary">Add note</button>
+    </form>
+
+    <h2 class="h4">Close the case</h2>
+    <form method="post" asp-page-handler="Close" asp-antiforgery="true" class="mb-3">
+        <label class="form-label" for="outcome">Outcome, for example "removed for good", "counter-notice, put back" or "withdrawn by sender"</label>
+        <input class="form-control mb-2" id="outcome" name="outcome" maxlength="1000">
+        <button type="submit" class="btn btn-outline-danger">Close</button>
+    </form>
+}
+
+<h2 class="h4">What happened</h2>
+<table id="case-events" class="table table-sm">
+    <thead><tr><th>When</th><th>Who</th><th>What</th><th>Why</th></tr></thead>
+    <tbody>
+        @foreach (var e in c.Events)
+        {
+            <tr><td>@PersonModel.When(e.At)</td><td>@e.Staff</td><td>@e.What</td><td>@e.Why</td></tr>
+        }
+    </tbody>
+</table>
