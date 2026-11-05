@@ -126,6 +126,12 @@ public sealed class RegionRights
         lock (_gate) return _data.Estates.FirstOrDefault(e => e.Owner == owner);
     }
 
+    /// <summary>Every estate made for a region owner.</summary>
+    public IReadOnlyList<OwnerEstate> OwnerEstates()
+    {
+        lock (_gate) return _data.Estates.ToList();
+    }
+
     /// <summary>Remembers the estate the person owns; their later regions go into it.</summary>
     public void SetEstate(Guid owner, int estateId, string name)
     {

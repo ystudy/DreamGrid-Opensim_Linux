@@ -1,0 +1,53 @@
+@page "/estates"
+@model DreamGrid.Launcher.Pages.Estates.IndexModel
+@{
+    ViewData["Title"] = "Estates";
+}
+<h1>Estates</h1>
+<p>Every region is in an estate. The estate's owner and managers can change its regions' rules in the viewer's Region/Estate window.
+    Open an estate to rename it, change its owner or managers, or move regions into it.</p>
+@if (Model.Error is not null)
+{
+    <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
+}
+@if (Model.Notice is not null)
+{
+    <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
+}
+@if (Model.Unavailable)
+{
+    <p id="estates-unavailable">@DreamGrid.Launcher.Estates.EstatesAdmin.DatabaseDown</p>
+}
+else if (Model.Rows.Count == 0)
+{
+    <p id="estates-none">No estates yet. The first one is made when your first region starts.</p>
+}
+else
+{
+    <div class="table-responsive">
+        <table id="estates-list" class="table align-middle">
+            <thead><tr><th>Name</th><th>Owner</th><th>Regions</th><th>Managers</th></tr></thead>
+            <tbody>
+            @foreach (var e in Model.Rows)
+            {
+                <tr>
+                    <td><a href="/estates/estate?id=@e.Id">@e.Name</a></td>
+                    <td>@e.OwnerName</td>
+                    <td class="regions">@e.Regions</td>
+                    <td class="managers">@e.Managers</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+<h2 class="mt-4">New estate</h2>
+<form id="estate-create" method="post" action="/estates?handler=Create" asp-antiforgery="true">
+    <label class="form-label" for="name">Name</label>
+    <input class="form-control" id="name" name="name" value="@Model.TypedName" maxlength="@DreamGrid.Launcher.Estates.EstatesAdmin.MaxName" autocomplete="off">
+    <label class="form-label mt-2" for="owner">Owner</label>
+    <input class="form-control" id="owner" name="owner" value="@Model.TypedOwner" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="First Last">
+    <p class="hint form-text">A resident of your grid. A region needs to be running to make an estate; the new estate has no regions until you move one in.</p>
+    <button type="submit" class="btn btn-primary">Make estate</button>
+</form>

@@ -39,6 +39,7 @@ internal sealed class LauncherFactory : WebApplicationFactory<Program>
         Estates = new FakeEstateRemover();
         Inventory = new FakeInventoryStore(Robust);
         Groups = new FakeGridGroups(Robust);
+        GridEstates = new FakeGridEstates(Robust);
         // Robust's console makes the avatar (with a password nobody knows) the fake account service then reports.
         Grid.OnCreateResident = (first, last, email, level) =>
         {
@@ -66,6 +67,12 @@ internal sealed class LauncherFactory : WebApplicationFactory<Program>
     public FakeInventoryStore Inventory { get; }
     /// <summary>The grid's group tables, in memory.</summary>
     public FakeGridGroups Groups { get; }
+    /// <summary>Robust's hypergrid links and map, in memory.</summary>
+    public FakeGridHyperlinks Hyperlinks { get; } = new();
+    /// <summary>The hypergrid link test, without a network.</summary>
+    public FakeGridProbe Probe { get; } = new();
+    /// <summary>The regions' estate tables, in memory.</summary>
+    public FakeGridEstates GridEstates { get; }
     /// <summary>The host's clock: starts at the real time and moves only when a test advances it.</summary>
     public FakeTimeProvider Time { get; } = new(DateTimeOffset.UtcNow);
     /// <summary>The Grid Asset Server's join information the host reads (no network).</summary>
@@ -109,6 +116,12 @@ internal sealed class LauncherFactory : WebApplicationFactory<Program>
             services.AddSingleton<IEstateRemover>(Estates);
             services.RemoveAll<DreamGrid.Launcher.Core.Groups.IGridGroups>();
             services.AddSingleton<DreamGrid.Launcher.Core.Groups.IGridGroups>(Groups);
+            services.RemoveAll<DreamGrid.Launcher.Core.Hypergrid.IGridHyperlinks>();
+            services.AddSingleton<DreamGrid.Launcher.Core.Hypergrid.IGridHyperlinks>(Hyperlinks);
+            services.RemoveAll<DreamGrid.Launcher.Core.Hypergrid.IGridProbe>();
+            services.AddSingleton<DreamGrid.Launcher.Core.Hypergrid.IGridProbe>(Probe);
+            services.RemoveAll<DreamGrid.Launcher.Core.Estates.IGridEstates>();
+            services.AddSingleton<DreamGrid.Launcher.Core.Estates.IGridEstates>(GridEstates);
             services.RemoveAll<IRobustPasswords>();
             services.AddSingleton<IRobustPasswords>(Robust);
             services.RemoveAll<IRobustEmails>();

@@ -79,6 +79,22 @@ public interface IGridController
     Task LinkEstateAsync(Guid regionId, int estateId, CancellationToken ct);
 
     /// <summary>
+    /// Tells every running region program to read estate <paramref name="estateId"/> again from the database (<c>estate reload</c>)
+    /// and returns the names of the programs that didn't confirm it (their regions show the change after a restart). Programs
+    /// that aren't running read the database when they start. Never throws for a program that doesn't answer.
+    /// </summary>
+    Task<IReadOnlyList<string>> ReloadEstateAsync(int estateId, CancellationToken ct);
+
+    /// <summary>
+    /// Asks Robust to link a region on another grid at map cell (<paramref name="x"/>, <paramref name="y"/>) (<c>link-region</c>):
+    /// Robust asks the other grid's gatekeeper, fetches its map tile and stores the link. <see cref="HyperlinkResult.Linked"/> is
+    /// true when Robust said "Hyperlink established", false with Robust's reason when it said it failed, and null when its answer
+    /// didn't come in time (the caller looks at the map). Throws <see cref="InvalidOperationException"/> when this computer runs no
+    /// grid service, and <see cref="HttpRequestException"/> when Robust isn't running.
+    /// </summary>
+    Task<Hypergrid.HyperlinkResult> LinkHypergridAsync(int x, int y, Hypergrid.HyperlinkAddress address, CancellationToken ct);
+
+    /// <summary>
     /// Logs the avatar out of the grid from the region it is in (<c>kick user</c>), showing <paramref name="message"/>. Throws
     /// <see cref="ArgumentException"/> for a name the console would split, and <see cref="InvalidOperationException"/> when the
     /// region isn't one of this computer's, isn't running, or its program runs an OAR job.

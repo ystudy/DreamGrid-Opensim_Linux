@@ -130,9 +130,7 @@ Each item says what Wifi did, how v7 should do it better, and the security rules
   - put one item back and see it in the same folder
   - close the case, print the sender's page, and then delete works
 
-#### 2.5c History for legal requests — not started
-- [ ] Collect what the grid holds about an avatar and save it as a file to hand over: logins and their addresses, account changes, staff actions, regions and groups. First check what OpenSim really records; chat isn't stored.
-- [ ] The same hold as 2.5b, so a suspend-then-delete can't destroy what a request needs.
+#### 2.5c History for legal requests — moved to "Later" (owner, 2026-11-05)
 
 ### 2.6 Terms of service (Wifi: `termsofservice`, `tos`)
 - [ ] The admin edits a ToS text per language, with a version number.
@@ -164,11 +162,16 @@ Each item says what Wifi did, how v7 should do it better, and the security rules
 - [x] The owner's check on the VM, in Firestorm: rename a group, add and remove someone, make a default group and press Add everyone now, sign up a new resident, and see the group change in the viewer. (2026-11-02: Firestorm against the Debian 12 VM running `b16af25`, PR 28 on V7; the owner said it works.)
 
 ### 2.9 Hypergrid links (Wifi: `linkregion*`, `HyperlinkServiceUserLevel`)
-- [ ] The owner, admins and supervisors add or remove hypergrid links (owner, 2026-11-03); no extra "privileged" level is needed.
-- [ ] **[S]** Check the address format and allow only http or https; the link test runs with a timeout and never follows redirects to private networks.
+> Built without questions (owner, 2026-11-05: "use your best judgement"); design `docs/superpowers/specs/2026-11-05-hypergrid-links-estates-design.md`, where the choices that were mine are marked.
+- [x] The owner, admins and supervisors add or remove hypergrid links (owner, 2026-11-03); no extra "privileged" level is needed. `/hypergrid`, a "Hypergrid" menu item for all staff, only where this computer runs the grid. A link goes on a free cell just above the grid unless X and Y are typed; Robust makes it (`link-region`). Removing deletes only a Hyperlink row, by UUID.
+- [x] **[S]** Check the address format and allow only http or https; the link test runs with a timeout and never follows redirects to private networks. The launcher fetches `get_grid_info` itself first: 10 s, 64 KB, no redirects, and only public addresses, checked at connect time. Robust's own requests after that can't be limited from the launcher (written in the design).
+- [ ] The owner's check on the VM, in Firestorm: link a region on another public grid, see it on the map, teleport there and back, then remove it.
 
 ### 2.10 Estates (Wifi: `estatelist`, `estateeditform`)
-- [ ] List estates, change the owner, add managers, assign regions to an estate. This fits next to the existing Regions pages.
+> Built in the same change as 2.9; same design document.
+- [x] List estates, change the owner, add managers, assign regions to an estate. `/estates` and `/estates/estate` for the owner and admins: rename, owner, managers (at most 10), move one of this computer's regions in (it must be running), make a new estate, delete an empty one. The grid's own estate keeps its name and owner; a region owner's estate keeps its owner, and their regions stay in it.
+- [x] Changes are written to the estate tables, then every running region program reads the estate again through a new OpenSim console command, `estate reload <id>` (`OpenSim/Region/Application/OpenSim.cs`).
+- [ ] The owner's check on the VM, in Firestorm: add a manager and see them in the Region/Estate window without a restart; change an estate's owner; move a region into a new estate; delete the empty one.
 
 ### 2.11 Inventory backups (Wifi: `iars.html`, `inventorylist`)
 - [ ] Resident: download their own inventory as an IAR. Admin: load or save an IAR for any avatar.
@@ -274,6 +277,7 @@ Decided: build **all three**, each with its own switch. A (honeypot and rate lim
 - Region owners for regions on a Region Server (the guest side exists only where the grid service runs).
 - OAR download for region owners.
 - Audio alternative for the image CAPTCHA.
+- 2.5c History for legal requests (owner: later, 2026-11-05; designed in `docs/superpowers/specs/2026-11-03-people-admin-design.md`). Collect what the grid holds about an avatar and save it as a file to hand over: logins and their addresses, account changes, staff actions, regions and groups. First check what OpenSim really records; chat isn't stored. The same hold as 2.5b (its own reason in `AccountHolds`), so a suspend-then-delete can't destroy what a request needs.
 - Mass email to residents (to everyone or to one group), queued and throttled, with an unsubscribe link. Add it only if it's asked for.
 - Faster asset loading through Cloudflare (owner, 2026-11-04: "we will be testing this out and moving in that direction"). Viewers download textures and meshes from Cloudflare's cache instead of the grid machine's upload, on the free plan, through a Cloudflare Tunnel to Robust. Notes, OpenSim changes and stages: `docs/superpowers/specs/2026-11-04-cloudflare-assets-design.md`.
   - [x] Robust's GetTexture connector didn't load on Linux (misspelled DLL and class name), so `/CAPS/GetTexture/` answered 404. Fixed in PR 35.
