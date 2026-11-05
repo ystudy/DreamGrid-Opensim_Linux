@@ -41,7 +41,7 @@ else
         }
         @if (preview.Refusal is { } why)
         {
-            <p class="error">@why</p>
+            <div class="error-box error alert alert-danger" role="alert">@why</div>
             <a class="btn btn-outline-secondary" href="/people/@preview.Person.Row.Account.PrincipalId">Back</a>
         }
         else

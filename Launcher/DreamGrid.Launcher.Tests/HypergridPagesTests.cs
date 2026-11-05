@@ -99,7 +99,7 @@ public sealed class HypergridPagesTests
         f.Hyperlinks.Add("Old Link", "http://far.example.net:8002/", 5, 5);
         var client = await StaffAsync(f, "admin");
         var page = await PageAsync(client);
-        Assert.NotNull(page.QuerySelector("#hypergrid-off"));
+        Assert.Equal("Hypergrid is off, so links can't be added. Turn it on in Settings, Plan.", page.QuerySelector("#hypergrid-off")!.TextContent.Trim());
         Assert.Null(page.QuerySelector("#hyperlink-add"));
         Assert.Contains("Old Link", page.QuerySelector("#hyperlinks")!.TextContent);
 
@@ -190,6 +190,14 @@ public sealed class HypergridPagesTests
         await using var f = On();
         var page = await PostAsync(await StaffAsync(f, "admin"), "Remove", new() { ["link"] = Guid.NewGuid().ToString() });
         Assert.Contains("isn't there any more", Error(page));
+    }
+
+    [Fact]
+    public async Task With_hypergrid_off_a_supervisor_is_told_to_ask()
+    {
+        await using var f = Factory(settings: s => s with { Plan = OwnerPlan.SimplePublic, Hostname = "mygrid.example.org", Hypergrid = false });
+        var page = await PageAsync(await StaffAsync(f, "supervisor"));
+        Assert.Equal("Hypergrid is off, so links can't be added. Ask the owner or an admin to turn it on.", page.QuerySelector("#hypergrid-off")!.TextContent.Trim());
     }
 
     [Fact]

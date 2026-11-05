@@ -22,6 +22,7 @@ public static class PeopleRules
     public const string Self = "Use your own account page.";
     public const string SupervisorOnly = "Supervisors can only suspend or unsuspend.";
     public const string StaffFirst = "Change staff on the Staff page first.";
+    public const string OwnerChangesStaff = "Only the owner can change staff.";
     public const string EmailOff = "Email isn't set up.";
     public const string NoEmail = "No email address.";
     public const string IsSuspended = "Suspended.";
@@ -37,7 +38,7 @@ public static class PeopleRules
                 task == PersonTask.Suspend ? StaffChange.Suspend : StaffChange.Unsuspend, target.IsActor);
         if (target.IsActor) return Self;
         if (actor is not (StaffRole.Admin or StaffRole.Owner)) return SupervisorOnly;
-        if (target.Judged != StaffRole.None) return StaffFirst;
+        if (target.Judged != StaffRole.None) return actor == StaffRole.Owner ? StaffFirst : OwnerChangesStaff;
         return task switch
         {
             PersonTask.ResetLink when !target.EmailReady => EmailOff,
