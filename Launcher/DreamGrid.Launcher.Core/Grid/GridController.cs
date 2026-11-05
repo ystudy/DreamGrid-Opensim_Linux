@@ -1591,7 +1591,7 @@ public sealed partial class GridController(
         }
 
         var seen = regions.ToDictionary(r => r.Uuid, r => _logins.Version(r.Uuid));
-        SetLoaded(instance, await GridConsoleCommands.LoadedRegionsAsync(program.Console!, ConsoleSettle, ct));
+        SetLoaded(instance, await GridConsoleCommands.LoadedRegionsAsync(program.Console!, ConsoleSettle, time, ct));
         var lines = await program.Console!.RunAsync("login status", ConsoleSettle, ct);
         var byName = GridConsoleCommands.ParseLoginStatus(lines);
         var any = GridConsoleCommands.ParseLoginsEnabled(lines) ?? false;

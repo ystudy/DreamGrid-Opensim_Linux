@@ -113,8 +113,23 @@ public static partial class GridConsoleCommands
         return ids.Count == 0 ? null : ids;
     }
 
-    public static async Task<IReadOnlyList<Guid>?> LoadedRegionsAsync(RestConsoleClient console, TimeSpan settle, CancellationToken ct) =>
-        ParseShowRegions(await console.RunAsync("show regions", settle, ct));
+    /// <summary>
+    /// The regions a running program has loaded, from <c>show regions</c>. A slow console can answer after the settle
+    /// time, leaving the reply without its table, so the command is repeated until a table shows up or
+    /// <see cref="ShowRegionsWait"/> has passed; null then (unknown).
+    /// </summary>
+    public static async Task<IReadOnlyList<Guid>?> LoadedRegionsAsync(RestConsoleClient console, TimeSpan settle, TimeProvider time,
+        CancellationToken ct)
+    {
+        var deadline = time.GetUtcNow() + ShowRegionsWait;
+        while (true)
+        {
+            if (ParseShowRegions(await console.RunAsync("show regions", settle, ct)) is { } ids) return ids;
+            if (time.GetUtcNow() >= deadline) return null;
+        }
+    }
+
+    private static readonly TimeSpan ShowRegionsWait = TimeSpan.FromSeconds(30);
 
     [GeneratedRegex(@"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b")]
     private static partial Regex RegionIdPattern();
