@@ -115,8 +115,8 @@ public sealed class EmailPageTests
         Assert.Equal(EmailProviders.All.Select(p => p.Key), page.QuerySelectorAll(".email-card[data-dialog]").Select(c => c.GetAttribute("data-dialog")));
         Assert.Contains("Email isn't set up yet. Sign-up and password reset stay hidden until it is.", page.QuerySelector("#email-not-ready")?.TextContent);
         Assert.Contains("about 500 a day", page.QuerySelector(".email-card[data-dialog=gmail]")!.TextContent);
-        var security = new HtmlParser().ParseDocument(await owner.GetStringAsync("/security", Ct));
-        Assert.Equal("/security/email", security.QuerySelector("#email-link")?.GetAttribute("href"));
+        var hub = new HtmlParser().ParseDocument(await owner.GetStringAsync("/guest-pages", Ct));
+        Assert.Equal("Email server", hub.QuerySelector("main a[href='/security/email']")?.TextContent.Trim());
     }
 
     [Fact]

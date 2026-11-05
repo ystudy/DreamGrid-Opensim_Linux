@@ -297,7 +297,7 @@ public sealed class DeletePageTests : IAsyncLifetime
     {
         using var client = await SignedInAsync();
         var with = await GetAsync(client, "/regions");
-        Assert.Equal("Recently deleted (1)", with.QuerySelector("a[href='/regions/deleted']")!.TextContent.Trim());
+        Assert.Equal("Recently deleted (1)", with.QuerySelector("main a[href='/regions/deleted']")!.TextContent.Trim());
 
         await using var none = new LauncherFactory(s => s with
         {
@@ -308,7 +308,7 @@ public sealed class DeletePageTests : IAsyncLifetime
         using var other = none.CreateClient(new() { AllowAutoRedirect = false });
         (await other.GetAsync("/__test/signin", Ct)).Dispose();
 
-        Assert.Null((await GetAsync(other, "/regions")).QuerySelector("a[href='/regions/deleted']"));
+        Assert.Null((await GetAsync(other, "/regions")).QuerySelector("main a[href='/regions/deleted']"));
     }
 
     [Fact]

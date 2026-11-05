@@ -93,7 +93,7 @@ public static class StatusApi
     /// Built from the port number, never from the raw message (which uses 2a's internal names and may hold paths).
     /// </summary>
     private static string PlainStartFailure(StartFailure f) => f.ConflictPort is { } port
-        ? PortInUse(port) + " Close that program, or pick another port in Advanced Settings \u2192 Network."
+        ? PortInUse(port) + " Close that program, or pick another port in Settings \u2192 Network."
         : CouldNotStart;
 
     /// <summary>The plain port-conflict sentence; callers add what to do (setup pages cannot reach Advanced Settings).</summary>

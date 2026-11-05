@@ -322,7 +322,7 @@ public sealed class AdvancedSettingsTests : IAsyncLifetime
 
         var links = doc.QuerySelectorAll("main a").Select(a => (a.TextContent.Trim(), a.GetAttribute("href"))).ToList();
         Assert.Equal(
-            [("Plan", "/advanced/plan"), ("Network", "/advanced/network"), ("Database", "/advanced/database"), ("Regions", "/advanced/regions"), ("Log level", "/advanced/module/loglevel"), ("Logs", "/logs")],
+            [("Plan", "/advanced/plan"), ("Network", "/advanced/network"), ("Database", "/advanced/database"), ("Region defaults", "/advanced/regions"), ("Log level", "/advanced/module/loglevel"), ("Logs", "/logs")],
             links);
     }
 

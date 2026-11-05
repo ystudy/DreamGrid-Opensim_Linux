@@ -413,20 +413,21 @@ public sealed class LegalEditorTests
 
         // The Security page stays, without the link to the editor.
         var security = new HtmlParser().ParseDocument(await owner.GetStringAsync("/security", Ct));
-        Assert.Null(security.QuerySelector("#legal-editor-link"));
+        Assert.Null(security.QuerySelector("#guest-pages-link"));
         // Nor does the allow-list help speak of guests and public pages there are none of.
         Assert.DoesNotContain("Guests and the public pages", security.Body!.TextContent);
     }
 
     [Fact]
-    public async Task The_security_page_links_to_the_editor()
+    public async Task The_guest_pages_hub_links_to_the_editor()
     {
         await using var f = Factory(OwnerPlan.GridAsset);
         var owner = await SignedInAsync(f);
 
         var security = new HtmlParser().ParseDocument(await owner.GetStringAsync("/security", Ct));
+        var hub = new HtmlParser().ParseDocument(await owner.GetStringAsync("/guest-pages", Ct));
 
-        Assert.Equal("/security/legal", security.QuerySelector("#legal-editor-link")!.GetAttribute("href"));
+        Assert.Equal("/security/legal", hub.QuerySelector("main a[href='/security/legal']")!.GetAttribute("href"));
         Assert.Contains("Guests and the public pages are reachable from any address; this list covers the staff pages.", security.Body!.TextContent);
     }
 }

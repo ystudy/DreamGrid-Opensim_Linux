@@ -14,7 +14,7 @@ public sealed partial class DashboardTests : IAsyncLifetime
 {
     private const string PortMessage = "Port 8002 (Robust public) is already in use by another program.";
     private const string PlainPort =
-        "Port 8002 is already in use by another program, so your world can't start. Close that program, or pick another port in Advanced Settings → Network.";
+        "Port 8002 is already in use by another program, so your world can't start. Close that program, or pick another port in Settings → Network.";
     private const string CouldNotStart = "Your world could not start.";
 
     private readonly LauncherFactory _f = new(s => s with

@@ -23,7 +23,7 @@
         </div>
 
         <div id="lan-part" hidden="@regionPublic">
-            <p class="mt-3">Your regions use this computer's address on your network, <strong>@Model.NetworkAddress</strong>. You can change it later in Advanced settings.</p>
+            <p class="mt-3">Your regions use this computer's address on your network, <strong>@Model.NetworkAddress</strong>. You can change it later in Settings.</p>
         </div>
         <div id="public-part" hidden="@(!regionPublic)">
             <label class="form-label mt-3" for="PublicAddress">Your public IP address or a name for this computer</label>
@@ -74,7 +74,7 @@
     }
 
     <div id="lan-part" hidden="@showPublic">
-        <p class="mt-3">Your world uses this computer's address on your network, <strong>@Model.NetworkAddress</strong>. You can change it later in Advanced settings.</p>
+        <p class="mt-3">Your world uses this computer's address on your network, <strong>@Model.NetworkAddress</strong>. You can change it later in Settings.</p>
     </div>
 
     @if (Model.Plan != OwnerPlan.Local)

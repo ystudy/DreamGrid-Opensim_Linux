@@ -156,3 +156,8 @@ form[role=search] .btn { flex-shrink: 0; white-space: nowrap; }
 .people-icon { display: inline-flex; align-items: center; }
 .people-icon svg { width: 1rem; height: 1rem; }
 .people-filter { max-width: 14rem; }
+
+/* The staff menu's groups (design 2026-11-05-gridgate-menu-looks-workflows §1). */
+header .signout { margin: 0; }
+.back-link { margin-bottom: 0.25rem; }
+.hub-links { margin-bottom: 1rem; }

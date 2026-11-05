@@ -108,7 +108,7 @@ public sealed class JoinModel(IGridController grid, Func<LauncherSettings> setti
     private static string? PortWarning(LauncherSettings s, JoinedGrid read) =>
         read.RegionPortsFrom is { } from && read.RegionPortsTo is { } to && s.RegionPort >= from && s.RegionPort <= to
             ? $"This computer's region ports overlap the Grid Asset Server's ({from}-{to}). If both computers are behind one router, "
-              + "change this computer's first region port in Advanced → Network."
+              + "change this computer's first region port in Settings → Network."
             : null;
 
     /// <summary>Puts back the join, grid name and estate owner saved <paramref name="before"/>, and shows the confirm view with <paramref name="error"/>.</summary>

@@ -472,7 +472,7 @@ public sealed class RegionServerPagesTests
         var text = MainText(await resp.Content.ReadAsStringAsync(Ct));
         Assert.Contains("Saved.", text);
         Assert.Contains("This computer's region ports overlap the Grid Asset Server's (8004-8006). If both computers are behind one router, "
-            + "change this computer's first region port in Advanced → Network.", text);
+            + "change this computer's first region port in Settings → Network.", text);
         Assert.Equal("192.168.1.9", f.Store.LoadOrCreate().Join!.Host);
     }
 

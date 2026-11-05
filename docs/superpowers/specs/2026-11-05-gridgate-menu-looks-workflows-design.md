@@ -49,7 +49,7 @@ Legend, as in the work list: **[S]** security requirement, **[X]** cross-platfor
 | Top level | Inside | Who sees it | Plans |
 |---|---|---|---|
 | **Home** (with the "N waiting" badge) | — | owner, admins | all |
-| **World** | Regions · Estates · Hypergrid links · Region library · Recently deleted | Regions, Library, Recently deleted: owner and admins. Estates: owner and admins, staff plans only. Hypergrid links: all staff, staff plans only | all |
+| **World** | Regions · Estates · Hypergrid links · OAR library · Recently deleted | Regions, OAR library, Recently deleted: owner and admins. Estates: owner and admins, staff plans only. Hypergrid links: all staff, staff plans only | all |
 | **People** | Find a person · Sign-ups (with badge) · Groups · Takedowns · Staff | Find a person: all staff. Sign-ups: whoever may approve (`ApprovalRules.CanApprove`). Groups, Takedowns: owner and admins. Staff: owner | staff plans |
 | **Guest pages** | Splash page · Legal pages · Sign-up and bots · Email server · Password reset | Splash page: owner and admins. The rest: owner | staff plans |
 | **Security** | — (one link to `/security`) | owner | all |
@@ -60,7 +60,7 @@ Legend, as in the work list: **[S]** security requirement, **[X]** cross-platfor
 
 ### Rules for the menu
 - A group with nothing in it the person can open is not shown. A group with one item shows as a plain link with that item's name, except when that item is the group's own hub page. Then the group's name is kept.
-  - A supervisor's World group holds only Hypergrid links, so it shows as **Hypergrid**.
+  - A supervisor's World group holds only Hypergrid links, so it shows as **Hypergrid links**.
   - A supervisor who can't approve sign-ups has only "Find a person" in People, which is the People hub, so it shows as **People**. That is the default, because sign-up approvers are owner and admins unless the owner changes it on the Sign-up and bots page.
 - Each group heading links to a hub page. Without scripts, a click opens the hub. With scripts, it opens the dropdown. Hubs:
   - World → `/regions`. It already links to Library and Recently deleted, and gets links to Estates and Hypergrid.
@@ -76,7 +76,7 @@ Legend, as in the work list: **[S]** security requirement, **[X]** cross-platfor
 
 | | Owner | Admin | Supervisor |
 |---|---|---|---|
-| Local, Simple Public, Grid Asset | Home · World · People · Guest pages · Security · Settings · Your name | Home · World · People · Splash page · Settings · Your name | People · Hypergrid · Your name |
+| Local, Simple Public, Grid Asset | Home · World · People · Guest pages · Security · Settings · Your name | Home · World · People · Splash page · Settings · Your name | Hypergrid links · People · Your name |
 | Region Server | Home · World · Security · Settings · Your name | Home · World · Settings · Your name | (no supervisors) |
 | Connected | Home · World · Security · Settings · Your name | (no admins) | (no supervisors) |
 
