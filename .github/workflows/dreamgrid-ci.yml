@@ -153,7 +153,8 @@ jobs:
   # directories (under the runner temp directory) so their logs can be uploaded when a test fails.
   launcher-windows:
     runs-on: windows-latest
-    timeout-minutes: 45
+    # The integration step alone takes 23-31 minutes; the jobs ran 35-44. A slow runner must not cancel the job.
+    timeout-minutes: 75
     env:
       MARIADB_VERSION: 11.4.9
       # From https://archive.mariadb.org/mariadb-11.4.9/winx64-packages/sha256sums.txt
@@ -201,6 +202,8 @@ jobs:
         run: dotnet test --project Launcher/DreamGrid.Launcher.Tests -c Release
 
       - name: Launcher integration and end-to-end tests
+        # Under the job's limit: a stuck test fails this step, so the logs below still upload.
+        timeout-minutes: 55
         run: dotnet test --project Launcher/DreamGrid.Launcher.IntegrationTests -c Release
         env:
           TMP: ${{ runner.temp }}
@@ -225,7 +228,8 @@ jobs:
 
   launcher-debian:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # The integration step alone takes 23-31 minutes; the jobs ran 35-44. A slow runner must not cancel the job.
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
@@ -264,6 +268,8 @@ jobs:
 
       # The container runs as root: the launcher starts mariadbd with --user=root then.
       - name: Launcher integration and end-to-end tests
+        # Under the job's limit: a stuck test fails this step, so the logs below still upload.
+        timeout-minutes: 55
         run: dotnet test --project Launcher/DreamGrid.Launcher.IntegrationTests -c Release
         env:
           TMPDIR: ${{ env.DG_TEST_TEMP }}
