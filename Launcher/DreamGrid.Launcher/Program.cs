@@ -327,6 +327,18 @@ builder.Services.AddSingleton(sp => new SplashStore(paths, sp.GetRequiredService
 });
 builder.Services.AddSingleton(sp => new ThemeStore(paths, sp.GetRequiredKeyedService<PictureStore>("theme"), sp.GetRequiredService<ILogger<ThemeStore>>()));
 builder.Services.AddSingleton<SplashSnapshot>();
+// The Home dashboard's counts (design 2026-11-05-dashboard), cached a minute.
+builder.Services.AddSingleton<DreamGrid.Launcher.Core.Dashboard.IWorldCounter>(sp => new DreamGrid.Launcher.Core.Dashboard.WorldCounter(
+    sp.GetRequiredService<Func<LauncherSettings>>(), sp.GetRequiredService<ILogger<DreamGrid.Launcher.Core.Dashboard.WorldCounter>>()));
+// [S] The Core services checks: 127.0.0.1 only, 2 seconds, no redirects, no cookies (design 2026-11-05-dashboard).
+builder.Services.AddHttpClient(DreamGrid.Launcher.Dashboard.ServiceChecks.ClientName, c =>
+    {
+        c.Timeout = DreamGrid.Launcher.Dashboard.ServiceChecks.Timeout;
+        c.MaxResponseContentBufferSize = DreamGrid.Launcher.Dashboard.ServiceChecks.MaxBytes;
+    })
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false, UseProxy = false });
+builder.Services.AddSingleton<DreamGrid.Launcher.Dashboard.IServiceChecks, DreamGrid.Launcher.Dashboard.ServiceChecks>();
+builder.Services.AddSingleton<DreamGrid.Launcher.Dashboard.DashboardSnapshot>();
 builder.Services.AddSingleton<SplashPictureCleanup>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<SplashPictureCleanup>());
 builder.Services.AddSingleton<GridActions>();
@@ -375,6 +387,7 @@ BotsApi.Map(app);
 RegionsApi.Map(app);
 LibraryApi.Map(app);
 StatusApi.Map(app);
+DashboardApi.Map(app);
 SetupApi.Map(app);
 SplashApi.Map(app);
 app.MapRazorPages();
