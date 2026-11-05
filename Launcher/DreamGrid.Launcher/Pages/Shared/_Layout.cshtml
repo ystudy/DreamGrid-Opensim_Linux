@@ -54,12 +54,14 @@
                         {
                             <a class="nav-link@(Active("/splash"))" href="/splash">Splash page</a>
                             <a class="nav-link@(Active("/groups"))" href="/groups">Groups</a>
+                            <a class="nav-link@(Active("/estates"))" href="/estates">Estates</a>
                         }
                     }
                     // The Staff and People pages exist only where there are supervisors (not on a Region Server or a Connected Server).
                     if (hasStaffPages)
                     {
                         <a class="nav-link@(Active("/people"))" href="/people">People</a>
+                        <a class="nav-link@(Active("/hypergrid"))" href="/hypergrid">Hypergrid</a>
                         if (signUpsWaiting > 0 && staffRole == DreamGrid.Launcher.Core.Security.StaffRole.Supervisor)
                         {
                             <a class="nav-link" href="/people/sign-ups"><span id="signups-badge" class="badge text-bg-warning">@signUpsWaiting waiting</span></a>

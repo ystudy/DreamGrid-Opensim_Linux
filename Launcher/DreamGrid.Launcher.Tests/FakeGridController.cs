@@ -435,6 +435,27 @@ internal sealed class FakeGridController : IGridController
         catch (Exception e) { return Task.FromException(e); }
     }
 
+    /// <summary>The programs <see cref="ReloadEstateAsync"/> says didn't confirm (none by default).</summary>
+    public Func<int, IReadOnlyList<string>> OnReloadEstate { get; set; } = _ => [];
+
+    public Task<IReadOnlyList<string>> ReloadEstateAsync(int estateId, CancellationToken ct)
+    {
+        Record($"ReloadEstate {estateId}");
+        return Task.FromResult(OnReloadEstate(estateId));
+    }
+
+    /// <summary>What <see cref="LinkHypergridAsync"/> answers for (x, y, address) (it may throw); linked by default.</summary>
+    public Func<int, int, DreamGrid.Launcher.Core.Hypergrid.HyperlinkAddress, DreamGrid.Launcher.Core.Hypergrid.HyperlinkResult> OnLinkHypergrid { get; set; } =
+        (_, _, _) => new(true, null);
+
+    public Task<DreamGrid.Launcher.Core.Hypergrid.HyperlinkResult> LinkHypergridAsync(int x, int y, DreamGrid.Launcher.Core.Hypergrid.HyperlinkAddress address,
+        CancellationToken ct)
+    {
+        Record($"LinkHypergrid {x} {y} {address.Url} {address.Region}".TrimEnd());
+        try { return Task.FromResult(OnLinkHypergrid(x, y, address)); }
+        catch (Exception e) { return Task.FromException<DreamGrid.Launcher.Core.Hypergrid.HyperlinkResult>(e); }
+    }
+
     /// <summary>What <see cref="JoinedRegionCountAsync"/> returns; it throws <see cref="JoinedRegionError"/> instead when set.</summary>
     public int JoinedRegions { get; set; }
     public Exception? JoinedRegionError { get; set; }

@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Text.RegularExpressions;
 using DreamGrid.Launcher.Core.Config;
 using DreamGrid.Launcher.Core.Database;
+using DreamGrid.Launcher.Core.Hypergrid;
 using DreamGrid.Launcher.Core.Logs;
 using DreamGrid.Launcher.Core.Modules;
 using DreamGrid.Launcher.Core.OpenSim;
@@ -949,6 +950,75 @@ public sealed partial class GridController(
             var lines = await EstateCommandAsync(console, $"estate link region {estateId} {regionId}", transcript, ct);
             if (!lines.Any(l => l.Contains("is now attached to estate", StringComparison.Ordinal) || l.Contains("is already part of estate", StringComparison.Ordinal)))
                 throw new InvalidOperationException($"{region.Name} did not join estate {estateId}. Console: {string.Join(" | ", transcript)}");
+        }
+        finally { _ops.Release(); }
+    }
+
+    [GeneratedRegex(@"^Estate (\d+) reloaded in (\d+) region")]
+    private static partial Regex EstateReloaded();
+
+    public async Task<IReadOnlyList<string>> ReloadEstateAsync(int estateId, CancellationToken ct)
+    {
+        await _ops.WaitAsync(ct);
+        try
+        {
+            var missed = new List<string>();
+            foreach (var (instance, program) in _programs.OrderBy(p => p.Key, StringComparer.Ordinal))
+            {
+                if (program.Process.State != ProcessState.Running || program.Console is null) continue;
+                // An OAR job talks to the same console; its output would mix with this command's. That program reads the
+                // estate again when it restarts.
+                if (_jobs.ContainsKey(instance))
+                {
+                    missed.Add(instance);
+                    continue;
+                }
+                try
+                {
+                    var lines = await program.Console.RunAsync($"estate reload {estateId}", ConsoleSettle, ct);
+                    if (!lines.Any(l => EstateReloaded().Match(l.Trim()) is { Success: true } m && m.Groups[1].Value == estateId.ToString(CultureInfo.InvariantCulture)))
+                    {
+                        _log?.LogWarning("{Program} did not confirm reading estate {Estate} again. Console: {Lines}", instance, estateId, string.Join(" | ", lines));
+                        missed.Add(instance);
+                    }
+                }
+                catch (Exception e) when (e is HttpRequestException or TaskCanceledException or IOException or ConsoleAuthException && !ct.IsCancellationRequested)
+                {
+                    _log?.LogWarning("{Program} did not answer \"estate reload {Estate}\": {Message}", instance, estateId, e.Message);
+                    missed.Add(instance);
+                }
+            }
+            return missed;
+        }
+        finally { _ops.Release(); }
+    }
+
+    /// <summary>How long Robust's console may stay quiet while it asks the other grid (its gatekeeper call and the map tile).</summary>
+    private static readonly TimeSpan HyperlinkSettle = TimeSpan.FromSeconds(15);
+
+    public async Task<HyperlinkResult> LinkHypergridAsync(int x, int y, HyperlinkAddress address, CancellationToken ct)
+    {
+        if (x is < 0 or > HyperlinkPlace.MaxCoordinate || y is < 0 or > HyperlinkPlace.MaxCoordinate)
+            throw new ArgumentOutOfRangeException(nameof(x), "A map location is from 0 to 65535.");
+        await _ops.WaitAsync(ct);
+        try
+        {
+            ThrowIfNoGridService(LoadSettings());
+            var console = _robust?.Console ?? throw new HttpRequestException("Robust isn't running.");
+            var command = FormattableString.Invariant($"link-region {x} {y} {address.Url}");
+            if (address.Region is { } region) command += " " + region;
+            IReadOnlyList<string> lines;
+            try { lines = await console.RunAsync(command, HyperlinkSettle, ct); }
+            catch (ConsoleCommandSentException e)
+            {
+                _log?.LogWarning("Robust took the link command but its answer was lost: {Message}", e.Message);
+                return new HyperlinkResult(null, null);
+            }
+            if (lines.Any(l => l.Contains("Hyperlink established", StringComparison.Ordinal))) return new HyperlinkResult(true, null);
+            const string failed = "Failed to link region: ";
+            if (lines.Select(l => l.Trim()).FirstOrDefault(l => l.StartsWith(failed, StringComparison.Ordinal)) is { } refused)
+                return new HyperlinkResult(false, LogText.Clean(refused[failed.Length..], 200));
+            return new HyperlinkResult(null, null);
         }
         finally { _ops.Release(); }
     }

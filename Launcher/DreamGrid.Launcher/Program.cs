@@ -164,7 +164,7 @@ builder.Services.AddRazorPages(o =>
     // /Profile and the People page are for every staff member, and the Security and Staff pages are the owner's. (Two folder
     // policies on one page would both have to pass, so those folders are left out of the admin one rather than given a second.)
     // The Staff and People pages do not exist (404) where there are no supervisors, nor do the Guest pages (the guest side).
-    string[] ownFolders = ["/Profile/", "/Security/", "/Staff/", "/People/", "/Guest/"];
+    string[] ownFolders = ["/Profile/", "/Security/", "/Staff/", "/People/", "/Guest/", "/Hypergrid/"];
     o.Conventions.AddFolderApplicationModelConvention("/", m =>
     {
         if (!ownFolders.Any(f => m.ViewEnginePath.StartsWith(f, StringComparison.OrdinalIgnoreCase)))
@@ -194,6 +194,11 @@ builder.Services.AddRazorPages(o =>
     o.Conventions.AddFolderApplicationModelConvention("/Splash", m => m.Filters.Add(new GuestSideOnly()));
     // The Groups pages: the grid's own groups, so only where this computer runs the grid (AdminPolicy from the folder rule above).
     o.Conventions.AddFolderApplicationModelConvention("/Groups", m => m.Filters.Add(new GuestSideOnly()));
+    // The hypergrid links: Robust's map, so only where this computer runs the grid; for every staff member (owner, 2026-11-03).
+    o.Conventions.AuthorizeFolder("/Hypergrid", AuthSchemes.StaffPolicy);
+    o.Conventions.AddFolderApplicationModelConvention("/Hypergrid", m => m.Filters.Add(new GuestSideOnly()));
+    // The estates: the regions' database on this computer, for the owner and admins (AdminPolicy from the folder rule above).
+    o.Conventions.AddFolderApplicationModelConvention("/Estates", m => m.Filters.Add(new GuestSideOnly()));
     // The same for the bot-protection page.
     o.Conventions.AddPageApplicationModelConvention("/Security/Bots", m => m.Filters.Add(new GuestSideOnly()));
     o.Conventions.AddPageApplicationModelConvention("/People/SignUps", m => m.Filters.Add(new GuestSideOnly()));
@@ -272,6 +277,13 @@ builder.Services.AddSingleton<SignUpApprovals>();
 builder.Services.AddSingleton<IGridGroups>(sp => new GridGroups(sp.GetRequiredService<Func<LauncherSettings>>()));
 builder.Services.AddSingleton(sp => new GroupJoins(Path.Combine(paths.Guests, "group-joins.json"), sp.GetRequiredService<ILogger<GroupJoins>>()));
 builder.Services.AddSingleton<GroupsAdmin>();
+builder.Services.AddSingleton<DreamGrid.Launcher.Core.Hypergrid.IGridHyperlinks>(sp =>
+    new DreamGrid.Launcher.Core.Hypergrid.GridHyperlinks(sp.GetRequiredService<Func<LauncherSettings>>()));
+builder.Services.AddSingleton<DreamGrid.Launcher.Core.Hypergrid.IGridProbe>(_ => new DreamGrid.Launcher.Core.Hypergrid.GridProbe());
+builder.Services.AddSingleton<DreamGrid.Launcher.Hypergrid.HypergridAdmin>();
+builder.Services.AddSingleton<DreamGrid.Launcher.Core.Estates.IGridEstates>(sp =>
+    new DreamGrid.Launcher.Core.Estates.GridEstates(sp.GetRequiredService<Func<LauncherSettings>>()));
+builder.Services.AddSingleton<DreamGrid.Launcher.Estates.EstatesAdmin>();
 builder.Services.AddSingleton(sp => new ApprovalNotices(Path.Combine(paths.Guests, "approval-notices.json")));
 builder.Services.AddSingleton<SignUpNotices>();
 // The resident account page (plan 10): email changes waiting for their link, and their own request counts.

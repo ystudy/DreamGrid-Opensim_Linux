@@ -458,6 +458,12 @@ namespace OpenSim
                                           "estate link region <estate ID> <region ID>",
                                           "Attaches the specified region to the specified estate.",
                                           EstateLinkRegionCommand);
+
+            // DreamGrid: the launcher's Estates page writes the estate tables, then asks every region program to read them again.
+            m_console.Commands.AddCommand("Estates", false, "estate reload",
+                                          "estate reload <estate-id>",
+                                          "Reads the specified estate again from the database in every region of this simulator that is in it.",
+                                          EstateReloadCommand);
         }
 
         protected override void ShutdownSpecific()
@@ -1457,6 +1463,26 @@ namespace OpenSim
             // give the user some feedback
             if (response != null)
                 MainConsole.Instance.Output(response);
+        }
+
+        private void EstateReloadCommand(string module, string[] args)
+        {
+            if (args.Length < 3 || !int.TryParse(args[2], out int estateId) || estateId <= 0)
+            {
+                MainConsole.Instance.Output("Usage: estate reload <estate-id>");
+                return;
+            }
+
+            int count = 0;
+            SceneManager.ForEachScene(scene =>
+            {
+                if (scene.RegionInfo.EstateSettings.EstateID != (uint)estateId)
+                    return;
+                scene.ReloadEstateData();
+                scene.RequestModuleInterface<IEstateModule>()?.sendRegionHandshakeToAll();
+                count++;
+            });
+            MainConsole.Instance.Output(String.Format("Estate {0} reloaded in {1} regions", estateId, count));
         }
 
         private void EstateLinkRegionCommand(string module, string[] args)
