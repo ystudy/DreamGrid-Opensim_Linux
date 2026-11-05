@@ -137,13 +137,15 @@ public static partial class GridConsoleCommands
     /// <summary>
     /// True when <c>terrain stats</c> (TerrainModule, which logs load results only to its log file) shows island
     /// relief. The flat default terrain a failed load leaves behind has max == min. The console thread may still be
-    /// finishing <c>terrain load</c> when the first <c>terrain stats</c> is sent, so the command is repeated until a
-    /// stats line shows up or <see cref="TerrainStatsWait"/> has passed; only a stats line decides. The wait outlasts
-    /// the console client's recovery from a read the server dropped (RestConsoleClient.LostReadAfter, 30 s).
+    /// finishing <c>terrain load</c> when the first <c>terrain stats</c> is sent: the reply then has no stats line, or
+    /// shows the flat land <c>terrain fill 0</c> left. So the command is repeated until the stats show the island or
+    /// <see cref="TerrainStatsWait"/> has passed; a load that really failed is reported once the wait runs out. The
+    /// wait outlasts the console client's recovery from a read the server dropped (RestConsoleClient.LostReadAfter, 30 s).
     /// </summary>
-    public static async Task<bool> IslandTerrainLoadedAsync(RestConsoleClient console, TimeSpan settle, TimeProvider time, CancellationToken ct)
+    public static async Task<bool> IslandTerrainLoadedAsync(RestConsoleClient console, TimeSpan settle, TimeProvider time, CancellationToken ct,
+        TimeSpan? wait = null)
     {
-        var deadline = time.GetUtcNow() + TerrainStatsWait;
+        var deadline = time.GetUtcNow() + (wait ?? TerrainStatsWait);
         while (true)
         {
             foreach (var line in await console.RunAsync("terrain stats", settle, ct))
@@ -151,13 +153,14 @@ public static partial class GridConsoleCommands
                 var m = StatsPattern().Match(line);
                 if (!m.Success) continue;
                 if (!TryParse(m.Groups[1].Value, out var max) || !TryParse(m.Groups[2].Value, out var min)) return false;
-                return max - min >= 10;
+                if (max - min >= 10) return true;
+                break;
             }
             if (time.GetUtcNow() >= deadline) return false;
         }
     }
 
-    private static readonly TimeSpan TerrainStatsWait = TimeSpan.FromSeconds(60);
+    internal static readonly TimeSpan TerrainStatsWait = TimeSpan.FromSeconds(60);
 
     private static bool TryParse(string text, out double value) =>
         double.TryParse(text.Trim().Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out value);

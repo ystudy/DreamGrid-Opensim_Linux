@@ -22,7 +22,7 @@ public sealed class PeopleDeleteTests
 
     private sealed class HoldAll : AccountHolds
     {
-        public override bool IsHeld(Guid principal) => true;
+        public override string? Refusal(Guid principal) => PeopleActions.OnHold;
     }
 
     private static LauncherFactory Factory(bool hold = false)
@@ -170,5 +170,54 @@ public sealed class PeopleDeleteTests
                      "auth", "UserAccounts" })
             Assert.Contains($"`robust`.`{table}`", all);
         Assert.EndsWith("`UserAccounts` WHERE `PrincipalID` = @id", AccountRemover.EverythingStatements[^1].Sql);
+    }
+
+    private static async Task<string> OpenCaseOnSueAsync(LauncherFactory f)
+    {
+        var root = f.Inventory.AddDefaultFolders(SueId);
+        var item = f.Inventory.Add(SueId, root, "Sword");
+        var r = await f.Services.GetRequiredService<TakedownActions>().TakeDownAsync(Admin(), null, SueId, [item.ItemId], null,
+            TakedownActionsTests.Notice(), false, Ct);
+        Assert.True(r.Done, r.Message);
+        return r.Number!;
+    }
+
+    [Fact]
+    public async Task Open_takedown_refuses_delete_with_its_number()
+    {
+        await using var f = Factory();
+        var number = await OpenCaseOnSueAsync(f);
+
+        var r = await Actions(f).DeleteAsync(Admin(), null, SueId, Ct);
+
+        Assert.Equal("This account is on hold: takedown " + number, r.Message);
+        Assert.Empty(f.Remover.Everything);
+    }
+
+    [Fact]
+    public async Task Closed_takedown_lets_delete_go_ahead()
+    {
+        await using var f = Factory();
+        var number = await OpenCaseOnSueAsync(f);
+        Assert.True(f.Services.GetRequiredService<TakedownActions>().Close(Admin(), null, number, "removed for good").Done);
+
+        var r = await Actions(f).DeleteAsync(Admin(), null, SueId, Ct);
+
+        Assert.True(r.Done, r.Message);
+        Assert.Equal([SueId], f.Remover.Everything);
+    }
+
+    [Fact]
+    public async Task Unreadable_takedowns_refuse_every_delete()
+    {
+        await using var f = Factory();
+        var dir = Path.Combine(f.Paths.Takedowns, "TD-2026-001");
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "case.json"), "{ broken");
+
+        var r = await Actions(f).DeleteAsync(Admin(), null, SueId, Ct);
+
+        Assert.Equal(AccountHolds.Unreadable, r.Message);
+        Assert.Empty(f.Remover.Everything);
     }
 }

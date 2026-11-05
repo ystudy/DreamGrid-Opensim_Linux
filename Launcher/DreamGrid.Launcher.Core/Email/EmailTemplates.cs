@@ -32,12 +32,15 @@ public static class EmailTemplates
     public const string EmailChangedByStaff = "email-changed-by-staff";
     public const string EmailSetByStaff = "email-set-by-staff";
     public const string StaffResetPassword = "staff-reset-password";
+    public const string TakedownRemoved = "takedown-removed";
+    public const string TakedownRestored = "takedown-restored";
 
     /// <summary>Until languages arrive (worklist 1.5) every template is in this one.</summary>
     public const string DefaultLanguage = LegalPages.DefaultLanguage;
 
     public static IReadOnlyList<string> All { get; } = [Test, ConfirmEmail, ResetPassword, AccountApproved, PasswordChanged, AlreadyHaveAccount,
-        ConfirmNewEmail, EmailChangeNotice, SignUpDenied, SignUpsWaiting, NameChanged, EmailChangedByStaff, EmailSetByStaff, StaffResetPassword];
+        ConfirmNewEmail, EmailChangeNotice, SignUpDenied, SignUpsWaiting, NameChanged, EmailChangedByStaff, EmailSetByStaff, StaffResetPassword,
+        TakedownRemoved, TakedownRestored];
 
     private static readonly DateTimeOffset Shipped = DateTimeOffset.UnixEpoch;
 
@@ -74,6 +77,14 @@ public static class EmailTemplates
         [SignUpDenied] = new("Sign-up not approved", ["{GridName}", "{AvatarName}", "{Note}"], [],
             "Your sign-up on {GridName}",
             "Hello {AvatarName},\n\nYour sign-up on {GridName} wasn't approved.\n\n{Note}"),
+        [TakedownRemoved] = new("Item removed from your inventory", ["{GridName}", "{AvatarName}", "{CaseNumber}", "{Items}", "{Reason}"],
+            ["{CaseNumber}", "{Items}"],
+            "Items removed from your {GridName} inventory",
+            "Hello {AvatarName},\n\nStaff on {GridName} removed these items from your inventory after a notice ({Reason}): {Items}\n\nThe case number is {CaseNumber}. If you think this is a mistake, reply to this email and give the case number."),
+        [TakedownRestored] = new("Item put back in your inventory", ["{GridName}", "{AvatarName}", "{CaseNumber}", "{Items}", "{Reason}"],
+            ["{CaseNumber}", "{Items}"],
+            "Items put back in your {GridName} inventory",
+            "Hello {AvatarName},\n\nStaff on {GridName} put these items back in your inventory: {Items}\n\nThe case number is {CaseNumber}."),
         [NameChanged] = new("Name changed by staff", ["{GridName}", "{OldName}", "{AvatarName}"], [],
             "Your name on {GridName} was changed",
             "Hello {AvatarName},\n\nStaff on {GridName} changed your avatar's name from {OldName} to {AvatarName}. Log in with the new name from now on. Your friends, groups, inventory and regions stay as they were.\n\nIf you didn't ask for this, contact the grid owner."),
@@ -147,6 +158,9 @@ public static class EmailTemplates
             ["Count"] = "2",
             ["Names"] = "Sample Avatar\nOther Avatar",
             ["OldName"] = "Former Name",
+            ["CaseNumber"] = "TD-2026-001",
+            ["Items"] = "Sample sword, Sample shield",
+            ["Reason"] = "Copyright (DMCA)",
         };
         return Get(id).Words.Select(w => w.Trim('{', '}')).ToDictionary(w => w, w => all[w]);
     }

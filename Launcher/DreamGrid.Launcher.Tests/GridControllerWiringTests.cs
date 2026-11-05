@@ -1017,6 +1017,7 @@ public sealed class GridControllerWiringTests : IDisposable
             if (command.StartsWith("terrain load ", StringComparison.Ordinal) && loadWorks) terrain = IslandStats;
             return [];
         };
+        _grid.IslandTerrainWait = TimeSpan.FromSeconds(5);
         try
         {
             // The region could not read the island file: the starter's relief must not pass for the island.
@@ -1166,6 +1167,7 @@ public sealed class GridControllerWiringTests : IDisposable
             if (command.StartsWith("terrain load ", StringComparison.Ordinal) && loadWorks) terrain = IslandStats;
             return [];
         };
+        _grid.IslandTerrainWait = TimeSpan.FromSeconds(5);
         try
         {
             await Assert.ThrowsAsync<InvalidOperationException>(() => _grid.CreateRegionAsync("Welcome", "island", ct).WaitAsync(TimeSpan.FromSeconds(60), ct));

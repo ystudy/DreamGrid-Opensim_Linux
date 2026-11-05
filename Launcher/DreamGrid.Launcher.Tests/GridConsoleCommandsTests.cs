@@ -62,7 +62,9 @@ public class GridConsoleCommandsTests
     {
         var console = new FakeRestConsole(cmd => cmd == "terrain stats" ? [("Channel 256x256", false), (stats, false)] : []);
 
-        Assert.Equal(expected, await GridConsoleCommands.IslandTerrainLoadedAsync(console.Client, Settle, TimeProvider.System, CancellationToken.None));
+        var time = new FakeTimeProvider { AutoAdvanceAmount = TimeSpan.FromSeconds(10) };
+
+        Assert.Equal(expected, await GridConsoleCommands.IslandTerrainLoadedAsync(console.Client, Settle, time, CancellationToken.None));
     }
 
     [Fact]
@@ -79,12 +81,27 @@ public class GridConsoleCommandsTests
     }
 
     [Fact]
-    public async Task Island_terrain_check_is_false_without_asking_again_once_stats_show_flat_land()
+    public async Task Island_terrain_check_asks_again_while_stats_still_show_the_flat_land_from_before_the_load()
     {
+        // CI saw this: "terrain stats" answered with the "terrain fill 0" land, and the region logged the island
+        // loaded a moment later.
+        var asked = 0;
+        var console = new FakeRestConsole(cmd => cmd == "terrain stats"
+            ? (++asked == 1 ? [("max/min/avg/sum: 0/0/0/0", false)] : [("max/min/avg/sum: 26.3/4.8/12.5/819200", false)])
+            : []);
+
+        Assert.True(await GridConsoleCommands.IslandTerrainLoadedAsync(console.Client, Settle, TimeProvider.System, CancellationToken.None));
+        Assert.Equal(2, console.Commands.Count(c => c == "terrain stats"));
+    }
+
+    [Fact]
+    public async Task Island_terrain_check_is_false_when_the_land_stays_flat_until_the_wait_runs_out()
+    {
+        var time = new FakeTimeProvider { AutoAdvanceAmount = TimeSpan.FromSeconds(10) };
         var console = new FakeRestConsole(cmd => cmd == "terrain stats" ? [("max/min/avg/sum: 21/21/21/1376256", false)] : []);
 
-        Assert.False(await GridConsoleCommands.IslandTerrainLoadedAsync(console.Client, Settle, TimeProvider.System, CancellationToken.None));
-        Assert.Single(console.Commands, c => c == "terrain stats");
+        Assert.False(await GridConsoleCommands.IslandTerrainLoadedAsync(console.Client, Settle, time, CancellationToken.None));
+        Assert.True(console.Commands.Count(c => c == "terrain stats") >= 2);
     }
 
     [Fact]

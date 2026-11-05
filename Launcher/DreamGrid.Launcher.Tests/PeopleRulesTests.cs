@@ -68,4 +68,16 @@ public sealed class PeopleRulesTests
         Assert.Null(PeopleRules.Refusal(StaffRole.Admin, supervisor, PersonTask.Unsuspend));
         Assert.Equal("You can't suspend yourself.", PeopleRules.Refusal(StaffRole.Admin, Resident() with { IsActor = true, Judged = StaffRole.Admin }, PersonTask.Suspend));
     }
+
+    [Fact]
+    public void Inventory_is_for_the_owner_and_admins_on_residents()
+    {
+        Assert.Null(PeopleRules.Refusal(StaffRole.Admin, Resident(), PersonTask.Inventory));
+        Assert.Null(PeopleRules.Refusal(StaffRole.Owner, Resident(suspended: true), PersonTask.Inventory));
+        Assert.Equal(PeopleRules.SupervisorOnly, PeopleRules.Refusal(StaffRole.Supervisor, Resident(), PersonTask.Inventory));
+        Assert.Equal(PeopleRules.StaffFirst, PeopleRules.Refusal(StaffRole.Owner, Resident() with { Judged = StaffRole.Admin }, PersonTask.Inventory));
+        Assert.Equal(PeopleRules.Self, PeopleRules.Refusal(StaffRole.Admin, Resident() with { IsActor = true }, PersonTask.Inventory));
+        Assert.Equal(StaffChanges.OwnerRefusal,
+            PeopleRules.Refusal(StaffRole.Admin, Resident() with { IsOwner = true, Judged = StaffRole.Owner }, PersonTask.Inventory));
+    }
 }

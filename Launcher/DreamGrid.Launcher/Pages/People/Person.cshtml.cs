@@ -14,7 +14,8 @@ namespace DreamGrid.Launcher.Pages.People;
 /// One person (<c>/people/{id}</c>, StaffPolicy by the folder rule): their details, the same task icons as the list with their
 /// words, and the last <see cref="HistoryCount"/> audit lines about them, so staff see what was done to the account before.
 /// </summary>
-public sealed class PersonModel(PeopleActions people, RegionRights rights, Func<LauncherSettings> settings, AuditLog audit) : PageModel
+public sealed class PersonModel(PeopleActions people, RegionRights rights, Func<LauncherSettings> settings, AuditLog audit, TakedownStore takedowns,
+    AccountHolds holds) : PageModel
 {
     public const int HistoryCount = 20;
 
@@ -25,6 +26,10 @@ public sealed class PersonModel(PeopleActions people, RegionRights rights, Func<
     public IReadOnlyList<AuditEntryRead> History { get; private set; } = [];
     public string? Error { get; private set; }
     public string? Notice { get; private set; }
+
+    /// <summary>For the owner and admins: cases naming them (open), cases where they held a copy, and the open case holding them.</summary>
+    public (int Named, int NamedOpen, int Copies)? Takedowns { get; private set; }
+    public string? HeldBy { get; private set; }
 
     public TaskIcons Icons => TaskIcons.For(people, User, Person!, $"/people/{Person!.Row.Account.PrincipalId}?handler=Task", words: true);
 
@@ -61,7 +66,16 @@ public sealed class PersonModel(PeopleActions people, RegionRights rights, Func<
         if (Person.Row.OnlineRegion is { } region)
             OnlineIn = s.Regions.FirstOrDefault(r => r.Uuid == region)?.Name ?? "a region on another computer";
         var name = Person.FullName;
-        History = audit.Recent(e => IsAbout(e.Entry.Target, name), HistoryCount);
+        var staffView = TakedownAccess.MayUse(User);
+        History = audit.Recent(e => IsAbout(e.Entry.Target, name) && (staffView || !TakedownRules.IsTakedownAudit(e.Entry.Action)), HistoryCount);
+        if (staffView)
+        {
+            var cases = takedowns.Naming(id);
+            var named = cases.Where(c => c.People.Any(p => p.Principal == id && p.Kind == PersonOnCase.Named)).ToList();
+            var copies = cases.Count(c => c.People.Any(p => p.Principal == id && p.Kind == PersonOnCase.CopyHolder));
+            if (cases.Count > 0) Takedowns = (named.Count, named.Count(c => c.Open), copies);
+            HeldBy = holds.OpenCasesOf(id).FirstOrDefault();
+        }
         return true;
     }
 }
