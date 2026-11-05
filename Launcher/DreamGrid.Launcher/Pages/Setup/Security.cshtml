@@ -6,10 +6,10 @@
 }
 <partial name="_Checklist" />
 <h1>What kind of grid is this?</h1>
-<p>This sets how people get back in when they forget their password. You can change it later in Settings.</p>
+<p>This sets how people get back in when they forget their password. You can change it later in Guest pages, Password reset.</p>
 @if (!Model.EmailReady)
 {
-    <div id="email-first" class="alert alert-info" role="status">Password reset sends an email. Set up email after setup, on the Security page, or password reset won't work.</div>
+    <div id="email-first" class="alert alert-info" role="status">Password reset sends an email. Set up email after setup, in Guest pages, Email server, or password reset won't work.</div>
 }
 <form method="post">
     @foreach (var kind in Enum.GetValues<GridKind>())

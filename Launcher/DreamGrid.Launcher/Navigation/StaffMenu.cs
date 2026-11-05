@@ -92,7 +92,8 @@ public static class StaffMenu
         MenuGroup? best = null;
         var length = -1;
         foreach (var g in groups)
-            foreach (var prefix in g.Items.Select(i => i.ActivePrefix).Append(g.Href))
+            // A group shown as one link is matched by that link only, not by a hub page it doesn't link to.
+            foreach (var prefix in g.IsSingle ? g.Items.Select(i => i.ActivePrefix) : g.Items.Select(i => i.ActivePrefix).Append(g.Href))
                 if (Under(path, prefix) && prefix.Length > length)
                 {
                     best = g;

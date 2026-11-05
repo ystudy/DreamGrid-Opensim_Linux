@@ -78,6 +78,14 @@ public sealed class StaffMenuTests
             Assert.Single(StaffMenu.For(role, On(OwnerPlan.Local), true).SelectMany(g => g.Items), i => i.Badge);
     }
 
+    [Fact]
+    public void A_single_link_is_not_marked_on_a_hub_it_does_not_link_to()
+    {
+        var groups = StaffMenu.For(StaffRole.Admin, On(OwnerPlan.Local), true);
+        Assert.Null(StaffMenu.Active(groups, "/guest-pages")); // the admin's Guest pages group is the Splash page link
+        Assert.Equal("Guest pages", StaffMenu.Active(groups, "/splash")!.Text);
+    }
+
     [Theory]
     [InlineData("/", "Home")]
     [InlineData("/regions/region/abc", "World")]

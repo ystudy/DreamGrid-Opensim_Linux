@@ -92,6 +92,15 @@ public sealed class GuestPagesHubTests
     }
 
     [Fact]
+    public async Task Without_scripts_the_sessions_page_reaches_the_rest_of_your_menu_and_signs_out()
+    {
+        await using var f = Factory();
+        var page = await PageAsync(await StaffAsync(f, "owner"), "/profile/sessions");
+        Assert.Equal(["/profile/two-factor", "/profile/emails"], page.QuerySelectorAll("#hub-links a").Select(a => a.GetAttribute("href")));
+        Assert.Equal("/logout", page.QuerySelector("main form#sign-out-here")!.GetAttribute("action"));
+    }
+
+    [Fact]
     public async Task Hubs_link_to_the_rest_of_their_group()
     {
         await using var f = Factory();

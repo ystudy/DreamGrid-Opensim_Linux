@@ -60,11 +60,12 @@
                             continue;
                         }
                         <div class="nav-item dropdown@(g.Right ? " ms-lg-auto" : "")">
-                            <a class="nav-link dropdown-toggle@(active)" href="@g.Href" role="button" data-bs-toggle="dropdown" aria-expanded="false">@(g.Right ? User.Identity?.Name ?? "You" : g.Text)</a>
+                            <a class="nav-link dropdown-toggle@(active)" href="@g.Href" role="button" data-bs-toggle="dropdown" aria-expanded="false">@(g.Right ? (string.IsNullOrEmpty(User.Identity?.Name) ? DreamGrid.Launcher.Navigation.StaffMenu.You : User.Identity.Name) : g.Text)</a>
                             <ul class="dropdown-menu@(g.Right ? " dropdown-menu-end" : "")">
                                 @foreach (var item in g.Items)
                                 {
-                                    <li><a class="dropdown-item@(path.Equals(item.Href, StringComparison.OrdinalIgnoreCase) ? " active" : "")" href="@item.Href">@item.Text
+                                    var here = path.Equals(item.Href, StringComparison.OrdinalIgnoreCase);
+                                    <li><a class="dropdown-item@(here ? " active" : "")" href="@item.Href" aria-current="@(here ? "page" : null)">@item.Text
                                         @if (item.Badge && signUpsWaiting > 0)
                                         {
                                             <span id="@(badgeShown ? null : "signups-badge")" class="badge text-bg-warning ms-1">@signUpsWaiting waiting</span>

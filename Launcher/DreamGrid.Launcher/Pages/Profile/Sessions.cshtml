@@ -5,6 +5,7 @@
     static string When(DateTimeOffset t) => t.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
 }
 <h1>Sessions</h1>
+<partial name="_HubLinks" model="@(new DreamGrid.Launcher.Navigation.HubLinks(DreamGrid.Launcher.Navigation.StaffMenu.You))" />
 <p>These are the browsers signed in as you. If you don't recognise one, end it, or sign out everywhere and change your password.</p>
 <div class="table-responsive">
     <table id="sessions" class="table align-middle">
@@ -32,3 +33,5 @@
 <form method="post" action="/profile/sessions?handler=EndAll" asp-antiforgery="true">
     <button type="submit" class="btn btn-danger">Sign out everywhere</button>
 </form>
+@* The menu's Sign out is in a dropdown; this one works without scripts too. *@
+<form id="sign-out-here" method="post" action="/logout" asp-antiforgery="true" class="mt-4"><button type="submit" class="btn btn-outline-secondary">Sign out</button></form>
