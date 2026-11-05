@@ -158,7 +158,7 @@ HGAssetServiceConnector="HGAssetService@${Const|PublicPort}/OpenSim.Server.Handl
 HGGroupsServiceConnector="${Const|PublicPort}/OpenSim.Addons.Groups.dll:HGGroupsServiceRobustConnector"
 
 ;; needed for JOpensim profile pictures
-GetTextureConnector="${Const|PublicPort}/Opensim.Capabilities.Handlers.dll:GetTextureSeverConnector"
+GetTextureConnector="${Const|PublicPort}/OpenSim.Capabilities.Handlers.dll:GetTextureServerConnector"
 
 ; * This is common for all services, it's the network setup for the entire
 ; * server instance, if none is specified above
