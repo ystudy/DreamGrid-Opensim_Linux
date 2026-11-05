@@ -6,11 +6,8 @@
     ViewData["Title"] = "People";
 }
 <h1>People</h1>
+<partial name="_HubLinks" model="@(new DreamGrid.Launcher.Navigation.HubLinks("People"))" />
 <p>Find someone on your grid by part of their name.</p>
-@if (DreamGrid.Launcher.Pages.People.TakedownAccess.MayUse(User))
-{
-    <p><a id="takedowns-link" href="/people/takedowns">Takedowns</a></p>
-}
 @if (Model.Error is not null)
 {
     <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>

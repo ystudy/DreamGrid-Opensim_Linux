@@ -23,7 +23,8 @@ public sealed class HypergridAdmin(IGridHyperlinks links, IGridProbe probe, IGri
 {
     public const string DatabaseDown = "The grid's database isn't answering. Start the world, then try again.";
     public const string RobustDown = "The grid service isn't running. Start the world, then try again.";
-    public const string HypergridOff = "Hypergrid is off, so links can't be added. Turn it on in Advanced, Network.";
+    public const string HypergridOff = "Hypergrid is off, so links can't be added. Turn it on in Settings, Plan.";
+    public const string HypergridOffAskStaff = "Hypergrid is off, so links can't be added. Ask the owner or an admin to turn it on.";
 
     /// <summary>How long to look for a link on the map when Robust's answer didn't come in time.</summary>
     public static readonly TimeSpan MapWait = TimeSpan.FromSeconds(20);

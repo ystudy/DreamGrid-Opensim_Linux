@@ -1,9 +1,9 @@
 @page "/profile/emails"
 @model DreamGrid.Launcher.Pages.Profile.EmailsModel
 @{
-    ViewData["Title"] = "Emails";
+    ViewData["Title"] = "Email notices";
 }
-<h1>Emails</h1>
+<h1>Email notices</h1>
 @if (Model.Notice is not null)
 {
     <div class="ok-box alert alert-success" role="status">@Model.Notice</div>

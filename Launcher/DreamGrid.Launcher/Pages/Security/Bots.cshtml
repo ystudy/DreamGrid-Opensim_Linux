@@ -2,9 +2,10 @@
 @model DreamGrid.Launcher.Pages.Security.BotsModel
 @using DreamGrid.Launcher.Core.Settings
 @{
-    ViewData["Title"] = "Bot protection";
+    ViewData["Title"] = "Sign-up and bots";
 }
-<h1>Bot protection</h1>
+<p class="back-link"><a href="/guest-pages">‹ Guest pages</a></p>
+<h1>Sign-up and bots</h1>
 <p>These layers guard the forms that anyone on the internet can send, like the sign-up form. Each one you switch on makes it harder for a program to create accounts.</p>
 @if (Model.Error is not null)
 {

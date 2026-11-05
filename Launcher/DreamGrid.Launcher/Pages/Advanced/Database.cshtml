@@ -6,7 +6,7 @@
     var s = Model.Settings;
     string Password(string value) => Model.Revealed ? value : DatabaseModel.Masked;
 }
-<nav aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="/advanced">Advanced Settings</a></li><li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li></ol></nav>
+<nav aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="/advanced">Settings</a></li><li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li></ol></nav>
 <h1>Database</h1>
 <p class="text-body-secondary">Your world keeps its data in its own MariaDB, which only this computer can reach. Robust uses the robustuser account and your region the opensimuser account.</p>
 

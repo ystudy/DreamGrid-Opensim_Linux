@@ -2,9 +2,10 @@
 @model DreamGrid.Launcher.Pages.Security.EmailModel
 @using DreamGrid.Launcher.Core.Email
 @{
-    ViewData["Title"] = "Email";
+    ViewData["Title"] = "Email server";
 }
-<h1>Email</h1>
+<p class="back-link"><a href="/guest-pages">‹ Guest pages</a></p>
+<h1>Email server</h1>
 <p>The grid sends a few emails of its own, like password resets. Choose a free mail account to send them from. You can add more than one: when one reaches its limit or stops working, the next one in the list takes over.</p>
 @if (Model.Notice is not null)
 {

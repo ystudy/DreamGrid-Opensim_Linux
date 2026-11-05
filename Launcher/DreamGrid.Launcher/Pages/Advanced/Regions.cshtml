@@ -1,10 +1,10 @@
 @page "/advanced/regions"
 @model DreamGrid.Launcher.Pages.Advanced.RegionsModel
 @{
-    ViewData["Title"] = "Regions";
+    ViewData["Title"] = "Region defaults";
 }
-<nav aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="/advanced">Advanced Settings</a></li><li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li></ol></nav>
-<h1>Regions</h1>
+<nav aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="/advanced">Settings</a></li><li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li></ol></nav>
+<h1>Region defaults</h1>
 <p class="text-body-secondary">What a region uses when you have not chosen for it on its own settings page.</p>
 @if (Model.SavedMessage is { } message)
 {
@@ -13,7 +13,7 @@
         @if (Model.ShowRestart)
         {
             <form method="post" action="/dashboard?handler=run" asp-antiforgery="true">
-                <button type="submit" name="gridAction" value="restart">Restart your world</button>
+                <button type="submit" class="btn btn-sm btn-primary" name="gridAction" value="restart">Restart your world</button>
             </form>
         }
     </div>

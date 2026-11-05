@@ -199,6 +199,8 @@ builder.Services.AddRazorPages(o =>
     o.Conventions.AddFolderApplicationModelConvention("/Hypergrid", m => m.Filters.Add(new GuestSideOnly()));
     // The estates: the regions' database on this computer, for the owner and admins (AdminPolicy from the folder rule above).
     o.Conventions.AddFolderApplicationModelConvention("/Estates", m => m.Filters.Add(new GuestSideOnly()));
+    // The Guest pages hub (design 2026-11-05-gridgate-menu-looks-workflows §1): AdminPolicy from the folder rule above.
+    o.Conventions.AddFolderApplicationModelConvention("/GuestPages", m => m.Filters.Add(new GuestSideOnly()));
     // The same for the bot-protection page.
     o.Conventions.AddPageApplicationModelConvention("/Security/Bots", m => m.Filters.Add(new GuestSideOnly()));
     o.Conventions.AddPageApplicationModelConvention("/People/SignUps", m => m.Filters.Add(new GuestSideOnly()));

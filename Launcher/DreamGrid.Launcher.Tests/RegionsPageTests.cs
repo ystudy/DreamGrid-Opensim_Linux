@@ -39,12 +39,14 @@ public sealed class RegionsPageTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Nav_has_regions_between_home_and_advanced()
+    public async Task Nav_top_level_for_an_admin()
     {
         var doc = await PageAsync();
 
-        Assert.Equal(["Home", "Regions", "Advanced", "Logs", "Splash page", "Groups", "Estates", "People", "Hypergrid", "Sessions", "Emails", "Two-factor"],
-            doc.QuerySelectorAll("header nav a").Select(a => a.TextContent.Trim()));
+        var top = doc.QuerySelectorAll("header nav > a.nav-link, header nav > .dropdown > a.dropdown-toggle").Select(a => a.TextContent.Trim()).ToArray();
+        Assert.Equal(["Home", "World", "People", "Splash page", "Settings"], top[..^1]);
+        Assert.Equal(6, top.Length); // the last is the admin's own menu, under their name
+        Assert.Contains("active", doc.QuerySelector("header nav a.dropdown-toggle[href='/regions']")!.ClassName);
     }
 
     [Fact]

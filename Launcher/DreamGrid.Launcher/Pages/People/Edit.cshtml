@@ -19,7 +19,7 @@
 }
 @if (p is not null && Model.Refusal is { } why)
 {
-    <p class="error">@why</p>
+    <div class="error-box error alert alert-danger" role="alert">@why</div>
 }
 else if (p is not null)
 {

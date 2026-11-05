@@ -414,18 +414,20 @@ public sealed class BotsPageTests
 
         // The Security page stays, without the link.
         var security = new HtmlParser().ParseDocument(await owner.GetStringAsync("/security", Ct));
-        Assert.Null(security.QuerySelector("#bots-link"));
+        Assert.Null(security.QuerySelector("#guest-pages-link"));
     }
 
     [Fact]
-    public async Task The_security_page_links_to_the_bots_page()
+    public async Task The_guest_pages_hub_links_to_the_bots_page()
     {
         await using var f = Factory(OwnerPlan.GridAsset);
         var owner = await SignedInAsync(f);
 
         var security = new HtmlParser().ParseDocument(await owner.GetStringAsync("/security", Ct));
+        var hub = new HtmlParser().ParseDocument(await owner.GetStringAsync("/guest-pages", Ct));
 
-        Assert.Equal("/security/bots", security.QuerySelector("#bots-link")!.GetAttribute("href"));
+        Assert.Equal("/guest-pages", security.QuerySelector("#guest-pages-link")!.GetAttribute("href"));
+        Assert.Equal("Sign-up and bots", hub.QuerySelector("main a[href='/security/bots']")!.TextContent.Trim());
     }
 
     [Fact]

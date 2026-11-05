@@ -17,7 +17,7 @@ public sealed class PeopleRulesTests
         { StaffRole.Admin, Resident() with { Waiting = true, Suspended = true }, PersonTask.Unsuspend, "Approve or deny them on the Sign-ups page." },
         { StaffRole.Supervisor, Resident(), PersonTask.Edit, "Supervisors can only suspend or unsuspend." },
         { StaffRole.Supervisor, Resident(), PersonTask.ResetLink, "Supervisors can only suspend or unsuspend." },
-        { StaffRole.Admin, Resident() with { Judged = StaffRole.Supervisor }, PersonTask.Edit, "Change staff on the Staff page first." },
+        { StaffRole.Admin, Resident() with { Judged = StaffRole.Supervisor }, PersonTask.Edit, "Only the owner can change staff." },
         { StaffRole.Owner, Resident() with { Judged = StaffRole.Admin }, PersonTask.SignOut, "Change staff on the Staff page first." },
         { StaffRole.Admin, Resident(emailReady: false), PersonTask.ResetLink, "Email isn't set up." },
         { StaffRole.Admin, Resident(hasEmail: false), PersonTask.ResetLink, "No email address." },
@@ -45,9 +45,9 @@ public sealed class PeopleRulesTests
     public void Suspended_admin_is_judged_as_admin()
     {
         var admin = Resident(suspended: true) with { Judged = StaffRole.Admin };
-        Assert.Equal("Change staff on the Staff page first.", PeopleRules.Refusal(StaffRole.Admin, admin, PersonTask.Edit));
-        Assert.Equal("Change staff on the Staff page first.", PeopleRules.Refusal(StaffRole.Admin, admin, PersonTask.Delete));
-        Assert.Equal("Change staff on the Staff page first.", PeopleRules.Refusal(StaffRole.Admin, admin, PersonTask.ResetLink));
+        Assert.Equal("Only the owner can change staff.", PeopleRules.Refusal(StaffRole.Admin, admin, PersonTask.Edit));
+        Assert.Equal("Only the owner can change staff.", PeopleRules.Refusal(StaffRole.Admin, admin, PersonTask.Delete));
+        Assert.Equal("Only the owner can change staff.", PeopleRules.Refusal(StaffRole.Admin, admin, PersonTask.ResetLink));
         Assert.Equal("Admins can only suspend or unsuspend supervisors and guests.", PeopleRules.Refusal(StaffRole.Admin, admin, PersonTask.Unsuspend));
     }
 

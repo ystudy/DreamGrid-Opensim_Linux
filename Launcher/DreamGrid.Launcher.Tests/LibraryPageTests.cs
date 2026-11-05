@@ -562,7 +562,7 @@ public sealed class LibraryPageTests : IAsyncLifetime
 
         var doc = await PageAsync(client, "/regions");
 
-        Assert.Equal("OAR library", doc.QuerySelector("a[href='/regions/library']")!.TextContent.Trim());
+        Assert.Equal("OAR library", doc.QuerySelector("main a[href='/regions/library']")!.TextContent.Trim());
     }
 
     /// <summary>A request body limited like Kestrel's: 413 past the limit, and the limit is fixed once reading starts.</summary>
