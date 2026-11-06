@@ -31,7 +31,7 @@ Today Home shows the processes (database, grid service, regions), Controls, sign
 |---|---|---|---|
 | In-world now | this grid's residents in-world now | "Signed in today: N · this month: N" | `robust.Presence` through the existing `OnlineUsers`, which already leaves out hypergrid visitors **(my call: residents only, so every number on the page counts the same people)**. `robust.GridUser.Login` (Unix seconds as text) ≥ start of today / start of this month, local time **(my call)**, joined to `UserAccounts` for the same reason |
 | Regions | "R of T" running | "N parked" | the launcher's own region states (`GridStatus.Regions`) |
-| Residents | `COUNT(*)` of `robust.UserAccounts` | "Joined this month: N · never signed in: N" | `UserAccounts.Created` ≥ start of month; never signed in = no `GridUser` row or `Login = '0'` |
+| Residents | `COUNT(*)` of `robust.UserAccounts`, leaving out OpenSim's own "GRID SERVICES" account (`6571e388-6218-4574-87db-f9379718315e`, made by Robust on its first start) here and in every other residents-only number | "Joined this month: N · never signed in: N" | `UserAccounts.Created` ≥ start of month; never signed in = no `GridUser` row or `Login = '0'` |
 | Land | km², one decimal | "N regions on the map" | `robust.regions`: `SUM(sizeX*sizeY)` and `COUNT` where `(flags & 512) = 0` (not a hypergrid link) |
 | Sign-ups | waiting | "waiting" | existing `SignUpBoard.WaitingCount()`. Shown wherever the New sign-ups card is shown today (everyone who can open Home, on plans with a guest side); the Approve and Deny buttons in the card keep following `ApprovalRules.CanApprove` |
 

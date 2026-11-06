@@ -36,6 +36,10 @@ public sealed class WorldCounter(Func<LauncherSettings> settings, ILogger<WorldC
 {
     private const uint TimeoutSeconds = 3;
 
+    // OpenSim's own "GRID SERVICES" account (Constants.servicesAgentIDString), which Robust makes on its first start: no
+    // person, so never a resident.
+    private const string Person = "u.`PrincipalID` <> '6571e388-6218-4574-87db-f9379718315e'";
+
     // A hypergrid link is a regions row with the Hyperlink flag (512).
     private const string NotLink = "(`flags` & 512) = 0";
 
@@ -53,21 +57,21 @@ public sealed class WorldCounter(Func<LauncherSettings> settings, ILogger<WorldC
         // The two databases are asked side by side; within each, one query after another, so a busy grid gets one connection
         // per database at a time.
         async Task<long?[]> Robust() => [
-            await R("SELECT COUNT(*) FROM `UserAccounts`"),
-            await R("SELECT COUNT(*) FROM `UserAccounts` WHERE `Created` >= @month"),
+            await R($"SELECT COUNT(*) FROM `UserAccounts` u WHERE {Person}"),
+            await R($"SELECT COUNT(*) FROM `UserAccounts` u WHERE u.`Created` >= @month AND {Person}"),
             await R("SELECT COUNT(*) FROM `UserAccounts` u LEFT JOIN `GridUser` g ON g.`UserID` = u.`PrincipalID` " +
-                "WHERE g.`UserID` IS NULL OR g.`Login` = '0'"),
+                $"WHERE (g.`UserID` IS NULL OR g.`Login` = '0') AND {Person}"),
             // Login is Unix seconds as text, so it can't use an index: one scan for both numbers, joined to UserAccounts so
             // hypergrid visitors aren't counted.
-            await R("SELECT COALESCE(SUM(CAST(g.`Login` AS UNSIGNED) >= @day), 0) FROM `GridUser` g JOIN `UserAccounts` u ON u.`PrincipalID` = g.`UserID`"),
-            await R("SELECT COALESCE(SUM(CAST(g.`Login` AS UNSIGNED) >= @month), 0) FROM `GridUser` g JOIN `UserAccounts` u ON u.`PrincipalID` = g.`UserID`"),
+            await R($"SELECT COALESCE(SUM(CAST(g.`Login` AS UNSIGNED) >= @day), 0) FROM `GridUser` g JOIN `UserAccounts` u ON u.`PrincipalID` = g.`UserID` WHERE {Person}"),
+            await R($"SELECT COALESCE(SUM(CAST(g.`Login` AS UNSIGNED) >= @month), 0) FROM `GridUser` g JOIN `UserAccounts` u ON u.`PrincipalID` = g.`UserID` WHERE {Person}"),
             await R($"SELECT COALESCE(SUM(CAST(`sizeX` AS UNSIGNED) * CAST(`sizeY` AS UNSIGNED)), 0) FROM `regions` WHERE {NotLink}"),
             await R($"SELECT COUNT(*) FROM `regions` WHERE {NotLink}"),
             await R("SELECT COUNT(*) FROM `os_groups_groups`"),
             await R("SELECT COUNT(*) FROM `regions` WHERE (`flags` & 512) <> 0"),
             // OpenSim adds an empty profile row the first time anyone's profile is opened: count only ones with something in them.
             await R("SELECT COUNT(*) FROM `userprofile` p JOIN `UserAccounts` u ON u.`PrincipalID` = p.`useruuid` " +
-                "WHERE COALESCE(p.`profileAboutText`, '') <> '' OR (p.`profileImage` IS NOT NULL AND p.`profileImage` <> '00000000-0000-0000-0000-000000000000')"),
+                $"WHERE {Person} AND (COALESCE(p.`profileAboutText`, '') <> '' OR (p.`profileImage` IS NOT NULL AND p.`profileImage` <> '00000000-0000-0000-0000-000000000000'))"),
             await R("SELECT COUNT(*) FROM `userpicks`"),
             await R("SELECT COUNT(*) FROM `classifieds`"),
         ];
