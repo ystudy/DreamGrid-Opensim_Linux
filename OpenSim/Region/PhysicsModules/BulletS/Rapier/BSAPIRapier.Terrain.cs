@@ -64,9 +64,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         // origin, which is half a metre from where the body's centre puts it, and down by the body's Z centring.
         // Rapier's heightfield ray cast can miss a ray that runs exactly along a cell edge, a vertex or a diagonal: with
         // the samples on whole metres, a ray straight down at (128, 128) missed about a third of the time. Scripts
-        // cast at whole numbers often, so the field is moved a fraction of a millimetre in X and Y, by different
-        // amounts, which puts whole-metre positions inside a cell and off its diagonal. The height changes by less
-        // than 0.1 mm on a 10% slope.
+        // cast at whole numbers often, so the grid is moved off the whole metres by a fraction of a millimetre, by
+        // different amounts in X and Y so the cell diagonals are avoided too. The height changes by less than 0.1 mm
+        // on a 10% slope. That would leave the region's own edges (x or y of 0) a hair outside the field, so the field
+        // has one extra row and column on every side that repeats the edge heights.
         private const float GridNudgeX = 0.0007f;
         private const float GridNudgeY = 0.0011f;
 
@@ -78,13 +79,20 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             if (columns < 2 || rows < 2 || heightMap == null || heightMap.Length < columns * rows)
                 throw new ArgumentException("Rapier: the heightmap does not hold " + columns + " x " + rows + " samples");
 
-            // Rapier wants nalgebra's column-major order: the sample at (row, column) is at column * rows + row.
-            float[] samples = new float[columns * rows];
-            for (int y = 0; y < rows; y++)
+            // The field is the map plus a one-sample border that repeats the edge heights (see GridNudgeX). Rapier wants
+            // nalgebra's column-major order: the sample at (row, column) is at column * rows + row.
+            int fieldColumns = columns + 2;
+            int fieldRows = rows + 2;
+            float[] samples = new float[fieldColumns * fieldRows];
+            for (int fy = 0; fy < fieldRows; fy++)
             {
-                int row = rows - 1 - y;
-                for (int x = 0; x < columns; x++)
-                    samples[x * rows + row] = heightMap[y * columns + x] * scaleFactor;
+                int y = Math.Min(Math.Max(fy - 1, 0), rows - 1);
+                int row = fieldRows - 1 - fy;
+                for (int fx = 0; fx < fieldColumns; fx++)
+                {
+                    int x = Math.Min(Math.Max(fx - 1, 0), columns - 1);
+                    samples[fx * fieldRows + row] = heightMap[y * columns + x] * scaleFactor;
+                }
             }
 
             IntPtr native;
@@ -95,10 +103,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                 desc.kind = RapierNative.ShapeKindHeightfield;
                 desc.flags = RapierNative.HeightfieldFixInternalEdges;
                 desc.heights = new RapierNative.View { data = pinned.AddrOfPinnedObject(), count = (UIntPtr)samples.Length };
-                desc.rows = (UIntPtr)rows;
-                desc.columns = (UIntPtr)columns;
+                desc.rows = (UIntPtr)fieldRows;
+                desc.columns = (UIntPtr)fieldColumns;
                 // The scale is the field's whole extent: 1 m between samples.
-                desc.scale = new RapierNative.Vector { x = columns - 1, y = 1f, z = rows - 1 };
+                desc.scale = new RapierNative.Vector { x = fieldColumns - 1, y = 1f, z = fieldRows - 1 };
                 native = RapierNative.r3ShapeDesc_Build(in desc);
             }
             finally

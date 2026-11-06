@@ -34,7 +34,7 @@ public class TerrainTests
 
     private static RaycastHit RayDown(BSScene scene, float x, float y, uint group = 0xffff, uint mask = 0xffff)
     {
-        return scene.PE.RayTest2(scene.World, new Vector3(x, y, 400f), new Vector3(x, y, -10f), group, mask);
+        return scene.PE.RayTest2(scene.World, new Vector3(x, y, 1000f), new Vector3(x, y, -10f), group, mask);
     }
 
     [Fact]
@@ -69,7 +69,7 @@ public class TerrainTests
             {
                 RaycastHit hit = RayDown(scene, x, y);
                 Assert.True(hit.hasHit(), $"no hit at {x},{y}");
-                Assert.Equal(20f + 0.1f * x + 0.05f * y, hit.Point.Z, 0.05f);
+                Assert.Equal(20f + 0.1f * x + 0.05f * y, hit.Point.Z, 0.01f);
                 Assert.Equal(BSScene.TERRAIN_ID, hit.ID);
             }
             Assert.Empty(log.Errors);
@@ -92,7 +92,54 @@ public class TerrainTests
             {
                 RaycastHit hit = RayDown(scene, x, y);
                 Assert.True(hit.hasHit(), $"no hit at {x},{y}");
-                Assert.Equal(20f + 0.1f * x + 0.05f * y, hit.Point.Z, 0.05f);
+                Assert.Equal(20f + 0.1f * x + 0.05f * y, hit.Point.Z, 0.01f);
+            }
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    // Steep and curved, so a half-metre shift, a swapped axis or a size/size-1 mix-up moves the hit by far more than
+    // the tolerance (0.5 m/m in X, 0.3 plus a 5 m sine in Y).
+    [Fact]
+    public void Terrain_Varregion512_SteepCurvedMapPinsPlacement()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create(regionSize: 512);
+        try
+        {
+            Func<float, float, float> h = (x, y) => 20f + 0.5f * x + 0.3f * y + 5f * MathF.Sin(y / 40f);
+            SetTerrain(scene, MakeMap(512, (x, y) => h(x, y)));
+            foreach ((float x, float y) in new[] { (1f, 1f), (510f, 1f), (1f, 510f), (510f, 510f), (256f, 256f) })
+            {
+                RaycastHit hit = RayDown(scene, x, y);
+                Assert.True(hit.hasHit(), $"no hit at {x},{y}");
+                Assert.Equal(h(x, y), hit.Point.Z, 0.01f);
+            }
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    [Fact]
+    public void Terrain_RegionEdges_RaysHit()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            SetTerrain(scene, MakeMap(256, (x, y) => 20f + 0.1f * x + 0.05f * y));
+            foreach ((float x, float y) in new[] { (0f, 0f), (0f, 128f), (128f, 0f), (255f, 255f), (255f, 0f), (0f, 255f) })
+            {
+                RaycastHit hit = RayDown(scene, x, y);
+                Assert.True(hit.hasHit(), $"no hit at {x},{y}");
+                Assert.Equal(20f + 0.1f * x + 0.05f * y, hit.Point.Z, 0.01f);
             }
             Assert.Empty(log.Errors);
         }
