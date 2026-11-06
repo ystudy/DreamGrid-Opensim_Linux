@@ -4,6 +4,10 @@
     ViewData["Title"] = "Your world";
     var g = Model.Status.Grid;
     var parts = new[] { g.Database, g.Robust };
+    var c = Model.Dashboard.Counts;
+    var regionsRunning = g.Regions.Count(r => r.State == "Running");
+    var regionsParked = g.Regions.Count(r => r.State == "Parked");
+    var here = Model.ThisComputerOnly ? " (on this computer)" : "";
 }
 <h1>Your world</h1>
 <partial name="_PlainHttpWarning" />
@@ -22,50 +26,179 @@
     </div>
 }
 
-<section class="card card-body shadow-sm mb-3">
-    <p id="headline" class="headline@(Model.Status.Problem is null ? "" : " problem")">@Model.Status.Headline</p>
-    <ul id="components" class="components list-group list-group-flush">
-        @foreach (var c in parts)
+
+<section id="tiles" class="panel mb-3" aria-label="At a glance">
+    <div class="tiles">
+        @* Only where this computer's robust database is the grid's: elsewhere its Presence is empty and this would always be 0. *@
+        @if (Model.GridHere)
         {
-            <li class="list-group-item px-0">
-                <span class="component-label">@c.Label</span>
-                <span class="badge state-@c.State.ToLowerInvariant()">@c.StateText</span>
-                <span class="text-body-secondary">@c.Detail</span>
-            </li>
+            <div class="tile" data-tile="online">
+                <div class="tile-label">In-world now</div>
+                <div class="tile-number" id="tile-online">@Model.Status.Online.Count</div>
+                <div class="tile-sub">Signed in today: <span data-n="signedInToday">@IndexModel.N(c.SignedInToday)</span> · this month: <span data-n="signedInThisMonth">@IndexModel.N(c.SignedInThisMonth)</span></div>
+            </div>
         }
-        @foreach (var r in g.Regions)
+        <div class="tile" data-tile="regions">
+            <div class="tile-label">Regions</div>
+            <div class="tile-number" id="tile-regions">@regionsRunning of @g.Regions.Count</div>
+            <div class="tile-sub" id="tile-regions-sub">running · @regionsParked parked</div>
+        </div>
+        @if (Model.GridHere)
         {
-            <li class="list-group-item px-0">
-                @if (r.Id is { } rid)
+            <div class="tile" data-tile="residents">
+                <div class="tile-label">Residents</div>
+                <div class="tile-number" data-n="residents">@IndexModel.N(c.Residents)</div>
+                <div class="tile-sub">Joined this month: <span data-n="joinedThisMonth">@IndexModel.N(c.JoinedThisMonth)</span> · never signed in: <span data-n="neverSignedIn">@IndexModel.N(c.NeverSignedIn)</span></div>
+            </div>
+            <div class="tile" data-tile="land">
+                <div class="tile-label">Land</div>
+                <div class="tile-number"><span data-km2="landSquareMetres">@IndexModel.Km2(c.LandSquareMetres)</span> km²</div>
+                <div class="tile-sub"><span data-n="mapRegions">@IndexModel.N(c.MapRegions)</span> regions on the map</div>
+            </div>
+        }
+        @if (Model.SignUps is not null)
+        {
+            <div class="tile" data-tile="signups">
+                <div class="tile-label">Sign-ups</div>
+                <div class="tile-number">@Model.SignUpsWaiting</div>
+                <div class="tile-sub">waiting</div>
+            </div>
+        }
+    </div>
+</section>
+
+<div class="row g-3 mb-3">
+<div class="col-md-5">
+    <section class="panel mb-3">
+        <div class="panel-head"><h2>Core services</h2></div>
+        <p id="headline" class="headline@(Model.Status.Problem is null ? "" : " problem")">@Model.Status.Headline</p>
+        <ul id="components" class="components panel-rows">
+            @foreach (var part in parts)
+            {
+                <li>
+                    <span><span class="component-label">@part.Label</span> <span class="row-sub">@part.Detail</span></span>
+                    <span class="badge state-@part.State.ToLowerInvariant() ms-auto">@part.StateText</span>
+                </li>
+            }
+        </ul>
+        <ul id="checks" class="panel-rows">
+            @foreach (var check in Model.Dashboard.Checks)
+            {
+                <li>
+                    <span><span class="component-label">@check.Name</span> <span class="row-sub">@check.Detail</span></span>
+                    <span class="ms-auto row-sub">@(check.Milliseconds is { } ms ? ms + " ms" : "")</span>
+                    <span class="badge @IndexModel.CheckClass(check.State)">@IndexModel.CheckText(check.State)</span>
+                </li>
+            }
+        </ul>
+        <ul class="panel-rows">
+            <li id="website-row">
+                <span><span class="component-label">Website</span> <span class="row-sub">this page</span></span>
+                @if (HttpContext.Request.IsHttps)
                 {
-                    <a class="component-label" href="/regions?region=@rid">@r.Name</a>
+                    <span class="badge state-running ms-auto">Working</span>
                 }
                 else
                 {
-                    <span class="component-label">@r.Name</span>
-                }
-                <span class="badge state-@r.State.ToLowerInvariant()">@r.StateText</span>
-                @if (r.RunsWith is { Count: > 0 } others)
-                {
-                    <span class="text-body-secondary">runs with @string.Join(", ", others)</span>
+                    <span class="badge state-starting ms-auto">Not https</span>
                 }
             </li>
+        </ul>
+        @if (Model.FailedLogs.Count > 0)
+        {
+            <details class="failed-details mt-2">
+                <summary>Show details</summary>
+                @foreach (var (label, lines) in Model.FailedLogs)
+                {
+                    <p class="component-label">@label</p>
+                    <pre>@string.Join('\n', lines)</pre>
+                }
+            </details>
         }
-    </ul>
-    @if (Model.FailedLogs.Count > 0)
-    {
-        <details class="failed-details mt-2">
-            <summary>Show details</summary>
-            @foreach (var (label, lines) in Model.FailedLogs)
+    </section>
+    <section class="panel">
+        <div class="panel-head"><h2>Connect</h2></div>
+        <p class="form-text">Your world's address, for the Grid Manager in Firestorm:</p>
+        <div class="input-group copy-row">
+            <code id="login-uri" class="form-control login-uri">@g.LoginUri</code>
+            <button type="button" id="copy-uri" class="btn btn-outline-primary" hidden>Copy</button>
+        </div>
+    </section>
+</div>
+<div class="col-md-7">
+    <section class="panel mb-3">
+        <div class="panel-head"><h2>Regions</h2></div>
+        <ul id="region-rows" class="panel-rows">
+            @foreach (var r in g.Regions)
             {
-                <p class="component-label">@label</p>
-                <pre>@string.Join('\n', lines)</pre>
+                <li>
+                    <span>
+                        @if (r.Id is { } rid)
+                        {
+                            <a class="component-label" href="/regions?region=@rid">@r.Name</a>
+                        }
+                        else
+                        {
+                            <span class="component-label">@r.Name</span>
+                        }
+                        @if (r.RunsWith is { Count: > 0 } others)
+                        {
+                            <span class="row-sub">runs with @string.Join(", ", others)</span>
+                        }
+                    </span>
+                    @if (r.People is { } heads)
+                    {
+                        <span class="ms-auto row-sub">@heads here</span>
+                    }
+                    <span class="badge state-@r.State.ToLowerInvariant()@(r.People is null ? " ms-auto" : "")">@r.StateText</span>
+                </li>
             }
-        </details>
-    }
-</section>
+        </ul>
+    </section>
+    <section class="panel mb-3">
+        <div class="panel-head"><h2>What's in your world</h2></div>
+        <ul id="world-counts" class="panel-rows">
+            <li data-count="objects"><span>Objects@(here)</span><span class="ms-auto fw-semibold" data-n="objects">@IndexModel.N(c.Objects)</span></li>
+            <li data-count="linked-objects"><span>Linked objects@(here)</span><span class="ms-auto fw-semibold" data-n="linkedObjects">@IndexModel.N(c.LinkedObjects)</span></li>
+            <li data-count="parcels"><span>Parcels@(here)</span><span class="ms-auto fw-semibold" data-n="parcels">@IndexModel.N(c.Parcels)</span></li>
+            <li data-count="parcels-for-sale"><span>Parcels for sale@(here)</span><span class="ms-auto fw-semibold" data-n="parcelsForSale">@IndexModel.N(c.ParcelsForSale)</span></li>
+            <li data-count="estates"><span>Estates@(here)</span><span class="ms-auto fw-semibold" data-n="estates">@IndexModel.N(c.Estates)</span></li>
+            @if (Model.GridHere)
+            {
+                <li data-count="groups"><span>Groups</span><span class="ms-auto fw-semibold" data-n="groups">@IndexModel.N(c.Groups)</span></li>
+                <li data-count="hypergrid-links"><span>Hypergrid links</span><span class="ms-auto fw-semibold" data-n="hypergridLinks">@IndexModel.N(c.HypergridLinks)</span></li>
+                <li data-count="profiles"><span>Profiles filled in</span><span class="ms-auto fw-semibold" data-n="profiles">@IndexModel.N(c.Profiles)</span></li>
+                <li data-count="picks"><span>Profile picks</span><span class="ms-auto fw-semibold" data-n="picks">@IndexModel.N(c.Picks)</span></li>
+                <li data-count="classifieds"><span>Classifieds</span><span class="ms-auto fw-semibold" data-n="classifieds">@IndexModel.N(c.Classifieds)</span></li>
+            }
+        </ul>
+    </section>
+    <section class="panel">
+        <div class="panel-head"><h2>Who's online</h2></div>
+        <ul id="online" class="online panel-rows" data-links="@(Model.GridHere ? "people" : "")" hidden="@(Model.Status.Online.Count == 0)">
+            @foreach (var p in Model.Status.OnlinePeople ?? [])
+            {
+                <li>
+                    @if (Model.GridHere && p.Id != Guid.Empty)
+                    {
+                        <a class="component-label" href="/people/@p.Id">@p.Name</a>
+                    }
+                    else
+                    {
+                        <span class="component-label">@p.Name</span>
+                    }
+                    <span class="ms-auto row-sub">@p.Region</span>
+                </li>
+            }
+        </ul>
+        <p id="online-note" class="text-body-secondary mb-0" hidden="@(Model.Status.Online.Count > 0)">
+            @(Model.Status.OnlineAvailable ? "Nobody is in-world right now." : "This list shows once the database is running.")
+        </p>
+    </section>
+</div>
+</div>
 
-<section class="card card-body shadow-sm mb-3">
+<section class="panel mb-3">
     <h2>Controls</h2>
     <form id="controls" method="post" action="/dashboard?handler=run" asp-antiforgery="true">
         @* The world's power menu (spec 6.8): a <details> element, so it opens without JavaScript. *@
@@ -107,43 +240,16 @@
 
 @if (Model.SignUps is { } signUps)
 {
-    <section id="signups-card" class="card card-body shadow-sm mb-3">
+    <section id="signups-card" class="panel mb-3">
         <h2>New sign-ups @if (Model.SignUpsWaiting > 0) { <span class="badge text-bg-warning">@Model.SignUpsWaiting waiting</span> }</h2>
         <partial name="_SignUpRows" model="signUps" />
         <p class="small mt-2 mb-0"><a href="/people/sign-ups">See all sign-ups</a></p>
     </section>
 }
 
-<div class="row g-3 mb-3">
-<div class="col-md-6">
-<section class="card card-body shadow-sm h-100">
-    <h2>Who's online</h2>
-    <ul id="online" class="online list-unstyled mb-0" hidden="@(Model.Status.Online.Count == 0)">
-        @foreach (var name in Model.Status.Online)
-        {
-            <li>@name</li>
-        }
-    </ul>
-    <p id="online-note" class="text-body-secondary mb-0" hidden="@(Model.Status.Online.Count > 0)">
-        @(Model.Status.OnlineAvailable ? "Nobody is in-world right now." : "This list shows once the database is running.")
-    </p>
-</section>
-</div>
-<div class="col-md-6">
-<section class="card card-body shadow-sm h-100">
-    <h2>Connect</h2>
-    <p>Your world's address, for the Grid Manager in Firestorm:</p>
-    <div class="input-group copy-row">
-        <code id="login-uri" class="form-control login-uri">@g.LoginUri</code>
-        <button type="button" id="copy-uri" class="btn btn-outline-primary" hidden>Copy</button>
-    </div>
-</section>
-</div>
-</div>
-
 @if (Model.Switches.Count > 0)
 {
-    <section id="features" class="card card-body shadow-sm mb-3">
+    <section id="features" class="panel mb-3">
         <h2>Features</h2>
         <ul class="features list-group list-group-flush">
             @foreach (var (sw, on) in Model.Switches)
@@ -162,17 +268,10 @@
     </section>
 }
 
-<section class="card card-body shadow-sm mb-3">
-    <h2>Coming soon</h2>
-    <p class="text-body-secondary">Your world will grow. These are on the way:</p>
-    <ul class="coming-soon list-unstyled d-flex flex-wrap gap-2 mb-0">
-        <li>Backups</li>
-        <li>SmartStart</li>
-        <li>Voice</li>
-        <li>Birds</li>
-        <li>Tides</li>
-    </ul>
-</section>
+<p class="dashboard-key small text-body-secondary d-flex flex-wrap justify-content-between gap-2">
+    <span>Key: <span class="badge state-running">Working</span> <span class="badge state-starting">Check this</span> <span class="badge state-failed">Down</span></span>
+    <span>Numbers counted at <time id="checked-at" datetime="@Model.Dashboard.CheckedAt.ToString("O")">@Model.Dashboard.CheckedAt.ToLocalTime().ToString("HH:mm:ss")</time>, once a minute.</span>
+</p>
 
 @section Scripts {
 <script src="/js/index.js"></script>

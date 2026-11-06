@@ -5,7 +5,8 @@ using MySqlConnector;
 
 namespace DreamGrid.Launcher.Core.Grid;
 
-public sealed record OnlineAvatar(string Name, Guid RegionId);
+/// <param name="PersonId">The resident's account id, for a link to their page.</param>
+public sealed record OnlineAvatar(string Name, Guid RegionId, Guid PersonId = default);
 
 /// <param name="Available">False when the database could not be asked; <see cref="Avatars"/> is then empty.</param>
 public sealed record OnlineList(IReadOnlyList<OnlineAvatar> Avatars, bool Available)
@@ -33,7 +34,7 @@ public sealed class OnlineUsers(Func<LauncherSettings> settings, ILogger<OnlineU
     private const uint TimeoutSeconds = 3;
 
     private const string Query =
-        "SELECT u.FirstName, u.LastName, p.RegionID FROM Presence p JOIN UserAccounts u ON u.PrincipalID = p.UserID " +
+        "SELECT u.FirstName, u.LastName, p.RegionID, u.PrincipalID FROM Presence p JOIN UserAccounts u ON u.PrincipalID = p.UserID " +
         "WHERE p.RegionID <> '00000000-0000-0000-0000-000000000000'";
 
     public async Task<OnlineList> ListAsync(CancellationToken ct)
@@ -50,7 +51,8 @@ public sealed class OnlineUsers(Func<LauncherSettings> settings, ILogger<OnlineU
             {
                 // char(36) may come back as a Guid or as text, depending on the connector's GUID handling.
                 var region = reader.GetValue(2) is Guid g ? g : Guid.TryParse(Convert.ToString(reader.GetValue(2)), out var p) ? p : Guid.Empty;
-                list.Add(new OnlineAvatar($"{reader.GetString(0)} {reader.GetString(1)}", region));
+                var person = reader.GetValue(3) is Guid pg ? pg : Guid.TryParse(Convert.ToString(reader.GetValue(3)), out var pp) ? pp : Guid.Empty;
+                list.Add(new OnlineAvatar($"{reader.GetString(0)} {reader.GetString(1)}", region, person));
             }
             // An avatar with two presence rows (a stale session) is listed once.
             return new OnlineList(list.DistinctBy(a => a.Name).OrderBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase).ToList(), true);

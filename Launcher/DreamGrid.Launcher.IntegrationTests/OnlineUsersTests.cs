@@ -58,7 +58,20 @@ public sealed class OnlineUsersTests : IDisposable
 
             var list = await online.ListAsync(ct);
             Assert.True(list.Available);
-            Assert.Equal([new OnlineAvatar("Test Owner", region)], list.Avatars);
+            Assert.Equal([new OnlineAvatar("Test Owner", region, owner.PrincipalId)], list.Avatars);
+
+            // The dashboard's counts against the real robust schema (design 2026-11-05-dashboard): the owner is the one
+            // resident, joined this month and never signed in; no region is registered, so no land.
+            var now = DateTimeOffset.UtcNow;
+            var counts = await new DreamGrid.Launcher.Core.Dashboard.WorldCounter(store.LoadOrCreate).CountAsync(
+                new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero), now.Date, ct);
+            Assert.Equal(1, counts.Residents);
+            Assert.Equal(1, counts.JoinedThisMonth);
+            Assert.Equal(1, counts.NeverSignedIn);
+            Assert.Equal(0, counts.SignedInToday);
+            Assert.Equal(0, counts.LandSquareMetres);
+            Assert.Equal(0, counts.MapRegions);
+            Assert.Equal(0, counts.HypergridLinks);
 
             // A database that is down: no exception, no long wait.
             await grid.StopAllAsync(ct);

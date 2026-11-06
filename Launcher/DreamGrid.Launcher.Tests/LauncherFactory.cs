@@ -79,6 +79,10 @@ internal sealed class LauncherFactory : WebApplicationFactory<Program>
     public FakeGridJoin Join { get; } = new();
     /// <summary>The other grid's information the host reads (no network).</summary>
     public FakeOtherGrid OtherGrid { get; } = new();
+    /// <summary>The Home dashboard's counts (no database).</summary>
+    public FakeWorldCounter Counts { get; } = new();
+    /// <summary>The Home dashboard's service checks (no network).</summary>
+    public FakeServiceChecks Checks { get; } = new();
     /// <summary>This computer's public address the network step's button finds (no network).</summary>
     public FakePublicAddressFinder PublicAddress { get; } = new();
     public ConcurrentQueue<(LogLevel Level, string Category, string Message)> Logs { get; } = new();
@@ -102,6 +106,10 @@ internal sealed class LauncherFactory : WebApplicationFactory<Program>
             services.AddSingleton<IRobustClient>(Robust);
             services.RemoveAll<IOnlineUsers>();
             services.AddSingleton<IOnlineUsers>(OnlineUsers);
+            services.RemoveAll<DreamGrid.Launcher.Core.Dashboard.IWorldCounter>();
+            services.AddSingleton<DreamGrid.Launcher.Core.Dashboard.IWorldCounter>(Counts);
+            services.RemoveAll<DreamGrid.Launcher.Dashboard.IServiceChecks>();
+            services.AddSingleton<DreamGrid.Launcher.Dashboard.IServiceChecks>(Checks);
             services.RemoveAll<IGridRegions>();
             services.AddSingleton<IGridRegions>(Regions);
             services.RemoveAll<IStaffDirectory>();

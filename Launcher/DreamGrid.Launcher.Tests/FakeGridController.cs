@@ -768,6 +768,29 @@ internal sealed class FakeOnlineUsers : IOnlineUsers
     public Task<OnlineList> ListAsync(CancellationToken ct) => Task.FromResult(Result);
 }
 
+/// <summary>The dashboard's counts, set by a test; counts how often it was asked.</summary>
+internal sealed class FakeWorldCounter : DreamGrid.Launcher.Core.Dashboard.IWorldCounter
+{
+    public DreamGrid.Launcher.Core.Dashboard.WorldCounts Result { get; set; } = DreamGrid.Launcher.Core.Dashboard.WorldCounts.Unknown;
+    public int Calls;
+    public TimeSpan Delay { get; set; }
+
+    public async Task<DreamGrid.Launcher.Core.Dashboard.WorldCounts> CountAsync(DateTimeOffset monthStart, DateTimeOffset dayStart, CancellationToken ct)
+    {
+        Interlocked.Increment(ref Calls);
+        if (Delay > TimeSpan.Zero) await Task.Delay(Delay, ct);
+        return Result;
+    }
+}
+
+/// <summary>The dashboard's service checks, set by a test (no network).</summary>
+internal sealed class FakeServiceChecks : DreamGrid.Launcher.Dashboard.IServiceChecks
+{
+    public IReadOnlyList<DreamGrid.Launcher.Dashboard.ServiceCheck> Result { get; set; } = [];
+
+    public Task<IReadOnlyList<DreamGrid.Launcher.Dashboard.ServiceCheck>> CheckAsync(bool profilesRead, CancellationToken ct) => Task.FromResult(Result);
+}
+
 internal sealed class FakeGridRegions : IGridRegions
 {
     public GridRegionList Result { get; set; } = new([], true);

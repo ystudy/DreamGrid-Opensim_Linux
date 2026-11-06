@@ -14,13 +14,20 @@ public sealed record ComponentView(string Name, string Label, string State, stri
 /// <param name="Id">The region's id, for the dashboard's link to the Regions page; null for anonymous callers.</param>
 /// <param name="RunsWith">The other regions in its program; null for anonymous callers, who get names and states only.</param>
 /// <param name="LoginsEnabled">Null for anonymous callers.</param>
-public sealed record RegionView(Guid? Id, string Name, string State, string StateText, IReadOnlyList<string>? RunsWith, bool? LoginsEnabled);
+/// <param name="People">This grid's residents in the region now; null for anonymous callers and where the accounts live on another grid.</param>
+public sealed record RegionView(Guid? Id, string Name, string State, string StateText, IReadOnlyList<string>? RunsWith, bool? LoginsEnabled,
+    int? People = null);
+
+/// <summary>Someone in-world, for the dashboard's Who's online: their name, the region's name ("" if not one of ours) and account id.</summary>
+public sealed record OnlinePerson(string Name, string Region, Guid Id);
 
 public sealed record GridView(ComponentView Database, ComponentView Robust, IReadOnlyList<RegionView> Regions, bool LoginsEnabled, string LoginUri);
 
 /// <param name="Admin">True when the caller is signed in as an admin; the dashboard reloads to sign in when it turns false.</param>
 /// <summary>What the dashboard shows and <c>GET /api/status</c> returns: names and states only, no paths or secrets.</summary>
-public sealed record StatusView(GridView Grid, IReadOnlyList<string> Online, bool OnlineAvailable, string? Problem, string Headline, bool Admin);
+/// <param name="OnlinePeople">The same people as <paramref name="Online"/> with their ids, for links; empty for anonymous callers.</param>
+public sealed record StatusView(GridView Grid, IReadOnlyList<string> Online, bool OnlineAvailable, string? Problem, string Headline, bool Admin,
+    IReadOnlyList<OnlinePerson>? OnlinePeople = null);
 
 public static class StatusApi
 {
@@ -52,13 +59,18 @@ public static class StatusApi
         var people = withOnline && s.Database.State == ProcessState.Running ? await online.ListAsync(ct) : OnlineList.Unavailable;
         var problem = Problem(s, settings);
         var regionNames = s.Regions.ToDictionary(r => r.Id, r => r.Name);
+        // Heads per region only where this computer's robust database is the grid's (elsewhere its Presence is empty).
+        var counted = withOnline && people.Available && settings is not null && Core.Security.AdminRule.HasStaffPages(settings);
+        var heads = people.Avatars.GroupBy(a => a.RegionId).ToDictionary(g => g.Key, g => g.Count());
         return new StatusView(
             new GridView(View(s.Database, "Database"), RobustView(s, settings),
                 s.Regions.Select(r => new RegionView(withOnline ? r.Id : null, r.Name, r.State.ToString(), RegionStateText(r.State),
-                    withOnline ? r.RunsWith : null, withOnline ? r.LoginsEnabled : null)).ToList(),
+                    withOnline ? r.RunsWith : null, withOnline ? r.LoginsEnabled : null,
+                    counted ? heads.GetValueOrDefault(r.Id) : null)).ToList(),
                 s.LoginsEnabled, s.LoginUri),
             people.Avatars.Select(a => regionNames.TryGetValue(a.RegionId, out var region) ? $"{a.Name} in {region}" : a.Name).ToList(),
-            people.Available, problem, problem ?? Headline(s), withOnline);
+            people.Available, problem, problem ?? Headline(s), withOnline,
+            people.Avatars.Select(a => new OnlinePerson(a.Name, regionNames.GetValueOrDefault(a.RegionId) ?? "", a.PersonId)).ToList());
     }
 
     public const string CouldNotStart = "Your world could not start.";
