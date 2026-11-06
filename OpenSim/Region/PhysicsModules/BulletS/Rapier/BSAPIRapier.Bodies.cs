@@ -58,6 +58,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
 
             BulletBodyRapier body = new BulletBodyRapier(id, handle, world.State);
             AddCollider(body, shape, id);
+            world.State.Bodies[id] = body;
             return body;
         }
 
@@ -93,6 +94,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             if (!body.HasPhysicalBody)
                 return;
             BulletShapeRapier ownedShape = body.OwnedShape;
+            body.State.ForgetBody(body);
             RapierNative.r3RemoveRigidBody(body.Body, 1);
             body.Clear();
             if (ownedShape != null)
@@ -106,6 +108,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             if (!body.HasPhysicalBody)
                 return false;
             RapierNative.Check(RapierNative.r3RigidBody_SetEnabled(body.Body, 1));
+            body.InWorld = true;
             // The collision groups live in the colliders, which are only worth setting once the body is in.
             pBody.ApplyCollisionMask(pWorld.physicsScene);
             return true;
@@ -117,6 +120,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             if (!body.HasPhysicalBody)
                 return false;
             RapierNative.Check(RapierNative.r3RigidBody_SetEnabled(body.Body, 0));
+            body.InWorld = false;
+            body.State.ForgetUpdates(body.ID);
             return true;
         }
 

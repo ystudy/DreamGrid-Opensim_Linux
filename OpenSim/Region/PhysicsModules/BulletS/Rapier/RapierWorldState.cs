@@ -62,6 +62,86 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         public RapierNative.RigidBodyHandle[] ActiveBodies = new RapierNative.RigidBodyHandle[256];
         public RapierNative.RigidBodyState[] ActiveStates = new RapierNative.RigidBodyState[256];
 
+        // Every body that has been created and not destroyed, by localID, so an update can find the body's flags.
+        public readonly Dictionary<uint, BSAPIRapier.BulletBodyRapier> Bodies = new Dictionary<uint, BSAPIRapier.BulletBodyRapier>();
+
+        // ---- Update reporting (H1) ----
+
+        // BulletSim's tolerances, from SimMotionState::setWorldTransform in BulletSim.h (Misterblue/BulletSim): a body is
+        // reported when a component of its position, rotation, velocity or angular velocity is not strictly within
+        // +-tolerance of what was last sent (Vector3::AlmostEqual and Quaternion::AlmostEqual in APIData.h).
+        public const float PositionTolerance = 0.05f;
+        public const float VelocityTolerance = 0.001f;
+        public const float RotationTolerance = 0.01f;
+        public const float AngularVelocityTolerance = 0.01f;
+
+        // What was last reported for each body, by localID.
+        public readonly Dictionary<uint, EntityProperties> LastSent = new Dictionary<uint, EntityProperties>();
+
+        // Bodies whose last report had a non-zero velocity or angular velocity. One that is no longer awake gets a final
+        // report with both zero (BulletSim gets that from its patch to Bullet).
+        public readonly HashSet<uint> MovingSent = new HashSet<uint>();
+
+        // Bodies to report on the next step whatever their state (PushUpdate).
+        public readonly HashSet<uint> ForcedUpdates = new HashSet<uint>();
+
+        // Updates that did not fit in the array, reported first on the next step. The set says which queue entries are
+        // still wanted; an entry whose id is not in it (the body was removed, or the id is queued twice) is skipped.
+        public readonly Queue<uint> PendingUpdates = new Queue<uint>();
+        public readonly HashSet<uint> PendingSet = new HashSet<uint>();
+
+        // Per-step scratch, kept to avoid allocating every frame.
+        public readonly Dictionary<uint, EntityProperties> CurrentUpdates = new Dictionary<uint, EntityProperties>();
+        public readonly List<uint> CandidateUpdates = new List<uint>();
+        public readonly HashSet<uint> ReportedUpdates = new HashSet<uint>();
+        public readonly RapierNative.RigidBodyHandle[] OneBody = new RapierNative.RigidBodyHandle[1];
+        public readonly RapierNative.RigidBodyState[] OneState = new RapierNative.RigidBodyState[1];
+
+        /// <summary>Forget everything about reporting this body: it has left the world or been destroyed.</summary>
+        public void ForgetUpdates(uint id)
+        {
+            LastSent.Remove(id);
+            MovingSent.Remove(id);
+            ForcedUpdates.Remove(id);
+            PendingSet.Remove(id);
+        }
+
+        public void ForgetBody(BSAPIRapier.BulletBodyRapier body)
+        {
+            ForgetUpdates(body.ID);
+            if (Bodies.TryGetValue(body.ID, out BSAPIRapier.BulletBodyRapier known) && ReferenceEquals(known, body))
+                Bodies.Remove(body.ID);
+        }
+
+        /// <summary>BulletSim's test for whether a body has changed enough to report (SimMotionState::setWorldTransform).</summary>
+        public bool NeedsReport(EntityProperties now)
+        {
+            if (!LastSent.TryGetValue(now.ID, out EntityProperties last))
+                return true;
+            return !AlmostEqual(now.Position, last.Position, PositionTolerance)
+                || !AlmostEqual(now.Rotation, last.Rotation, RotationTolerance)
+                // Both velocities have just become zero: make sure the zeros reach the viewer.
+                || ((now.Velocity == Vector3.Zero && now.RotationalVelocity == Vector3.Zero)
+                    && (now.Velocity != last.Velocity || now.RotationalVelocity != last.RotationalVelocity))
+                || !AlmostEqual(now.Velocity, last.Velocity, VelocityTolerance)
+                || !AlmostEqual(now.RotationalVelocity, last.RotationalVelocity, AngularVelocityTolerance);
+        }
+
+        private static bool AlmostEqual(Vector3 a, Vector3 b, float eps)
+        {
+            return (b.X - eps < a.X && a.X < b.X + eps)
+                && (b.Y - eps < a.Y && a.Y < b.Y + eps)
+                && (b.Z - eps < a.Z && a.Z < b.Z + eps);
+        }
+
+        private static bool AlmostEqual(Quaternion a, Quaternion b, float eps)
+        {
+            return (b.X - eps < a.X && a.X < b.X + eps)
+                && (b.Y - eps < a.Y && a.Y < b.Y + eps)
+                && (b.Z - eps < a.Z && a.Z < b.Z + eps)
+                && (b.W - eps < a.W && a.W < b.W + eps);
+        }
+
         // Every native shape that has been built and not freed, so Shutdown frees the ones BulletS never released and
         // a shape is never freed twice.
         public readonly HashSet<IntPtr> Shapes = new HashSet<IntPtr>();

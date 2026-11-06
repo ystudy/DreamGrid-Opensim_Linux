@@ -70,6 +70,15 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             // Set for a body that owns its shape (terrain and the ground plane), whose shape goes when the body does.
             public BulletShapeRapier OwnedShape;
 
+            // The local pose of compound child 0, for BS_RETURN_ROOT_COMPOUND_SHAPE (H1). Set when the body is built on a
+            // compound shape.
+            public bool HasRootChild;
+
+            // Whether the body is enabled (Bullet: added to the world). Only these are reported by PhysicsStep.
+            public bool InWorld;
+            public Vector3 RootChildPos;
+            public Quaternion RootChildRot = Quaternion.Identity;
+
             private bool m_valid;
 
             public BulletBodyRapier(uint id, RapierNative.RigidBodyHandle body, RapierWorldState state)
