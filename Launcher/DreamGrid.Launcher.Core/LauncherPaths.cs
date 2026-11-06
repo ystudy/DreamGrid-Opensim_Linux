@@ -23,6 +23,8 @@ public sealed record LauncherPaths(string Data, string OpenSimProgram, string? M
     public string Security => Path.Combine(Data, "security");
     /// <summary>Everything the guest side stores (guest sessions' stamps, and later sign-ups, tokens and settings): owner-only, never in the database.</summary>
     public string Guests => Path.Combine(Data, "guests");
+    /// <summary>Support tickets, one file each (owner-only).</summary>
+    public string Tickets => Path.Combine(Data, "tickets");
     /// <summary>Everything email needs (mail accounts with protected passwords, the outbox, send counts, recent problems): owner-only.</summary>
     public string Email => Path.Combine(Data, "email");
     /// <summary>The OAR library: the <c>*.oar</c> files directly in it are the library; its subfolders are staging.</summary>

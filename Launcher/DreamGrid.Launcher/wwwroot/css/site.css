@@ -179,3 +179,7 @@ header .signout { margin: 0; }
 .row-sub { font-size: .8rem; color: var(--bs-secondary-color); }
 .panel-rows .badge, .dashboard-key .badge { border-radius: var(--bs-border-radius-pill); }
 .panel .headline { font-size: 1rem; }
+
+/* Support tickets: messages keep their line breaks; staff messages stand out. */
+.ticket-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.ticket-staff { border-left: 3px solid var(--bs-primary); }

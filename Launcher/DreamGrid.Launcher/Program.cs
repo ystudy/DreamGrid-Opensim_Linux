@@ -84,6 +84,7 @@ try
     LauncherPaths.CreateOwnerOnly(paths.Security);
     LauncherPaths.CreateOwnerOnly(paths.Guests);
     LauncherPaths.CreateOwnerOnly(paths.Email);
+    LauncherPaths.CreateOwnerOnly(paths.Tickets);
 }
 catch (Exception e) when (e is ArgumentException or SettingsCorruptException or IOException or UnauthorizedAccessException)
 {
@@ -211,6 +212,10 @@ builder.Services.AddRazorPages(o =>
     foreach (var open in new[] { "/Login", "/Login/Code", "/Logout", "/Welcome", "/Waiting", "/SetupDone", "/Setup", "/Home", "/Legal", "/SignUp", "/Guest/SignIn", "/Guest/SignInCode", "/Guest/ForgotPassword", "/Guest/ResetPassword", "/Guest/Confirm", "/Guest/ConfirmEmail", "/Guest/Connect" })
         o.Conventions.AllowAnonymousToPage(open);
     o.Conventions.AllowAnonymousToFolder("/Setup");
+    // Support tickets for guests: open to anyone (each page checks the ticket's link or cookie), only where there is a guest side.
+    // Outside /Guest, which needs the guest sign-in and the Terms gate.
+    o.Conventions.AllowAnonymousToFolder("/Support");
+    o.Conventions.AddFolderApplicationModelConvention("/Support", m => m.Filters.Add(new GuestSideOnly()));
     // The dashboard's forms post here: a POST to "/" belongs to the port-8001 contract (LegacyRootPolicy).
     o.Conventions.AddPageRoute("/Index", "dashboard");
 });
@@ -287,6 +292,10 @@ builder.Services.AddSingleton<DreamGrid.Launcher.Core.Estates.IGridEstates>(sp =
     new DreamGrid.Launcher.Core.Estates.GridEstates(sp.GetRequiredService<Func<LauncherSettings>>()));
 builder.Services.AddSingleton<DreamGrid.Launcher.Estates.EstatesAdmin>();
 builder.Services.AddSingleton(sp => new ApprovalNotices(Path.Combine(paths.Guests, "approval-notices.json")));
+// Support tickets (design 2026-11-05-support-tickets): one owner-only file per ticket.
+builder.Services.AddSingleton(sp => new DreamGrid.Launcher.Core.Tickets.TicketStore(paths.Tickets, sp.GetRequiredService<ILogger<DreamGrid.Launcher.Core.Tickets.TicketStore>>()));
+builder.Services.AddSingleton<SupportTickets>();
+builder.Services.AddSingleton<TicketCookie>();
 builder.Services.AddSingleton<SignUpNotices>();
 // The resident account page (plan 10): email changes waiting for their link, and their own request counts.
 builder.Services.AddSingleton(sp => new PendingEmailChanges(Path.Combine(paths.Guests, "email-changes.json"), sp.GetRequiredService<TimeProvider>(),

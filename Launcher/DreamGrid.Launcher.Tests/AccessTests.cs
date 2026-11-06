@@ -324,6 +324,13 @@ public sealed class AccessTests
             "page setup/world",
             "page waiting",
             "page signup",
+            // Support tickets (design 2026-11-05-support-tickets): the form (bot protection and limits), the confirm link (a button,
+            // works once), a ticket (only with its private link or cookie, or for the signed-in resident who sent it), and the
+            // lost-link page (the same answer for every address). 404 where there is no guest side.
+            "page support",
+            "page support/confirm",
+            "page support/lost-link",
+            "page support/ticket",
             "page welcome",
         ];
         Assert.Equal(allowlist.Order(StringComparer.Ordinal), open);

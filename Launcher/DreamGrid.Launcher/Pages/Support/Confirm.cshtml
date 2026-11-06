@@ -1,0 +1,20 @@
+@page "/support/confirm"
+@model DreamGrid.Launcher.Pages.Support.ConfirmModel
+@{
+    ViewData["Title"] = "Send your ticket";
+}
+<div class="card card-body shadow-sm mx-auto sign-in-card">
+<h1>Send your ticket</h1>
+@if (Model.Failed)
+{
+    <div class="error-box error alert alert-danger" role="alert">This link doesn't work any more. It works once, for 24 hours. <a href="/support">Start a new ticket</a>.</div>
+}
+else
+{
+    <p>Press the button to send your ticket to the grid's staff.</p>
+    <form id="confirm-ticket" method="post">
+        <input type="hidden" asp-for="Token">
+        <button type="submit" class="btn btn-primary w-100">Send my ticket</button>
+    </form>
+}
+</div>
