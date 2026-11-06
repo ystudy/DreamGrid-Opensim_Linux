@@ -5,7 +5,7 @@ Builds rapier.dll (Rapier's C library, 3D, single precision, parallel) for 64-bi
 
 OutDir receives rapier.dll. The C runtime is linked in statically (crt-static), so the DLL imports only KERNEL32, ntdll
 and api-ms-win-core-* style system DLLs, not VCRUNTIME140 or MSVCP140.
-Needs git, Rust/Cargo 1.99 or newer with the x86_64-pc-windows-msvc target, and Visual Studio 2022 (or its Build Tools)
+Needs git, rustup with the toolchain named in source.env (RUST_TOOLCHAIN) and its x86_64-pc-windows-msvc target, and Visual Studio 2022 (or its Build Tools)
 with the C++ workload for the linker.
 #>
 param(
@@ -42,9 +42,11 @@ try {
         Invoke-Native git @('sparse-checkout', 'set', '--cone', 'bindings/c', 'bindings/python', 'crates', 'src', 'examples2d', 'examples3d', 'examples3d-f64')
         Invoke-Native git @('checkout', '-q', 'FETCH_HEAD')
         Write-Host "rapier $($source.RAPIER_TAG) $(git rev-parse HEAD)"
+        # Rapier has no Cargo.lock; this folder's one fixes every dependency version.
+        Copy-Item -LiteralPath (Join-Path $here 'Cargo.lock') -Destination 'Cargo.lock'
 
         $env:RUSTFLAGS = '-C target-feature=+crt-static'
-        Invoke-Native cargo @('build', '--release', '--package', $source.RAPIER_FFI_PACKAGE, '--features', 'parallel', '--target', 'x86_64-pc-windows-msvc')
+        Invoke-Native cargo @("+$($source.RUST_TOOLCHAIN)", 'build', '--release', '--locked', '--package', $source.RAPIER_FFI_PACKAGE, '--features', 'parallel', '--target', 'x86_64-pc-windows-msvc')
     } finally { Pop-Location }
 
     $dll = Join-Path $src 'target/x86_64-pc-windows-msvc/release/rapier3d_ffi.dll'

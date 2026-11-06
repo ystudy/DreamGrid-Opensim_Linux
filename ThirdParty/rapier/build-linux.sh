@@ -6,7 +6,7 @@
 # OUTDIR  directory for the stripped library; it is named librapier-x86_64.so or librapier-arm64.so after the machine
 #         the script runs on. A relative path is taken from the current directory.
 #
-# Needs git, a C compiler (the linker), and Rust/Cargo 1.99 or newer. Build on the oldest distribution the library has
+# Needs git, a C compiler (the linker), and rustup with the toolchain named in source.env (RUST_TOOLCHAIN). Build on the oldest distribution the library has
 # to run on (DreamGrid: Debian 12), because the result links against that glibc.
 set -eu
 
@@ -33,8 +33,10 @@ git fetch -q --depth 1 --filter=blob:none origin "$RAPIER_COMMIT"
 git sparse-checkout set --cone bindings/c bindings/python crates src examples2d examples3d examples3d-f64
 git checkout -q FETCH_HEAD
 echo "rapier $RAPIER_TAG $(git rev-parse HEAD)"
+# Rapier has no Cargo.lock; this folder's one fixes every dependency version.
+cp "$here/Cargo.lock" Cargo.lock
 
-cargo build --release --package "$RAPIER_FFI_PACKAGE" --features parallel > "$work/cargo.log" 2>&1 \
+cargo "+$RUST_TOOLCHAIN" build --release --locked --package "$RAPIER_FFI_PACKAGE" --features parallel > "$work/cargo.log" 2>&1 \
     || { tail -60 "$work/cargo.log"; exit 1; }
 
 mkdir -p "$out"

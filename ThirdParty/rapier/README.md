@@ -31,16 +31,30 @@ lines in `bin/OpenSim.Region.PhysicsModule.BulletS.dll.config`.
 
 ## Building
 
-- Linux: `ThirdParty/rapier/build-linux.sh /abs/path/out`. Needs git, a C compiler (the linker), and Rust 1.99 or
-  newer (`rapier3d-ffi` sets `rust-version = 1.99`). Build on Debian 12.
-- Windows: `ThirdParty\rapier\build-windows.ps1 -OutDir out`. Needs git, Rust 1.99 or newer with the
-  `x86_64-pc-windows-msvc` target, and the C++ build tools of Visual Studio 2022 (run it from a "x64 Native Tools"
-  prompt if a newer preview Visual Studio is installed that has no C++ libraries).
-- After a change to the pinned commit: replace `include/rapier.h` with the header from the new commit, run
-  `sh ThirdParty/rapier/gen-exports.sh`, and check `git diff exports.txt` against the changes in `RapierNative.cs`.
+- Linux: `ThirdParty/rapier/build-linux.sh /abs/path/out`. Needs git, a C compiler (the linker) and rustup with the
+  toolchain named in `source.env` installed (`rustup toolchain install 1.99.1`). Build on Debian 12.
+- Windows: `ThirdParty\rapier\build-windows.ps1 -OutDir out`. Needs git, rustup with the `source.env` toolchain and its
+  `x86_64-pc-windows-msvc` target installed, and the C++ build tools of Visual Studio 2022 (run it from a "x64 Native
+  Tools" prompt if a newer preview Visual Studio is installed that has no C++ libraries).
 
-Rapier's workspace has no `Cargo.lock` in the repository, so cargo picks the newest compatible versions of Rapier's
-dependencies when it builds. The tag pins Rapier's own code, not those crates.
+## What is pinned
+
+A rebuild must produce the same code as the committed binaries, so three things are fixed:
+
+- the Rapier source: `RAPIER_COMMIT` in `source.env` (the commit `v0.36.1` points to);
+- every dependency version: `Cargo.lock` in this folder. Rapier's repository has no lockfile, so both scripts copy this one
+  into the checkout and build with `cargo build --locked` (the build fails if the lockfile no longer fits);
+- the Rust compiler: `RUST_TOOLCHAIN` in `source.env` (1.99.1). The scripts run `cargo +1.99.1`, and `rapier.yml`
+  installs exactly that version with rustup.
+
+The x86_64 Linux library rebuilt from these pins on Debian 12 is byte-identical to the committed one. The Windows DLL
+differs from build to build in embedded paths, so compare its exports and imports, not its bytes.
+
+To bump Rapier or Rust: change `RAPIER_TAG`/`RAPIER_COMMIT` and/or `RUST_TOOLCHAIN`; fetch the new commit in a scratch
+checkout (same sparse set as the scripts), delete `Cargo.lock` there, run `cargo +NEWVERSION generate-lockfile`, and copy
+it here; replace `include/rapier.h`, run `sh gen-exports.sh`, and update `RapierNative.cs` for any header change; run
+`rapier.yml`, then copy its artifacts into `bin/lib64`.
+
 
 ## What the build checks
 

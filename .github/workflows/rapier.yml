@@ -1,6 +1,7 @@
 name: rapier
 
-# Builds the Rapier C library (bin/lib64/librapier-*.so, rapier.dll) from the commit pinned in ThirdParty/rapier/source.env,
+# Builds the Rapier C library (bin/lib64/librapier-*.so, rapier.dll) from the commit, Rust version (RUST_TOOLCHAIN) and
+# dependency lockfile (Cargo.lock, built with --locked) pinned in ThirdParty/rapier,
 # so the binaries committed to bin/lib64 can be rebuilt and checked. Each job checks that the library exports exactly the
 # r3 functions in ThirdParty/rapier/exports.txt (the list DreamGrid's P/Invoke layer is written against). The Linux jobs
 # also check that nothing needs a newer glibc than Debian 12 has, and the Windows job checks that the DLL imports no
@@ -36,13 +37,16 @@ jobs:
           apt-get update -q
           DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
             build-essential git ca-certificates curl binutils
-      - name: Rust
-        run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
       - uses: actions/checkout@v4
+      - name: Rust (the exact version in ThirdParty/rapier/source.env)
+        run: |
+          . ThirdParty/rapier/source.env
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain "$RUST_TOOLCHAIN"
       - name: Build librapier-${{ matrix.arch }}.so
         run: |
           . "$HOME/.cargo/env"
-          cargo --version
+          . ThirdParty/rapier/source.env
+          cargo "+$RUST_TOOLCHAIN" --version
           sh ThirdParty/rapier/build-linux.sh out
       - name: Exports are exactly ThirdParty/rapier/exports.txt
         run: |
@@ -66,12 +70,12 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-      - name: Rust
+      - name: Rust (the exact version in ThirdParty/rapier/source.env)
         shell: pwsh
         run: |
-          rustup update stable
-          rustup target add x86_64-pc-windows-msvc
-          cargo --version
+          $version = (Select-String -Path ThirdParty/rapier/source.env -Pattern '^RUST_TOOLCHAIN=(.+)$').Matches[0].Groups[1].Value.Trim()
+          rustup toolchain install $version --profile minimal --target x86_64-pc-windows-msvc
+          cargo "+$version" --version
       - name: Build rapier.dll
         shell: pwsh
         run: ThirdParty/rapier/build-windows.ps1 -OutDir out
