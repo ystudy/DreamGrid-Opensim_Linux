@@ -379,7 +379,7 @@ public class WorldAndStepTests
     }
 
     [Fact]
-    public void IgnoredFlags_AreLoggedOnce()
+    public void IgnoredActivationState_IsLoggedOnce_AndFlagsAreNotLogged()
     {
         BSScene scene = RapierTestScene.Create();
         try
@@ -388,15 +388,17 @@ public class WorldAndStepTests
             BulletBody body = pe.CreateBodyFromShape(scene.World,
                 pe.BuildNativeShape(scene.World, new ShapeData { Type = BSPhysicsShapeType.SHAPE_BOX, Scale = Vector3.One, Size = Vector3.One }),
                 7, Vector3.Zero, Quaternion.Identity);
-            pe.AddToCollisionFlags(body, CollisionFlags.CF_NO_CONTACT_RESPONSE);
+            // The flags that do nothing in Rapier by design (H3) are not worth a log line.
+            pe.AddToCollisionFlags(body, CollisionFlags.CF_CHARACTER_OBJECT | CollisionFlags.BS_FLOATS_ON_WATER);
             pe.AddToCollisionFlags(body, CollisionFlags.CF_NO_CONTACT_RESPONSE);
             pe.ForceActivationState(body, ActivationState.DISABLE_DEACTIVATION);
             pe.ForceActivationState(body, ActivationState.DISABLE_DEACTIVATION);
 
-            // Each message once per world, however many calls.
-            Assert.Equal(2, ((BSAPIRapier.BulletBodyRapier)body).State.LoggedOnce.Count(k =>
-                k.StartsWith("flags:") || k.StartsWith("state:")));
-            Assert.DoesNotContain("terrain-standin", ((BSAPIRapier.BulletBodyRapier)body).State.LoggedOnce);
+            // An activation state not acted on yet is logged once per world, however many calls.
+            HashSet<string> logged = ((BSAPIRapier.BulletBodyRapier)body).State.LoggedOnce;
+            Assert.Equal(1, logged.Count(k => k.StartsWith("state:")));
+            Assert.DoesNotContain(logged, k => k.StartsWith("flags:"));
+            Assert.DoesNotContain("terrain-standin", logged);
         }
         finally
         {

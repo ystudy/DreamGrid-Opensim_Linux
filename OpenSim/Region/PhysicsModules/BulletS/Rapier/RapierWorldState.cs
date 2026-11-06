@@ -57,6 +57,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         public EntityProperties[] UpdateArray;
         public CollisionDesc[] CollisionArray;
         public int LastUpdateCount;
+        // How many entries of CollisionArray the last PhysicsStep filled (also what it returned in collidersCount).
+        public int LastCollisionCount;
 
         // Scratch buffers for r3ActiveRigidBodies and r3RigidBodyReadStates, grown as needed and reused.
         public RapierNative.RigidBodyHandle[] ActiveBodies = new RapierNative.RigidBodyHandle[256];
@@ -109,6 +111,9 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         public void ForgetBody(BSAPIRapier.BulletBodyRapier body)
         {
             ForgetUpdates(body.ID);
+            // Before the colliders are removed natively, so no later step asks Rapier about a collider that is gone.
+            foreach (RapierNative.ColliderHandle collider in body.Colliders)
+                ForgetCollider(collider);
             if (Bodies.TryGetValue(body.ID, out BSAPIRapier.BulletBodyRapier known) && ReferenceEquals(known, body))
                 Bodies.Remove(body.ID);
         }
@@ -140,6 +145,35 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                 && (b.Y - eps < a.Y && a.Y < b.Y + eps)
                 && (b.Z - eps < a.Z && a.Z < b.Z + eps)
                 && (b.W - eps < a.W && a.W < b.W + eps);
+        }
+
+        // ---- Collision reporting (H2, H4) ----
+
+        // The colliders of bodies that have BS_SUBSCRIBE_COLLISION_EVENTS or BS_VEHICLE_COLLISIONS (BulletSim's
+        // BS_WANTS_COLLISIONS). Only their contact pairs are looked at after a substep.
+        public readonly HashSet<RapierNative.ColliderHandle> WantsCollisions = new HashSet<RapierNative.ColliderHandle>();
+
+        // Sensor colliders (volume detect), whose overlaps are read from the world's intersection pairs.
+        public readonly HashSet<RapierNative.ColliderHandle> Sensors = new HashSet<RapierNative.ColliderHandle>();
+
+        // The body each collider belongs to, to turn the colliders of a contact pair into localIDs and flags.
+        public readonly Dictionary<RapierNative.ColliderHandle, BSAPIRapier.BulletBodyRapier> ColliderOwners =
+                    new Dictionary<RapierNative.ColliderHandle, BSAPIRapier.BulletBodyRapier>();
+
+        // The pairs (low localID << 32 | high localID) already written since the step began: one entry per pair per
+        // BSScene.Simulate call, however many substeps it took.
+        public readonly HashSet<ulong> PairsThisFrame = new HashSet<ulong>();
+
+        // Scratch buffers for the contact queries, grown as needed and reused.
+        public RapierNative.ContactPair[] PairBuffer = new RapierNative.ContactPair[64];
+        public RapierNative.ContactPoint[] PointBuffer = new RapierNative.ContactPoint[32];
+        public RapierNative.IntersectionPair[] SensorBuffer = new RapierNative.IntersectionPair[64];
+
+        public void ForgetCollider(RapierNative.ColliderHandle collider)
+        {
+            WantsCollisions.Remove(collider);
+            Sensors.Remove(collider);
+            ColliderOwners.Remove(collider);
         }
 
         // Every native shape that has been built and not freed, so Shutdown frees the ones BulletS never released and

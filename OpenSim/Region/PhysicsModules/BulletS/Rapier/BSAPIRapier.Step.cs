@@ -46,8 +46,9 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             BulletWorldRapier world = (BulletWorldRapier)pWorld;
             RapierWorldState state = world.State;
 
-            // No collision reporting yet.
-            collidersCount = 0;
+            // Pairs are written once per call, across all its substeps (BulletSim's m_collidersThisFrame).
+            state.PairsThisFrame.Clear();
+            state.LastCollisionCount = 0;
 
             int steps = state.PlanSteps(timeStep, maxSubSteps, fixedTimeStep, out float stepSeconds);
             if (steps > 0 && stepSeconds != state.TimeStep)
@@ -56,10 +57,154 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                 state.TimeStep = stepSeconds;
             }
             for (int ii = 0; ii < steps; ii++)
+            {
                 RapierNative.Check(RapierNative.r3Step(world.World, IntPtr.Zero, IntPtr.Zero));
+                // Collisions are gathered after every substep, as in BulletSim: something can touch and bounce off
+                // within one frame.
+                GatherCollisions(world);
+            }
 
+            collidersCount = state.LastCollisionCount;
             updatedEntityCount = GatherUpdates(world);
             return steps;
+        }
+
+        // Collision reporting (H2, H4), after one substep. The conventions are BulletSim's (BulletSim.cpp,
+        // SubstepCollisionCallback and RecordCollision):
+        //  - a pair is kept only if one side wants collisions (BS_SUBSCRIBE_COLLISION_EVENTS or BS_VEHICLE_COLLISIONS);
+        //  - one entry per pair per frame: aID is the lower localID, bID the higher;
+        //  - one contact point per pair (here the deepest), in world space;
+        //  - the normal points from A to B;
+        //  - the penetration is the signed distance, negative when the two have sunk into each other.
+        // Rapier lists a contact pair under either of its colliders, so the pairs are found from the colliders that want
+        // collisions and a pair seen from both sides is written once. At most the array's length is written.
+        private void GatherCollisions(BulletWorldRapier world)
+        {
+            RapierWorldState state = world.State;
+            CollisionDesc[] array = state.CollisionArray;
+            if (array == null)
+                return;
+
+            foreach (RapierNative.ColliderHandle collider in state.WantsCollisions)
+            {
+                if (state.LastCollisionCount >= array.Length)
+                    return;
+                if (!state.ColliderOwners.TryGetValue(collider, out BulletBodyRapier owner) || !owner.InWorld)
+                    continue;
+
+                int pairCount = (int)RapierNative.r3Collider_ContactPairs(collider, state.PairBuffer, (UIntPtr)state.PairBuffer.Length);
+                if (pairCount > state.PairBuffer.Length)
+                {
+                    state.PairBuffer = new RapierNative.ContactPair[pairCount + pairCount / 2];
+                    pairCount = (int)RapierNative.r3Collider_ContactPairs(collider, state.PairBuffer, (UIntPtr)state.PairBuffer.Length);
+                }
+                for (int ii = 0; ii < pairCount && state.LastCollisionCount < array.Length; ii++)
+                    RecordContactPair(state, array, in state.PairBuffer[ii]);
+            }
+
+            if (state.Sensors.Count > 0 && state.LastCollisionCount < array.Length)
+                GatherSensorOverlaps(world, array);
+        }
+
+        private static void RecordContactPair(RapierWorldState state, CollisionDesc[] array, in RapierNative.ContactPair pair)
+        {
+            if (pair.hasAnyActiveContact == 0)
+                return;
+            if (!state.ColliderOwners.TryGetValue(pair.collider1, out BulletBodyRapier body1) || !body1.InWorld
+                    || !state.ColliderOwners.TryGetValue(pair.collider2, out BulletBodyRapier body2) || !body2.InWorld)
+                return;
+            ulong key = PairKey(body1.ID, body2.ID);
+            if (state.PairsThisFrame.Contains(key))
+                return;
+
+            // The deepest point of the pair.
+            int pointCount = (int)RapierNative.r3ContactPoints(pair.collider1, pair.collider2, state.PointBuffer, (UIntPtr)state.PointBuffer.Length);
+            if (pointCount > state.PointBuffer.Length)
+            {
+                state.PointBuffer = new RapierNative.ContactPoint[pointCount + pointCount / 2];
+                pointCount = (int)RapierNative.r3ContactPoints(pair.collider1, pair.collider2, state.PointBuffer, (UIntPtr)state.PointBuffer.Length);
+            }
+            if (pointCount == 0)
+                return;
+            int deepest = 0;
+            for (int ii = 1; ii < pointCount; ii++)
+            {
+                if (state.PointBuffer[ii].distance < state.PointBuffer[deepest].distance)
+                    deepest = ii;
+            }
+            ref RapierNative.ContactPoint contact = ref state.PointBuffer[deepest];
+
+            // The point is local to collider 2 (BulletSim: the position on B); the normal runs from collider 1 to collider 2.
+            RapierNative.Pose pose = RapierNative.r3Collider_Position(pair.collider2);
+            Vector3 point = ToVector3(pose.translation) + ToVector3(contact.localP2) * ToQuaternion(pose.rotation);
+            Vector3 normal = ToVector3(contact.normal);
+
+            state.PairsThisFrame.Add(key);
+            WriteCollision(state, array, body1.ID, body2.ID, point, normal, contact.distance);
+        }
+
+        // Sensor overlaps (volume detect). There is no contact point, so the point is the position of the body the sensor
+        // detected, the normal runs from the lower ID's body to the higher's, and the penetration is zero.
+        private static void GatherSensorOverlaps(BulletWorldRapier world, CollisionDesc[] array)
+        {
+            RapierWorldState state = world.State;
+            int count = (int)RapierNative.r3IntersectionPairs(world.World, state.SensorBuffer, (UIntPtr)state.SensorBuffer.Length);
+            if (count > state.SensorBuffer.Length)
+            {
+                state.SensorBuffer = new RapierNative.IntersectionPair[count + count / 2];
+                count = (int)RapierNative.r3IntersectionPairs(world.World, state.SensorBuffer, (UIntPtr)state.SensorBuffer.Length);
+            }
+            for (int ii = 0; ii < count && state.LastCollisionCount < array.Length; ii++)
+            {
+                ref RapierNative.IntersectionPair pair = ref state.SensorBuffer[ii];
+                if (pair.intersecting == 0)
+                    continue;
+                if (!state.ColliderOwners.TryGetValue(pair.collider1, out BulletBodyRapier body1) || !body1.InWorld
+                        || !state.ColliderOwners.TryGetValue(pair.collider2, out BulletBodyRapier body2) || !body2.InWorld)
+                    continue;
+                if (((body1.Flags | body2.Flags) & WantsCollisionsFlags) == 0)
+                    continue;
+                ulong key = PairKey(body1.ID, body2.ID);
+                if (state.PairsThisFrame.Contains(key))
+                    continue;
+                state.PairsThisFrame.Add(key);
+
+                BulletBodyRapier detected = (state.Sensors.Contains(pair.collider2) && !state.Sensors.Contains(pair.collider1)) ? body1 : body2;
+                Vector3 point = ToVector3(RapierNative.r3RigidBody_Translation(detected.Body));
+                Vector3 position1 = ToVector3(RapierNative.r3RigidBody_Translation(body1.Body));
+                Vector3 position2 = ToVector3(RapierNative.r3RigidBody_Translation(body2.Body));
+                Vector3 normal = position2 - position1;
+                float lengthSquared = normal.LengthSquared();
+                normal = (lengthSquared > 1e-12f) ? normal * (1f / MathF.Sqrt(lengthSquared)) : Vector3.UnitZ;
+                WriteCollision(state, array, body1.ID, body2.ID, point, normal, 0f);
+            }
+        }
+
+        private static ulong PairKey(uint idA, uint idB)
+        {
+            return (idA <= idB) ? (((ulong)idA << 32) | idB) : (((ulong)idB << 32) | idA);
+        }
+
+        // BulletSim's RecordCollision after its keep-the-pair tests: the lower ID is A, and swapping flips the normal.
+        // The normal given runs from the first body to the second.
+        private static void WriteCollision(RapierWorldState state, CollisionDesc[] array, uint id1, uint id2, Vector3 point,
+                                    Vector3 normal1To2, float distance)
+        {
+            if (id1 > id2)
+            {
+                uint swap = id1;
+                id1 = id2;
+                id2 = swap;
+                normal1To2 = -normal1To2;
+            }
+            array[state.LastCollisionCount++] = new CollisionDesc
+            {
+                aID = id1,
+                bID = id2,
+                point = point,
+                normal = normal1To2,
+                penetration = distance
+            };
         }
 
         // Decide what to report this step and fill the update array with it (H1). As with BulletSim's SimMotionState, a

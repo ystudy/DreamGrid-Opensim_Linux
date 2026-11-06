@@ -33,9 +33,17 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
 {
     public sealed partial class BSAPIRapier
     {
-        // Collision flags, activation states and filter groups (H3). So far: the flags are kept on the body and
-        // CF_STATIC_OBJECT makes it fixed, the filter groups reach the colliders, and a body can be woken or put to
-        // sleep. The other flags and the other activation states are not acted on yet.
+        // Collision flags, activation states and filter groups (H3). The flags are kept on the body and each one that
+        // means something to Rapier is applied to it:
+        //  - CF_STATIC_OBJECT / CF_KINEMATIC_OBJECT choose the body type (fixed, kinematic or dynamic), in place;
+        //  - CF_NO_CONTACT_RESPONSE takes the colliders out of the contact solver (their solver groups filter nothing),
+        //    so the contacts are found and reported but push nothing;
+        //  - BS_SUBSCRIBE_COLLISION_EVENTS and BS_VEHICLE_COLLISIONS put the colliders in WantsCollisions (H2);
+        //  - BS_RETURN_ROOT_COMPOUND_SHAPE is read when updates are reported (H1).
+        // CF_CHARACTER_OBJECT (a marker), CF_CUSTOM_MATERIAL_CALLBACK (the terrain mesh is built with fixed internal edges
+        // instead) and BS_FLOATS_ON_WATER (BulletSim's native code never reads it) have nothing to do in Rapier.
+
+        private const CollisionFlags WantsCollisionsFlags = CollisionFlags.BS_SUBSCRIBE_COLLISION_EVENTS | CollisionFlags.BS_VEHICLE_COLLISIONS;
 
         public override CollisionFlags GetCollisionFlags(BulletBody obj)
         {
@@ -47,8 +55,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             BulletBodyRapier body = (BulletBodyRapier)obj;
             CollisionFlags old = body.Flags;
             body.Flags = flags;
-            LogIgnoredFlags(body, flags);
-            ApplyStaticFlag(body, old);
+            ApplyFlags(body, old);
             return body.Flags;
         }
 
@@ -57,8 +64,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             BulletBodyRapier body = (BulletBodyRapier)obj;
             CollisionFlags old = body.Flags;
             body.Flags |= flags;
-            LogIgnoredFlags(body, flags);
-            ApplyStaticFlag(body, old);
+            ApplyFlags(body, old);
             return body.Flags;
         }
 
@@ -67,30 +73,53 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             BulletBodyRapier body = (BulletBodyRapier)obj;
             CollisionFlags old = body.Flags;
             body.Flags &= ~flags;
-            ApplyStaticFlag(body, old);
+            ApplyFlags(body, old);
             return body.Flags;
         }
 
-        // TODO(Task 5): CF_KINEMATIC_OBJECT, CF_NO_CONTACT_RESPONSE, CF_CHARACTER_OBJECT, BS_SUBSCRIBE_COLLISION_EVENTS,
-        // BS_VEHICLE_COLLISIONS and BS_RETURN_ROOT_COMPOUND_SHAPE are stored but have no effect yet (H3). Logged at debug
-        // level, once per flag value.
-        private void LogIgnoredFlags(BulletBodyRapier body, CollisionFlags flags)
+        // Do what a change from the old flags to the body's current ones calls for. Only a change does anything, so a
+        // body made fixed another way (terrain) is left alone.
+        private static void ApplyFlags(BulletBodyRapier body, CollisionFlags old)
         {
-            CollisionFlags ignored = flags & ~CollisionFlags.CF_STATIC_OBJECT;
-            if (ignored != 0)
-                LogOnce(body, "flags:" + (uint)ignored, "Collision flags " + ignored + " are stored but not acted on yet");
+            if (!body.HasPhysicalBody)
+                return;
+            CollisionFlags now = body.Flags;
+
+            uint oldType = BodyTypeFor(old);
+            uint newType = BodyTypeFor(now);
+            if (oldType != newType)
+                RapierNative.Check(RapierNative.r3RigidBody_SetBodyType(body.Body, newType, 1));
+
+            if (((old ^ now) & CollisionFlags.CF_NO_CONTACT_RESPONSE) != 0)
+            {
+                RapierNative.InteractionGroups groups = (now & CollisionFlags.CF_NO_CONTACT_RESPONSE) != 0
+                            ? new RapierNative.InteractionGroups { memberships = uint.MaxValue, filter = 0u, testMode = 0 }
+                            : RapierNative.r3DefaultColliderDesc().solverGroups;
+                foreach (RapierNative.ColliderHandle collider in body.Colliders)
+                    RapierNative.Check(RapierNative.r3Collider_SetSolverGroups(collider, groups));
+            }
+
+            bool wasWanting = (old & WantsCollisionsFlags) != 0;
+            bool isWanting = (now & WantsCollisionsFlags) != 0;
+            if (wasWanting != isWanting)
+            {
+                foreach (RapierNative.ColliderHandle collider in body.Colliders)
+                {
+                    if (isWanting)
+                        body.State.WantsCollisions.Add(collider);
+                    else
+                        body.State.WantsCollisions.Remove(collider);
+                }
+            }
         }
 
-        // CF_STATIC_OBJECT turns the body fixed, and clearing it makes the body dynamic again. Only a change of the
-        // flag does anything, so a body made fixed another way (terrain) is left alone.
-        private static void ApplyStaticFlag(BulletBodyRapier body, CollisionFlags old)
+        private static uint BodyTypeFor(CollisionFlags flags)
         {
-            bool wasStatic = (old & CollisionFlags.CF_STATIC_OBJECT) != 0;
-            bool isStatic = (body.Flags & CollisionFlags.CF_STATIC_OBJECT) != 0;
-            if (wasStatic == isStatic || !body.HasPhysicalBody)
-                return;
-            RapierNative.Check(RapierNative.r3RigidBody_SetBodyType(body.Body,
-                                isStatic ? RapierNative.BodyFixed : RapierNative.BodyDynamic, 1));
+            if ((flags & CollisionFlags.CF_STATIC_OBJECT) != 0)
+                return RapierNative.BodyFixed;
+            if ((flags & CollisionFlags.CF_KINEMATIC_OBJECT) != 0)
+                return RapierNative.BodyKinematicPositionBased;
+            return RapierNative.BodyDynamic;
         }
 
         // Bullet's group and mask become the collider's memberships and filter. A test mode of 0 needs both bodies to
@@ -131,19 +160,21 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                 RapierNative.Check(RapierNative.r3RigidBody_WakeUp(body.Body, forceActivation ? 1u : 0u));
         }
 
-        // Bullet's contact bookkeeping with no per-body Rapier counterpart (map row 142).
+        // Bullet's contact bookkeeping with no per-body Rapier counterpart (map rows 142 and 143): the value is kept.
         public override void SetContactProcessingThreshold(BulletBody obj, float val)
         {
-        }
-
-        public override bool HasContactResponse(BulletBody obj)
-        {
-            throw new NotImplementedException("BSAPIRapier." + nameof(HasContactResponse));
+            ((BulletBodyRapier)obj).ContactProcessingThreshold = val;
         }
 
         public override float GetContactProcessingThreshold(BulletBody obj)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(GetContactProcessingThreshold));
+            return ((BulletBodyRapier)obj).ContactProcessingThreshold;
+        }
+
+        // The flag is the answer (map row 141).
+        public override bool HasContactResponse(BulletBody obj)
+        {
+            return (((BulletBodyRapier)obj).Flags & CollisionFlags.CF_NO_CONTACT_RESPONSE) == 0;
         }
 
         public override int GetActivationState(BulletBody obj)
@@ -171,6 +202,9 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             throw new NotImplementedException("BSAPIRapier." + nameof(IsActive));
         }
 
+        // A volume-detect body (H4): a rigid body whose collider is a sensor. A sensor reports overlaps instead of making
+        // contacts, and its collision types are widened so that a static volume also sees fixed and kinematic bodies.
+        // BulletS makes it fixed with CF_STATIC_OBJECT and non-solid with CF_NO_CONTACT_RESPONSE, as for any prim.
         public override BulletBody CreateGhostFromShape(
             BulletWorld sim,
             BulletShape shape,
@@ -178,7 +212,16 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             Vector3 pos,
             Quaternion rot)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(CreateGhostFromShape));
+            BulletBodyRapier body = CreateRigidBody((BulletWorldRapier)sim, (BulletShapeRapier)shape, id, pos, rot, RapierNative.BodyDynamic);
+            body.IsGhost = true;
+            foreach (RapierNative.ColliderHandle collider in body.Colliders)
+            {
+                RapierNative.Check(RapierNative.r3Collider_SetSensor(collider, 1));
+                RapierNative.Check(RapierNative.r3Collider_SetActiveCollisionTypes(collider,
+                            (ushort)(RapierNative.CollisionTypesDefault | RapierNative.CollisionTypesKinematicFixed | RapierNative.CollisionTypesFixedFixed)));
+                body.State.Sensors.Add(collider);
+            }
+            return body;
         }
     }
 }

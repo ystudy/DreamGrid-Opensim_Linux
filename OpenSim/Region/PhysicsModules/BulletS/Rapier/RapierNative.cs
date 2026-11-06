@@ -72,6 +72,11 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         public const uint BodyKinematicPositionBased = 2;
         public const uint BodyKinematicVelocityBased = 3;
 
+        // R3_COLLISION_TYPES_*: which pairs of body types a collider takes part in (ColliderDesc.activeCollisionTypes).
+        public const ushort CollisionTypesDefault = 15;
+        public const ushort CollisionTypesKinematicFixed = 8704;
+        public const ushort CollisionTypesFixedFixed = 32;
+
         // R3_MASS_*: how ColliderDesc turns its density, mass or mass properties into the body's mass.
         public const uint MassModeDensity = 0;
 
@@ -96,7 +101,14 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         public struct RigidBodyHandle { public IntPtr world; public uint index, generation; }
 
         [StructLayout(LayoutKind.Sequential)]
-        public struct ColliderHandle { public IntPtr world; public uint index, generation; }
+        public struct ColliderHandle : IEquatable<ColliderHandle>
+        {
+            public IntPtr world; public uint index, generation;
+
+            public bool Equals(ColliderHandle other) { return world == other.world && index == other.index && generation == other.generation; }
+            public override bool Equals(object obj) { return obj is ColliderHandle other && Equals(other); }
+            public override int GetHashCode() { return unchecked((int)(index * 397u ^ generation * 31u) ^ world.GetHashCode()); }
+        }
 
         [StructLayout(LayoutKind.Sequential)]
         public struct ImpulseJointHandle { public IntPtr world; public uint index, generation; }
@@ -236,6 +248,36 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             public UIntPtr rigidBodyDesc, colliderDesc, shapeDesc, jointDesc;
             public UIntPtr softBodyMaterial, integrationParameters, softBodyDesc;
             public UIntPtr softMeshBindingDesc, queryOptions, urdfLoaderOptions, mjcfLoaderOptions;
+        }
+
+        // R3ContactPair, R3IntersectionPair and R3ContactPoint (3D, single precision: the tangent impulses are two reals).
+        [StructLayout(LayoutKind.Sequential)]
+        public struct ContactPair
+        {
+            public ColliderHandle collider1, collider2;
+            public uint hasAnyActiveContact;
+            public Vector totalImpulse;
+            public float totalImpulseMagnitude;
+            public float maxImpulse;
+            public Vector maxImpulseDirection;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct IntersectionPair
+        {
+            public ColliderHandle collider1, collider2;
+            public uint intersecting;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct ContactPoint
+        {
+            public UIntPtr manifoldIndex;
+            public Vector localP1, localP2;
+            public Vector normal;
+            public float distance;
+            public float impulse;
+            public float tangentImpulse0, tangentImpulse1;
         }
 
         // R3BuildFeatures: what the loaded library was built with.
@@ -431,6 +473,35 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
 
         [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         public static extern uint r3Collider_SetCollisionGroups(ColliderHandle handle, InteractionGroups value);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3Collider_SetSolverGroups(ColliderHandle handle, InteractionGroups value);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3Collider_SetSensor(ColliderHandle handle, uint value);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3Collider_SetActiveCollisionTypes(ColliderHandle handle, ushort value);
+
+        // The collider's pose in the world.
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern Pose r3Collider_Position(ColliderHandle handle);
+
+        // ---- Contacts and sensor overlaps ----
+        // For all three the buffer takes up to capacity entries and the return value is how many there are in all:
+        // when it is more than capacity, nothing useful was written and the call is made again with a bigger buffer.
+
+        // The narrow-phase pairs the collider is in, with or without an active contact.
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern UIntPtr r3Collider_ContactPairs(ColliderHandle handle, [Out] ContactPair[] buffer, UIntPtr capacity);
+
+        // Every sensor overlap in the world.
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern UIntPtr r3IntersectionPairs(IntPtr world, [Out] IntersectionPair[] buffer, UIntPtr capacity);
+
+        // Contact points of a pair: collider-local points, world normal. Follow the pair's own collider order.
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern UIntPtr r3ContactPoints(ColliderHandle collider1, ColliderHandle collider2, [Out] ContactPoint[] buffer, UIntPtr capacity);
 
         // A shared shape is an R3SharedShape*: set ColliderDesc.shape.kind = ShapeKindShared and shape.sharedShape to it,
         // and free it with r3FreeSharedShape when done with it.

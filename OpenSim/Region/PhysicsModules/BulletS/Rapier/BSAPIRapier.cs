@@ -67,6 +67,12 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             // The Bullet collision flags last given to the body (H3). Rapier has no such field, so they are kept here.
             public CollisionFlags Flags;
 
+            // The value last given to SetContactProcessingThreshold (Rapier has no such setting; map rows 142 and 143).
+            public float ContactProcessingThreshold;
+
+            // A volume-detect body, made by CreateGhostFromShape; its collider is a sensor.
+            public bool IsGhost;
+
             // Set for a body that owns its shape (terrain and the ground plane), whose shape goes when the body does.
             public BulletShapeRapier OwnedShape;
 

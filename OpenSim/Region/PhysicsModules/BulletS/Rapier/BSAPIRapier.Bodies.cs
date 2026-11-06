@@ -79,6 +79,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             RapierNative.ColliderHandle collider = RapierNative.r3InsertCollider(body.Body, in desc);
             RapierNative.Check(RapierNative.r3LastStatus());
             body.Colliders.Add(collider);
+            body.State.ColliderOwners[collider] = body;
         }
 
         public override BulletBody CreateBodyFromShape(BulletWorld pWorld, BulletShape pShape, UInt32 id, Vector3 pos, Quaternion rot)
@@ -131,10 +132,11 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             return body.HasPhysicalBody && RapierNative.r3RigidBody_IsEnabled(body.Body) != 0;
         }
 
-        // Every body is a rigid body; ghost objects are sensor colliders on a rigid body.
+        // Every body is a rigid body; a ghost object is a rigid body with a sensor collider, and BulletS (MakeSolid) wants
+        // to hear that.
         public override CollisionObjectTypes GetBodyType(BulletBody obj)
         {
-            return CollisionObjectTypes.CO_RIGID_BODY;
+            return ((BulletBodyRapier)obj).IsGhost ? CollisionObjectTypes.CO_GHOST_OBJECT : CollisionObjectTypes.CO_RIGID_BODY;
         }
 
         // ---- Pose and velocity ----
