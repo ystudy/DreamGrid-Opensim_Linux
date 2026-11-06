@@ -102,7 +102,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                 DeleteCollisionShape(world, ownedShape);
         }
 
-        // Bullet's 'in the world' is Rapier's 'enabled' (map rows 12 to 14).
+        // Bullet's 'in the world' is Rapier's 'enabled' (map rows 12 to 14); DISABLE_SIMULATION also disables a body that
+        // stays in the world, which is why InWorld is kept apart from the native flag.
         public override bool AddObjectToWorld(BulletWorld pWorld, BulletBody pBody)
         {
             BulletBodyRapier body = (BulletBodyRapier)pBody;
@@ -110,6 +111,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                 return false;
             RapierNative.Check(RapierNative.r3RigidBody_SetEnabled(body.Body, 1));
             body.InWorld = true;
+            body.SimulationDisabled = false;
             // The collision groups live in the colliders, which are only worth setting once the body is in.
             pBody.ApplyCollisionMask(pWorld.physicsScene);
             return true;
@@ -123,13 +125,15 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             RapierNative.Check(RapierNative.r3RigidBody_SetEnabled(body.Body, 0));
             body.InWorld = false;
             body.State.ForgetUpdates(body.ID);
+            body.State.ForcedBodies.Remove(body);
             return true;
         }
 
         public override bool IsInWorld(BulletWorld pWorld, BulletBody pBody)
         {
             BulletBodyRapier body = (BulletBodyRapier)pBody;
-            return body.HasPhysicalBody && RapierNative.r3RigidBody_IsEnabled(body.Body) != 0;
+            // A simulation-disabled body is disabled in Rapier but still in the world as far as BulletS is concerned.
+            return body.HasPhysicalBody && body.InWorld;
         }
 
         // Every body is a rigid body; a ghost object is a rigid body with a sensor collider, and BulletS (MakeSolid) wants
@@ -238,8 +242,20 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                 RapierNative.Check(RapierNative.r3Collider_SetRestitution(collider, val));
         }
 
-        // Bullet's damping is the fraction of speed lost per second: v is multiplied by (1 - d)^dt each step. Rapier's
-        // is a rate k, with v divided by (1 + k dt). The two decay alike for k = -ln(1 - d).
+        // A Bullet damping of 1 or more stops the body at once. Rapier's rate is finite, so this one stops it within a step
+        // (a 1/60 s step leaves 1 / (1 + 1000 / 60), under 6% of the speed).
+        private const float StopDampingRate = 1000f;
+
+        // Bullet's damping d is the fraction of speed kept per second, as a power of the time: every step does
+        //     v = v * (1 - d)^dt                       (btRigidBody::applyDamping)
+        // Rapier's coefficient k is applied once per step, in rigid_body_components.rs (RigidBodyVelocity::apply_damping,
+        // called with the step length dt from the island solver's write-back, staged_island_solver/worker.rs):
+        //     v = v * (1 / (1 + dt * k))
+        // After a time T of T/dt steps Bullet leaves (1 - d)^T and Rapier leaves (1 + dt k)^(-T/dt). As dt goes to 0 the
+        // latter tends to e^(-k T), and (1 - d)^T = e^(T ln(1 - d)), so the two agree for
+        //     k = -ln(1 - d).
+        // At BulletS's step of 1/60 s the discretisation costs about k dt / 2 in the exponent: for d = 0.5 the body keeps
+        // 50.2% of its speed after a second, against Bullet's 50%. The same rate serves the angular side.
         public override void SetDamping(BulletBody obj, float lin_damping, float ang_damping)
         {
             BulletBodyRapier body = (BulletBodyRapier)obj;
@@ -251,10 +267,42 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         {
             if (bulletDamping <= 0f)
                 return 0f;
-            // A damping of 1 stops the body at once; use a rate high enough to do so within a step.
             if (bulletDamping >= 1f)
-                return 1000f;
+                return StopDampingRate;
             return (float)-Math.Log(1.0 - bulletDamping);
+        }
+
+        // Linear and angular factors (H11). BulletS only uses 0 (an avatar's locked rotation) and 1 (the default); those
+        // become Rapier's locked axes. A factor in between has no counterpart in Rapier: the axis is left free and the
+        // gap is logged once for the body.
+        private void ApplyFactors(BulletBodyRapier body)
+        {
+            byte locked = 0;
+            bool fractional = false;
+            locked |= AxisLock(body.LinearFactor.X, RapierNative.LockTranslationX, ref fractional);
+            locked |= AxisLock(body.LinearFactor.Y, RapierNative.LockTranslationY, ref fractional);
+            locked |= AxisLock(body.LinearFactor.Z, RapierNative.LockTranslationZ, ref fractional);
+            locked |= AxisLock(body.AngularFactor.X, RapierNative.LockRotationX, ref fractional);
+            locked |= AxisLock(body.AngularFactor.Y, RapierNative.LockRotationY, ref fractional);
+            locked |= AxisLock(body.AngularFactor.Z, RapierNative.LockRotationZ, ref fractional);
+            if (fractional)
+            {
+                LogOnce(body, "factor:" + body.ID, "Body " + body.ID + " has a linear or angular factor between 0 and 1, "
+                            + "which Rapier cannot do (it only locks axes); the axis stays free");
+            }
+            if (!body.HasPhysicalBody || locked == body.LockedAxes)
+                return;
+            body.LockedAxes = locked;
+            RapierNative.Check(RapierNative.r3RigidBody_SetLockedAxes(body.Body, locked, 0));
+        }
+
+        private static byte AxisLock(float factor, byte bit, ref bool fractional)
+        {
+            if (factor == 0f)
+                return bit;
+            if (factor != 1f)
+                fractional = true;
+            return 0;
         }
 
         // BulletS clears a body's shape before destroying it so Bullet does not free a shape other bodies share. A
@@ -338,22 +386,28 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
 
         public override float GetCcdMotionThreshold(BulletBody obj)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(GetCcdMotionThreshold));
+            return ((BulletBodyRapier)obj).CcdMotionThreshold;
         }
 
+        // H7: BulletS turns CCD on with a motion threshold above 0 (it is 0 by default, so CCD is off). Rapier has CCD per
+        // body and sweeps the real shape, so the threshold only switches it on or off.
         public override void SetCcdMotionThreshold(BulletBody obj, float val)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(SetCcdMotionThreshold));
+            BulletBodyRapier body = (BulletBodyRapier)obj;
+            body.CcdMotionThreshold = val;
+            if (body.HasPhysicalBody)
+                RapierNative.Check(RapierNative.r3RigidBody_SetCcdEnabled(body.Body, val > 0f ? 1u : 0u));
         }
 
         public override float GetCcdSweptSphereRadius(BulletBody obj)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(GetCcdSweptSphereRadius));
+            return ((BulletBodyRapier)obj).CcdSweptSphereRadius;
         }
 
+        // Kept for the getter only: Rapier's CCD sweeps the shape itself (H7).
         public override void SetCcdSweptSphereRadius(BulletBody obj, float val)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(SetCcdSweptSphereRadius));
+            ((BulletBodyRapier)obj).CcdSweptSphereRadius = val;
         }
 
         public override IntPtr GetUserPointer(BulletBody obj)
@@ -408,12 +462,14 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
 
         public override Vector3 GetLinearFactor(BulletBody obj)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(GetLinearFactor));
+            return ((BulletBodyRapier)obj).LinearFactor;
         }
 
         public override void SetLinearFactor(BulletBody obj, Vector3 factor)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(SetLinearFactor));
+            BulletBodyRapier body = (BulletBodyRapier)obj;
+            body.LinearFactor = factor;
+            ApplyFactors(body);
         }
 
         public override void SetCenterOfMassByPosRot(BulletBody obj, Vector3 pos, Quaternion rot)
@@ -421,9 +477,14 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             throw new NotImplementedException("BSAPIRapier." + nameof(SetCenterOfMassByPosRot));
         }
 
+        // A force and a torque stay on a Rapier body until reset, so the body is noted and PhysicsStep resets it (H11).
         public override void ApplyCentralForce(BulletBody obj, Vector3 force)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(ApplyCentralForce));
+            BulletBodyRapier body = (BulletBodyRapier)obj;
+            if (!body.HasPhysicalBody)
+                return;
+            RapierNative.Check(RapierNative.r3RigidBody_AddForce(body.Body, ToNative(force), force != Vector3.Zero ? 1u : 0u));
+            body.State.ForcedBodies.Add(body);
         }
 
         public override void SetObjectForce(BulletBody obj, Vector3 force)
@@ -453,7 +514,11 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
 
         public override void ApplyTorque(BulletBody obj, Vector3 torque)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(ApplyTorque));
+            BulletBodyRapier body = (BulletBodyRapier)obj;
+            if (!body.HasPhysicalBody)
+                return;
+            RapierNative.Check(RapierNative.r3RigidBody_AddTorque(body.Body, ToNative(torque), torque != Vector3.Zero ? 1u : 0u));
+            body.State.ForcedBodies.Add(body);
         }
 
         public override void ApplyForce(BulletBody obj, Vector3 force, Vector3 pos)
@@ -463,12 +528,16 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
 
         public override void ApplyCentralImpulse(BulletBody obj, Vector3 imp)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(ApplyCentralImpulse));
+            BulletBodyRapier body = (BulletBodyRapier)obj;
+            if (body.HasPhysicalBody)
+                RapierNative.Check(RapierNative.r3RigidBody_ApplyImpulse(body.Body, ToNative(imp), imp != Vector3.Zero ? 1u : 0u));
         }
 
         public override void ApplyTorqueImpulse(BulletBody obj, Vector3 imp)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(ApplyTorqueImpulse));
+            BulletBodyRapier body = (BulletBodyRapier)obj;
+            if (body.HasPhysicalBody)
+                RapierNative.Check(RapierNative.r3RigidBody_ApplyTorqueImpulse(body.Body, ToNative(imp), imp != Vector3.Zero ? 1u : 0u));
         }
 
         public override void ApplyImpulse(BulletBody obj, Vector3 imp, Vector3 pos)
@@ -503,17 +572,19 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
 
         public override void SetAngularFactor(BulletBody obj, float factor)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(SetAngularFactor));
+            SetAngularFactorV(obj, new Vector3(factor, factor, factor));
         }
 
         public override void SetAngularFactorV(BulletBody obj, Vector3 factor)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(SetAngularFactorV));
+            BulletBodyRapier body = (BulletBodyRapier)obj;
+            body.AngularFactor = factor;
+            ApplyFactors(body);
         }
 
         public override Vector3 GetAngularFactor(BulletBody obj)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(GetAngularFactor));
+            return ((BulletBodyRapier)obj).AngularFactor;
         }
 
         public override void AddConstraintRef(BulletBody obj, BulletConstraint constrain)

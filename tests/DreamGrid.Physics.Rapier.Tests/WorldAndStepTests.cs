@@ -379,7 +379,7 @@ public class WorldAndStepTests
     }
 
     [Fact]
-    public void IgnoredActivationState_IsLoggedOnce_AndFlagsAreNotLogged()
+    public void ActivationStatesAndFlags_AreHandled_AndNothingIsLogged()
     {
         BSScene scene = RapierTestScene.Create();
         try
@@ -391,12 +391,12 @@ public class WorldAndStepTests
             // The flags that do nothing in Rapier by design (H3) are not worth a log line.
             pe.AddToCollisionFlags(body, CollisionFlags.CF_CHARACTER_OBJECT | CollisionFlags.BS_FLOATS_ON_WATER);
             pe.AddToCollisionFlags(body, CollisionFlags.CF_NO_CONTACT_RESPONSE);
-            pe.ForceActivationState(body, ActivationState.DISABLE_DEACTIVATION);
-            pe.ForceActivationState(body, ActivationState.DISABLE_DEACTIVATION);
+            // Every activation state BulletS uses is acted on now (H3), so none is reported as ignored.
+            foreach (ActivationState state in Enum.GetValues<ActivationState>())
+                pe.ForceActivationState(body, state);
 
-            // An activation state not acted on yet is logged once per world, however many calls.
             HashSet<string> logged = ((BSAPIRapier.BulletBodyRapier)body).State.LoggedOnce;
-            Assert.Equal(1, logged.Count(k => k.StartsWith("state:")));
+            Assert.DoesNotContain(logged, k => k.StartsWith("state:"));
             Assert.DoesNotContain(logged, k => k.StartsWith("flags:"));
             Assert.DoesNotContain("terrain-standin", logged);
         }

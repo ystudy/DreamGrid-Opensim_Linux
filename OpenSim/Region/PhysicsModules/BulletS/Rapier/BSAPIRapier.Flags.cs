@@ -135,21 +135,72 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             return true;
         }
 
-        // Waking and sleeping a body; the states that keep a body awake or switch it off come with the activation work.
+        // Bullet's activation states (H3):
+        //  - ACTIVE_TAG wakes the body;
+        //  - ISLAND_SLEEPING puts it to sleep;
+        //  - WANTS_DEACTIVATION is Bullet's 'about to sleep', which Rapier works out for itself: it only ends the other
+        //    states;
+        //  - DISABLE_DEACTIVATION puts the body in the never-sleep set, which PhysicsStep wakes before each step;
+        //  - DISABLE_SIMULATION leaves a fixed body (terrain, the ground plane, a static prim) as it is, since fixed bodies
+        //    do not simulate but still collide, and disables a dynamic one in Rapier (BSLinksetCompound hides the children
+        //    it has borrowed shapes from this way). BulletS still counts the body as in the world (IsInWorld); it just
+        //    reports nothing for it (BulletBodyRapier.Reporting) until another state, or AddObjectToWorld, enables it.
+        // Any state but DISABLE_DEACTIVATION takes the body out of the never-sleep set, as Bullet's one tag replaces
+        // another.
         public override void ForceActivationState(BulletBody pBody, ActivationState state)
         {
             BulletBodyRapier body = (BulletBodyRapier)pBody;
-            if (!body.HasPhysicalBody || RapierNative.r3RigidBody_BodyType(body.Body) != RapierNative.BodyDynamic)
+            if (!body.HasPhysicalBody)
                 return;
-            if (state == ActivationState.ACTIVE_TAG)
-                RapierNative.Check(RapierNative.r3RigidBody_WakeUp(body.Body, 1));
-            else if (state == ActivationState.ISLAND_SLEEPING)
-                RapierNative.Check(RapierNative.r3RigidBody_Sleep(body.Body));
-            else
+
+            if (state == ActivationState.DISABLE_SIMULATION)
             {
-                // TODO(Task 6): DISABLE_DEACTIVATION (the never-sleep set) and DISABLE_SIMULATION are not acted on yet (H3).
-                LogOnce(body, "state:" + state, "Activation state " + state + " is ignored for now");
+                DisableSimulation(body);
+                return;
             }
+
+            if (state != ActivationState.DISABLE_DEACTIVATION)
+                body.State.NeverSleep.Remove(body);
+            if (body.SimulationDisabled)
+                EnableSimulation(body);
+            if (RapierNative.r3RigidBody_BodyType(body.Body) != RapierNative.BodyDynamic)
+                return;
+
+            switch (state)
+            {
+                case ActivationState.ACTIVE_TAG:
+                    RapierNative.Check(RapierNative.r3RigidBody_WakeUp(body.Body, 1));
+                    break;
+                case ActivationState.ISLAND_SLEEPING:
+                    RapierNative.Check(RapierNative.r3RigidBody_Sleep(body.Body));
+                    break;
+                case ActivationState.DISABLE_DEACTIVATION:
+                    body.State.NeverSleep.Add(body);
+                    RapierNative.Check(RapierNative.r3RigidBody_WakeUp(body.Body, 1));
+                    break;
+                // WANTS_DEACTIVATION: nothing more to do.
+            }
+        }
+
+        private static void DisableSimulation(BulletBodyRapier body)
+        {
+            if (body.SimulationDisabled || RapierNative.r3RigidBody_BodyType(body.Body) != RapierNative.BodyDynamic)
+                return;
+            body.SimulationDisabled = true;
+            body.State.NeverSleep.Remove(body);
+            body.State.ForcedBodies.Remove(body);
+            // Nothing more is reported for it, and what was last sent for it means nothing now.
+            body.State.ForgetUpdates(body.ID);
+            if (body.InWorld)
+                RapierNative.Check(RapierNative.r3RigidBody_SetEnabled(body.Body, 0));
+        }
+
+        private static void EnableSimulation(BulletBodyRapier body)
+        {
+            body.SimulationDisabled = false;
+            // A body outside the world stays disabled until AddObjectToWorld.
+            if (body.InWorld)
+                RapierNative.Check(RapierNative.r3RigidBody_SetEnabled(body.Body, 1));
         }
 
         // Wake the body (map row 69). A fixed body has nothing to wake.

@@ -80,8 +80,29 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             // compound shape.
             public bool HasRootChild;
 
-            // Whether the body is enabled (Bullet: added to the world). Only these are reported by PhysicsStep.
+            // Whether BulletS has the body in the world (AddObjectToWorld, until RemoveObjectFromWorld). IsInWorld answers
+            // this, whatever the activation state.
             public bool InWorld;
+
+            // The body was forced to DISABLE_SIMULATION while dynamic, so Rapier has it disabled although BulletS still
+            // has it in the world (H3). Only AddObjectToWorld or another activation state ends it.
+            public bool SimulationDisabled;
+
+            // Whether PhysicsStep may report the body: in the world and simulated. A body Rapier has disabled makes no
+            // contact pairs and no updates.
+            public bool Reporting
+            {
+                get { return InWorld && !SimulationDisabled; }
+            }
+
+            // The linear and angular factors last set, as BulletS reads them back, and the locked-axes bits they made.
+            public Vector3 LinearFactor = Vector3.One;
+            public Vector3 AngularFactor = Vector3.One;
+            public byte LockedAxes;
+
+            // The CCD settings last set (H7). Rapier sweeps the real shape, so the radius is only kept.
+            public float CcdMotionThreshold;
+            public float CcdSweptSphereRadius;
             public Vector3 RootChildPos;
             public Quaternion RootChildRot = Quaternion.Identity;
 

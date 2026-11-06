@@ -92,6 +92,44 @@ public class CollisionTests
     }
 
     [Fact]
+    public void Collisions_SleepingRestingBody_ReportsEveryFrame()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            SetFlatTerrain(scene);
+            PhysicsActor box = AddBox(scene, 405, new Vector3(128f, 128f, 21.4f), physical: true);
+            box.SubscribeEvents(50);
+            Frame(scene);   // the body is made on the first step
+            BSAPIRapier.BulletBodyRapier body = (BSAPIRapier.BulletBodyRapier)scene.PhysObjects[405].PhysBody;
+
+            // Until Rapier puts it to sleep.
+            float elapsed = 0f;
+            while (elapsed < 20f && RapierNative.r3RigidBody_IsSleeping(body.Body) == 0)
+            {
+                Frame(scene);
+                elapsed += RapierTestScene.FrameSeconds;
+            }
+            Assert.True(RapierNative.r3RigidBody_IsSleeping(body.Body) != 0, "the box never went to sleep");
+
+            // Bullet reports a sleeping manifold every frame, and scripts rely on it to avoid a collision_end.
+            int frames = (int)MathF.Ceiling(2f / RapierTestScene.FrameSeconds) + 1;
+            for (int ii = 0; ii < frames; ii++)
+            {
+                List<CollisionDesc> pairs = Frame(scene);
+                Assert.True(RapierNative.r3RigidBody_IsSleeping(body.Body) != 0, $"woke at frame {ii}");
+                Assert.True(pairs.Any(c => IsPair(c, 0, 405)), $"no terrain pair at frame {ii}");
+            }
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    [Fact]
     public void Collisions_UnsubscribedPair_NotReported()
     {
         using ErrorLog log = new ErrorLog();

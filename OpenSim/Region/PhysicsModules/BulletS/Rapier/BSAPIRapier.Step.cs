@@ -56,6 +56,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                 RapierNative.Check(RapierNative.r3SetTimeStep(world.World, stepSeconds));
                 state.TimeStep = stepSeconds;
             }
+            if (steps > 0)
+                WakeNeverSleeping(state);
             for (int ii = 0; ii < steps; ii++)
             {
                 RapierNative.Check(RapierNative.r3Step(world.World, IntPtr.Zero, IntPtr.Zero));
@@ -63,10 +65,41 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                 // within one frame.
                 GatherCollisions(world);
             }
+            ResetAppliedForces(state);
 
             collidersCount = state.LastCollisionCount;
             updatedEntityCount = GatherUpdates(world);
             return steps;
+        }
+
+        // DISABLE_DEACTIVATION (H3): rapier.h can only allow sleeping when a body is created, so the bodies BulletS asked
+        // never to sleep are woken before each step. A strong wake-up also restarts the body's rest timer, so it is
+        // still awake when the step ends. A body that is out of the world, simulation-disabled or no longer dynamic is
+        // skipped (it keeps its place in the set; BulletS forces the state again if it wants it back).
+        private static void WakeNeverSleeping(RapierWorldState state)
+        {
+            foreach (BulletBodyRapier body in state.NeverSleep)
+            {
+                if (body.Reporting && BodyTypeFor(body.Flags) == RapierNative.BodyDynamic)
+                    RapierNative.Check(RapierNative.r3RigidBody_WakeUp(body.Body, 1));
+            }
+        }
+
+        // Rapier keeps a force or torque until it is reset, while Bullet's stepSimulation clears them at its end, whether
+        // or not it took a step. BulletS applies forces in the taints before PhysicsStep, so what was added since the last
+        // call has now been used (or, with no whole step in this frame, is dropped as Bullet drops it).
+        private static void ResetAppliedForces(RapierWorldState state)
+        {
+            if (state.ForcedBodies.Count == 0)
+                return;
+            foreach (BulletBodyRapier body in state.ForcedBodies)
+            {
+                if (!body.HasPhysicalBody)
+                    continue;
+                RapierNative.Check(RapierNative.r3RigidBody_ResetForces(body.Body, 0));
+                RapierNative.Check(RapierNative.r3RigidBody_ResetTorques(body.Body, 0));
+            }
+            state.ForcedBodies.Clear();
         }
 
         // Collision reporting (H2, H4), after one substep. The conventions are BulletSim's (BulletSim.cpp,
@@ -89,7 +122,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             {
                 if (state.LastCollisionCount >= array.Length)
                     return;
-                if (!state.ColliderOwners.TryGetValue(collider, out BulletBodyRapier owner) || !owner.InWorld)
+                if (!state.ColliderOwners.TryGetValue(collider, out BulletBodyRapier owner) || !owner.Reporting)
                     continue;
 
                 int pairCount = (int)RapierNative.r3Collider_ContactPairs(collider, state.PairBuffer, (UIntPtr)state.PairBuffer.Length);
@@ -110,8 +143,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         {
             if (pair.hasAnyActiveContact == 0)
                 return;
-            if (!state.ColliderOwners.TryGetValue(pair.collider1, out BulletBodyRapier body1) || !body1.InWorld
-                    || !state.ColliderOwners.TryGetValue(pair.collider2, out BulletBodyRapier body2) || !body2.InWorld)
+            if (!state.ColliderOwners.TryGetValue(pair.collider1, out BulletBodyRapier body1) || !body1.Reporting
+                    || !state.ColliderOwners.TryGetValue(pair.collider2, out BulletBodyRapier body2) || !body2.Reporting)
                 return;
             ulong key = PairKey(body1.ID, body2.ID);
             if (state.PairsThisFrame.Contains(key))
@@ -159,8 +192,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                 ref RapierNative.IntersectionPair pair = ref state.SensorBuffer[ii];
                 if (pair.intersecting == 0)
                     continue;
-                if (!state.ColliderOwners.TryGetValue(pair.collider1, out BulletBodyRapier body1) || !body1.InWorld
-                        || !state.ColliderOwners.TryGetValue(pair.collider2, out BulletBodyRapier body2) || !body2.InWorld)
+                if (!state.ColliderOwners.TryGetValue(pair.collider1, out BulletBodyRapier body1) || !body1.Reporting
+                        || !state.ColliderOwners.TryGetValue(pair.collider2, out BulletBodyRapier body2) || !body2.Reporting)
                     continue;
                 if (((body1.Flags | body2.Flags) & WantsCollisionsFlags) == 0)
                     continue;
@@ -245,7 +278,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                 for (int ii = 0; ii < read; ii++)
                 {
                     uint id = (uint)state.ActiveStates[ii].userData.low;
-                    if (!state.Bodies.TryGetValue(id, out BulletBodyRapier body) || !body.InWorld)
+                    if (!state.Bodies.TryGetValue(id, out BulletBodyRapier body) || !body.Reporting)
                         continue;
                     EntityProperties props = ToEntityProperties(body, in state.ActiveStates[ii], false);
                     current[id] = props;
@@ -323,7 +356,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         {
             RapierWorldState state = world.State;
             props = default(EntityProperties);
-            if (!state.Bodies.TryGetValue(id, out BulletBodyRapier body) || !body.InWorld || !body.HasPhysicalBody)
+            if (!state.Bodies.TryGetValue(id, out BulletBodyRapier body) || !body.Reporting || !body.HasPhysicalBody)
                 return false;
             state.OneBody[0] = body.Body;
             int read = (int)RapierNative.r3RigidBodyReadStates(world.World, state.OneBody, (UIntPtr)1, state.OneState, (UIntPtr)1);

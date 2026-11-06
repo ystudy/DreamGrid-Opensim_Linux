@@ -111,6 +111,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         public void ForgetBody(BSAPIRapier.BulletBodyRapier body)
         {
             ForgetUpdates(body.ID);
+            NeverSleep.Remove(body);
+            ForcedBodies.Remove(body);
             // Before the colliders are removed natively, so no later step asks Rapier about a collider that is gone.
             foreach (RapierNative.ColliderHandle collider in body.Colliders)
                 ForgetCollider(collider);
@@ -175,6 +177,12 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             Sensors.Remove(collider);
             ColliderOwners.Remove(collider);
         }
+
+        // Bodies forced to DISABLE_DEACTIVATION, woken before each step (H3).
+        public readonly HashSet<BSAPIRapier.BulletBodyRapier> NeverSleep = new HashSet<BSAPIRapier.BulletBodyRapier>();
+
+        // Bodies given a force or torque since the last step, whose forces PhysicsStep resets afterwards (H11).
+        public readonly HashSet<BSAPIRapier.BulletBodyRapier> ForcedBodies = new HashSet<BSAPIRapier.BulletBodyRapier>();
 
         // Every native shape that has been built and not freed, so Shutdown frees the ones BulletS never released and
         // a shape is never freed twice.

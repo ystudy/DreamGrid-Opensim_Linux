@@ -431,6 +431,30 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         public static extern uint r3RigidBody_ResetTorques(RigidBodyHandle handle, uint wakeUp);
 
+        // wakeUp is R3Bool: 1 wakes the body, 0 keeps its sleep state. The force and torque add to what the body has and
+        // stay until r3RigidBody_ResetForces / r3RigidBody_ResetTorques; an impulse changes the velocity at once.
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3RigidBody_AddForce(RigidBodyHandle handle, Vector value, uint wakeUp);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3RigidBody_AddTorque(RigidBodyHandle handle, Vector value, uint wakeUp);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3RigidBody_ApplyImpulse(RigidBodyHandle handle, Vector value, uint wakeUp);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3RigidBody_ApplyTorqueImpulse(RigidBodyHandle handle, Vector value, uint wakeUp);
+
+        // axes is a mask of the R3_LOCK_* bits below.
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3RigidBody_SetLockedAxes(RigidBodyHandle handle, byte axes, uint wakeUp);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3RigidBody_SetCcdEnabled(RigidBodyHandle handle, uint value);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3RigidBody_IsCcdEnabled(RigidBodyHandle handle);
+
         // Fills buffer with up to capacity handles of the bodies that are awake and returns how many.
         [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         public static extern UIntPtr r3ActiveRigidBodies(IntPtr world, [Out] RigidBodyHandle[] buffer, UIntPtr capacity);
