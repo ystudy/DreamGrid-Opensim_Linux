@@ -140,3 +140,6 @@ bin/config-addon-robust/Wifi.ini
 
 # Superpowers brainstorm mockups and plan ledgers (local scratch)
 .superpowers/
+
+# ThirdParty/ubODE keeps its patches for opensim-libs in the repository
+!ThirdParty/ubODE/*.patch
