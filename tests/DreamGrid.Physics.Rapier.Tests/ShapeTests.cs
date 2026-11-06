@@ -1,0 +1,509 @@
+using OpenMetaverse;
+using OpenSim.Region.PhysicsModule.BulletS;
+using OpenSim.Region.PhysicsModule.BulletS.Rapier;
+using Xunit;
+
+namespace DreamGrid.Physics.Rapier.Tests;
+
+/// <summary>Meshes, hulls, hull lists, scaling, deletion and duplication of shapes (H9).</summary>
+public class ShapeTests
+{
+    // The engine is driven directly through scene.PE, with bodies of ids BSScene does not use.
+    private static BSAPIRapier.BulletWorldRapier WorldOf(BSScene scene)
+    {
+        return (BSAPIRapier.BulletWorldRapier)scene.World;
+    }
+
+    private static BulletShape NativeShape(BSScene scene, BSPhysicsShapeType type, Vector3 scale)
+    {
+        ShapeData data = new ShapeData { Type = type, Scale = scale };
+        return scene.PE.BuildNativeShape(scene.World, data);
+    }
+
+    private static BulletBody StaticBody(BSScene scene, BulletShape shape, uint id, Vector3 position)
+    {
+        BulletBody body = scene.PE.CreateBodyWithDefaultMotionState(shape, id, position, Quaternion.Identity);
+        InWorld(scene, body);
+        return body;
+    }
+
+    // A body made straight from the engine collides with nothing until it has a filter group and mask.
+    private static void InWorld(BSScene scene, BulletBody body)
+    {
+        Assert.True(scene.PE.AddObjectToWorld(scene.World, body));
+        Assert.True(scene.PE.SetCollisionGroupMask(body, 0xffff, 0xffff));
+    }
+
+    private static BulletBody DynamicBody(BSScene scene, BulletShape shape, uint id, Vector3 position, float mass = 1f)
+    {
+        BulletBody body = scene.PE.CreateBodyFromShape(scene.World, shape, id, position, Quaternion.Identity);
+        scene.PE.SetMassProps(body, mass, scene.PE.CalculateLocalInertia(shape, mass));
+        InWorld(scene, body);
+        return body;
+    }
+
+    private static void EngineStep(BSScene scene, float seconds)
+    {
+        const float step = 1f / 60f;
+        for (float done = 0f; done < seconds; done += step)
+            scene.PE.PhysicsStep(scene.World, step, 0, step, out int _, out int _);
+    }
+
+    // A flat slab to rest things on: its top face is at z = 50 over 40 m x 40 m.
+    private static BulletBody Floor(BSScene scene, uint id = 9000)
+    {
+        BulletShape slab = NativeShape(scene, BSPhysicsShapeType.SHAPE_BOX, new Vector3(40f, 40f, 1f));
+        return StaticBody(scene, slab, id, new Vector3(128f, 128f, 49.5f));
+    }
+
+    // Rapier's broad phase learns of new and changed colliders in a step, and the simulator always steps between a
+    // change and the next ray.
+    private static RaycastHit Ray(BSScene scene, Vector3 from, Vector3 to)
+    {
+        EngineStep(scene, 0.02f);
+        return scene.PE.RayTest2(scene.World, from, to, 0xffff, 0xffff);
+    }
+
+    // The 8 corners of a cube with this half edge, as BulletS passes vertices (3 floats each).
+    private static float[] CubeCorners(float half, Vector3 offset)
+    {
+        List<float> v = new List<float>();
+        foreach (float x in new[] { -half, half })
+            foreach (float y in new[] { -half, half })
+                foreach (float z in new[] { -half, half })
+                    v.AddRange(new[] { x + offset.X, y + offset.Y, z + offset.Z });
+        return v.ToArray();
+    }
+
+    // BulletSim's hull list: [hull count], then per hull [vertex count, centroid x, y, z, the vertices x, y, z...].
+    private static float[] HullList(params (Vector3 centroid, float[] verts)[] hulls)
+    {
+        List<float> list = new List<float> { hulls.Length };
+        foreach ((Vector3 centroid, float[] verts) in hulls)
+        {
+            list.Add(verts.Length / 3);
+            list.AddRange(new[] { centroid.X, centroid.Y, centroid.Z });
+            list.AddRange(verts);
+        }
+        return list.ToArray();
+    }
+
+    [Fact]
+    public void Trimesh_StaticFloor_SphereRests()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            // 10 x 10 m, two triangles, at z = 50 (the body sits at the origin, so the mesh is in world coordinates).
+            float[] vertices = { 100f, 100f, 50f, 110f, 100f, 50f, 110f, 110f, 50f, 100f, 110f, 50f };
+            int[] indices = { 0, 1, 2, 0, 2, 3 };
+            BulletShape mesh = scene.PE.CreateMeshShape(scene.World, indices.Length, indices, 4, vertices);
+            Assert.True(mesh.HasPhysicalShape);
+            Assert.Equal((int)BSPhysicsShapeType.SHAPE_MESH, scene.PE.GetShapeType(mesh));
+            StaticBody(scene, mesh, 9100, Vector3.Zero);
+
+            BulletShape ball = NativeShape(scene, BSPhysicsShapeType.SHAPE_SPHERE, new Vector3(1f, 1f, 1f));
+            BulletBody sphere = DynamicBody(scene, ball, 9101, new Vector3(105f, 105f, 53f));
+            EngineStep(scene, 3f);
+
+            Assert.InRange(scene.PE.GetPosition(sphere).Z, 50.5f - 0.03f, 50.5f + 0.03f);
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    // BSShapes passes the number of indices and the number of vertices (not floats), and the arrays can be longer than
+    // those counts because degenerate triangles are removed in place.
+    [Fact]
+    public void Trimesh_CountsSayHowMuchOfTheArraysIsUsed()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            float[] vertices = { 100f, 100f, 50f, 110f, 100f, 50f, 110f, 110f, 50f, 100f, 110f, 50f, 9999f, 9999f, 9999f };
+            // The tail past indicesCount is stale, and refers to a vertex that does not exist.
+            int[] indices = { 0, 1, 2, 0, 2, 3, 0, 1, 77 };
+            BulletShape mesh = scene.PE.CreateMeshShape(scene.World, 6, indices, 4, vertices);
+            Assert.True(mesh.HasPhysicalShape);
+            StaticBody(scene, mesh, 9100, Vector3.Zero);
+
+            Assert.True(Ray(scene, new Vector3(105f, 105f, 60f), new Vector3(105f, 105f, 40f)).hasHit());
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    [Fact]
+    public void Trimesh_BadIndex_GivesNoShapeInsteadOfThrowing()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            float[] vertices = { 0f, 0f, 0f, 1f, 0f, 0f, 1f, 1f, 0f };
+            int[] indices = { 0, 1, 5 };
+            BulletShape mesh = scene.PE.CreateMeshShape(scene.World, 3, indices, 3, vertices);
+            Assert.False(mesh.HasPhysicalShape);
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    [Fact]
+    public void Hull_OfCubeVerts_BehavesLikeBox()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            Floor(scene);
+            BulletShape box = NativeShape(scene, BSPhysicsShapeType.SHAPE_BOX, new Vector3(1f, 1f, 1f));
+            BulletShape hull = scene.PE.CreateConvexHullShape(scene.World, 0, new int[0], 8, CubeCorners(0.5f, Vector3.Zero));
+            Assert.True(hull.HasPhysicalShape);
+            BulletBody boxBody = DynamicBody(scene, box, 9101, new Vector3(120f, 128f, 53f));
+            BulletBody hullBody = DynamicBody(scene, hull, 9102, new Vector3(136f, 128f, 53f));
+            EngineStep(scene, 3f);
+
+            float boxZ = scene.PE.GetPosition(boxBody).Z;
+            float hullZ = scene.PE.GetPosition(hullBody).Z;
+            Assert.InRange(boxZ, 50.5f - 0.03f, 50.5f + 0.03f);
+            Assert.InRange(hullZ, boxZ - 0.03f, boxZ + 0.03f);
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    [Fact]
+    public void ConvexHullFromMesh_OfCubeMesh_RestsLikeBox()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            Floor(scene);
+            float[] vertices = CubeCorners(0.5f, Vector3.Zero);
+            // Two triangles per face of the cube whose corners are numbered by their (x, y, z) bits.
+            int[] indices =
+            {
+                0, 1, 3, 0, 3, 2,  4, 6, 7, 4, 7, 5,  0, 4, 5, 0, 5, 1,
+                2, 3, 7, 2, 7, 6,  0, 2, 6, 0, 6, 4,  1, 5, 7, 1, 7, 3
+            };
+            BulletShape mesh = scene.PE.CreateMeshShape(scene.World, indices.Length, indices, 8, vertices);
+            BulletShape hull = scene.PE.BuildConvexHullShapeFromMesh(scene.World, mesh);
+            Assert.True(hull.HasPhysicalShape);
+            Assert.Equal((int)BSPhysicsShapeType.SHAPE_CONVEXHULL, scene.PE.GetShapeType(hull));
+            BulletBody body = DynamicBody(scene, hull, 9101, new Vector3(128f, 128f, 53f));
+            EngineStep(scene, 3f);
+
+            Assert.InRange(scene.PE.GetPosition(body).Z, 50.5f - 0.03f, 50.5f + 0.03f);
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    [Fact]
+    public void HullList_TwoHulls_BothCollide()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            // Two unit cubes 2 m apart: the first has its corners at x = -1 and the second is placed by its centroid.
+            float[] hulls = HullList(
+                (Vector3.Zero, CubeCorners(0.5f, new Vector3(-1f, 0f, 0f))),
+                (new Vector3(1f, 0f, 0f), CubeCorners(0.5f, Vector3.Zero)));
+            BulletShape shape = scene.PE.CreateHullShape(scene.World, 2, hulls);
+            Assert.True(shape.HasPhysicalShape);
+            Assert.Equal((int)BSPhysicsShapeType.SHAPE_HULL, scene.PE.GetShapeType(shape));
+            StaticBody(scene, shape, 9100, new Vector3(128f, 128f, 50f));
+
+            foreach (float x in new[] { 127f, 129f })
+            {
+                RaycastHit hit = Ray(scene, new Vector3(x, 128f, 60f), new Vector3(x, 128f, 40f));
+                Assert.True(hit.hasHit(), $"no hit at x={x}");
+                Assert.Equal(50.5f, hit.Point.Z, 0.01f);
+            }
+            Assert.False(Ray(scene, new Vector3(128f, 128f, 60f), new Vector3(128f, 128f, 40f)).hasHit(), "the gap is not solid");
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    [Fact]
+    public void HullList_AsDynamicBody_RestsOnFloor()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            Floor(scene);
+            float[] hulls = HullList(
+                (Vector3.Zero, CubeCorners(0.5f, new Vector3(-1f, 0f, 0f))),
+                (Vector3.Zero, CubeCorners(0.5f, new Vector3(1f, 0f, 0f))));
+            BulletShape shape = scene.PE.CreateHullShape(scene.World, 2, hulls);
+            BulletBody body = DynamicBody(scene, shape, 9101, new Vector3(128f, 128f, 53f), mass: 2f);
+            EngineStep(scene, 3f);
+
+            Assert.InRange(scene.PE.GetPosition(body).Z, 50.5f - 0.05f, 50.5f + 0.05f);
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    [Fact]
+    public void SetLocalScaling_RebuildsShape()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            BulletShape box = NativeShape(scene, BSPhysicsShapeType.SHAPE_BOX, new Vector3(1f, 1f, 1f));
+            StaticBody(scene, box, 9100, new Vector3(128f, 128f, 50f));
+            RaycastHit before = Ray(scene, new Vector3(128f, 128f, 60f), new Vector3(128f, 128f, 40f));
+            Assert.Equal(50.5f, before.Point.Z, 0.01f);
+
+            scene.PE.SetLocalScaling(box, new Vector3(2f, 2f, 2f));
+
+            Assert.Equal(new Vector3(2f, 2f, 2f), scene.PE.GetLocalScaling(box));
+            RaycastHit top = Ray(scene, new Vector3(128f, 128f, 60f), new Vector3(128f, 128f, 40f));
+            Assert.True(top.hasHit());
+            Assert.Equal(51f, top.Point.Z, 0.01f);
+            RaycastHit side = Ray(scene, new Vector3(140f, 128f, 50f), new Vector3(120f, 128f, 50f));
+            Assert.True(side.hasHit());
+            Assert.Equal(129f, side.Point.X, 0.01f);
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    [Fact]
+    public void SetLocalScaling_SharedShape_MovesEveryColliderAndKeepsTheTableConsistent()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            RapierWorldState state = WorldOf(scene).State;
+            int baseline = state.Shapes.Count;
+            BulletShape box = NativeShape(scene, BSPhysicsShapeType.SHAPE_BOX, new Vector3(1f, 1f, 1f));
+            // Two bodies on one wrapper's shape: each collider must follow the new size.
+            StaticBody(scene, box, 9100, new Vector3(128f, 128f, 50f));
+            StaticBody(scene, box, 9101, new Vector3(148f, 128f, 50f));
+
+            scene.PE.SetLocalScaling(box, new Vector3(2f, 2f, 2f));
+            scene.PE.SetLocalScaling(box, new Vector3(4f, 4f, 4f));
+
+            Assert.Equal(52f, Ray(scene, new Vector3(128f, 128f, 60f), new Vector3(128f, 128f, 40f)).Point.Z, 0.01f);
+            Assert.Equal(52f, Ray(scene, new Vector3(148f, 128f, 60f), new Vector3(148f, 128f, 40f)).Point.Z, 0.01f);
+            // One live native shape for the wrapper, however many times it was rebuilt.
+            Assert.Equal(baseline + 1, state.Shapes.Count);
+            Assert.Contains(((BSAPIRapier.BulletShapeRapier)box).Shape, state.Shapes);
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    [Fact]
+    public void SetLocalScaling_Mesh_ScalesTheVertices()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            float[] vertices = CubeCorners(0.5f, Vector3.Zero);
+            BulletShape hull = scene.PE.CreateConvexHullShape(scene.World, 0, new int[0], 8, vertices);
+            StaticBody(scene, hull, 9100, new Vector3(128f, 128f, 50f));
+            Assert.Equal(50.5f, Ray(scene, new Vector3(128f, 128f, 60f), new Vector3(128f, 128f, 40f)).Point.Z, 0.01f);
+
+            scene.PE.SetLocalScaling(hull, new Vector3(1f, 1f, 4f));
+
+            Assert.Equal(52f, Ray(scene, new Vector3(128f, 128f, 60f), new Vector3(128f, 128f, 40f)).Point.Z, 0.01f);
+            // X did not change.
+            Assert.Equal(128.5f, Ray(scene, new Vector3(140f, 128f, 50f), new Vector3(120f, 128f, 50f)).Point.X, 0.01f);
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    [Fact]
+    public void DeleteShape_FreesNative()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            RapierWorldState state = WorldOf(scene).State;
+            int baseline = state.Shapes.Count;
+            System.Diagnostics.Stopwatch clock = System.Diagnostics.Stopwatch.StartNew();
+            for (int ii = 0; ii < 1000; ii++)
+            {
+                BulletShape shape = (ii % 3) switch
+                {
+                    0 => NativeShape(scene, BSPhysicsShapeType.SHAPE_BOX, new Vector3(1f, 2f, 3f)),
+                    1 => scene.PE.CreateConvexHullShape(scene.World, 0, new int[0], 8, CubeCorners(0.5f, Vector3.Zero)),
+                    _ => scene.PE.CreateHullShape(scene.World, 1, HullList((Vector3.Zero, CubeCorners(0.5f, Vector3.Zero))))
+                };
+                Assert.True(shape.HasPhysicalShape);
+                Assert.True(scene.PE.DeleteCollisionShape(scene.World, shape));
+                Assert.False(shape.HasPhysicalShape);
+                // Deleting again does nothing.
+                Assert.True(scene.PE.DeleteCollisionShape(scene.World, shape));
+            }
+            clock.Stop();
+            Console.WriteLine($"1000 shapes created and deleted in {clock.ElapsedMilliseconds} ms");
+
+            Assert.Equal(baseline, state.Shapes.Count);
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    // A collider keeps its own reference to the geometry, so deleting the shape detaches it: the body goes on working
+    // and later steps and queries are safe.
+    [Fact]
+    public void DeleteShape_WhileABodyUsesIt_LeavesTheBodyWorking()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            Floor(scene);
+            BulletShape box = NativeShape(scene, BSPhysicsShapeType.SHAPE_BOX, new Vector3(1f, 1f, 1f));
+            BulletBody body = DynamicBody(scene, box, 9101, new Vector3(128f, 128f, 53f));
+            Assert.True(scene.PE.DeleteCollisionShape(scene.World, box));
+            // Scaling a deleted shape is ignored, not a crash.
+            scene.PE.SetLocalScaling(box, new Vector3(3f, 3f, 3f));
+            EngineStep(scene, 3f);
+
+            Assert.InRange(scene.PE.GetPosition(body).Z, 50.5f - 0.03f, 50.5f + 0.03f);
+            Assert.True(Ray(scene, new Vector3(128f, 128f, 60f), new Vector3(128f, 128f, 40f)).hasHit());
+            scene.PE.DestroyObject(scene.World, body);
+            EngineStep(scene, 0.2f);
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    [Fact]
+    public void DuplicateShape_IsIndependentOfTheOriginal()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            RapierWorldState state = WorldOf(scene).State;
+            int baseline = state.Shapes.Count;
+            BulletShape box = NativeShape(scene, BSPhysicsShapeType.SHAPE_BOX, new Vector3(2f, 2f, 2f));
+            BulletShape copy = scene.PE.DuplicateCollisionShape(scene.World, box, 7);
+            Assert.True(copy.HasPhysicalShape);
+            Assert.False(copy.ReferenceSame(box));
+            Assert.Equal(new Vector3(2f, 2f, 2f), scene.PE.GetLocalScaling(copy));
+            Assert.Equal(baseline + 2, state.Shapes.Count);
+
+            Assert.True(scene.PE.DeleteCollisionShape(scene.World, box));
+            StaticBody(scene, copy, 9100, new Vector3(128f, 128f, 50f));
+            Assert.Equal(51f, Ray(scene, new Vector3(128f, 128f, 60f), new Vector3(128f, 128f, 40f)).Point.Z, 0.01f);
+            Assert.True(scene.PE.DeleteCollisionShape(scene.World, copy));
+            Assert.Equal(baseline, state.Shapes.Count);
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    [Fact]
+    public void ShapeType_IsWhatTheShapeWasBuiltAs()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            Assert.Equal((int)BSPhysicsShapeType.SHAPE_BOX, scene.PE.GetShapeType(NativeShape(scene, BSPhysicsShapeType.SHAPE_BOX, Vector3.One)));
+            Assert.Equal((int)BSPhysicsShapeType.SHAPE_SPHERE, scene.PE.GetShapeType(NativeShape(scene, BSPhysicsShapeType.SHAPE_SPHERE, Vector3.One)));
+            Assert.True(scene.PE.IsNativeShape(NativeShape(scene, BSPhysicsShapeType.SHAPE_BOX, Vector3.One)));
+            BulletShape hull = scene.PE.CreateConvexHullShape(scene.World, 0, new int[0], 8, CubeCorners(0.5f, Vector3.Zero));
+            Assert.False(scene.PE.IsNativeShape(hull));
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    // BulletS only builds a dynamic trimesh when ShouldUseGImpactShapeForPrims is set. The body takes its mass from
+    // SetMassProps; the inertia BulletS asks for comes from the mesh's bounding box, because a trimesh has no volume.
+    [Fact]
+    public void GImpact_DynamicMesh_HasInertiaAndRestsOnFloor()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            Floor(scene);
+            float[] vertices = CubeCorners(0.5f, Vector3.Zero);
+            int[] indices =
+            {
+                0, 1, 3, 0, 3, 2,  4, 6, 7, 4, 7, 5,  0, 4, 5, 0, 5, 1,
+                2, 3, 7, 2, 7, 6,  0, 2, 6, 0, 6, 4,  1, 5, 7, 1, 7, 3
+            };
+            BulletShape mesh = scene.PE.CreateGImpactShape(scene.World, indices.Length, indices, 8, vertices);
+            Assert.True(mesh.HasPhysicalShape);
+            Assert.Equal((int)BSPhysicsShapeType.SHAPE_GIMPACT, scene.PE.GetShapeType(mesh));
+            // A unit cube of mass 6 has an inertia of 1 about each axis.
+            Vector3 inertia = scene.PE.CalculateLocalInertia(mesh, 6f);
+            Assert.Equal(1f, inertia.X, 2);
+            Assert.Equal(1f, inertia.Y, 2);
+            Assert.Equal(1f, inertia.Z, 2);
+
+            BulletBody body = DynamicBody(scene, mesh, 9101, new Vector3(128f, 128f, 53f), mass: 6f);
+            EngineStep(scene, 3f);
+            Assert.InRange(scene.PE.GetPosition(body).Z, 50.5f - 0.05f, 50.5f + 0.05f);
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+}

@@ -80,6 +80,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             RapierNative.Check(RapierNative.r3LastStatus());
             body.Colliders.Add(collider);
             body.State.ColliderOwners[collider] = body;
+            body.State.NoteShapeUse(shape.Shape, collider);
         }
 
         public override BulletBody CreateBodyFromShape(BulletWorld pWorld, BulletShape pShape, UInt32 id, Vector3 pos, Quaternion rot)

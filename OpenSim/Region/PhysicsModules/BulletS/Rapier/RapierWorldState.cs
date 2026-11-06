@@ -176,6 +176,44 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             WantsCollisions.Remove(collider);
             Sensors.Remove(collider);
             ColliderOwners.Remove(collider);
+            if (ColliderShapes.TryGetValue(collider, out IntPtr shape))
+            {
+                ColliderShapes.Remove(collider);
+                if (ShapeUsers.TryGetValue(shape, out List<RapierNative.ColliderHandle> users))
+                {
+                    users.Remove(collider);
+                    if (users.Count == 0)
+                        ShapeUsers.Remove(shape);
+                }
+            }
+        }
+
+        // The colliders made from each native shape, so SetLocalScaling can give them the rebuilt shape. A collider holds
+        // its own reference to its geometry, so an entry is only about who follows the shape wrapper; DeleteCollisionShape
+        // drops the entry (the colliders go on with the geometry they have), and a new shape that happens to get the freed
+        // pointer starts with none.
+        public readonly Dictionary<IntPtr, List<RapierNative.ColliderHandle>> ShapeUsers =
+                    new Dictionary<IntPtr, List<RapierNative.ColliderHandle>>();
+        public readonly Dictionary<RapierNative.ColliderHandle, IntPtr> ColliderShapes =
+                    new Dictionary<RapierNative.ColliderHandle, IntPtr>();
+
+        public void NoteShapeUse(IntPtr shape, RapierNative.ColliderHandle collider)
+        {
+            if (!ShapeUsers.TryGetValue(shape, out List<RapierNative.ColliderHandle> users))
+                ShapeUsers[shape] = users = new List<RapierNative.ColliderHandle>();
+            users.Add(collider);
+            ColliderShapes[collider] = shape;
+        }
+
+        /// <summary>The shape is gone: nothing follows it any more. The colliders keep their own copy of the geometry.</summary>
+        public void ForgetShape(IntPtr shape)
+        {
+            if (ShapeUsers.TryGetValue(shape, out List<RapierNative.ColliderHandle> users))
+            {
+                foreach (RapierNative.ColliderHandle collider in users)
+                    ColliderShapes.Remove(collider);
+                ShapeUsers.Remove(shape);
+            }
         }
 
         // Bodies forced to DISABLE_DEACTIVATION, woken before each step (H3).

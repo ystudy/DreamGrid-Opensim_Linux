@@ -55,6 +55,11 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         public const uint ShapeKindHeightfield = 11;
         public const uint HeightfieldFixInternalEdges = 1;
 
+        // R3_TRIMESH_MERGE_DUPLICATE_VERTICES and R3_TRIMESH_FIX_INTERNAL_EDGES (which includes the merge), for the flags of
+        // r3TrimeshSharedShapeWithFlags.
+        public const uint TrimeshMergeDuplicateVertices = 16;
+        public const uint TrimeshFixInternalEdges = 144;
+
         // R3_NOT_FOUND: the status a query reports when nothing was hit (not an error).
         public const uint StatusNotFound = 7;
 
@@ -183,6 +188,18 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         // R3VectorView, R3TriangleView, R3EdgeView, R3RealView and R3CompoundShapeView: a borrowed pointer and an element count.
         [StructLayout(LayoutKind.Sequential)]
         public struct View { public IntPtr data; public UIntPtr count; }
+
+        // R3Triangle: three vertex indices.
+        [StructLayout(LayoutKind.Sequential)]
+        public struct Triangle { public uint a, b, c; }
+
+        // R3CompoundShapeDesc: a child's pose in the compound and its shape (here always a ShapeKindShared one).
+        [StructLayout(LayoutKind.Sequential)]
+        public struct CompoundShapeDesc
+        {
+            public Pose pose;
+            public ShapeDesc shape;
+        }
 
         [StructLayout(LayoutKind.Sequential)]
         public struct ShapeDesc
@@ -543,6 +560,29 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
 
         [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         public static extern uint r3FreeSharedShape(IntPtr shape);
+
+        // The views are borrowed for the call: Rapier copies the geometry.
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern IntPtr r3TrimeshSharedShapeWithFlags(View vertices, View triangles, uint flags);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern IntPtr r3ConvexHullSharedShape(View vertices);
+
+        // A compound of convex parts. It takes no parameters.
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern IntPtr r3ConvexDecompositionSharedShape(View vertices, View triangles);
+
+        // Child shapes are shared, not consumed: the compound holds its own references.
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern IntPtr r3CompoundSharedShape(View children);
+
+        // A new wrapper sharing the same immutable geometry; free it with r3FreeSharedShape.
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern IntPtr r3SharedShape_Clone(IntPtr shape);
+
+        // The collider shares the shape (the supplied wrapper is not consumed).
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3Collider_SetShape(ColliderHandle handle, IntPtr shape);
 
         // Builds a SharedShape from a ShapeDesc (the borrowed views are copied). Null on failure.
         [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]

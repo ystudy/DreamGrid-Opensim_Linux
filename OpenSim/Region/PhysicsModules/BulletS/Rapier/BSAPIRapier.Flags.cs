@@ -40,8 +40,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         //    so the contacts are found and reported but push nothing;
         //  - BS_SUBSCRIBE_COLLISION_EVENTS and BS_VEHICLE_COLLISIONS put the colliders in WantsCollisions (H2);
         //  - BS_RETURN_ROOT_COMPOUND_SHAPE is read when updates are reported (H1).
-        // CF_CHARACTER_OBJECT (a marker), CF_CUSTOM_MATERIAL_CALLBACK (the terrain mesh is built with fixed internal edges
-        // instead) and BS_FLOATS_ON_WATER (BulletSim's native code never reads it) have nothing to do in Rapier.
+        // CF_CHARACTER_OBJECT (a marker), CF_CUSTOM_MATERIAL_CALLBACK and BS_FLOATS_ON_WATER (BulletSim's native code never
+        // reads it) have nothing to do in Rapier. BulletSim sets the callback flag on terrain so a contact callback can
+        // correct the normals at the internal edges of the terrain mesh; Rapier does that when the shape is built instead:
+        // CreateMeshShape uses R3_TRIMESH_FIX_INTERNAL_EDGES and CreateTerrainShape R3_HEIGHTFIELD_FIX_INTERNAL_EDGES.
 
         private const CollisionFlags WantsCollisionsFlags = CollisionFlags.BS_SUBSCRIBE_COLLISION_EVENTS | CollisionFlags.BS_VEHICLE_COLLISIONS;
 

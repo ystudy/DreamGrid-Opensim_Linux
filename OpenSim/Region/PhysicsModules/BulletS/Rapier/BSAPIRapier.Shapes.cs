@@ -26,6 +26,8 @@
  */
 
 using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
 
 using OpenMetaverse;
 
@@ -53,48 +55,55 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         public override BulletShape BuildNativeShape(BulletWorld pWorld, ShapeData shapeData)
         {
             BulletWorldRapier world = (BulletWorldRapier)pWorld;
+            BSPhysicsShapeType type = shapeData.Type;
             Vector3 scale = shapeData.Scale;
-            BulletShapeRapier shape;
-            switch (shapeData.Type)
-            {
-                case BSPhysicsShapeType.SHAPE_BOX:
-                    shape = RegisterShape(world, RapierNative.r3CuboidSharedShape(ToNative(scale * 0.5f)),
-                                            shapeData.Type, scale);
-                    break;
-                case BSPhysicsShapeType.SHAPE_SPHERE:
-                    shape = RegisterShape(world, RapierNative.r3BallSharedShape(scale.X * 0.5f), shapeData.Type, scale);
-                    break;
-                case BSPhysicsShapeType.SHAPE_CYLINDER:
-                    shape = RegisterShape(world, RapierNative.r3CylinderSharedShape(scale.Z * 0.5f, scale.X * 0.5f),
-                                            shapeData.Type, scale);
-                    shape.LocalRot = YAxisToZAxis;
-                    break;
-                case BSPhysicsShapeType.SHAPE_CAPSULE:
-                    shape = BuildZCapsule(world, scale.X * 0.5f, Math.Max(scale.Z - scale.X, 0f), scale);
-                    break;
-                default:
-                    throw new NotImplementedException("BSAPIRapier." + nameof(BuildNativeShape) + " for " + shapeData.Type);
-            }
+            if (type != BSPhysicsShapeType.SHAPE_BOX && type != BSPhysicsShapeType.SHAPE_SPHERE
+                    && type != BSPhysicsShapeType.SHAPE_CYLINDER && type != BSPhysicsShapeType.SHAPE_CAPSULE)
+                throw new NotImplementedException("BSAPIRapier." + nameof(BuildNativeShape) + " for " + type);
+
+            BulletShapeRapier shape = RegisterShape(world, MakeNativeShape(type, scale), type, scale);
+            // Rapier's cylinders run along Y, so they sit on the body turned a quarter about X.
+            if (type == BSPhysicsShapeType.SHAPE_CYLINDER)
+                shape.LocalRot = YAxisToZAxis;
+            shape.BuildNativeAt = at => MakeNativeShape(type, at);
             shape.isNativeShape = true;
             return shape;
+        }
+
+        // The native shape for one of BulletS's four native types at this size.
+        private static IntPtr MakeNativeShape(BSPhysicsShapeType type, Vector3 scale)
+        {
+            switch (type)
+            {
+                case BSPhysicsShapeType.SHAPE_BOX:
+                    return RapierNative.r3CuboidSharedShape(ToNative(scale * 0.5f));
+                case BSPhysicsShapeType.SHAPE_SPHERE:
+                    return RapierNative.r3BallSharedShape(scale.X * 0.5f);
+                case BSPhysicsShapeType.SHAPE_CYLINDER:
+                    return RapierNative.r3CylinderSharedShape(scale.Z * 0.5f, scale.X * 0.5f);
+                default:
+                    return MakeZCapsule(scale.X * 0.5f, Math.Max(scale.Z - scale.X, 0f));
+            }
         }
 
         // BulletS's capsule: a radius and the length of its cylinder part, along Z, both multiplied by the scale
         // (Bullet scales a Z capsule's radius by Scale.X and its half length by Scale.Z).
         public override BulletShape BuildCapsuleShape(BulletWorld pWorld, float radius, float height, Vector3 scale)
         {
-            BulletShapeRapier shape = BuildZCapsule((BulletWorldRapier)pWorld, radius * scale.X, height * scale.Z, scale);
+            BulletShapeRapier shape = RegisterShape((BulletWorldRapier)pWorld, MakeZCapsule(radius * scale.X, height * scale.Z),
+                                                    BSPhysicsShapeType.SHAPE_CAPSULE, scale);
+            shape.BuildNativeAt = at => MakeZCapsule(radius * at.X, height * at.Z);
             shape.isNativeShape = true;
             return shape;
         }
 
         // A capsule along Z with this radius and cylinder length, already at its final size.
-        private static BulletShapeRapier BuildZCapsule(BulletWorldRapier world, float radius, float cylinderLength, Vector3 scale)
+        private static IntPtr MakeZCapsule(float radius, float cylinderLength)
         {
             RapierNative.Vector a = new RapierNative.Vector { x = 0f, y = 0f, z = -cylinderLength * 0.5f };
             RapierNative.Vector b = new RapierNative.Vector { x = 0f, y = 0f, z = cylinderLength * 0.5f };
             // The segment is given along Z, so the shape needs no turn.
-            return RegisterShape(world, RapierNative.r3CapsuleSharedShape(a, b, radius), BSPhysicsShapeType.SHAPE_CAPSULE, scale);
+            return RapierNative.r3CapsuleSharedShape(a, b, radius);
         }
 
         public override bool IsNativeShape(BulletShape shape)
@@ -102,13 +111,20 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             return shape.isNativeShape;
         }
 
+        // Frees the native shape now, whether or not a body still uses it. A collider holds its own reference to the
+        // geometry (r3InsertCollider and r3Collider_SetShape share it, and do not consume the shape), so a body that
+        // still has a collider from this shape goes on working with the geometry it has. What is lost is only that
+        // SetLocalScaling can no longer reach it. A shape deleted twice, or one the world already freed, is ignored.
         public override bool DeleteCollisionShape(BulletWorld pWorld, BulletShape pShape)
         {
             BulletWorldRapier world = (BulletWorldRapier)pWorld;
             BulletShapeRapier shape = (BulletShapeRapier)pShape;
-            // A collider keeps its own reference to its shape, so the shape can go while bodies still use it.
-            if (shape.Shape != IntPtr.Zero && world.State.Shapes.Remove(shape.Shape))
-                RapierNative.r3FreeSharedShape(shape.Shape);
+            if (shape.Shape != IntPtr.Zero)
+            {
+                world.State.ForgetShape(shape.Shape);
+                if (world.State.Shapes.Remove(shape.Shape))
+                    RapierNative.r3FreeSharedShape(shape.Shape);
+            }
             shape.Clear();
             return true;
         }
@@ -123,9 +139,17 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         public override Vector3 CalculateLocalInertia(BulletShape pShape, float mass)
         {
             BulletShapeRapier shape = (BulletShapeRapier)pShape;
+            if (mass <= 0f || shape.Shape == IntPtr.Zero)
+                return Vector3.Zero;
+            // A trimesh has no volume, so Rapier gives it no mass properties. A mesh that ends up on a dynamic body
+            // (BulletS's GImpact shape) gets the inertia of its bounding box instead.
+            if (shape.MeshVerts != null
+                    && (shape.shapeType == BSPhysicsShapeType.SHAPE_MESH || shape.shapeType == BSPhysicsShapeType.SHAPE_GIMPACT))
+                return BoundingBoxInertia(shape.MeshVerts, mass);
+
             RapierNative.MassProperties unit = RapierNative.r3SharedShape_MassProperties(shape.Shape, 1f);
             RapierNative.Check(RapierNative.r3LastStatus());
-            if (mass <= 0f || unit.mass <= 0f)
+            if (unit.mass <= 0f)
                 return Vector3.Zero;
 
             // Rapier gives the inertia of unit density about the principal axes. Scale it to the mass, then express the
@@ -150,6 +174,23 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                 axes[0].Z * axes[0].Z * principal[0] + axes[1].Z * axes[1].Z * principal[1] + axes[2].Z * axes[2].Z * principal[2]);
         }
 
+        // The inertia of a solid box of this mass that fits the vertices (x, y, z triples), about its own axes.
+        private static Vector3 BoundingBoxInertia(float[] verts, float mass)
+        {
+            Vector3 min = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
+            Vector3 max = new Vector3(float.MinValue, float.MinValue, float.MinValue);
+            for (int ii = 0; ii + 2 < verts.Length; ii += 3)
+            {
+                min = new Vector3(Math.Min(min.X, verts[ii]), Math.Min(min.Y, verts[ii + 1]), Math.Min(min.Z, verts[ii + 2]));
+                max = new Vector3(Math.Max(max.X, verts[ii]), Math.Max(max.Y, verts[ii + 1]), Math.Max(max.Z, verts[ii + 2]));
+            }
+            Vector3 size = max - min;
+            float k = mass / 12f;
+            return new Vector3(k * (size.Y * size.Y + size.Z * size.Z),
+                               k * (size.X * size.X + size.Z * size.Z),
+                               k * (size.X * size.X + size.Y * size.Y));
+        }
+
         // Rotate a vector by a unit quaternion.
         internal static Vector3 Rotate(Quaternion q, Vector3 v)
         {
@@ -158,49 +199,319 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             return v + t * q.W + Vector3.Cross(u, t);
         }
 
-        public override BulletShape CreateMeshShape(
-            BulletWorld world,
-            int indicesCount,
-            int[] indices,
-            int verticesCount,
-            float[] vertices )
+        // ---- Meshes and hulls (H9) ----
+        //
+        // BulletS gives meshes already scaled, so a mesh or hull reports a scale of one until SetLocalScaling changes it.
+        // What BulletS passes (BSShapes.CreatePhysicalMeshShape, BSTerrainMesh): indicesCount is the number of ints in
+        // 'indices' to use (a multiple of 3; the array can be longer, since degenerate triangles are removed in place),
+        // verticesCount is the number of vertices (not floats) and 'vertices' holds x, y, z for each. Rapier reads the
+        // arrays only during the call, but the wrapper keeps its own copies for rebuilds (SetLocalScaling), which also
+        // protects it from BulletS reusing its arrays.
+
+        // A shape that has no native shape: BulletS sees HasPhysicalShape false and falls back, as it does when
+        // Bullet cannot build a mesh.
+        private BulletShapeRapier FailedShape(BSPhysicsShapeType type, string why)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(CreateMeshShape));
+            PhysicsScene.Logger.WarnFormat("{0} Could not build a {1} shape: {2}", LogHeader, type, why);
+            return new BulletShapeRapier(IntPtr.Zero, type, Vector3.One);
         }
 
-        public override BulletShape CreateGImpactShape(
-            BulletWorld world,
-            int indicesCount,
-            int[] indices,
-            int verticesCount,
-            float[] vertices )
+        // The part of the arrays the counts say is in use, copied; false and the reason in 'why' if it cannot be a mesh.
+        private static bool TryCopyMesh(int indicesCount, int[] indices, int verticesCount, float[] vertices,
+                                    out int[] indexCopy, out float[] vertexCopy, out string why)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(CreateGImpactShape));
+            indexCopy = null;
+            vertexCopy = null;
+            why = null;
+            if (indices == null || vertices == null)
+                why = "no geometry was given";
+            else
+            {
+                int vertexCount = Math.Min(verticesCount, vertices.Length / 3);
+                int indexCount = Math.Min(indicesCount, indices.Length);
+                indexCount -= indexCount % 3;
+                if (vertexCount < 3 || indexCount < 3)
+                    why = "fewer than one triangle";
+                else
+                {
+                    for (int ii = 0; ii < indexCount; ii++)
+                    {
+                        if (indices[ii] < 0 || indices[ii] >= vertexCount)
+                        {
+                            why = "index " + indices[ii] + " is outside the " + vertexCount + " vertices";
+                            break;
+                        }
+                    }
+                    if (why == null && !AllFinite(vertices, vertexCount * 3))
+                        why = "a vertex is not a finite number";
+                    if (why == null)
+                    {
+                        indexCopy = new int[indexCount];
+                        Array.Copy(indices, indexCopy, indexCount);
+                        vertexCopy = new float[vertexCount * 3];
+                        Array.Copy(vertices, vertexCopy, vertexCopy.Length);
+                    }
+                }
+            }
+            return why == null;
         }
 
-        public override BulletShape CreateHullShape(BulletWorld world, int hullCount, float[] hulls)
+        private static bool AllFinite(float[] values, int count)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(CreateHullShape));
+            for (int ii = 0; ii < count; ii++)
+            {
+                if (float.IsNaN(values[ii]) || float.IsInfinity(values[ii]))
+                    return false;
+            }
+            return true;
         }
 
-        public override BulletShape BuildHullShapeFromMesh(BulletWorld world, BulletShape meshShape, HACDParams parms)
+        private static RapierNative.View PinnedView(GCHandle pinned, int elements, int firstFloat = 0)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(BuildHullShapeFromMesh));
+            return new RapierNative.View
+            {
+                data = pinned.AddrOfPinnedObject() + firstFloat * sizeof(float),
+                count = (UIntPtr)elements
+            };
         }
 
-        public override BulletShape BuildConvexHullShapeFromMesh(BulletWorld world, BulletShape meshShape)
+        // r3TrimeshSharedShapeWithFlags over the geometry. FIX_INTERNAL_EDGES makes a ball roll across the seams between
+        // triangles without catching on them (it includes MERGE_DUPLICATE_VERTICES, which BulletS's meshes need: sculpt
+        // meshes repeat vertices).
+        private static IntPtr BuildTrimeshNative(float[] vertices, int[] indices)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(BuildConvexHullShapeFromMesh));
+            GCHandle v = GCHandle.Alloc(vertices, GCHandleType.Pinned);
+            GCHandle i = GCHandle.Alloc(indices, GCHandleType.Pinned);
+            try
+            {
+                return RapierNative.r3TrimeshSharedShapeWithFlags(PinnedView(v, vertices.Length / 3), PinnedView(i, indices.Length / 3),
+                            RapierNative.TrimeshFixInternalEdges | RapierNative.TrimeshMergeDuplicateVertices);
+            }
+            finally
+            {
+                i.Free();
+                v.Free();
+            }
         }
 
-        public override BulletShape CreateConvexHullShape(
-            BulletWorld world,
-            int indicesCount,
-            int[] indices,
-            int verticesCount,
-            float[] vertices )
+        private static IntPtr BuildConvexHullNative(float[] vertices)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(CreateConvexHullShape));
+            GCHandle v = GCHandle.Alloc(vertices, GCHandleType.Pinned);
+            try
+            {
+                return RapierNative.r3ConvexHullSharedShape(PinnedView(v, vertices.Length / 3));
+            }
+            finally
+            {
+                v.Free();
+            }
+        }
+
+        private static IntPtr BuildDecompositionNative(float[] vertices, int[] indices)
+        {
+            GCHandle v = GCHandle.Alloc(vertices, GCHandleType.Pinned);
+            GCHandle i = GCHandle.Alloc(indices, GCHandleType.Pinned);
+            try
+            {
+                return RapierNative.r3ConvexDecompositionSharedShape(PinnedView(v, vertices.Length / 3), PinnedView(i, indices.Length / 3));
+            }
+            finally
+            {
+                i.Free();
+                v.Free();
+            }
+        }
+
+        // A shape made from geometry: registered, with the arrays and the way to build it again kept.
+        private BulletShapeRapier GeometryShape(BulletWorldRapier world, IntPtr native, BSPhysicsShapeType type,
+                                    float[] vertices, int[] indices, Func<float[], IntPtr> build)
+        {
+            if (native == IntPtr.Zero)
+                return FailedShape(type, RapierNative.LastError());
+            BulletShapeRapier shape = RegisterShape(world, native, type, Vector3.One);
+            shape.MeshVerts = vertices;
+            shape.MeshIndices = indices;
+            shape.BuildFromVerts = build;
+            return shape;
+        }
+
+        public override BulletShape CreateMeshShape(BulletWorld pWorld, int indicesCount, int[] indices, int verticesCount, float[] vertices)
+        {
+            BulletWorldRapier world = (BulletWorldRapier)pWorld;
+            if (!TryCopyMesh(indicesCount, indices, verticesCount, vertices, out int[] triangles, out float[] points, out string why))
+                return FailedShape(BSPhysicsShapeType.SHAPE_MESH, why);
+            return GeometryShape(world, BuildTrimeshNative(points, triangles), BSPhysicsShapeType.SHAPE_MESH, points, triangles,
+                                    scaled => BuildTrimeshNative(scaled, triangles));
+        }
+
+        // BulletS asks for this only when ShouldUseGImpactShapeForPrims is set (default false): a trimesh on a dynamic
+        // body. Rapier has no GImpact. A dynamic trimesh collides with the usual shapes, but a trimesh has no volume, so
+        // the body's mass comes from SetMassProps and CalculateLocalInertia uses the mesh's bounding box.
+        public override BulletShape CreateGImpactShape(BulletWorld pWorld, int indicesCount, int[] indices, int verticesCount, float[] vertices)
+        {
+            BulletWorldRapier world = (BulletWorldRapier)pWorld;
+            LogOnce(world, true, "gimpact", "A GImpact shape was requested (ShouldUseGImpactShapeForPrims). Rapier has no GImpact: "
+                        + "it is a trimesh on a dynamic body, with the inertia of its bounding box.");
+            if (!TryCopyMesh(indicesCount, indices, verticesCount, vertices, out int[] triangles, out float[] points, out string why))
+                return FailedShape(BSPhysicsShapeType.SHAPE_GIMPACT, why);
+            return GeometryShape(world, BuildTrimeshNative(points, triangles), BSPhysicsShapeType.SHAPE_GIMPACT, points, triangles,
+                                    scaled => BuildTrimeshNative(scaled, triangles));
+        }
+
+        // One convex hull of the vertices (the triangle indices are not needed).
+        public override BulletShape CreateConvexHullShape(BulletWorld pWorld, int indicesCount, int[] indices, int verticesCount, float[] vertices)
+        {
+            BulletWorldRapier world = (BulletWorldRapier)pWorld;
+            int vertexCount = (vertices == null) ? 0 : Math.Min(verticesCount, vertices.Length / 3);
+            if (vertexCount < 4)
+                return FailedShape(BSPhysicsShapeType.SHAPE_CONVEXHULL, "a convex hull needs at least four vertices");
+            float[] points = new float[vertexCount * 3];
+            Array.Copy(vertices, points, points.Length);
+            if (!AllFinite(points, points.Length))
+                return FailedShape(BSPhysicsShapeType.SHAPE_CONVEXHULL, "a vertex is not a finite number");
+            return GeometryShape(world, BuildConvexHullNative(points), BSPhysicsShapeType.SHAPE_CONVEXHULL, points, null, BuildConvexHullNative);
+        }
+
+        // BulletS's default for physical prims (ShouldUseSingleConvexHullForPrims): the hull of the mesh's vertices, which
+        // the mesh shape keeps for the purpose.
+        public override BulletShape BuildConvexHullShapeFromMesh(BulletWorld pWorld, BulletShape pMesh)
+        {
+            BulletShapeRapier mesh = (BulletShapeRapier)pMesh;
+            if (mesh.MeshVerts == null)
+                return FailedShape(BSPhysicsShapeType.SHAPE_CONVEXHULL, "the source shape is not a mesh");
+            BulletShapeRapier hull = (BulletShapeRapier)CreateConvexHullShape(pWorld, 0, null, mesh.MeshVerts.Length / 3, mesh.MeshVerts);
+            hull.Scale = mesh.Scale;
+            return hull;
+        }
+
+        // HACD, only with ShouldUseBulletHACD (default false). Rapier's decomposition takes no parameters, so HACDParams
+        // are ignored.
+        public override BulletShape BuildHullShapeFromMesh(BulletWorld pWorld, BulletShape pMesh, HACDParams parms)
+        {
+            BulletWorldRapier world = (BulletWorldRapier)pWorld;
+            BulletShapeRapier mesh = (BulletShapeRapier)pMesh;
+            if (mesh.MeshVerts == null || mesh.MeshIndices == null)
+                return FailedShape(BSPhysicsShapeType.SHAPE_HULL, "the source shape is not a mesh");
+            LogOnce(world, false, "hacd", "Rapier's convex decomposition takes no parameters: HACDParams are ignored.");
+            int[] triangles = mesh.MeshIndices;
+            BulletShapeRapier hulls = GeometryShape(world, BuildDecompositionNative(mesh.MeshVerts, triangles), BSPhysicsShapeType.SHAPE_HULL,
+                                    mesh.MeshVerts, triangles, scaled => BuildDecompositionNative(scaled, triangles));
+            hulls.Scale = mesh.Scale;
+            return hulls;
+        }
+
+        // BulletSim's hull list: hulls[0] is the number of hulls and then, for each hull, its vertex count, its centroid
+        // (x, y, z) and its vertices (x, y, z each). BSAPIXNA.CreateHullShape reads it the same way: the centroid is the
+        // hull's offset in the compound and the vertices are not moved by it (BulletS always writes a centroid of zero).
+        //
+        // The hulls become one native compound shape, so the whole list is one collider on its body. A hull list is one
+        // child of a linkset, and the linkset design is one collider per child (H5, option b), so this needs nothing
+        // special there. It is also what Bullet builds: a btCompoundShape.
+        private static IntPtr BuildHullListNative(float[] hulls)
+        {
+            int hullCount = (int)hulls[0];
+            List<IntPtr> parts = new List<IntPtr>();
+            List<Vector3> offsets = new List<Vector3>();
+            bool single = false;
+            GCHandle pinned = GCHandle.Alloc(hulls, GCHandleType.Pinned);
+            try
+            {
+                int at = 1;
+                for (int hull = 0; hull < hullCount; hull++)
+                {
+                    int vertexCount = (int)hulls[at];
+                    IntPtr part = RapierNative.r3ConvexHullSharedShape(PinnedView(pinned, vertexCount, at + 4));
+                    if (part != IntPtr.Zero)
+                    {
+                        parts.Add(part);
+                        offsets.Add(new Vector3(hulls[at + 1], hulls[at + 2], hulls[at + 3]));
+                    }
+                    at += 4 + vertexCount * 3;
+                }
+                if (parts.Count == 0)
+                    return IntPtr.Zero;
+                // A lone hull that is not offset is the shape itself, not a compound of one.
+                single = parts.Count == 1 && offsets[0] == Vector3.Zero;
+                if (single)
+                    return parts[0];
+
+                RapierNative.ShapeDesc template = RapierNative.r3DefaultColliderDesc().shape;
+                RapierNative.CompoundShapeDesc[] children = new RapierNative.CompoundShapeDesc[parts.Count];
+                for (int ii = 0; ii < parts.Count; ii++)
+                {
+                    children[ii].shape = template;
+                    children[ii].shape.kind = RapierNative.ShapeKindShared;
+                    children[ii].shape.sharedShape = parts[ii];
+                    children[ii].pose.translation = ToNative(offsets[ii]);
+                    children[ii].pose.rotation = ToNative(Quaternion.Identity);
+                }
+                GCHandle childrenPinned = GCHandle.Alloc(children, GCHandleType.Pinned);
+                try
+                {
+                    return RapierNative.r3CompoundSharedShape(new RapierNative.View
+                    {
+                        data = childrenPinned.AddrOfPinnedObject(),
+                        count = (UIntPtr)children.Length
+                    });
+                }
+                finally
+                {
+                    childrenPinned.Free();
+                }
+            }
+            finally
+            {
+                pinned.Free();
+                // The compound holds its own references to the parts, so ours go (but not a lone hull that is returned).
+                if (!single)
+                {
+                    foreach (IntPtr part in parts)
+                        RapierNative.r3FreeSharedShape(part);
+                }
+            }
+        }
+
+        // Checks the layout before it is read, and returns a copy of the part in use.
+        private static bool TryCopyHullList(int hullCount, float[] hulls, out float[] copy, out string why)
+        {
+            copy = null;
+            why = null;
+            if (hulls == null || hulls.Length < 1 || hullCount < 1)
+                why = "no hulls were given";
+            else
+            {
+                int at = 1;
+                for (int hull = 0; hull < hullCount; hull++)
+                {
+                    if (at >= hulls.Length || !(hulls[at] >= 0f) || hulls[at] > int.MaxValue / 4
+                            || at + 4 + (long)hulls[at] * 3 > hulls.Length)
+                    {
+                        why = "hull " + hull + " runs past the end of the list";
+                        break;
+                    }
+                    at += 4 + (int)hulls[at] * 3;
+                }
+                if (why == null && !AllFinite(hulls, at))
+                    why = "a hull value is not a finite number";
+                if (why == null)
+                {
+                    copy = new float[at];
+                    Array.Copy(hulls, copy, at);
+                    // The count the caller gave is the one that was checked.
+                    copy[0] = hullCount;
+                }
+            }
+            return why == null;
+        }
+
+        public override BulletShape CreateHullShape(BulletWorld pWorld, int hullCount, float[] hulls)
+        {
+            BulletWorldRapier world = (BulletWorldRapier)pWorld;
+            if (!TryCopyHullList(hullCount, hulls, out float[] list, out string why))
+                return FailedShape(BSPhysicsShapeType.SHAPE_HULL, why);
+            BulletShapeRapier shape = GeometryShape(world, BuildHullListNative(list), BSPhysicsShapeType.SHAPE_HULL, list, null, BuildHullListNative);
+            shape.VertsAreHullList = true;
+            return shape;
         }
 
         public override void SetShapeCollisionMargin(BulletShape shape, float margin)
@@ -257,19 +568,135 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             throw new NotImplementedException("BSAPIRapier." + nameof(RecalculateCompoundShapeLocalAabb));
         }
 
-        public override BulletShape DuplicateCollisionShape(BulletWorld sim, BulletShape srcShape, UInt32 id)
+        // A new wrapper over a new native handle that shares the original's geometry (r3SharedShape_Clone), so the two
+        // are freed separately: deleting one leaves the other alone. Bodies made from either start with their own
+        // colliders; the two do not follow each other's SetLocalScaling.
+        public override BulletShape DuplicateCollisionShape(BulletWorld pWorld, BulletShape srcShape, UInt32 id)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(DuplicateCollisionShape));
+            BulletWorldRapier world = (BulletWorldRapier)pWorld;
+            BulletShapeRapier source = (BulletShapeRapier)srcShape;
+            BulletShapeRapier copy = (BulletShapeRapier)source.Clone();
+            if (source.Shape != IntPtr.Zero)
+            {
+                copy.Shape = RapierNative.r3SharedShape_Clone(source.Shape);
+                if (copy.Shape == IntPtr.Zero)
+                    RapierNative.Check(RapierNative.r3LastStatus());
+                world.State.Shapes.Add(copy.Shape);
+            }
+            if (source.Children != null)
+                copy.Children = new List<(BulletShapeRapier child, Vector3 pos, Quaternion rot)>(source.Children);
+            return copy;
         }
 
         public override int GetShapeType(BulletShape shape)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(GetShapeType));
+            return (int)shape.shapeType;
         }
 
-        public override void SetLocalScaling(BulletShape shape, Vector3 scale)
+        // Rapier's shapes cannot be scaled, so the shape is built again at the new size and every collider made from the
+        // old one is given the new one (r3Collider_SetShape). The old native shape is freed once they all have it: a
+        // collider holds its own reference, so nothing uses it after that. A native shape is built at the new scale; a
+        // mesh or hull has its stored vertices multiplied by new scale / stored scale (a hull list leaves its counts
+        // alone). A shape that cannot be rebuilt (terrain, ground plane, deleted) is left as it is.
+        public override void SetLocalScaling(BulletShape pShape, Vector3 scale)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(SetLocalScaling));
+            BulletShapeRapier shape = (BulletShapeRapier)pShape;
+            if (shape.Shape == IntPtr.Zero || scale == shape.Scale)
+                return;
+            BulletWorldRapier world = SceneWorld;
+
+            float[] scaledVerts = null;
+            IntPtr fresh;
+            if (shape.BuildNativeAt != null)
+            {
+                fresh = shape.BuildNativeAt(scale);
+            }
+            else if (shape.BuildFromVerts != null && shape.MeshVerts != null)
+            {
+                Vector3 was = shape.Scale;
+                if (was.X == 0f || was.Y == 0f || was.Z == 0f)
+                {
+                    LogOnce(world, true, "scale-from-zero", "A mesh scaled to zero cannot be scaled again; the shape is left as it is.");
+                    return;
+                }
+                scaledVerts = ScaleVertices(shape.MeshVerts, new Vector3(scale.X / was.X, scale.Y / was.Y, scale.Z / was.Z),
+                                            shape.VertsAreHullList);
+                fresh = shape.BuildFromVerts(scaledVerts);
+            }
+            else
+            {
+                LogOnce(world, false, "scale-" + shape.shapeType, "SetLocalScaling is ignored for " + shape.shapeType + " shapes.");
+                return;
+            }
+            if (fresh == IntPtr.Zero)
+            {
+                PhysicsScene.Logger.WarnFormat("{0} Could not rebuild a {1} shape at scale {2}: {3}", LogHeader, shape.shapeType, scale,
+                            RapierNative.LastError());
+                return;
+            }
+            world.State.Shapes.Add(fresh);
+
+            IntPtr previous = shape.Shape;
+            if (world.State.ShapeUsers.TryGetValue(previous, out List<RapierNative.ColliderHandle> users))
+            {
+                world.State.ShapeUsers.Remove(previous);
+                List<RapierNative.ColliderHandle> following = new List<RapierNative.ColliderHandle>();
+                foreach (RapierNative.ColliderHandle collider in users)
+                {
+                    uint status = RapierNative.r3Collider_SetShape(collider, fresh);
+                    if (status != 0)
+                    {
+                        PhysicsScene.Logger.WarnFormat("{0} A collider did not take the rescaled shape: {1}", LogHeader, RapierNative.LastError());
+                        world.State.ColliderShapes.Remove(collider);
+                        continue;
+                    }
+                    following.Add(collider);
+                    world.State.ColliderShapes[collider] = fresh;
+                    // A body that was resting on the old size has to look again.
+                    if (world.State.ColliderOwners.TryGetValue(collider, out BulletBodyRapier owner))
+                        RapierNative.r3RigidBody_WakeUp(owner.Body, 1);
+                }
+                if (following.Count > 0)
+                    world.State.ShapeUsers[fresh] = following;
+            }
+
+            if (world.State.Shapes.Remove(previous))
+                RapierNative.r3FreeSharedShape(previous);
+            shape.Shape = fresh;
+            shape.Scale = scale;
+            if (scaledVerts != null)
+                shape.MeshVerts = scaledVerts;
+        }
+
+        // The vertices multiplied componentwise; in a hull list that means the vertices and the centroids, not the counts.
+        private static float[] ScaleVertices(float[] verts, Vector3 factor, bool isHullList)
+        {
+            float[] scaled = (float[])verts.Clone();
+            if (!isHullList)
+            {
+                ScaleTriples(scaled, 0, scaled.Length, factor);
+                return scaled;
+            }
+            int hullCount = (int)scaled[0];
+            int at = 1;
+            for (int hull = 0; hull < hullCount; hull++)
+            {
+                int vertexCount = (int)scaled[at];
+                // The centroid and the vertices alike are x, y, z triples.
+                ScaleTriples(scaled, at + 1, at + 4 + vertexCount * 3, factor);
+                at += 4 + vertexCount * 3;
+            }
+            return scaled;
+        }
+
+        private static void ScaleTriples(float[] values, int from, int to, Vector3 factor)
+        {
+            for (int ii = from; ii + 3 <= to; ii += 3)
+            {
+                values[ii] *= factor.X;
+                values[ii + 1] *= factor.Y;
+                values[ii + 2] *= factor.Z;
+            }
         }
 
         public override void SetMargin(BulletShape shape, float val)

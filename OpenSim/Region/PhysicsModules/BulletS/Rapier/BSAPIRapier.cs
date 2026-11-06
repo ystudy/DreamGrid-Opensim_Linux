@@ -149,6 +149,12 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             // The mesh a hull was built from, kept so a hull can be rebuilt (H9).
             public float[] MeshVerts;
             public int[] MeshIndices;
+            // How SetLocalScaling rebuilds the shape (H9). A native shape (box, sphere...) is built again at the new size;
+            // one made from geometry is built again from MeshVerts after they are scaled; a hull list keeps its
+            // BulletSim layout in MeshVerts, so scaling must leave the counts alone.
+            public Func<Vector3, IntPtr> BuildNativeAt;
+            public Func<float[], IntPtr> BuildFromVerts;
+            public bool VertsAreHullList;
 
             public BulletShapeRapier(IntPtr shape, BSPhysicsShapeType type, Vector3 scale)
                 : base()
@@ -178,6 +184,9 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                 ret.Children = Children;
                 ret.MeshVerts = MeshVerts;
                 ret.MeshIndices = MeshIndices;
+                ret.BuildNativeAt = BuildNativeAt;
+                ret.BuildFromVerts = BuildFromVerts;
+                ret.VertsAreHullList = VertsAreHullList;
                 return ret;
             }
 
