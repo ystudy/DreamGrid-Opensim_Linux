@@ -9,6 +9,7 @@ scripts that build the library, and the evidence, so the fix can be sent to the 
 |---|---|
 | `0001-ubode-make-trimesh-preprocess-concave-vertex-pass-linear.patch` | The fix, as a `git format-patch` against opensim-libs (apply from that repository's root). |
 | `check-old-vs-new-preprocess.patch` | A test build that runs the old and the new code on every mesh and counts differences. Not for release. |
+| `UPSTREAM-ODE-REVIEW.md` | Which later upstream ODE changes would help OpenSim, and a likely small-triangle bug. |
 | `source.env` | The opensim-libs commit the patches apply to. |
 | `build-linux.sh`, `build-windows.ps1` | Fetch that commit, apply a patch and build the library. |
 | `../../.github/workflows/ubode.yml` | Runs both scripts on GitHub (Linux x64 and arm64 in Debian 12, Windows x64) and checks the exports. |
