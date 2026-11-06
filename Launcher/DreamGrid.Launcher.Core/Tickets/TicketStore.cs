@@ -95,14 +95,14 @@ public sealed class TicketStore
     public Ticket? Update(Guid id, Func<IReadOnlyCollection<Ticket>, Ticket, Ticket?> change) =>
         Update(id, t => change(_tickets.Values, t));
 
-    /// <summary>Deletes every ticket <paramref name="drop"/> picks; how many were deleted.</summary>
-    public int DeleteWhere(Func<Ticket, bool> drop)
+    /// <summary>Deletes every ticket <paramref name="drop"/> picks, deciding under the lock; the ones deleted.</summary>
+    public IReadOnlyList<Ticket> DeleteWhere(Func<Ticket, bool> drop)
     {
         lock (_gate)
         {
-            var gone = 0;
+            var gone = new List<Ticket>();
             foreach (var t in _tickets.Values.Where(drop).ToList())
-                if (Delete(t.Id)) gone++;
+                if (Delete(t.Id)) gone.Add(t);
             return gone;
         }
     }

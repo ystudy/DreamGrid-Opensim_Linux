@@ -37,5 +37,6 @@ public static class SiteFacts
         ("Emails that couldn't be sent: when, which email, the avatar name and why, for 7 days", "email/problems.json."),
         ("Support tickets: the sender's name and email (and account id when signed in), the messages, any evidence link and logs, "
             + "and the private links (only as hashes), until a year after the ticket is closed", "tickets/<id>.json."),
+        ("Which staff switched on the support ticket emails, by account id, with when their last one went out", "guests/ticket-notices.json."),
     ];
 }

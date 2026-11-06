@@ -295,6 +295,7 @@ builder.Services.AddSingleton(sp => new ApprovalNotices(Path.Combine(paths.Guest
 // Support tickets (design 2026-11-05-support-tickets): one owner-only file per ticket.
 builder.Services.AddSingleton(sp => new DreamGrid.Launcher.Core.Tickets.TicketStore(paths.Tickets, sp.GetRequiredService<ILogger<DreamGrid.Launcher.Core.Tickets.TicketStore>>()));
 builder.Services.AddSingleton<SupportTickets>();
+builder.Services.AddSingleton(sp => new DreamGrid.Launcher.Core.Tickets.TicketNotices(Path.Combine(paths.Guests, "ticket-notices.json")));
 builder.Services.AddSingleton<TicketCookie>();
 builder.Services.AddSingleton<DreamGrid.Launcher.Security.StaffTickets>();
 builder.Services.AddSingleton<SignUpNotices>();
@@ -369,6 +370,8 @@ builder.Services.AddHostedService<RegionEstateSync>();
 // Deletes sign-ups nobody confirmed; after GridHostedService too.
 builder.Services.AddSingleton<SignUpCleanup>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<SignUpCleanup>());
+builder.Services.AddSingleton<TicketSweep>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<TicketSweep>());
 // Registered after GridHostedService, so it stops first: running work is awaited before the controller detaches.
 builder.Services.AddSingleton<BackgroundWork>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<BackgroundWork>());

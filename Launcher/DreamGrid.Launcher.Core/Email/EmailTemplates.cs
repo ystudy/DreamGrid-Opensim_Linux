@@ -37,13 +37,15 @@ public static class EmailTemplates
     public const string TicketConfirm = "ticket-confirm";
     public const string TicketAccess = "ticket-access";
     public const string TicketStaffReply = "ticket-staff-reply";
+    public const string TicketNew = "ticket-new";
+    public const string TicketReplyGuest = "ticket-reply-guest";
 
     /// <summary>Until languages arrive (worklist 1.5) every template is in this one.</summary>
     public const string DefaultLanguage = LegalPages.DefaultLanguage;
 
     public static IReadOnlyList<string> All { get; } = [Test, ConfirmEmail, ResetPassword, AccountApproved, PasswordChanged, AlreadyHaveAccount,
         ConfirmNewEmail, EmailChangeNotice, SignUpDenied, SignUpsWaiting, NameChanged, EmailChangedByStaff, EmailSetByStaff, StaffResetPassword,
-        TakedownRemoved, TakedownRestored, TicketConfirm, TicketAccess, TicketStaffReply];
+        TakedownRemoved, TakedownRestored, TicketConfirm, TicketAccess, TicketStaffReply, TicketNew, TicketReplyGuest];
 
     private static readonly DateTimeOffset Shipped = DateTimeOffset.UnixEpoch;
 
@@ -114,6 +116,13 @@ public static class EmailTemplates
         [SignUpsWaiting] = new("Sign-ups waiting", ["{GridName}", "{Count}", "{Names}", "{Link}"], ["{Link}"],
             "{Count} waiting for approval on {GridName}",
             "{Count} people are waiting for approval on {GridName}:\n\n{Names}\n\n{Link}"),
+        // [S] To staff: numbers, categories and subjects only, never a message or the guest's email.
+        [TicketNew] = new("New support tickets", ["{GridName}", "{Count}", "{Numbers}", "{Tickets}", "{Link}"], ["{Link}"],
+            "New support tickets on {GridName}: {Numbers}",
+            "New support tickets on {GridName} ({Count}):\n\n{Tickets}\n\nRead and answer them here:\n\n{Link}\n\nYou get this because you switched on \"New support tickets\" under Email notices."),
+        [TicketReplyGuest] = new("A guest replied on a support ticket", ["{GridName}", "{Count}", "{Numbers}", "{Tickets}", "{Link}"], ["{Link}"],
+            "Guests replied on {GridName} tickets: {Numbers}",
+            "Guests replied on these support tickets on {GridName} ({Count}):\n\n{Tickets}\n\nRead and answer them here:\n\n{Link}\n\nYou get this because you switched on \"New support tickets\" under Email notices."),
     };
 
     public static string Title(string id) => Get(id).Title;
@@ -176,6 +185,8 @@ public static class EmailTemplates
             ["Name"] = "Sample Name",
             ["TicketNumber"] = "T-0001",
             ["Subject"] = "Sample ticket subject",
+            ["Numbers"] = "T-0001, T-0002",
+            ["Tickets"] = "T-0001 (Technical problem): Sample ticket subject\nT-0002 (Something else): Other subject",
         };
         return Get(id).Words.Select(w => w.Trim('{', '}')).ToDictionary(w => w, w => all[w]);
     }

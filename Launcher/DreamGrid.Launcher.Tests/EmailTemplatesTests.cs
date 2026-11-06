@@ -14,7 +14,7 @@ public sealed class EmailTemplatesTests
     {
         Assert.Equal(["test", "confirm-email", "reset-password", "account-approved", "password-changed", "already-have-account",
             "confirm-new-email", "email-change-notice", "signup-denied", "signups-waiting", "name-changed", "email-changed-by-staff",
-            "email-set-by-staff", "staff-reset-password", "takedown-removed", "takedown-restored", "ticket-confirm", "ticket-access", "ticket-staff-reply"], EmailTemplates.All);
+            "email-set-by-staff", "staff-reset-password", "takedown-removed", "takedown-restored", "ticket-confirm", "ticket-access", "ticket-staff-reply", "ticket-new", "ticket-reply-guest"], EmailTemplates.All);
         foreach (var id in EmailTemplates.All)
         {
             var d = EmailTemplates.Default(id);

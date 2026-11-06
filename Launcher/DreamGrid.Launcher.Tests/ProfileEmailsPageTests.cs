@@ -71,6 +71,29 @@ public sealed class ProfileEmailsPageTests
     }
 
     [Fact]
+    public async Task Every_staff_member_can_switch_on_new_ticket_emails_which_start_off()
+    {
+        await using var f = Factory(SignUpApprovers.OwnerAndAdmins);
+        var supervisor = await SignedInAsync(f, "supervisor");
+        var page = new HtmlParser().ParseDocument(await supervisor.GetStringAsync("/profile/emails", Ct));
+        Assert.NotNull(page.QuerySelector("#NewTickets"));
+        Assert.Null(page.QuerySelector("#NewTickets:checked"));
+        var token = page.QuerySelector("input[name=__RequestVerificationToken]")!.GetAttribute("value")!;
+
+        using var r = await supervisor.PostAsync("/profile/emails", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = token,
+            ["NewTickets"] = "true",
+        }), Ct);
+
+        Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
+        Assert.True(f.Services.GetRequiredService<DreamGrid.Launcher.Core.Tickets.TicketNotices>().IsOn(TestAuth.SupervisorId));
+        page = new HtmlParser().ParseDocument(await supervisor.GetStringAsync("/profile/emails", Ct));
+        Assert.NotNull(page.QuerySelector("#NewTickets:checked"));
+        Assert.False(f.Services.GetRequiredService<ApprovalNotices>().OptedOut(TestAuth.SupervisorId)); // a supervisor's sign-up switch is untouched
+    }
+
+    [Fact]
     public async Task Nav_links_emails()
     {
         await using var f = Factory();
