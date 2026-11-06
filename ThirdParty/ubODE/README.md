@@ -13,6 +13,12 @@ scripts that build the library, and the evidence, so the fix can be sent to the 
 | `build-linux.sh`, `build-windows.ps1` | Fetch that commit, apply a patch and build the library. |
 | `../../.github/workflows/ubode.yml` | Runs both scripts on GitHub (Linux x64 and arm64 in Debian 12, Windows x64) and checks the exports. |
 
+The libraries in `bin/lib64` built from this folder are `libubode-x86_64.so`, `libubode-arm64.so` and `ubode.dll`.
+They come from the `ubode` workflow, run 42248258902, at commit 18d0ca3. They export the same 619 functions as the
+binaries they replace, `ubode.dll` imports the same runtime DLLs, and the Linux ones need at most glibc 2.14 (x64)
+or 2.17 (arm64). On the bench, the x64 library from that run started DragonFyre in 5.7 s and 5.65 s, with a physics
+step of 1.5 s.
+
 ## The problem
 
 When a region starts, ubODE turns every physics mesh into an ODE trimesh and calls `dGeomTriMeshDataPreprocess`
