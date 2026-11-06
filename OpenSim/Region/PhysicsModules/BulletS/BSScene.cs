@@ -36,6 +36,7 @@ using OpenSim.Framework.Monitoring;
 using OpenSim.Region.Framework.Scenes;
 using OpenSim.Region.Framework.Interfaces;
 using OpenSim.Region.PhysicsModules.SharedBase;
+using OpenSim.Region.PhysicsModule.BulletS.Rapier;
 using Nini.Config;
 using log4net;
 using OpenMetaverse;
@@ -446,7 +447,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS
             string selectionName = engineName.ToLower();
             int hyphenIndex = engineName.IndexOf("-");
             if (hyphenIndex > 0)
-                selectionName = engineName.ToLower().Substring(0, hyphenIndex - 1);
+                selectionName = engineName.ToLower().Substring(0, hyphenIndex);
 
             switch (selectionName)
             {
@@ -467,11 +468,14 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                     m_log.InfoFormat("{0}    Setting terrain implimentation to Heightmap", LogHeader);
                     BSParam.TerrainImplementation = (float)BSTerrainPhys.TerrainImplementation.Heightmap;
                     break;
+                case "rapier":
+                    ret = SelectRapierEngine(engineName);
+                    break;
             }
 
             if (ret == null)
             {
-                m_log.ErrorFormat("{0} COULD NOT SELECT BULLET ENGINE: '[BulletSim]PhysicsEngine' must be either 'BulletUnmanaged-*' or 'BulletXNA-*'", LogHeader);
+                m_log.ErrorFormat("{0} COULD NOT SELECT BULLET ENGINE: '[BulletSim]PhysicsEngine' must be either 'BulletUnmanaged-*', 'BulletXNA-*' or 'Rapier'", LogHeader);
             }
             else
             {
@@ -479,6 +483,41 @@ namespace OpenSim.Region.PhysicsModule.BulletS
             }
 
             return ret;
+        }
+
+        // Load the Rapier library, check it is the one this build was written against, and connect to it.
+        // Any problem with the library is logged here, with what is wrong, and gives null (the caller then reports
+        //    that no engine was selected). Nothing a missing, wrong or broken library does gets out of this routine.
+        private BSAPITemplate SelectRapierEngine(string engineName)
+        {
+            try
+            {
+                string error;
+                if (!RapierNative.TryLoad(out error))
+                {
+                    m_log.ErrorFormat("{0} Rapier native library could not be loaded: {1}", LogHeader, error);
+                    return null;
+                }
+                error = RapierNative.VerifyAbi();
+                if (error != null)
+                {
+                    m_log.ErrorFormat("{0} Rapier native library does not match this build: {1}", LogHeader, error);
+                    return null;
+                }
+                return new BSAPIRapier(engineName, this);
+            }
+            catch (Exception e)
+            {
+                m_log.ErrorFormat("{0} Rapier native library could not be used: {1}", LogHeader, e.Message);
+                m_log.Debug(e.ToString());
+                return null;
+            }
+        }
+
+        // The test project calls the private engine selection through this, with a scene that was never initialized.
+        internal static BSAPITemplate SelectEngineForTest(string engineName)
+        {
+            return new BSScene().SelectUnderlyingBulletEngine(engineName);
         }
 
         public override void Dispose()

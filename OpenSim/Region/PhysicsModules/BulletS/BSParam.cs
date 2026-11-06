@@ -131,6 +131,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         public static float GlobalContactBreakingThreshold { get; private set; }
         public static float PhysicsUnmanLoggingFrames { get; private set; }
 
+        // Rapier backend parameters (ignored by the Bullet engines)
+        public static float RapierNumThreads { get; private set; }
+        public static float RapierSolverIterations { get; private set; }
+
         // Avatar parameters
         public static bool AvatarToAvatarCollisionsByDefault { get; private set; }
         public static float AvatarFriction { get; private set; }
@@ -846,6 +850,11 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                 0.1f ),
             new ParameterDefn<float>("LinkConstraintSolverIterations", "Number of solver iterations when computing constraint. (0 = Bullet default)",
                 40 ),
+
+            new ParameterDefn<float>("RapierNumThreads", "Threads Rapier uses inside a step (Rapier engine only)",
+                1f ),
+            new ParameterDefn<float>("RapierSolverIterations", "Solver iterations per Rapier step (Rapier engine only)",
+                4f ),
 
             new ParameterDefn<bool>("UseBulletRaycast", "If 'true', use the raycast function of the Bullet physics engine",
                 true ),

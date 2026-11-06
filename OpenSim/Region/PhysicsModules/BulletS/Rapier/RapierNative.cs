@@ -59,6 +59,18 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         public const byte LockRotationY = 16;
         public const byte LockRotationZ = 32;
 
+        // R3_DYNAMIC, R3_FIXED and the two kinematic kinds: RigidBodyDesc.bodyType and r3RigidBody_SetBodyType.
+        public const uint BodyDynamic = 0;
+        public const uint BodyFixed = 1;
+        public const uint BodyKinematicPositionBased = 2;
+        public const uint BodyKinematicVelocityBased = 3;
+
+        // R3_MASS_*: how ColliderDesc turns its density, mass or mass properties into the body's mass.
+        public const uint MassModeDensity = 0;
+
+        // R3_COMBINE_MULTIPLY: Bullet multiplies the two bodies' friction and restitution.
+        public const uint CombineMultiply = 2;
+
         // ---- Structs, copied from rapier.h ----
 
         [StructLayout(LayoutKind.Sequential)]
@@ -78,6 +90,9 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
 
         [StructLayout(LayoutKind.Sequential)]
         public struct ColliderHandle { public IntPtr world; public uint index, generation; }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct ImpulseJointHandle { public IntPtr world; public uint index, generation; }
 
         [StructLayout(LayoutKind.Sequential)]
         public struct MassProperties
@@ -188,10 +203,17 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             public UIntPtr softMeshBindingDesc, queryOptions, urdfLoaderOptions, mjcfLoaderOptions;
         }
 
+        // R3BuildFeatures: what the loaded library was built with.
+        [StructLayout(LayoutKind.Sequential)]
+        public struct BuildFeatures { public uint profiling, simdLanes, parallel, enhancedDeterminism; }
+
         // ---- Library, ABI and error reporting ----
 
         [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         public static extern IntPtr r3Version();
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern BuildFeatures r3BuildFeatures();
 
         [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         public static extern uint r3CheckAbi(uint version, uint dimension, UIntPtr realSize, UIntPtr vectorSize, UIntPtr poseSize, uint features);
@@ -282,6 +304,56 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         public static extern uint r3RigidBody_SetAngvel(RigidBodyHandle handle, Vector value, uint wakeUp);
 
+        // ---- Rigid body state, mass and flags ----
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3RigidBody_SetPosition(RigidBodyHandle handle, Pose value, uint wakeUp);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3RigidBody_SetGravityScale(RigidBodyHandle handle, float value, uint wakeUp);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3RigidBody_SetEnabled(RigidBodyHandle handle, uint value);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3RigidBody_IsEnabled(RigidBodyHandle handle);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3RigidBody_SetBodyType(RigidBodyHandle handle, uint value, uint wakeUp);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3RigidBody_BodyType(RigidBodyHandle handle);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3RigidBody_SetAdditionalMassProperties(RigidBodyHandle handle, MassProperties properties, uint wakeUp);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3RigidBody_SetUserData(RigidBodyHandle handle, UserData value);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern UserData r3RigidBody_UserData(RigidBodyHandle handle);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3RigidBody_SetLinearDamping(RigidBodyHandle handle, float value);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3RigidBody_SetAngularDamping(RigidBodyHandle handle, float value);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3RigidBody_WakeUp(RigidBodyHandle handle, uint strong);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3RigidBody_Sleep(RigidBodyHandle handle);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3RigidBody_IsSleeping(RigidBodyHandle handle);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3RigidBody_ResetForces(RigidBodyHandle handle, uint wakeUp);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3RigidBody_ResetTorques(RigidBodyHandle handle, uint wakeUp);
+
         // Fills buffer with up to capacity handles of the bodies that are awake and returns how many.
         [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         public static extern UIntPtr r3ActiveRigidBodies(IntPtr world, [Out] RigidBodyHandle[] buffer, UIntPtr capacity);
@@ -316,6 +388,15 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         public static extern uint r3RemoveCollider(ColliderHandle handle, uint wakeUp);
 
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3Collider_SetFriction(ColliderHandle handle, float value);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3Collider_SetRestitution(ColliderHandle handle, float value);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3Collider_SetCollisionGroups(ColliderHandle handle, InteractionGroups value);
+
         // A shared shape is an R3SharedShape*: set ColliderDesc.shape.kind = ShapeKindShared and shape.sharedShape to it,
         // and free it with r3FreeSharedShape when done with it.
         [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
@@ -332,6 +413,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
 
         [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         public static extern uint r3FreeSharedShape(IntPtr shape);
+
+        // Local mass properties of the shape at the given density (mass = density * volume).
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern MassProperties r3SharedShape_MassProperties(IntPtr shape, float density);
 
         // ---- Status and ABI helpers ----
 
