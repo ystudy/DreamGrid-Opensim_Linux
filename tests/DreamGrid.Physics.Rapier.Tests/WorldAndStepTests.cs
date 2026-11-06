@@ -360,4 +360,46 @@ public class WorldAndStepTests
         // BSScene's Dispose could reach Shutdown more than once; the second must not touch the freed world.
         api.Shutdown(world);
     }
+
+    [Fact]
+    public void MissingLibrary_CreatingTheSceneFailsWithAClearException()
+    {
+        string? previousOverride = RapierNative.LibraryPathOverride;
+        RapierNative.LibraryPathOverride = Path.Combine(Path.GetTempPath(), "no-such-dir", "no-such-rapier");
+        try
+        {
+            InvalidOperationException e = Assert.Throws<InvalidOperationException>(() => RapierTestScene.Create());
+            Assert.Contains("Rapier", e.Message);
+            Assert.Contains("could not be started", e.Message);
+        }
+        finally
+        {
+            RapierNative.LibraryPathOverride = previousOverride;
+        }
+    }
+
+    [Fact]
+    public void IgnoredFlagsAndTheTerrainStandIn_AreLoggedOnce()
+    {
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            BSAPITemplate pe = scene.PE;
+            BulletBody body = pe.CreateBodyFromShape(scene.World,
+                pe.BuildNativeShape(scene.World, new ShapeData { Type = BSPhysicsShapeType.SHAPE_BOX, Scale = Vector3.One, Size = Vector3.One }),
+                7, Vector3.Zero, Quaternion.Identity);
+            pe.AddToCollisionFlags(body, CollisionFlags.CF_NO_CONTACT_RESPONSE);
+            pe.AddToCollisionFlags(body, CollisionFlags.CF_NO_CONTACT_RESPONSE);
+            pe.ForceActivationState(body, ActivationState.DISABLE_DEACTIVATION);
+            pe.ForceActivationState(body, ActivationState.DISABLE_DEACTIVATION);
+
+            // Each message once per world, however many calls: the terrain warning came from scene creation.
+            Assert.Equal(3, ((BSAPIRapier.BulletBodyRapier)body).State.LoggedOnce.Count(k =>
+                k.StartsWith("flags:") || k.StartsWith("state:") || k == "terrain-standin"));
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
 }

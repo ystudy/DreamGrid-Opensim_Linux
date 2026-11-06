@@ -47,6 +47,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             BulletBodyRapier body = (BulletBodyRapier)obj;
             CollisionFlags old = body.Flags;
             body.Flags = flags;
+            LogIgnoredFlags(body, flags);
             ApplyStaticFlag(body, old);
             return body.Flags;
         }
@@ -56,6 +57,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             BulletBodyRapier body = (BulletBodyRapier)obj;
             CollisionFlags old = body.Flags;
             body.Flags |= flags;
+            LogIgnoredFlags(body, flags);
             ApplyStaticFlag(body, old);
             return body.Flags;
         }
@@ -67,6 +69,16 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             body.Flags &= ~flags;
             ApplyStaticFlag(body, old);
             return body.Flags;
+        }
+
+        // TODO(Task 5): CF_KINEMATIC_OBJECT, CF_NO_CONTACT_RESPONSE, CF_CHARACTER_OBJECT, BS_SUBSCRIBE_COLLISION_EVENTS,
+        // BS_VEHICLE_COLLISIONS and BS_RETURN_ROOT_COMPOUND_SHAPE are stored but have no effect yet (H3). Logged at debug
+        // level, once per flag value.
+        private void LogIgnoredFlags(BulletBodyRapier body, CollisionFlags flags)
+        {
+            CollisionFlags ignored = flags & ~CollisionFlags.CF_STATIC_OBJECT;
+            if (ignored != 0)
+                LogOnce(body, "flags:" + (uint)ignored, "Collision flags " + ignored + " are stored but not acted on yet");
         }
 
         // CF_STATIC_OBJECT turns the body fixed, and clearing it makes the body dynamic again. Only a change of the
@@ -104,6 +116,11 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                 RapierNative.Check(RapierNative.r3RigidBody_WakeUp(body.Body, 1));
             else if (state == ActivationState.ISLAND_SLEEPING)
                 RapierNative.Check(RapierNative.r3RigidBody_Sleep(body.Body));
+            else
+            {
+                // TODO(Task 6): DISABLE_DEACTIVATION (the never-sleep set) and DISABLE_SIMULATION are not acted on yet (H3).
+                LogOnce(body, "state:" + state, "Activation state " + state + " is ignored for now");
+            }
         }
 
         // Wake the body (map row 69). A fixed body has nothing to wake.

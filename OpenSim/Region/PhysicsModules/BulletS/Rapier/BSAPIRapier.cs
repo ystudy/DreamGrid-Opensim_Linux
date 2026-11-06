@@ -202,6 +202,24 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             BulletEngineVersion = version;
         }
 
+        // Log a message the first time this key is seen for the world; later calls do nothing.
+        internal void LogOnce(BulletWorldRapier world, bool warn, string key, string message)
+        {
+            if (!world.State.LoggedOnce.Add(key))
+                return;
+            if (warn)
+                PhysicsScene.Logger.WarnFormat("{0} {1}", LogHeader, message);
+            else
+                PhysicsScene.Logger.DebugFormat("{0} {1}", LogHeader, message);
+        }
+
+        // Same for a body, which knows its world's state but not the world.
+        internal void LogOnce(BulletBodyRapier body, string key, string message)
+        {
+            if (body.State.LoggedOnce.Add(key))
+                PhysicsScene.Logger.DebugFormat("{0} {1}", LogHeader, message);
+        }
+
         // ---- Conversions between OpenMetaverse's and Rapier's value types ----
 
         internal static RapierNative.Vector ToNative(Vector3 v)

@@ -61,6 +61,9 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         // a shape is never freed twice.
         public readonly HashSet<IntPtr> Shapes = new HashSet<IntPtr>();
 
+        // Messages already logged once for this world (stand-ins, ignored flags), so a repeated call logs nothing.
+        public readonly HashSet<string> LoggedOnce = new HashSet<string>();
+
         /// <summary>
         /// Bullet's fixed-step accumulation (btDiscreteDynamicsWorld::stepSimulation): add timeStep to the time not yet
         /// simulated, take as many whole fixedTimeStep steps as fit, and do at most maxSubSteps of them. Time beyond

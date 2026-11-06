@@ -40,7 +40,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         }
 
         // BSScene builds a ground plane and a terrain while it initializes, so the scene needs both before any prim can
-        // be added. These are stand-in shapes that make that possible: the ground plane is the slab the real one will be
+        // be added. TEMPORARY (Task 3): these are stand-in shapes that make that possible: the ground plane is the slab the real one will be
         // (a thin box whose top is at the given height), and the terrain is a flat slab over the heightmap's Z range.
         // The heightfield terrain replaces the terrain shape with the terrain work (H8).
 
@@ -59,6 +59,9 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         public override BulletShape CreateTerrainShape(UInt32 id, Vector3 size, float minHeight, float maxHeight, float[] heightMap,
                                         float scaleFactor, float collisionMargin)
         {
+            // TEMPORARY (Task 3): a flat slab over the Z range; the heightmap is ignored. Replace with the heightfield (H8).
+            LogOnce(SceneWorld, true, "terrain-standin",
+                        "Heightmap terrain is a flat stand-in in this build (the heightmap is ignored); objects will not rest on the real terrain surface.");
             float thickness = Math.Max(maxHeight - minHeight, 0.1f);
             Vector3 slab = new Vector3(size.X, size.Y, thickness);
             return RegisterShape(SceneWorld, RapierNative.r3CuboidSharedShape(ToNative(slab * 0.5f)),

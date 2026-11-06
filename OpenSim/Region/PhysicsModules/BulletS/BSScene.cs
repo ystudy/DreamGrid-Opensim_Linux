@@ -319,6 +319,12 @@ namespace OpenSim.Region.PhysicsModule.BulletS
 
             // Get the connection to the physics engine (could be native or one of many DLLs)
             PE = SelectUnderlyingBulletEngine(BulletEngineName);
+            if (PE == null)
+            {
+                string message = string.Format("{0} Physics engine '{1}' could not be started; see the log line above for the reason", LogHeader, BulletEngineName);
+                m_log.Error(message);
+                throw new InvalidOperationException(message);
+            }
 
             // Enable very detailed logging.
             // By creating an empty logger when not logging, the log message invocation code
