@@ -54,6 +54,7 @@ public static class StaffMenu
             Add(groups, new("People", "/people", Items(
                 (true, new("Find a person", "/people", "/people")),
                 (canApprove, new("Sign-ups", "/people/sign-ups", "/people/sign-ups", Badge: !admin)),
+                (true, new("Tickets", "/people/tickets", "/people/tickets")),
                 (admin, new("Groups", "/groups", "/groups")),
                 (admin, new("Takedowns", "/people/takedowns", "/people/takedowns")),
                 (owner, new("Staff", "/staff", "/staff")))));

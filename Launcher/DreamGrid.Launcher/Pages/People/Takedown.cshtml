@@ -1,6 +1,7 @@
 @page "/people/takedowns/{number:regex(^TD-\d{{4}}-\d{{3,}}$)}"
 @model DreamGrid.Launcher.Pages.People.TakedownModel
 @using DreamGrid.Launcher.Core.Security
+@inject DreamGrid.Launcher.Security.StaffTickets Tickets
 @using DreamGrid.Launcher.Pages.People
 @{
     var c = Model.Case!;
@@ -9,6 +10,20 @@
 }
 <p><a href="/people/takedowns">‹ Takedowns</a></p>
 <h1>@c.Number <span class="badge @(c.Open ? "text-bg-warning" : "text-bg-secondary") ms-2">@(c.Open ? "Open" : "Closed")</span></h1>
+@{ var linkedTickets = Tickets.LinkedTo(c.Number); }
+@if (linkedTickets.Count > 0)
+{
+    <p id="linked-tickets">Support tickets about this case:
+        @for (var i = 0; i < linkedTickets.Count; i++)
+        {
+            if (i > 0)
+            {
+                <span>, </span>
+            }
+            <a href="/people/tickets/@linkedTickets[i].Number">@linkedTickets[i].Number</a>
+        }
+    </p>
+}
 @if (Model.Error is not null)
 {
     <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
