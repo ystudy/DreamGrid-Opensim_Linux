@@ -379,7 +379,7 @@ public class WorldAndStepTests
     }
 
     [Fact]
-    public void IgnoredFlagsAndTheTerrainStandIn_AreLoggedOnce()
+    public void IgnoredFlags_AreLoggedOnce()
     {
         BSScene scene = RapierTestScene.Create();
         try
@@ -393,9 +393,10 @@ public class WorldAndStepTests
             pe.ForceActivationState(body, ActivationState.DISABLE_DEACTIVATION);
             pe.ForceActivationState(body, ActivationState.DISABLE_DEACTIVATION);
 
-            // Each message once per world, however many calls: the terrain warning came from scene creation.
-            Assert.Equal(3, ((BSAPIRapier.BulletBodyRapier)body).State.LoggedOnce.Count(k =>
-                k.StartsWith("flags:") || k.StartsWith("state:") || k == "terrain-standin"));
+            // Each message once per world, however many calls.
+            Assert.Equal(2, ((BSAPIRapier.BulletBodyRapier)body).State.LoggedOnce.Count(k =>
+                k.StartsWith("flags:") || k.StartsWith("state:")));
+            Assert.DoesNotContain("terrain-standin", ((BSAPIRapier.BulletBodyRapier)body).State.LoggedOnce);
         }
         finally
         {

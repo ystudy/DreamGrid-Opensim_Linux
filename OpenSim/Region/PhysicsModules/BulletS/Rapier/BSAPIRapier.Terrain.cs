@@ -26,6 +26,7 @@
  */
 
 using System;
+using System.Runtime.InteropServices;
 
 using OpenMetaverse;
 
@@ -39,11 +40,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             get { return (BulletWorldRapier)PhysicsScene.World; }
         }
 
-        // BSScene builds a ground plane and a terrain while it initializes, so the scene needs both before any prim can
-        // be added. TEMPORARY (Task 3): these are stand-in shapes that make that possible: the ground plane is the slab the real one will be
-        // (a thin box whose top is at the given height), and the terrain is a flat slab over the heightmap's Z range.
-        // The heightfield terrain replaces the terrain shape with the terrain work (H8).
-
+        // The ground plane is a thin slab (half height 0.5) whose top face is at 'height': a very large cuboid, because
+        // Rapier's plane (a half-space) has no thickness for a body to rest on.
         public override BulletShape CreateGroundPlaneShape(UInt32 id, float height, float collisionMargin)
         {
             const float halfExtent = 16384f;
@@ -56,16 +54,65 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             return shape;
         }
 
+        // The heightmap is row-major with X fastest (heightMap[y * sizeX + x]) and sample (x, y) belongs at world (x, y),
+        // 1 m apart, so the field spans size - 1 metres. BSTerrainHeightmap then puts the body at the map's centre in
+        // X and Y (size / 2) and at (minZ + maxZ) / 2 in Z (H8).
+        //
+        // Rapier's heightfield is Y-up, centred on its origin in X and Z, with its row index running along +Z and its
+        // heights absolute. Turning the collider a quarter about +X sends Rapier's Y to world Z and Rapier's Z to world
+        // -Y, so row i holds world row (rows - 1 - i). The collider is then moved so sample (0, 0) lands on the map's
+        // origin, which is half a metre from where the body's centre puts it, and down by the body's Z centring.
+        // Rapier's heightfield ray cast can miss a ray that runs exactly along a cell edge, a vertex or a diagonal: with
+        // the samples on whole metres, a ray straight down at (128, 128) missed about a third of the time. Scripts
+        // cast at whole numbers often, so the field is moved a fraction of a millimetre in X and Y, by different
+        // amounts, which puts whole-metre positions inside a cell and off its diagonal. The height changes by less
+        // than 0.1 mm on a 10% slope.
+        private const float GridNudgeX = 0.0007f;
+        private const float GridNudgeY = 0.0011f;
+
         public override BulletShape CreateTerrainShape(UInt32 id, Vector3 size, float minHeight, float maxHeight, float[] heightMap,
                                         float scaleFactor, float collisionMargin)
         {
-            // TEMPORARY (Task 3): a flat slab over the Z range; the heightmap is ignored. Replace with the heightfield (H8).
-            LogOnce(SceneWorld, true, "terrain-standin",
-                        "Heightmap terrain is a flat stand-in in this build (the heightmap is ignored); objects will not rest on the real terrain surface.");
-            float thickness = Math.Max(maxHeight - minHeight, 0.1f);
-            Vector3 slab = new Vector3(size.X, size.Y, thickness);
-            return RegisterShape(SceneWorld, RapierNative.r3CuboidSharedShape(ToNative(slab * 0.5f)),
-                        BSPhysicsShapeType.SHAPE_TERRAIN, slab);
+            int columns = (int)size.X;
+            int rows = (int)size.Y;
+            if (columns < 2 || rows < 2 || heightMap == null || heightMap.Length < columns * rows)
+                throw new ArgumentException("Rapier: the heightmap does not hold " + columns + " x " + rows + " samples");
+
+            // Rapier wants nalgebra's column-major order: the sample at (row, column) is at column * rows + row.
+            float[] samples = new float[columns * rows];
+            for (int y = 0; y < rows; y++)
+            {
+                int row = rows - 1 - y;
+                for (int x = 0; x < columns; x++)
+                    samples[x * rows + row] = heightMap[y * columns + x] * scaleFactor;
+            }
+
+            IntPtr native;
+            GCHandle pinned = GCHandle.Alloc(samples, GCHandleType.Pinned);
+            try
+            {
+                RapierNative.ShapeDesc desc = new RapierNative.ShapeDesc();
+                desc.kind = RapierNative.ShapeKindHeightfield;
+                desc.flags = RapierNative.HeightfieldFixInternalEdges;
+                desc.heights = new RapierNative.View { data = pinned.AddrOfPinnedObject(), count = (UIntPtr)samples.Length };
+                desc.rows = (UIntPtr)rows;
+                desc.columns = (UIntPtr)columns;
+                // The scale is the field's whole extent: 1 m between samples.
+                desc.scale = new RapierNative.Vector { x = columns - 1, y = 1f, z = rows - 1 };
+                native = RapierNative.r3ShapeDesc_Build(in desc);
+            }
+            finally
+            {
+                pinned.Free();
+            }
+
+            BulletShapeRapier shape = RegisterShape(SceneWorld, native, BSPhysicsShapeType.SHAPE_TERRAIN,
+                        new Vector3(size.X, size.Y, maxHeight - minHeight));
+            float zCentre = (minHeight + maxHeight) * 0.5f;
+            SceneWorld.State.TerrainZOffset = -zCentre;
+            shape.LocalRot = YAxisToZAxis;
+            shape.LocalPos = new Vector3(-0.5f + GridNudgeX, -0.5f + GridNudgeY, SceneWorld.State.TerrainZOffset);
+            return shape;
         }
 
         // A body that does not move and owns its shape: the terrain and the ground plane.

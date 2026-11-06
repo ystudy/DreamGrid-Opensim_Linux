@@ -48,6 +48,11 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         // Simulated time BSScene handed over but PhysicsStep has not stepped yet (Bullet's m_localTime).
         public float Accumulator;
 
+        // The Z offset (world units) the terrain collider has from its body: BSTerrainHeightmap puts the body at
+        // (minZ + maxZ) / 2 because Bullet centres its heightfield between min and max, while Rapier's heights are
+        // absolute, so the collider sits this far below (the negative of that centre).
+        public float TerrainZOffset;
+
         // The arrays BSScene gave Initialize. PhysicsStep fills them and reports how many entries it used.
         public EntityProperties[] UpdateArray;
         public CollisionDesc[] CollisionArray;
@@ -61,7 +66,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         // a shape is never freed twice.
         public readonly HashSet<IntPtr> Shapes = new HashSet<IntPtr>();
 
-        // Messages already logged once for this world (stand-ins, ignored flags), so a repeated call logs nothing.
+        // Messages already logged once for this world (ignored flags and the like), so a repeated call logs nothing.
         public readonly HashSet<string> LoggedOnce = new HashSet<string>();
 
         /// <summary>

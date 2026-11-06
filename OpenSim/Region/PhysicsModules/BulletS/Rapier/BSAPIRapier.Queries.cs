@@ -50,7 +50,32 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             uint filterGroup,
             uint filterMask)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(RayTest2));
+            BulletWorldRapier rapierWorld = (BulletWorldRapier)world;
+            Vector3 delta = to - from;
+            RaycastHit result = new RaycastHit();
+            if (delta == Vector3.Zero)
+                return result;
+
+            // Colliders that moved since the last step are not in the query structures until their poses are passed on.
+            RapierNative.Check(RapierNative.r3RigidBodyPropagateModifiedBodyPositionsToColliders(rapierWorld.World));
+
+            // The ray is from + delta * t for t in [0, 1], so the time of impact is Bullet's hit fraction. The same
+            // group and mask rule as the colliders' own decides what it can hit (H3).
+            RapierNative.QueryOptions options = new RapierNative.QueryOptions();
+            options.filter = RapierNative.r3DefaultQueryFilter();
+            options.filter.useGroups = 1;
+            options.filter.groups = new RapierNative.InteractionGroups { memberships = filterGroup, filter = filterMask, testMode = 0 };
+            RapierNative.RayHit hit = RapierNative.r3CastRay(rapierWorld.World, in options, ToNative(from), ToNative(delta), 1f, 1);
+            uint status = RapierNative.r3LastStatus();
+            if (status == RapierNative.StatusNotFound)
+                return result;
+            RapierNative.Check(status);
+
+            result.ID = (uint)RapierNative.r3Collider_UserData(hit.collider).low;
+            result.Fraction = hit.timeOfImpact;
+            result.Normal = ToVector3(hit.normal);
+            result.Point = from + delta * hit.timeOfImpact;
+            return result;
         }
     }
 }

@@ -51,6 +51,13 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         // R3_SHAPE_DESC_SHARED: a ColliderDesc whose shape is the SharedShape pointer in ShapeDesc.sharedShape.
         public const uint ShapeKindShared = 10;
 
+        // R3_SHAPE_DESC_HEIGHTFIELD, and R3_HEIGHTFIELD_FIX_INTERNAL_EDGES for ShapeDesc.flags.
+        public const uint ShapeKindHeightfield = 11;
+        public const uint HeightfieldFixInternalEdges = 1;
+
+        // R3_NOT_FOUND: the status a query reports when nothing was hit (not an error).
+        public const uint StatusNotFound = 7;
+
         // R3_LOCK_* bits for RigidBodyDesc.lockedAxes.
         public const byte LockTranslationX = 1;
         public const byte LockTranslationY = 2;
@@ -105,6 +112,34 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
 
         [StructLayout(LayoutKind.Sequential)]
         public struct InteractionGroups { public uint memberships, filter, testMode; }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct QueryFilter
+        {
+            public uint flags;
+            public uint useGroups;
+            public InteractionGroups groups;
+            public ColliderHandle excludeCollider;
+            public RigidBodyHandle excludeRigidBody;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct QueryOptions
+        {
+            public QueryFilter filter;
+            public IntPtr predicate;
+            public IntPtr userData;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct RayHit
+        {
+            public ColliderHandle collider;
+            public float timeOfImpact;
+            public Vector normal;
+            public uint featureType;
+            public uint featureId;
+        }
 
         [StructLayout(LayoutKind.Sequential)]
         public struct RigidBodyDesc
@@ -413,6 +448,25 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
 
         [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         public static extern uint r3FreeSharedShape(IntPtr shape);
+
+        // Builds a SharedShape from a ShapeDesc (the borrowed views are copied). Null on failure.
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern IntPtr r3ShapeDesc_Build(in ShapeDesc desc);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern UserData r3Collider_UserData(ColliderHandle handle);
+
+        // ---- Queries ----
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern QueryFilter r3DefaultQueryFilter();
+
+        // Closest hit of origin + direction * t for 0 <= t <= maxToi; a miss reports R3_NOT_FOUND in r3LastStatus.
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern RayHit r3CastRay(IntPtr world, in QueryOptions options, Vector origin, Vector direction, float maxToi, uint solid);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3RigidBodyPropagateModifiedBodyPositionsToColliders(IntPtr world);
 
         // Local mass properties of the shape at the given density (mass = density * volume).
         [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
