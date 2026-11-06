@@ -55,7 +55,15 @@ public sealed class BotGuard(Func<LauncherSettings> settings, ProofOfWork work, 
     private readonly Dictionary<string, DateTimeOffset> _used = [];
     private DateTimeOffset _swept;
 
-    public BotCheck Check(HttpContext ctx, string form)
+    /// <summary>
+    /// Only the rate limit (when it's on): for a signed-in resident, who is a known person, so the puzzle and the picture would only
+    /// be in the way (design 2026-11-05-support-tickets).
+    /// </summary>
+    public BotCheck CheckRate(HttpContext ctx, string form) => Check(ctx, form, rateOnly: true);
+
+    public BotCheck Check(HttpContext ctx, string form) => Check(ctx, form, rateOnly: false);
+
+    private BotCheck Check(HttpContext ctx, string form, bool rateOnly)
     {
         var bots = settings().Bots;
         var fields = ctx.Request.HasFormContentType ? ctx.Request.Form : null;
@@ -66,7 +74,7 @@ public sealed class BotGuard(Func<LauncherSettings> settings, ProofOfWork work, 
         lock (_gate)
         {
             Sweep(now);
-            if (bots.Honeypot && !string.IsNullOrEmpty(fields?[HoneypotField].ToString()))
+            if (!rateOnly && bots.Honeypot && !string.IsNullOrEmpty(fields?[HoneypotField].ToString()))
                 return Stopped(BotLayers.Honeypot, form);
 
             Queue<DateTimeOffset>? posts = null;
@@ -78,7 +86,7 @@ public sealed class BotGuard(Func<LauncherSettings> settings, ProofOfWork work, 
                 if (posts.Count >= bots.PerHourPerIp) return Stopped(BotLayers.RateLimit, form);
             }
 
-            if (bots.ProofOfWork)
+            if (!rateOnly && bots.ProofOfWork)
             {
                 if (!work.TryVerify(fields?[ProofField].ToString(), out var expires, out var solved))
                     return Stopped(BotLayers.ProofOfWork, form);
@@ -87,7 +95,7 @@ public sealed class BotGuard(Func<LauncherSettings> settings, ProofOfWork work, 
                 if (!_used.TryAdd(solved, expires)) return Stopped(BotLayers.ProofOfWork, form);
             }
 
-            if (bots.ImageCaptcha)
+            if (!rateOnly && bots.ImageCaptcha)
             {
                 var result = captcha.Check(fields?[CaptchaTokenField].ToString(), fields?[CaptchaLettersField].ToString(),
                     fields?[CaptchaAnswerField].ToString(), out var until, out var id);

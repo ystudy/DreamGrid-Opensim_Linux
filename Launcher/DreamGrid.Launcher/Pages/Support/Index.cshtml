@@ -1,0 +1,88 @@
+@page "/support"
+@model DreamGrid.Launcher.Pages.Support.IndexModel
+@using DreamGrid.Launcher.Core.Tickets
+@using DreamGrid.Launcher.Guests
+@using DreamGrid.Launcher.Pages.Support
+@{
+    ViewData["Title"] = "Ask for help";
+}
+<h1>Ask for help</h1>
+@if (Model.CheckEmail)
+{
+    <div id="support-reply" class="alert alert-success" role="status">Check your email. We sent a link to send your ticket to staff. It works for 24 hours. Check your spam folder.</div>
+    <p><a href="/support">Start another ticket</a></p>
+}
+else
+{
+    <p>Send a ticket to the grid's staff. You'll get a private link by email to read their answers and reply.</p>
+    @if (Model.Mine.Count > 0)
+    {
+        <section id="my-tickets" class="panel mb-3">
+            <div class="panel-head"><h2>Your tickets</h2></div>
+            <ul class="panel-rows">
+                @foreach (var t in Model.Mine)
+                {
+                    <li><a class="component-label" href="/support/ticket?id=@t.Id">@t.Number</a> <span>@t.Subject</span><span class="ms-auto row-sub">@TicketView.StateText(t.State)</span></li>
+                }
+            </ul>
+        </section>
+    }
+    @if (Model.Error is not null)
+    {
+        <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
+    }
+    @if (Model.Account is null && !Model.AnonymousOpen)
+    {
+        <div id="support-sign-in" class="alert alert-warning" role="status">@SupportTickets.EmailOff <a href="/guest/sign-in">Sign in</a></div>
+    }
+    else
+    {
+        <form id="support-form" method="post" class="panel">
+            @if (Model.Account is { } a)
+            {
+                <p class="mb-0">From <strong>@a.FirstName @a.LastName</strong>. We'll answer at the email on your account.</p>
+            }
+            else
+            {
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label" asp-for="Name">Your name or avatar name</label>
+                        <input class="form-control" asp-for="Name" maxlength="@TicketRules.NameMax" autocomplete="name" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" asp-for="Email">Your email</label>
+                        <input class="form-control" asp-for="Email" type="email" maxlength="@TicketRules.EmailMax" autocomplete="email" required>
+                    </div>
+                </div>
+            }
+            <label class="form-label mt-3" asp-for="Category">What is it about?</label>
+            <select class="form-select" asp-for="Category" required>
+                <option value="">Choose one</option>
+                @foreach (var c in TicketCategories.All)
+                {
+                    <option value="@c" selected="@(Model.Category == c)">@TicketCategories.Title(c)</option>
+                }
+            </select>
+            <label class="form-label mt-3" asp-for="Subject">Subject</label>
+            <input class="form-control" asp-for="Subject" minlength="@TicketRules.SubjectMin" maxlength="@TicketRules.SubjectMax" required>
+            <label class="form-label mt-3" asp-for="Message">Message</label>
+            <textarea class="form-control" asp-for="Message" rows="7" minlength="@TicketRules.MessageMin" maxlength="@TicketRules.MessageMax" required></textarea>
+            <p class="form-text">Say what happened, when, and the avatar or region names involved.</p>
+            <label class="form-label mt-2" asp-for="Evidence">Evidence link (optional)</label>
+            <input class="form-control" asp-for="Evidence" type="url" maxlength="@TicketRules.EvidenceMax" placeholder="https://">
+            <p class="form-text">One web address, for example a picture you uploaded. Staff see it as text.</p>
+            <label class="form-label mt-2" asp-for="Logs">Logs (optional)</label>
+            <textarea class="form-control font-monospace" asp-for="Logs" rows="4" maxlength="@TicketRules.LogsMax"></textarea>
+            @if (Model.Account is null)
+            {
+                <partial name="_BotFields" />
+            }
+            <button type="submit" class="btn btn-primary mt-3">Send ticket</button>
+            <p class="form-text mt-2 mb-0">Staff will read this. Don't put passwords in it.</p>
+        </form>
+        @if (Model.Account is null)
+        {
+            <p class="mt-3"><a href="/support/lost-link">Lost the link to your ticket?</a></p>
+        }
+    }
+}

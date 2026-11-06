@@ -51,7 +51,8 @@ Legend, as in the work list: **[S]** security requirement, **[X]** cross-platfor
 - **Not signed in:**
   - The ticket waits, unseen by staff, and a "Confirm your ticket" email goes to the address.
   - Its link is an `EmailTokens` token, purpose `ticket-confirm`, bound to the ticket's id, valid 24 hours.
-  - Opening the link confirms the ticket and opens it.
+  - Opening the link shows a "Send my ticket" button, and pressing it confirms and opens the ticket. A button rather than at once, so a mail scanner that follows links can't send someone's ticket **(my call, after review)**. The open-ticket limits are checked again at that moment.
+  - **[S]** The address must be one plain address (no "Name <address>" forms) and is kept lower-case, so every limit counts the address the email really goes to. Past the 3-a-day or open-ticket limits someone not signed in still sees "Check your email", but nothing is kept or sent. At most 500 unconfirmed tickets wait at once.
   - Unconfirmed tickets are deleted after 24 hours.
   - The page says the same thing whether or not the address has an account or other tickets **[S]**.
 - Every confirmed ticket gets a "Your ticket" email with its private link.

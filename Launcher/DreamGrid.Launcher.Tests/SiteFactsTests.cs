@@ -127,6 +127,19 @@ public sealed class SiteFactsTests
             Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
         }
 
+        // dg-ticket: a support ticket's private link.
+        await using (var f = AfterSetup())
+        {
+            var store = f.Services.GetRequiredService<DreamGrid.Launcher.Core.Tickets.TicketStore>();
+            var now = DateTimeOffset.UtcNow;
+            var t = store.Create(_ => true, (id, n) => new DreamGrid.Launcher.Core.Tickets.Ticket(id, n, DreamGrid.Launcher.Core.Tickets.TicketState.Open,
+                "other", "Help", new DreamGrid.Launcher.Core.Tickets.TicketSender(null, "Bea", "bea@example.com"), now, now, null, [], []))!;
+            var (withLink, link) = DreamGrid.Launcher.Core.Tickets.TicketLinks.Add(t, now);
+            store.Update(t.Id, _ => withLink);
+            using var r = await Client(f, seen).GetAsync($"/support/ticket?id={t.Id}&link={link}", Ct);
+            Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
+        }
+
         var listed = SiteFacts.Cookies.Select(c => c.Name).ToHashSet(StringComparer.Ordinal);
         Assert.Empty(seen.Except(listed)); // every cookie the site set is listed
         Assert.Empty(listed.Except(seen)); // and every listed cookie was seen
