@@ -1,0 +1,84 @@
+name: ubode
+
+# Builds OpenSim's ubODE physics library (bin/lib64/libubode-*.so, ubode.dll) from opensim-libs with the patch in
+# ThirdParty/ubODE, so the binaries committed to bin/lib64 can be rebuilt and checked. Each job also checks that the
+# new library exports the same ODE functions as the committed one (OpenSim's ubOde module calls them by name).
+# The libraries are uploaded as artifacts; copying them into bin/lib64 and committing them is done by hand.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'ThirdParty/ubODE/**'
+      - '.github/workflows/ubode.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    # Debian 12 is the oldest system DreamGrid supports; building there keeps the glibc/libstdc++ requirements low.
+    container: debian:12
+    timeout-minutes: 30
+    steps:
+      - name: Build tools
+        run: |
+          apt-get update -q
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
+            build-essential autoconf automake libtool pkg-config git ca-certificates binutils
+      - uses: actions/checkout@v4
+      - name: Build libubode-${{ matrix.arch }}.so
+        run: sh ThirdParty/ubODE/build-linux.sh out/libubode-${{ matrix.arch }}.so
+      - name: Same exports as bin/lib64/libubode-${{ matrix.arch }}.so
+        run: |
+          nm -D --defined-only bin/lib64/libubode-${{ matrix.arch }}.so | awk '$3 ~ /^d/ {print $3}' | sort > committed.txt
+          nm -D --defined-only out/libubode-${{ matrix.arch }}.so | awk '$3 ~ /^d/ {print $3}' | sort > built.txt
+          echo "committed $(wc -l < committed.txt), built $(wc -l < built.txt)"
+          diff committed.txt built.txt
+      - name: Highest glibc version needed
+        run: objdump -T out/libubode-${{ matrix.arch }}.so | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libubode-${{ matrix.arch }}
+          path: out/libubode-${{ matrix.arch }}.so
+          if-no-files-found: error
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build ubode.dll
+        shell: pwsh
+        run: ThirdParty/ubODE/build-windows.ps1 -Output out/ubode.dll
+      - name: Same exports as bin/lib64/ubode.dll
+        shell: pwsh
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          $vs = & $vswhere -latest -products * -property installationPath
+          $dumpbin = Get-ChildItem (Join-Path $vs 'VC\Tools\MSVC') -Recurse -Filter dumpbin.exe |
+            Where-Object FullName -match 'Hostx64\\x64' | Select-Object -First 1
+          function Exports($file) {
+            & $dumpbin.FullName /nologo /exports $file | ForEach-Object { if ($_ -match '^\s+\d+\s+[0-9A-F]+\s+[0-9A-F]+\s+(d\S+)') { $Matches[1] } } | Sort-Object
+          }
+          $committed = @(Exports 'bin/lib64/ubode.dll')
+          $built = @(Exports 'out/ubode.dll')
+          Write-Host "committed $($committed.Count), built $($built.Count)"
+          $diff = Compare-Object $committed $built
+          if ($diff) { $diff | Format-Table | Out-String | Write-Host; throw 'The exported ODE functions differ.' }
+          Write-Host 'Imports:'
+          & $dumpbin.FullName /nologo /dependents out/ubode.dll | Select-String '\.dll' | ForEach-Object { "  $($_.Line.Trim())" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ubode-windows-x64
+          path: out/ubode.dll
+          if-no-files-found: error
