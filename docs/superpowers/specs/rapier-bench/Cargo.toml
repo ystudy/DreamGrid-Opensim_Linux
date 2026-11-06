@@ -1,0 +1,15 @@
+[package]
+name = "rbench"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rapier3d = { version = "=0.36.1", features = [] }
+
+[features]
+parallel = ["rapier3d/parallel"]
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
