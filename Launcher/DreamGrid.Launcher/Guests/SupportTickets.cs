@@ -199,8 +199,16 @@ public sealed class SupportTickets(TicketStore store, EmailTokens tokens, EmailS
         });
     }
 
+    /// <summary>Staff answered: the sender gets an email with a fresh private link, never the reply's text.</summary>
+    public void TellGuestStaffReplied(Ticket ticket)
+    {
+        // No email can go out: don't use up one of the ticket's five live links for nothing.
+        if (!email.IsReady) return;
+        SendAccess(ticket, EmailTemplates.TicketStaffReply);
+    }
+
     /// <summary>Adds a fresh private link to the ticket and emails it to the sender.</summary>
-    private void SendAccess(Ticket ticket)
+    private void SendAccess(Ticket ticket, string template = EmailTemplates.TicketAccess)
     {
         string? link = null;
         var saved = store.Update(ticket.Id, t =>
@@ -210,7 +218,7 @@ public sealed class SupportTickets(TicketStore store, EmailTokens tokens, EmailS
             return next;
         });
         if (saved is null || link is null || string.IsNullOrEmpty(saved.Sender.Email)) return;
-        Queue(EmailTemplates.TicketAccess, saved.Sender.Email, saved.Sender.Name, saved, Website() + TicketPath + "?id=" + saved.Id + "&link=" + link,
+        Queue(template, saved.Sender.Email, saved.Sender.Name, saved, Website() + TicketPath + "?id=" + saved.Id + "&link=" + link,
             TimeSpan.FromHours(24));
     }
 
@@ -252,7 +260,10 @@ public sealed class SupportTickets(TicketStore store, EmailTokens tokens, EmailS
 
     /// <summary>Line endings as \n, no other control characters, trimmed.</summary>
     internal static string Text(string? s) =>
-        new string((s ?? "").Replace("\r\n", "\n").Replace('\r', '\n').Where(c => c == '\n' || c == '\t' || !char.IsControl(c)).ToArray()).Trim();
+        new string((s ?? "").Replace("\r\n", "\n").Replace('\r', '\n').Where(c => c == '\n' || c == '\t' || (!char.IsControl(c) && !IsDirection(c))).ToArray()).Trim();
+
+    /// <summary>The characters that change the direction text is shown in, which could make a message look different to staff.</summary>
+    private static bool IsDirection(char c) => c is (>= '\u202A' and <= '\u202E') or (>= '\u2066' and <= '\u2069') or '\u200E' or '\u200F' or '\u061C';
 }
 
 /// <summary>The ticket form's rules (design 2026-11-05-support-tickets, "Sending a ticket").</summary>

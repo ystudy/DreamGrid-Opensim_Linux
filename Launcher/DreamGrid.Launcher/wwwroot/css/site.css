@@ -183,3 +183,4 @@ header .signout { margin: 0; }
 /* Support tickets: messages keep their line breaks; staff messages stand out. */
 .ticket-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .ticket-staff { border-left: 3px solid var(--bs-primary); }
+.ticket-note { border-left: 3px solid var(--bs-warning); background: var(--bs-warning-bg-subtle); }

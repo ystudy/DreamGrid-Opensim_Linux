@@ -58,6 +58,7 @@ public sealed record Ticket(
     string? Evidence = null,
     string? Logs = null,
     Guid? TakenBy = null,
+    string? TakenByName = null,
     bool Urgent = false,
     string? TakedownCase = null)
 {

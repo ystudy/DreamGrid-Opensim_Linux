@@ -36,13 +36,14 @@ public static class EmailTemplates
     public const string TakedownRestored = "takedown-restored";
     public const string TicketConfirm = "ticket-confirm";
     public const string TicketAccess = "ticket-access";
+    public const string TicketStaffReply = "ticket-staff-reply";
 
     /// <summary>Until languages arrive (worklist 1.5) every template is in this one.</summary>
     public const string DefaultLanguage = LegalPages.DefaultLanguage;
 
     public static IReadOnlyList<string> All { get; } = [Test, ConfirmEmail, ResetPassword, AccountApproved, PasswordChanged, AlreadyHaveAccount,
         ConfirmNewEmail, EmailChangeNotice, SignUpDenied, SignUpsWaiting, NameChanged, EmailChangedByStaff, EmailSetByStaff, StaffResetPassword,
-        TakedownRemoved, TakedownRestored, TicketConfirm, TicketAccess];
+        TakedownRemoved, TakedownRestored, TicketConfirm, TicketAccess, TicketStaffReply];
 
     private static readonly DateTimeOffset Shipped = DateTimeOffset.UnixEpoch;
 
@@ -89,6 +90,9 @@ public static class EmailTemplates
         [TicketAccess] = new("Your support ticket", ["{GridName}", "{Name}", "{TicketNumber}", "{Subject}", "{Link}"], ["{Link}"],
             "Your {GridName} support ticket {TicketNumber}",
             "Hello {Name},\n\nYour ticket {TicketNumber} (\"{Subject}\") is with {GridName}'s staff. Read their answers and reply here:\n\n{Link}\n\nThe link works for 30 days. Keep it private: anyone with it can read your ticket."),
+        [TicketStaffReply] = new("Staff answered a support ticket", ["{GridName}", "{Name}", "{TicketNumber}", "{Subject}", "{Link}"], ["{Link}"],
+            "{GridName} staff answered your ticket {TicketNumber}",
+            "Hello {Name},\n\nStaff answered your ticket {TicketNumber} (\"{Subject}\"). Read the answer and reply here:\n\n{Link}\n\nThe link works for 30 days. Keep it private: anyone with it can read your ticket."),
         [TakedownRestored] = new("Item put back in your inventory", ["{GridName}", "{AvatarName}", "{CaseNumber}", "{Items}", "{Reason}"],
             ["{CaseNumber}", "{Items}"],
             "Items put back in your {GridName} inventory",

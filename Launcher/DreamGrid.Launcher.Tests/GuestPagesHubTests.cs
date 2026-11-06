@@ -107,7 +107,7 @@ public sealed class GuestPagesHubTests
         var owner = await StaffAsync(f, "owner");
         Assert.Equal(["/estates", "/hypergrid"],
             (await PageAsync(owner, "/regions")).QuerySelectorAll("#hub-links a").Select(a => a.GetAttribute("href")));
-        Assert.Equal(["/people/sign-ups", "/groups", "/people/takedowns", "/staff"],
+        Assert.Equal(["/people/sign-ups", "/people/tickets", "/groups", "/people/takedowns", "/staff"],
             (await PageAsync(owner, "/people")).QuerySelectorAll("#hub-links a").Select(a => a.GetAttribute("href")));
     }
 }

@@ -296,6 +296,7 @@ builder.Services.AddSingleton(sp => new ApprovalNotices(Path.Combine(paths.Guest
 builder.Services.AddSingleton(sp => new DreamGrid.Launcher.Core.Tickets.TicketStore(paths.Tickets, sp.GetRequiredService<ILogger<DreamGrid.Launcher.Core.Tickets.TicketStore>>()));
 builder.Services.AddSingleton<SupportTickets>();
 builder.Services.AddSingleton<TicketCookie>();
+builder.Services.AddSingleton<DreamGrid.Launcher.Security.StaffTickets>();
 builder.Services.AddSingleton<SignUpNotices>();
 // The resident account page (plan 10): email changes waiting for their link, and their own request counts.
 builder.Services.AddSingleton(sp => new PendingEmailChanges(Path.Combine(paths.Guests, "email-changes.json"), sp.GetRequiredService<TimeProvider>(),

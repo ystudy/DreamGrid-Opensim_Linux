@@ -1,0 +1,140 @@
+@page "/people/tickets/{number:regex(^T-\d{{4,}}$)}"
+@model DreamGrid.Launcher.Pages.People.TicketModel
+@using DreamGrid.Launcher.Core.Tickets
+@using DreamGrid.Launcher.Pages.People
+@{
+    var t = Model.Ticket!;
+    ViewData["Title"] = t.Number + ": " + t.Subject;
+}
+<p class="back-link"><a href="/people/tickets">‹ Tickets</a></p>
+<h1>@t.Subject</h1>
+<p class="text-body-secondary">
+    @t.Number · @TicketCategories.Title(t.Category) ·
+    <span id="ticket-state" class="badge @TicketsModel.StateClass(t.State)">@TicketsModel.StateText(t.State)</span>
+    @if (t.Urgent)
+    {
+        <span class="badge state-failed">Urgent</span>
+    }
+    @if (t.TakenBy is not null)
+    {
+        <span> · taken by @(t.TakenBy == Model.Me ? "you" : t.TakenByName)</span>
+    }
+</p>
+@if (Model.Notice is not null)
+{
+    <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
+}
+@if (Model.Problem is not null)
+{
+    <div class="error-box error alert alert-danger" role="alert">@Model.Problem</div>
+}
+
+<div class="row g-3">
+<div class="col-lg-8">
+    <ol id="messages" class="ticket-messages list-unstyled">
+        @foreach (var m in t.Messages)
+        {
+            <li class="panel mb-2@(m.Note ? " ticket-note" : m.Staff is null ? "" : " ticket-staff")">
+                <div class="panel-head">
+                    <strong>@(m.Staff is null ? t.Sender.Name : m.Note ? "Staff note (" + m.StaffName + ")" : "Staff reply (" + m.StaffName + ")")</strong>
+                    <span class="row-sub">@m.At.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</span>
+                </div>
+                <div class="ticket-text">@m.Text</div>
+            </li>
+        }
+    </ol>
+    @if (t.Evidence is { } evidence)
+    {
+        <section class="panel mb-2">
+            <div class="panel-head"><h2>Evidence link</h2></div>
+            @* [S] Shown as text, never as a link or a picture: copy it into a browser you trust. *@
+            <code id="evidence" class="d-block text-break">@evidence</code>
+            <p class="form-text mb-0">Copy it into your browser if you trust it. It isn't a link on purpose.</p>
+        </section>
+    }
+    @if (t.Logs is { } logs)
+    {
+        <section class="panel mb-2">
+            <div class="panel-head"><h2>Logs the guest pasted</h2></div>
+            <pre id="logs" class="panel-pre">@logs</pre>
+        </section>
+    }
+    <form id="reply" method="post" class="panel mt-3">
+        <label class="form-label" asp-for="Text">Reply or note</label>
+        <textarea class="form-control" asp-for="Text" rows="5" maxlength="@DreamGrid.Launcher.Guests.TicketRules.MessageMax"></textarea>
+        <div class="form-check mt-2">
+            <input class="form-check-input" type="checkbox" asp-for="KeepOpen">
+            <label class="form-check-label" asp-for="KeepOpen">Keep it open (don't wait for the guest)</label>
+        </div>
+        <div class="d-flex flex-wrap gap-2 mt-3">
+            <button type="submit" class="btn btn-primary" asp-page-handler="Reply">Send reply</button>
+            <button type="submit" class="btn btn-outline-secondary" asp-page-handler="Note">Add a staff note</button>
+        </div>
+        <p class="form-text mb-0 mt-2">The guest gets an email with a link to your reply, not the reply itself. A note only staff see.</p>
+    </form>
+</div>
+<div class="col-lg-4">
+    <section id="sender" class="panel mb-3">
+        <div class="panel-head"><h2>From</h2></div>
+        <p class="mb-1">
+            @if (t.Sender.Account is { } account)
+            {
+                <a href="/people/@account">@t.Sender.Name</a>
+            }
+            else
+            {
+                <span>@t.Sender.Name</span> <span class="row-sub">(not signed in)</span>
+            }
+        </p>
+        <p class="mb-0 text-break"><code>@t.Sender.Email</code></p>
+    </section>
+    <section id="actions" class="panel mb-3">
+        <div class="panel-head"><h2>Actions</h2></div>
+        <form method="post" class="d-flex flex-wrap gap-2">
+            @if (t.TakenBy == Model.Me || (t.TakenBy is not null && Model.MaySeeTakedowns))
+            {
+                <button type="submit" class="btn btn-sm btn-outline-secondary" asp-page-handler="LetGo">Let it go</button>
+            }
+            @if (t.TakenBy is null)
+            {
+                <button type="submit" class="btn btn-sm btn-outline-primary" asp-page-handler="Take">Take it</button>
+            }
+            else if (t.TakenBy != Model.Me)
+            {
+                <button type="submit" class="btn btn-sm btn-outline-primary" asp-page-handler="TakeOver">Take it over</button>
+            }
+            @if (t.Urgent)
+            {
+                <button type="submit" class="btn btn-sm btn-outline-secondary" asp-page-handler="NotUrgent">Not urgent</button>
+            }
+            else
+            {
+                <button type="submit" class="btn btn-sm btn-outline-secondary" asp-page-handler="Urgent">Mark urgent</button>
+            }
+            @if (t.State == TicketState.Closed)
+            {
+                <button type="submit" class="btn btn-sm btn-outline-primary" asp-page-handler="Reopen">Reopen</button>
+            }
+            else
+            {
+                <button type="submit" class="btn btn-sm btn-outline-danger" asp-page-handler="Close">Close</button>
+            }
+        </form>
+    </section>
+    @if (Model.MaySeeTakedowns && t.Category == TicketCategories.Abuse)
+    {
+        <section id="takedown" class="panel">
+            <div class="panel-head"><h2>Takedown case</h2></div>
+            @if (t.TakedownCase is { } linked)
+            {
+                <p>Linked to <a href="/people/takedowns/@linked">@linked</a>.</p>
+            }
+            <form method="post" asp-page-handler="Link" class="d-flex gap-2">
+                <input class="form-control form-control-sm" asp-for="CaseNumber" value="@t.TakedownCase" placeholder="TD-2026-001" maxlength="20" aria-label="Takedown case number">
+                <button type="submit" class="btn btn-sm btn-outline-primary">@(t.TakedownCase is null ? "Link" : "Change")</button>
+            </form>
+            <p class="form-text mb-0">Leave it empty and press Change to remove the link.</p>
+        </section>
+    }
+</div>
+</div>
