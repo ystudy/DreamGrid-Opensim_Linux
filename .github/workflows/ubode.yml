@@ -75,8 +75,15 @@ jobs:
           Write-Host "committed $($committed.Count), built $($built.Count)"
           $diff = Compare-Object $committed $built
           if ($diff) { $diff | Format-Table | Out-String | Write-Host; throw 'The exported ODE functions differ.' }
-          Write-Host 'Imports:'
-          & $dumpbin.FullName /nologo /dependents out/ubode.dll | Select-String '\.dll' | ForEach-Object { "  $($_.Line.Trim())" }
+          # The Windows installer copies the VC++ runtime DLLs the committed natives import (setup/windows/build.ps1),
+          # so a new import such as VCRUNTIME140_1.dll would be missing on a clean Windows.
+          function Imports($file) {
+            & $dumpbin.FullName /nologo /dependents $file | ForEach-Object { if ($_ -match '^\s+(\S+\.dll)\s*$') { $Matches[1].ToUpperInvariant() } } | Sort-Object
+          }
+          $committedImports = @(Imports 'bin/lib64/ubode.dll')
+          $builtImports = @(Imports 'out/ubode.dll')
+          Write-Host "imports: $($builtImports -join ', ')"
+          if (Compare-Object $committedImports $builtImports) { throw "Imports differ from bin/lib64/ubode.dll ($($committedImports -join ', '))." }
       - uses: actions/upload-artifact@v4
         with:
           name: ubode-windows-x64

@@ -13,6 +13,7 @@ set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 . "$here/source.env"
 out=$1
+case $out in /*) ;; *) out=$(pwd)/$out ;; esac
 patch=${2:-$(ls "$here"/0001-*.patch)}
 case $patch in /*) ;; *) patch=$(cd "$(dirname "$patch")" && pwd)/$(basename "$patch") ;; esac
 

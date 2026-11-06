@@ -57,6 +57,11 @@ try {
     $msbuild = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1
     if (-not $msbuild) { throw 'MSBuild was not found (needs Visual Studio 2022 or its Build Tools with the C++ workload).' }
     $sln = Join-Path $build 'vs2010\ode.sln'
+    # Without these, MSVC 2019+ builds x64 code that also imports VCRUNTIME140_1.dll ("FH4" exception handling).
+    # The shipped ubode.dll imports only VCRUNTIME140.dll, and the Windows installer copies just the VC++ runtime
+    # DLLs the lib64 natives already import, so keep the old exception handling and the same imports.
+    $env:CL = '/d2FH4-'
+    $env:_LINK_ = '/d2:-FH4-'
     Invoke-Native $msbuild @($sln, '/m', '/nologo', '/v:minimal', '/p:Configuration=Release', '/p:Platform=x64',
         '/p:PlatformToolset=v143', '/p:WindowsTargetPlatformVersion=10.0')
 
