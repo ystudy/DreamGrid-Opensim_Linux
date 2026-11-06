@@ -214,6 +214,9 @@
     <Compile Include="ExtendedPhysics.cs">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="Rapier\RapierNative.cs">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="Properties\AssemblyInfo.cs">
       <SubType>Code</SubType>
     </Compile>
