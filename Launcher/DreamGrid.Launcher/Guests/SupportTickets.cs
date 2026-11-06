@@ -66,7 +66,7 @@ public sealed class SupportTickets(TicketStore store, EmailTokens tokens, EmailS
         // [S] One address, one way of writing it: "x <a@b.c>" and "A@B.C" are a@b.c, so no limit can be got round by rewriting it.
         var address = anonymous ? TicketRules.Address(form.Email) ?? "" : (account!.Email ?? "").Trim().ToLowerInvariant();
         if (TicketRules.Problem(form, name, address, anonymous) is { } problem) return new(TicketSendOutcome.Invalid, problem);
-        // Unconfirmed tickets older than their link are gone (until the hourly sweep in step 3 does this).
+        // Unconfirmed tickets older than their link are gone now, not only at the next sweep, so they never count against the limits.
         store.DeleteWhere(t => t.State == TicketState.Unconfirmed && now - t.Created > ConfirmLifetime);
 
         var sender = new TicketSender(account?.PrincipalId, name, address);
