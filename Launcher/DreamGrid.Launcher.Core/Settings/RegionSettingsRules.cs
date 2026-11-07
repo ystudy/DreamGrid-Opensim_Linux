@@ -13,10 +13,14 @@ public static class RegionSettingsRules
     public static readonly IReadOnlyList<string> PhysicsEngines = ["ubODE", "BulletSim", "BulletSimThreaded", "Rapier"];
 
     /// <summary>
-    /// Whether a Rapier library ships for this platform: Linux x64 and arm64, Windows x64. There is no macOS build.
+    /// Whether a Rapier library ships for this platform: Linux x64 and Windows x64. There is no macOS build.
     /// </summary>
+    /// <remarks>
+    /// Linux arm64 has a dllmap line in OpenSim.Region.PhysicsModule.BulletS.dll.config, but no library yet. Arm64 comes
+    /// back here when bin/lib64/librapier-arm64.so is committed.
+    /// </remarks>
     public static bool RapierSupported(OSPlatform os, Architecture arch) =>
-        (os == OSPlatform.Linux && arch is Architecture.X64 or Architecture.Arm64)
+        (os == OSPlatform.Linux && arch == Architecture.X64)
         || (os == OSPlatform.Windows && arch == Architecture.X64);
 
     /// <summary>Rapier supported by the platform this process runs on.</summary>
