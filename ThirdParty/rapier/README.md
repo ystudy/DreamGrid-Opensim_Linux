@@ -47,6 +47,10 @@ A rebuild must produce the same code as the committed binaries, so three things 
 - the Rust compiler: `RUST_TOOLCHAIN` in `source.env` (1.99.1). The scripts run `cargo +1.99.1`, and `rapier.yml`
   installs exactly that version with rustup.
 
+One dependency is not from crates.io: Rapier's workspace patches `puffin_egui` (0.29.0) to a git repository
+(github.com/tedsteen/puffin), and `Cargo.lock` pins it to rev `11771ebe00fd257aedbb545df3339ad597b1cc34`. The build is
+therefore not hermetic: it still needs network access to fetch crates.io and that git repository.
+
 The x86_64 Linux library rebuilt from these pins on Debian 12 is byte-identical to the committed one. The Windows DLL
 differs from build to build in embedded paths, so compare its exports and imports, not its bytes.
 

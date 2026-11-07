@@ -12,6 +12,8 @@ on:
   pull_request:
     paths:
       - 'ThirdParty/rapier/**'
+      - 'bin/lib64/librapier-*'
+      - 'bin/lib64/rapier.dll'
       - '.github/workflows/rapier.yml'
 
 permissions:
