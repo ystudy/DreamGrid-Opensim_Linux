@@ -1,5 +1,8 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using log4net.Appender;
+using log4net.Core;
+using log4net.Repository.Hierarchy;
 using OpenMetaverse;
 using OpenSim.Region.PhysicsModule.BulletS;
 using OpenSim.Region.PhysicsModule.BulletS.Rapier;
@@ -169,6 +172,41 @@ public class LibraryChoiceTests
         finally
         {
             scene.Dispose();
+        }
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(4)]
+    public void Scene_AsksTheLoaderForItsRapierNumThreads(int threads)
+    {
+        // The library is already loaded for this run, so TryLoad warns exactly when the scene's thread count needs the
+        // other build. That warning shows the count BSScene passed: a constant would warn for the wrong counts.
+        bool loadedParallel;
+        Assert.True(RapierNative.TryLoad(1, out string? error, out _), error);
+        loadedParallel = RapierNative.r3BuildFeatures().parallel != 0;
+
+        MemoryAppender appender = new MemoryAppender();
+        Hierarchy repository = (Hierarchy)log4net.LogManager.GetRepository(typeof(BSScene).Assembly);
+        repository.Root.AddAppender(appender);
+        Level? previousLevel = repository.Root.Level;
+        repository.Root.Level = Level.All;
+        repository.Configured = true;
+        BSScene? scene = null;
+        try
+        {
+            scene = RapierTestScene.Create(new Dictionary<string, string> { { "RapierNumThreads", threads.ToString() } });
+            LoggingEvent[] warnings = appender.GetEvents()
+                .Where(e => e.Level == Level.Warn && e.RenderedMessage.Contains("loaded only once")).ToArray();
+            Assert.Equal(loadedParallel != (threads > 1), warnings.Length > 0);
+            Assert.All(warnings, e => Assert.Contains($"its {threads} thread(s)", e.RenderedMessage));
+        }
+        finally
+        {
+            scene?.Dispose();
+            repository.Root.Level = previousLevel;
+            repository.Root.RemoveAppender(appender);
         }
     }
 }
