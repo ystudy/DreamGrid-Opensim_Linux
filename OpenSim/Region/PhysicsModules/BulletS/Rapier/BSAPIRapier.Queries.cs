@@ -26,6 +26,7 @@
  */
 
 using System;
+using System.Collections.Generic;
 
 using OpenMetaverse;
 
@@ -33,6 +34,9 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
 {
     public sealed partial class BSAPIRapier
     {
+        // Sweep the body's shape from one point to another and report the first thing it touches (map row 175). The body
+        // keeps its own orientation; a compound is swept as the shapes it is made of. The hit's fraction is the share of the
+        // way from 'from' to 'to'. Rapier has no margin, so that is ignored; the body itself is not hit.
         public override SweepHit ConvexSweepTest2(
             BulletWorld world,
             BulletBody obj,
@@ -40,7 +44,48 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             Vector3 to,
             float margin)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(ConvexSweepTest2));
+            BulletWorldRapier rapierWorld = (BulletWorldRapier)world;
+            BulletBodyRapier body = (BulletBodyRapier)obj;
+            SweepHit result = new SweepHit();
+            Vector3 delta = to - from;
+            if (!body.HasPhysicalBody || body.Shape == null || delta == Vector3.Zero)
+                return result;
+
+            List<(BulletShapeRapier leaf, Vector3 pos, Quaternion rot)> leaves = new List<(BulletShapeRapier leaf, Vector3 pos, Quaternion rot)>();
+            Flatten(body.Shape, Vector3.Zero, Quaternion.Identity, 0, leaves);
+            if (leaves.Count == 0)
+                return result;
+
+            RapierNative.Check(RapierNative.r3RigidBodyPropagateModifiedBodyPositionsToColliders(rapierWorld.World));
+            RapierNative.QueryOptions options = new RapierNative.QueryOptions();
+            options.filter = RapierNative.r3DefaultQueryFilter();
+            options.filter.excludeRigidBody = body.Body;
+            RapierNative.ShapeCastOptions castOptions = RapierNative.r3DefaultShapeCastOptions();
+            castOptions.maxTimeOfImpact = 1f;
+
+            Quaternion bodyRotation = BodyRotation(body);
+            bool found = false;
+            float best = float.MaxValue;
+            foreach ((BulletShapeRapier leaf, Vector3 pos, Quaternion rot) in leaves)
+            {
+                // Colliders of the shape at the start of the sweep: the body's turn applied to each one's place in the body.
+                RapierNative.Pose pose = MakePose(from + Rotate(bodyRotation, pos), bodyRotation * rot);
+                RapierNative.ShapeCastHit hit = RapierNative.r3CastShape(rapierWorld.World, in options, pose, ToNative(delta),
+                            leaf.Shape, castOptions);
+                uint status = RapierNative.r3LastStatus();
+                if (status == RapierNative.StatusNotFound)
+                    continue;
+                RapierNative.Check(status);
+                if (hit.timeOfImpact >= best)
+                    continue;
+                best = hit.timeOfImpact;
+                found = true;
+                result.ID = (uint)RapierNative.r3Collider_UserData(hit.collider).low;
+                result.Fraction = hit.timeOfImpact;
+                result.Normal = ToVector3(hit.normal1);
+                result.Point = ToVector3(hit.witness1);
+            }
+            return found ? result : new SweepHit();
         }
 
         public override RaycastHit RayTest2(

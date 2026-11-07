@@ -49,21 +49,23 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         }
 
         // Bullet builds unit shapes and scales them. Rapier's shapes cannot be scaled, so each one is built at its final
-        // size (H9): a box is Scale/2 on each side, a sphere has radius Scale.X/2, a cylinder radius Scale.X/2 and
+        // size (H9): a box is Scale/2 on each side, a sphere has radius Scale.X/2, a cylinder or cone radius Scale.X/2 and
         // half height Scale.Z/2. A capsule fits the Scale box the same way, its radius Scale.X/2 and its length Scale.Z.
-        // Rapier's cylinders and capsules run along Y, so they sit on the body turned a quarter about X.
+        // Rapier's cylinders, cones and capsules run along Y, so they sit on the body turned a quarter about X.
         public override BulletShape BuildNativeShape(BulletWorld pWorld, ShapeData shapeData)
         {
             BulletWorldRapier world = (BulletWorldRapier)pWorld;
             BSPhysicsShapeType type = shapeData.Type;
             Vector3 scale = shapeData.Scale;
+            // BulletS builds only these natively; any other type is a request for something that is not a native shape.
             if (type != BSPhysicsShapeType.SHAPE_BOX && type != BSPhysicsShapeType.SHAPE_SPHERE
-                    && type != BSPhysicsShapeType.SHAPE_CYLINDER && type != BSPhysicsShapeType.SHAPE_CAPSULE)
-                throw new NotImplementedException("BSAPIRapier." + nameof(BuildNativeShape) + " for " + type);
+                    && type != BSPhysicsShapeType.SHAPE_CYLINDER && type != BSPhysicsShapeType.SHAPE_CAPSULE
+                    && type != BSPhysicsShapeType.SHAPE_CONE)
+                return FailedShape(type, "it is not a native shape type");
 
             BulletShapeRapier shape = RegisterShape(world, MakeNativeShape(type, scale), type, scale);
-            // Rapier's cylinders run along Y, so they sit on the body turned a quarter about X.
-            if (type == BSPhysicsShapeType.SHAPE_CYLINDER)
+            // Rapier's cylinders and cones run along Y, so they sit on the body turned a quarter about X.
+            if (type == BSPhysicsShapeType.SHAPE_CYLINDER || type == BSPhysicsShapeType.SHAPE_CONE)
                 shape.LocalRot = YAxisToZAxis;
             shape.BuildNativeAt = at => MakeNativeShape(type, at);
             shape.isNativeShape = true;
@@ -81,6 +83,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                     return RapierNative.r3BallSharedShape(scale.X * 0.5f);
                 case BSPhysicsShapeType.SHAPE_CYLINDER:
                     return RapierNative.r3CylinderSharedShape(scale.Z * 0.5f, scale.X * 0.5f);
+                case BSPhysicsShapeType.SHAPE_CONE:
+                    return RapierNative.r3ConeSharedShape(scale.Z * 0.5f, scale.X * 0.5f);
                 default:
                     return MakeZCapsule(scale.X * 0.5f, Math.Max(scale.Z - scale.X, 0f));
             }
@@ -864,39 +868,75 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             return ((BulletShapeRapier)shape).Margin;
         }
 
-        public override float GetAngularMotionDisc(BulletShape shape)
+        // Half the diagonal of the shape's bounds (map row 42): the radius of the sphere that holds it. A compound's
+        // bounds hold its children.
+        public override float GetAngularMotionDisc(BulletShape pShape)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(GetAngularMotionDisc));
+            BulletShapeRapier shape = (BulletShapeRapier)pShape;
+            List<(BulletShapeRapier leaf, Vector3 pos, Quaternion rot)> leaves = new List<(BulletShapeRapier leaf, Vector3 pos, Quaternion rot)>();
+            Flatten(shape, Vector3.Zero, Quaternion.Identity, 0, leaves);
+            if (leaves.Count == 0)
+                return 0f;
+            Vector3 min = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
+            Vector3 max = new Vector3(float.MinValue, float.MinValue, float.MinValue);
+            foreach ((BulletShapeRapier leaf, Vector3 pos, Quaternion rot) in leaves)
+            {
+                RapierNative.Aabb box = RapierNative.r3SharedShape_ComputeAabb(leaf.Shape, MakePose(pos, rot));
+                min = Vector3.Min(min, ToVector3(box.mins));
+                max = Vector3.Max(max, ToVector3(box.maxs));
+            }
+            return (max - min).Length() * 0.5f;
         }
 
+        // Map row 43: a constant. Bullet's default (0.2) unless the GlobalContactBreakingThreshold parameter gives one.
         public override float GetContactBreakingThreshold(BulletShape shape, float defaultFactor)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(GetContactBreakingThreshold));
+            return BSParam.GlobalContactBreakingThreshold > 0f ? BSParam.GlobalContactBreakingThreshold : 0.2f;
         }
 
+        // The shape type decides the kind of shape (map rows 44 to 51), as BulletS made it.
         public override bool IsPolyhedral(BulletShape shape)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(IsPolyhedral));
+            BSPhysicsShapeType type = shape.shapeType;
+            return type == BSPhysicsShapeType.SHAPE_BOX || type == BSPhysicsShapeType.SHAPE_CONVEXHULL;
         }
 
+        // Rapier is 3D only.
         public override bool IsConvex2d(BulletShape shape)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(IsConvex2d));
+            return false;
         }
 
         public override bool IsConvex(BulletShape shape)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(IsConvex));
+            switch (shape.shapeType)
+            {
+                case BSPhysicsShapeType.SHAPE_BOX:
+                case BSPhysicsShapeType.SHAPE_SPHERE:
+                case BSPhysicsShapeType.SHAPE_CAPSULE:
+                case BSPhysicsShapeType.SHAPE_CYLINDER:
+                case BSPhysicsShapeType.SHAPE_CONE:
+                case BSPhysicsShapeType.SHAPE_CONVEXHULL:
+                case BSPhysicsShapeType.SHAPE_AVATAR:
+                    return true;
+                default:
+                    return false;
+            }
         }
 
+        // The shapes that never move: the heightfield (terrain) and the ground plane.
         public override bool IsNonMoving(BulletShape shape)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(IsNonMoving));
+            BSPhysicsShapeType type = shape.shapeType;
+            return type == BSPhysicsShapeType.SHAPE_TERRAIN || type == BSPhysicsShapeType.SHAPE_HEIGHTMAP
+                || type == BSPhysicsShapeType.SHAPE_GROUNDPLANE;
         }
 
         public override bool IsConcave(BulletShape shape)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(IsConcave));
+            BSPhysicsShapeType type = shape.shapeType;
+            return type == BSPhysicsShapeType.SHAPE_MESH || type == BSPhysicsShapeType.SHAPE_GIMPACT
+                || type == BSPhysicsShapeType.SHAPE_TERRAIN || type == BSPhysicsShapeType.SHAPE_HEIGHTMAP;
         }
 
         // A BulletS compound (CreateCompoundShape). A hull list is one native shape, as BulletS treats it.
@@ -907,12 +947,13 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
 
         public override bool IsSoftBody(BulletShape shape)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(IsSoftBody));
+            return false;
         }
 
+        // Only the ground plane, which Bullet makes a half-space (Rapier's is a large slab).
         public override bool IsInfinite(BulletShape shape)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(IsInfinite));
+            return shape.shapeType == BSPhysicsShapeType.SHAPE_GROUNDPLANE;
         }
     }
 }

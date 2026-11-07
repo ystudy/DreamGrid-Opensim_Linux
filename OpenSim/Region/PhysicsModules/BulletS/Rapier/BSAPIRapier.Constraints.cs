@@ -127,7 +127,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         // Body1 null means the world anchor. A constraint with a body that is gone comes back dead, as BulletS expects
         // (HasPhysicalConstraint is false).
         private static BulletConstraintRapier CreateJoint(BulletWorldRapier world, BulletBodyRapier body1, BulletBodyRapier body2,
-                        RapierNative.Pose frame1, RapierNative.Pose frame2, bool disableCollisions)
+                        RapierNative.Pose frame1, RapierNative.Pose frame2, bool disableCollisions,
+                        Action<BulletConstraintRapier> configure = null)
         {
             BulletConstraintRapier constraint = new BulletConstraintRapier(world.State, body1, body2);
             if ((body1 != null && !body1.HasPhysicalBody) || !body2.HasPhysicalBody)
@@ -140,6 +141,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             desc.contactsEnabled = disableCollisions ? 0u : 1u;
             desc.enabled = 1;
             constraint.Desc = desc;
+            // The constraint types other than the 6-DOF one start with their own limits.
+            configure?.Invoke(constraint);
             RebuildAxes(constraint);
 
             RapierNative.ImpulseJointHandle joint = RapierNative.r3InsertImpulseJoint(handle1, body2.Body, in constraint.Desc);
@@ -512,6 +515,19 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                     desc.motors[axis] = motor;
                     motored |= bit;
                 }
+                else if ((axis == 0 || axis == 3) && constraint.SliderMotorOn[axis / 3])
+                {
+                    // The slider's motor, on the slider axis: the same kind of velocity motor, limited by its force.
+                    RapierNative.JointMotor motor = defaults.motors[axis];
+                    motor.targetPos = 0f;
+                    motor.targetVel = constraint.SliderMotorVelocity[axis / 3];
+                    motor.stiffness = 0f;
+                    motor.damping = 1e4f;
+                    motor.maxForce = constraint.SliderMotorForce[axis / 3];
+                    motor.model = 1;
+                    desc.motors[axis] = motor;
+                    motored |= bit;
+                }
             }
             desc.lockedAxes = locked;
             desc.limitAxes = limited;
@@ -622,7 +638,12 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         }
 
         // ---- Constraint types BulletS never creates ----
+        //
+        // Hinge, slider, cone-twist and point-to-point are the same generic joint as the 6-DOF constraint, configured with
+        // the per-axis state that makes each one what it is (rather than separate revolute, prismatic and spherical
+        // joints), so they share the limits, motors, enabling, breaking and removal code above.
 
+        // A hinge: the pivots coincide and the hinge axis is the X axis of both frames, the one rotation left free.
         public override BulletConstraint CreateHingeConstraint(
             BulletWorld world,
             BulletBody obj1,
@@ -634,9 +655,19 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             bool useLinearReferenceFrameA,
             bool disableCollisionsBetweenLinkedBodies)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(CreateHingeConstraint));
+            return CreateJoint((BulletWorldRapier)world, (BulletBodyRapier)obj1, (BulletBodyRapier)obj2,
+                        MakePose(pivotinA, RotationFromTo(Vector3.UnitX, axisInA)),
+                        MakePose(pivotinB, RotationFromTo(Vector3.UnitX, axisInB)),
+                        disableCollisionsBetweenLinkedBodies,
+                        constraint =>
+                        {
+                            constraint.AngularLow = new Vector3(1f, 0f, 0f);
+                            constraint.AngularHigh = new Vector3(-1f, 0f, 0f);
+                        });
         }
 
+        // A slider: the frames' X axis is the sliding axis, free until limited (Bullet's lower 1, upper -1); the other
+        // linear axes and all rotations are locked.
         public override BulletConstraint CreateSliderConstraint(
             BulletWorld world,
             BulletBody obj1,
@@ -648,9 +679,19 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             bool useLinearReferenceFrameA,
             bool disableCollisionsBetweenLinkedBodies)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(CreateSliderConstraint));
+            return CreateJoint((BulletWorldRapier)world, (BulletBodyRapier)obj1, (BulletBodyRapier)obj2,
+                        MakePose(frameInAloc, frameInArot), MakePose(frameInBloc, frameInBrot), disableCollisionsBetweenLinkedBodies,
+                        constraint =>
+                        {
+                            constraint.LinearLow = new Vector3(1f, 0f, 0f);
+                            constraint.LinearHigh = new Vector3(-1f, 0f, 0f);
+                            constraint.AngularLow = Vector3.Zero;
+                            constraint.AngularHigh = Vector3.Zero;
+                        });
         }
 
+        // A ball joint: the frames' origins coincide and the rotations are free until limited (SetAngularLimits). Rapier
+        // has no cone limit, so a swing limit is a limit on each axis.
         public override BulletConstraint CreateConeTwistConstraint(
             BulletWorld world,
             BulletBody obj1,
@@ -661,9 +702,12 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             Quaternion frameInBrot,
             bool disableCollisionsBetweenLinkedBodies)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(CreateConeTwistConstraint));
+            return CreateJoint((BulletWorldRapier)world, (BulletBodyRapier)obj1, (BulletBodyRapier)obj2,
+                        MakePose(frameInAloc, frameInArot), MakePose(frameInBloc, frameInBrot), disableCollisionsBetweenLinkedBodies);
         }
 
+        // A gap (map row 151): Rapier has no gear joint between two bodies. What comes back is a constraint with nothing
+        // behind it, as for a body that is gone (HasPhysicalConstraint is false).
         public override BulletConstraint CreateGearConstraint(
             BulletWorld world,
             BulletBody obj1,
@@ -673,7 +717,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             float ratio,
             bool disableCollisionsBetweenLinkedBodies)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(CreateGearConstraint));
+            BulletWorldRapier rapierWorld = (BulletWorldRapier)world;
+            LogOnce(rapierWorld, false, "gear-constraint", "CreateGearConstraint is not supported: Rapier has no gear joint "
+                        + "between two bodies (map row 151); no constraint was made");
+            return new BulletConstraintRapier(rapierWorld.State, (BulletBodyRapier)obj1, (BulletBodyRapier)obj2);
         }
 
         public override BulletConstraint CreatePoint2PointConstraint(
@@ -684,9 +731,11 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             Vector3 pivotInB,
             bool disableCollisionsBetweenLinkedBodies)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(CreatePoint2PointConstraint));
+            return CreateJoint((BulletWorldRapier)world, (BulletBodyRapier)obj1, (BulletBodyRapier)obj2,
+                        MakePose(pivotInA, Quaternion.Identity), MakePose(pivotInB, Quaternion.Identity), disableCollisionsBetweenLinkedBodies);
         }
 
+        // The limits of the hinge axis. Softness, bias and relaxation are dropped (map row 161).
         public override bool HingeSetLimits(
             BulletConstraint constrain,
             float low,
@@ -695,14 +744,50 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             float bias,
             float relaxation)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(HingeSetLimits));
+            BulletConstraintRapier constraint = (BulletConstraintRapier)constrain;
+            if (!constraint.HasPhysicalConstraint)
+                return false;
+            constraint.AngularLow = new Vector3(low, constraint.AngularLow.Y, constraint.AngularLow.Z);
+            constraint.AngularHigh = new Vector3(high, constraint.AngularHigh.Y, constraint.AngularHigh.Z);
+            RebuildAxes(constraint);
+            ApplyDesc(constraint);
+            return true;
         }
 
+        // One end of the slider's range, linear or angular, on the slider axis (X).
         public override bool SliderSetLimits(BulletConstraint constrain, int lowerUpper, int linAng, float val)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(SliderSetLimits));
+            BulletConstraintRapier constraint = (BulletConstraintRapier)constrain;
+            if (!constraint.HasPhysicalConstraint)
+                return false;
+            bool angular = linAng == SLIDER_ANGULAR;
+            if (!angular && linAng != SLIDER_LINEAR)
+                return false;
+            if (lowerUpper == SLIDER_LOWER_LIMIT)
+            {
+                if (angular)
+                    constraint.AngularLow = new Vector3(val, constraint.AngularLow.Y, constraint.AngularLow.Z);
+                else
+                    constraint.LinearLow = new Vector3(val, constraint.LinearLow.Y, constraint.LinearLow.Z);
+            }
+            else if (lowerUpper == SLIDER_UPPER_LIMIT)
+            {
+                if (angular)
+                    constraint.AngularHigh = new Vector3(val, constraint.AngularHigh.Y, constraint.AngularHigh.Z);
+                else
+                    constraint.LinearHigh = new Vector3(val, constraint.LinearHigh.Y, constraint.LinearHigh.Z);
+            }
+            else
+            {
+                return false;
+            }
+            RebuildAxes(constraint);
+            ApplyDesc(constraint);
+            return true;
         }
 
+        // A gap (map row 167): Bullet's slider softness, restitution and damping settings have no Rapier counterpart.
+        // Logged once for the world; nothing is changed.
         public override bool SliderSet(
             BulletConstraint constrain,
             int softRestDamp,
@@ -710,17 +795,61 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             int linAng,
             float val)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(SliderSet));
+            BulletConstraintRapier constraint = (BulletConstraintRapier)constrain;
+            LogOnce(constraint.State, "slider-set", "SliderSet is ignored: Rapier has no slider softness, restitution or "
+                        + "damping settings (map row 167)");
+            return constraint.HasPhysicalConstraint;
         }
 
         public override bool SliderMotorEnable(BulletConstraint constrain, int linAng, float numericTrueFalse)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(SliderMotorEnable));
+            BulletConstraintRapier constraint = (BulletConstraintRapier)constrain;
+            if (!constraint.HasPhysicalConstraint || (linAng != SLIDER_LINEAR && linAng != SLIDER_ANGULAR))
+                return false;
+            constraint.SliderMotorOn[linAng == SLIDER_ANGULAR ? 1 : 0] = numericTrueFalse != 0f;
+            RebuildAxes(constraint);
+            ApplyDesc(constraint);
+            return true;
         }
 
+        // The target velocity or the largest force of the slider's motor.
         public override bool SliderMotor(BulletConstraint constrain, int forceVel, int linAng, float val)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(SliderMotor));
+            BulletConstraintRapier constraint = (BulletConstraintRapier)constrain;
+            if (!constraint.HasPhysicalConstraint || (linAng != SLIDER_LINEAR && linAng != SLIDER_ANGULAR))
+                return false;
+            int which = linAng == SLIDER_ANGULAR ? 1 : 0;
+            if (forceVel == SLIDER_MOTOR_VELOCITY)
+                constraint.SliderMotorVelocity[which] = val;
+            else if (forceVel == SLIDER_MAX_MOTOR_FORCE)
+                constraint.SliderMotorForce[which] = Math.Max(0f, val);
+            else
+                return false;
+            RebuildAxes(constraint);
+            ApplyDesc(constraint);
+            return true;
+        }
+
+        // The rotation that takes the direction 'from' to the direction 'to' (identity for a zero vector).
+        private static Quaternion RotationFromTo(Vector3 from, Vector3 to)
+        {
+            if (to.LengthSquared() < 1e-12f)
+                return Quaternion.Identity;
+            from = from / from.Length();
+            to = to / to.Length();
+            float dot = Vector3.Dot(from, to);
+            if (dot > 0.999999f)
+                return Quaternion.Identity;
+            if (dot < -0.999999f)
+            {
+                // Opposite: a half turn about any axis at right angles to 'from'.
+                Vector3 across = Vector3.Cross(from, Math.Abs(from.Y) < 0.9f ? Vector3.UnitY : Vector3.UnitZ);
+                across = across / across.Length();
+                return new Quaternion(across.X, across.Y, across.Z, 0f);
+            }
+            Vector3 axis = Vector3.Cross(from, to);
+            float length = MathF.Sqrt(axis.LengthSquared() + (1f + dot) * (1f + dot));
+            return new Quaternion(axis.X / length, axis.Y / length, axis.Z / length, (1f + dot) / length);
         }
     }
 }

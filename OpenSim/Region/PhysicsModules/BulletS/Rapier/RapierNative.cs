@@ -726,6 +726,70 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         public static extern Aabb r3SharedShape_ComputeAabb(IntPtr shape, Pose pose);
 
+        // ---- Remaining members: getters, shape casts and counters ----
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern IntPtr r3ConeSharedShape(float halfHeight, float radius);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern float r3Collider_Friction(ColliderHandle handle);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern float r3Collider_Restitution(ColliderHandle handle);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern float r3RigidBody_LinearDamping(RigidBodyHandle handle);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern float r3RigidBody_AngularDamping(RigidBodyHandle handle);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3RigidBody_IsFixed(RigidBodyHandle handle);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3RigidBody_IsKinematic(RigidBodyHandle handle);
+
+        // World-space velocity at a world-space point, including the angular motion.
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern Vector r3RigidBody_VelocityAtPoint(RigidBodyHandle handle, Vector point);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3SetCountersEnabled(IntPtr world, uint enabled);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern double r3StepTimeMs(IntPtr world);
+
+        // R3ShapeCastOptions and R3ShapeCastHit.
+        [StructLayout(LayoutKind.Sequential)]
+        public struct ShapeCastOptions
+        {
+            public float maxTimeOfImpact;
+            public float targetDistance;
+            public uint stopAtPenetration;
+            public uint computeImpactGeometryOnPenetration;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct ShapeCastHit
+        {
+            public ColliderHandle collider;
+            public float timeOfImpact;
+            public Vector witness1;
+            public Vector witness2;
+            public Vector normal1;
+            public Vector normal2;
+            public uint status;
+        }
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern ShapeCastOptions r3DefaultShapeCastOptions();
+
+        // First hit of the shape moved from the pose by velocity * t for 0 <= t <= options.maxTimeOfImpact; a miss reports
+        // R3_NOT_FOUND in r3LastStatus.
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern ShapeCastHit r3CastShape(IntPtr world, in QueryOptions queryOptions, Pose pose, Vector velocity,
+                                    IntPtr shape, ShapeCastOptions options);
+
         // ---- Status and ABI helpers ----
 
         /// <summary>Throws InvalidOperationException with Rapier's last error message when status is not R3_OK (0).</summary>

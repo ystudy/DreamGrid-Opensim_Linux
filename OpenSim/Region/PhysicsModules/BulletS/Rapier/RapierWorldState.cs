@@ -241,6 +241,9 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         // a shape is never freed twice.
         public readonly HashSet<IntPtr> Shapes = new HashSet<IntPtr>();
 
+        // The flag SetForceUpdateAllAabbs last set (map rows 10 and 11); Rapier has nothing to set.
+        public bool ForceUpdateAllAabbs;
+
         // Messages already logged once for this world (ignored flags and the like), so a repeated call logs nothing.
         public readonly HashSet<string> LoggedOnce = new HashSet<string>();
 

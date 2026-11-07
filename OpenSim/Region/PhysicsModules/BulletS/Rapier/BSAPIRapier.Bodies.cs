@@ -117,6 +117,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         // then on this body until another shape replaces it, the body goes or the compound is deleted.
         private static void AttachShape(BulletBodyRapier body, BulletShapeRapier shape)
         {
+            body.Shape = shape;
             CompoundState compound = shape.Compound;
             if (compound == null)
             {
@@ -312,12 +313,22 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         public override void SetMassProps(BulletBody obj, float mass, Vector3 inertia)
         {
             BulletBodyRapier body = (BulletBodyRapier)obj;
+            body.Mass = Math.Max(mass, 0f);
+            body.Inertia = new Vector3(Math.Max(inertia.X, 0f), Math.Max(inertia.Y, 0f), Math.Max(inertia.Z, 0f));
+            ApplyMassProperties(body);
+        }
+
+        // Give Rapier the mass, inertia, centre of mass and inertia frame the body was last told (map rows 102, 105, 111).
+        private static void ApplyMassProperties(BulletBodyRapier body)
+        {
+            if (!body.HasPhysicalBody)
+                return;
             RapierNative.MassProperties props = new RapierNative.MassProperties
             {
-                localCom = default(RapierNative.Vector),
-                mass = Math.Max(mass, 0f),
-                principalInertia = ToNative(new Vector3(Math.Max(inertia.X, 0f), Math.Max(inertia.Y, 0f), Math.Max(inertia.Z, 0f))),
-                principalInertiaLocalFrame = ToNative(Quaternion.Identity)
+                localCom = ToNative(body.CenterOfMass),
+                mass = body.Mass,
+                principalInertia = ToNative(body.Inertia),
+                principalInertiaLocalFrame = ToNative(body.InertiaFrame)
             };
             RapierNative.Check(RapierNative.r3RigidBody_SetAdditionalMassProperties(body.Body, props, 0));
         }
@@ -332,6 +343,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         public override void SetGravity(BulletBody obj, Vector3 val)
         {
             BulletBodyRapier body = (BulletBodyRapier)obj;
+            body.Gravity = val;
             float worldZ = body.State.Gravity.Z;
             float scale = (worldZ == 0f) ? 0f : val.Z / worldZ;
             RapierNative.Check(RapierNative.r3RigidBody_SetGravityScale(body.Body, scale, 0));
@@ -371,9 +383,18 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         // 50.2% of its speed after a second, against Bullet's 50%. The same rate serves the angular side.
         public override void SetDamping(BulletBody obj, float lin_damping, float ang_damping)
         {
-            BulletBodyRapier body = (BulletBodyRapier)obj;
-            RapierNative.Check(RapierNative.r3RigidBody_SetLinearDamping(body.Body, DampingRate(lin_damping)));
-            RapierNative.Check(RapierNative.r3RigidBody_SetAngularDamping(body.Body, DampingRate(ang_damping)));
+            SetLinearDamping(obj, lin_damping);
+            SetAngularDamping(obj, ang_damping);
+        }
+
+        // The inverse of DampingRate: the Bullet damping that a Rapier rate stands for.
+        private static float BulletDamping(float rate)
+        {
+            if (rate <= 0f)
+                return 0f;
+            if (rate >= StopDampingRate)
+                return 1f;
+            return 1f - (float)Math.Exp(-rate);
         }
 
         private static float DampingRate(float bulletDamping)
@@ -442,74 +463,102 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             WakeAfterShapeChange(body);
         }
 
-        // Bullet's contact bookkeeping with no Rapier counterpart (map rows 85 and 112).
+        // Bullet's CCD bookkeeping with no Rapier counterpart (map rows 84 and 85): the value is kept for the getter.
         public override void SetHitFraction(BulletBody obj, float val)
         {
+            ((BulletBodyRapier)obj).HitFraction = val;
         }
 
-        // rapier.h has no sleep-threshold setting; Rapier's own sleep rules apply (map row 112).
+        // A gap (map row 112): rapier.h has no sleep-threshold setting, so Rapier's own sleep rules apply. The values are
+        // kept for GetLinearSleepingThreshold.
         public override void SetSleepingThresholds(BulletBody obj, float lin_threshold, float ang_threshold)
         {
+            BulletBodyRapier body = (BulletBodyRapier)obj;
+            body.LinearSleepingThreshold = lin_threshold;
+            body.AngularSleepingThreshold = ang_threshold;
+            LogOnce(body, "sleep-thresholds", "SetSleepingThresholds is ignored: Rapier has no sleep thresholds to set "
+                        + "(map row 112); its own sleep rules apply");
+        }
+
+        private static bool LiveBody(BulletBody obj)
+        {
+            return obj.HasPhysicalBody;
+        }
+
+        private static float Reciprocal(float value)
+        {
+            return value > 0f ? 1f / value : 0f;
         }
 
         public override BulletShape GetCollisionShape(BulletBody obj)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(GetCollisionShape));
+            BulletShapeRapier shape = ((BulletBodyRapier)obj).Shape;
+            return shape ?? new BulletShapeRapier(IntPtr.Zero, BSPhysicsShapeType.SHAPE_UNKNOWN, Vector3.One);
         }
 
         public override bool IsStaticObject(BulletBody obj)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(IsStaticObject));
+            return LiveBody(obj) && RapierNative.r3RigidBody_IsFixed(((BulletBodyRapier)obj).Body) != 0;
         }
 
         public override bool IsKinematicObject(BulletBody obj)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(IsKinematicObject));
+            return LiveBody(obj) && RapierNative.r3RigidBody_IsKinematic(((BulletBodyRapier)obj).Body) != 0;
         }
 
         public override bool IsStaticOrKinematicObject(BulletBody obj)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(IsStaticOrKinematicObject));
+            return LiveBody(obj) && (RapierNative.r3RigidBody_IsFixed(((BulletBodyRapier)obj).Body) != 0
+                        || RapierNative.r3RigidBody_IsKinematic(((BulletBodyRapier)obj).Body) != 0);
         }
 
         public override float GetRestitution(BulletBody obj)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(GetRestitution));
+            BulletBodyRapier body = (BulletBodyRapier)obj;
+            if (body.Colliders.Count > 0)
+                return RapierNative.r3Collider_Restitution(body.Colliders[0]);
+            return body.Restitution ?? RapierNative.r3DefaultColliderDesc().restitution;
         }
 
         public override float GetFriction(BulletBody obj)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(GetFriction));
+            BulletBodyRapier body = (BulletBodyRapier)obj;
+            if (body.Colliders.Count > 0)
+                return RapierNative.r3Collider_Friction(body.Colliders[0]);
+            return body.Friction ?? RapierNative.r3DefaultColliderDesc().friction;
         }
 
         public override Vector3 GetAnisotripicFriction(BulletConstraint constrain)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(GetAnisotripicFriction));
+            return ((BulletConstraintRapier)constrain).AnisotropicFriction;
         }
 
         public override Vector3 SetAnisotripicFriction(BulletConstraint constrain, Vector3 frict)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(SetAnisotripicFriction));
+            // A gap (map row 76): Rapier's friction is one coefficient per collider. The call is logged once and changes nothing.
+            BulletConstraintRapier constraint = (BulletConstraintRapier)constrain;
+            LogOnce(constraint.State, "anisotropic-friction", "SetAnisotripicFriction is ignored: Rapier's friction is isotropic (map row 76)");
+            return constraint.AnisotropicFriction;
         }
 
         public override bool HasAnisotripicFriction(BulletConstraint constrain)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(HasAnisotripicFriction));
+            return false;
         }
 
         public override void SetInterpolationLinearVelocity(BulletBody obj, Vector3 vel)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(SetInterpolationLinearVelocity));
+            // Rapier keeps no interpolation state (map row 81).
         }
 
         public override void SetInterpolationVelocity(BulletBody obj, Vector3 linearVel, Vector3 angularVel)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(SetInterpolationVelocity));
+            // Rapier keeps no interpolation state (map row 83).
         }
 
         public override float GetHitFraction(BulletBody obj)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(GetHitFraction));
+            return ((BulletBodyRapier)obj).HitFraction;
         }
 
         public override float GetCcdMotionThreshold(BulletBody obj)
@@ -540,52 +589,72 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
 
         public override IntPtr GetUserPointer(BulletBody obj)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(GetUserPointer));
+            // The low half of the user data is the localID; the pointer lives in the high half.
+            return new IntPtr(unchecked((long)RapierNative.r3RigidBody_UserData(((BulletBodyRapier)obj).Body).high));
         }
 
         public override void SetUserPointer(BulletBody obj, IntPtr val)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(SetUserPointer));
+            BulletBodyRapier body = (BulletBodyRapier)obj;
+            RapierNative.UserData data = RapierNative.r3RigidBody_UserData(body.Body);
+            data.high = unchecked((ulong)val.ToInt64());
+            RapierNative.Check(RapierNative.r3RigidBody_SetUserData(body.Body, data));
         }
 
         public override void ApplyGravity(BulletBody obj)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(ApplyGravity));
+            // Bullet adds gravity * mass as a force (map row 92). Like any force it stays until the step's reset.
+            BulletBodyRapier body = (BulletBodyRapier)obj;
+            if (!body.HasPhysicalBody)
+                return;
+            Vector3 force = GetGravity(obj) * RapierNative.r3RigidBody_Mass(body.Body);
+            RapierNative.Check(RapierNative.r3RigidBody_AddForce(body.Body, ToNative(force), force != Vector3.Zero ? 1u : 0u));
+            body.State.ForcedBodies.Add(body);
         }
 
         public override Vector3 GetGravity(BulletBody obj)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(GetGravity));
+            BulletBodyRapier body = (BulletBodyRapier)obj;
+            return body.Gravity ?? body.State.Gravity;
         }
 
         public override void SetLinearDamping(BulletBody obj, float lin_damping)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(SetLinearDamping));
+            BulletBodyRapier body = (BulletBodyRapier)obj;
+            RapierNative.Check(RapierNative.r3RigidBody_SetLinearDamping(body.Body, DampingRate(lin_damping)));
         }
 
         public override void SetAngularDamping(BulletBody obj, float ang_damping)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(SetAngularDamping));
+            BulletBodyRapier body = (BulletBodyRapier)obj;
+            RapierNative.Check(RapierNative.r3RigidBody_SetAngularDamping(body.Body, DampingRate(ang_damping)));
         }
 
         public override float GetLinearDamping(BulletBody obj)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(GetLinearDamping));
+            return BulletDamping(RapierNative.r3RigidBody_LinearDamping(((BulletBodyRapier)obj).Body));
         }
 
         public override float GetAngularDamping(BulletBody obj)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(GetAngularDamping));
+            return BulletDamping(RapierNative.r3RigidBody_AngularDamping(((BulletBodyRapier)obj).Body));
         }
 
         public override float GetLinearSleepingThreshold(BulletBody obj)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(GetLinearSleepingThreshold));
+            return ((BulletBodyRapier)obj).LinearSleepingThreshold;
         }
 
         public override void ApplyDamping(BulletBody obj, float timeStep)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(ApplyDamping));
+            // btRigidBody::applyDamping: the velocities lose (1 - damping)^timeStep.
+            BulletBodyRapier body = (BulletBodyRapier)obj;
+            if (!body.HasPhysicalBody)
+                return;
+            float linear = MathF.Pow(1f - GetLinearDamping(obj), timeStep);
+            float angular = MathF.Pow(1f - GetAngularDamping(obj), timeStep);
+            RapierNative.Check(RapierNative.r3RigidBody_SetLinvel(body.Body, ToNative(GetLinearVelocity(obj) * linear), 0));
+            RapierNative.Check(RapierNative.r3RigidBody_SetAngvel(body.Body, ToNative(GetAngularVelocity(obj) * angular), 0));
         }
 
         public override Vector3 GetLinearFactor(BulletBody obj)
@@ -602,7 +671,12 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
 
         public override void SetCenterOfMassByPosRot(BulletBody obj, Vector3 pos, Quaternion rot)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(SetCenterOfMassByPosRot));
+            // The position becomes the local centre of mass of the additional mass properties and the rotation their inertia
+            // frame (map row 105); the colliders stay where they are in the body.
+            BulletBodyRapier body = (BulletBodyRapier)obj;
+            body.CenterOfMass = pos;
+            body.InertiaFrame = rot;
+            ApplyMassProperties(body);
         }
 
         // A force and a torque stay on a Rapier body until reset, so the body is noted and PhysicsStep resets it (H11).
@@ -650,12 +724,15 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
 
         public override Vector3 GetInvInertiaDiagLocal(BulletBody obj)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(GetInvInertiaDiagLocal));
+            Vector3 inertia = ((BulletBodyRapier)obj).Inertia;
+            return new Vector3(Reciprocal(inertia.X), Reciprocal(inertia.Y), Reciprocal(inertia.Z));
         }
 
         public override void SetInvInertiaDiagLocal(BulletBody obj, Vector3 inert)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(SetInvInertiaDiagLocal));
+            BulletBodyRapier body = (BulletBodyRapier)obj;
+            body.Inertia = new Vector3(Reciprocal(inert.X), Reciprocal(inert.Y), Reciprocal(inert.Z));
+            ApplyMassProperties(body);
         }
 
         public override void ApplyTorque(BulletBody obj, Vector3 torque)
@@ -716,22 +793,27 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
 
         public override Vector3 GetVelocityInLocalPoint(BulletBody obj, Vector3 pos)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(GetVelocityInLocalPoint));
+            // As ApplyForce, the point is relative to the centre of mass (map row 125).
+            BulletBodyRapier body = (BulletBodyRapier)obj;
+            RapierNative.Vector point = ToNative(ToVector3(RapierNative.r3RigidBody_CenterOfMass(body.Body)) + pos);
+            return ToVector3(RapierNative.r3RigidBody_VelocityAtPoint(body.Body, point));
         }
 
         public override void Translate(BulletBody obj, Vector3 trans)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(Translate));
+            BulletBodyRapier body = (BulletBodyRapier)obj;
+            if (body.HasPhysicalBody)
+                RapierNative.Check(RapierNative.r3RigidBody_SetTranslation(body.Body, ToNative(BodyPosition(body) + trans), 1));
         }
 
         public override void UpdateDeactivation(BulletBody obj, float timeStep)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(UpdateDeactivation));
+            // Rapier runs its own sleep logic (map row 127).
         }
 
         public override bool WantsSleeping(BulletBody obj)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(WantsSleeping));
+            return LiveBody(obj) && RapierNative.r3RigidBody_IsSleeping(((BulletBodyRapier)obj).Body) != 0;
         }
 
         public override void SetAngularFactor(BulletBody obj, float factor)
@@ -753,27 +835,34 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
 
         public override void AddConstraintRef(BulletBody obj, BulletConstraint constrain)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(AddConstraintRef));
+            List<BulletConstraint> refs = ((BulletBodyRapier)obj).ConstraintRefs;
+            if (!refs.Contains(constrain))
+                refs.Add(constrain);
         }
 
         public override void RemoveConstraintRef(BulletBody obj, BulletConstraint constrain)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(RemoveConstraintRef));
+            ((BulletBodyRapier)obj).ConstraintRefs.Remove(constrain);
         }
 
         public override BulletConstraint GetConstraintRef(BulletBody obj, int index)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(GetConstraintRef));
+            BulletBodyRapier body = (BulletBodyRapier)obj;
+            if (index >= 0 && index < body.ConstraintRefs.Count)
+                return body.ConstraintRefs[index];
+            // Out of range: a constraint with nothing behind it, as BulletS expects for a missing one.
+            return new BulletConstraintRapier(body.State, null, null);
         }
 
         public override int GetNumConstraintRefs(BulletBody obj)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(GetNumConstraintRefs));
+            return ((BulletBodyRapier)obj).ConstraintRefs.Count;
         }
 
         public override bool ClearCollisionProxyCache(BulletWorld world, BulletBody obj)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(ClearCollisionProxyCache));
+            // Rapier has no pair cache to clear (map row 15).
+            return true;
         }
     }
 }

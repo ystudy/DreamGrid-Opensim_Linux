@@ -36,8 +36,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
     /// BulletS's physics engine interface (BSAPITemplate) on top of Rapier (0.36 C bindings through RapierNative).
     /// BSScene holds one of these and calls it from the thread that runs its taints and its step, so every Rapier call
     /// happens on that thread. The members are spread over partial files by subject; docs/superpowers/specs/
-    /// 2026-11-06-rapier-bsapi-map.md maps each one. A member no task has implemented yet throws NotImplementedException
-    /// naming itself.
+    /// 2026-11-06-rapier-bsapi-map.md maps each one. Members Rapier has no counterpart for (the map's gaps) log once
+    /// and return a neutral value.
     /// </summary>
     public sealed partial class BSAPIRapier : BSAPITemplate
     {
@@ -117,6 +117,26 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             public Vector3 RootChildPos;
             public Quaternion RootChildRot = Quaternion.Identity;
 
+            // The shape last put on the body (CreateBodyFromShape, SetCollisionShape), for GetCollisionShape and sweeps.
+            public BulletShapeRapier Shape;
+
+            // Values Rapier has no place for, kept for the getters (map rows 60, 84, 94, 100, 105, 110, 128).
+            // The gravity last set, or none (the world's applies).
+            public Vector3? Gravity;
+            public float HitFraction = 1f;
+            public float LinearSleepingThreshold = 0.8f;
+            public float AngularSleepingThreshold = 1f;
+            public float DeactivationTime = 2f;
+            // Bullet's activation state number (ActivationState); 1 is ACTIVE_TAG.
+            public int Activation = 1;
+            // What SetMassProps and SetCenterOfMassByPosRot last gave the additional mass properties.
+            public float Mass;
+            public Vector3 Inertia;
+            public Vector3 CenterOfMass;
+            public Quaternion InertiaFrame = Quaternion.Identity;
+            // The constraints BulletS told the body about (AddConstraintRef); not the joints Rapier holds.
+            public readonly List<BulletConstraint> ConstraintRefs = new List<BulletConstraint>();
+
             // The constraints this body is joined by; they die with it.
             private List<BulletConstraintRapier> m_joints;
 
@@ -163,7 +183,9 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                 Colliders.Clear();
                 OwnedShape = null;
                 Compound = null;
+                Shape = null;
                 HasRootChild = false;
+                ConstraintRefs.Clear();
             }
 
             public override string AddrString
@@ -328,6 +350,14 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             public float Erp = 0.2f;
             public float Cfm;
 
+            // The slider's motors, linear (0) and angular (1); they drive the slider axis, X of the frame.
+            public readonly bool[] SliderMotorOn = new bool[2];
+            public readonly float[] SliderMotorVelocity = new float[2];
+            public readonly float[] SliderMotorForce = new float[2];
+
+            // The anisotropic friction last given (SetAnisotripicFriction is a gap, map row 76); Bullet's default is 1.
+            public Vector3 AnisotropicFriction = Vector3.One;
+
             // The impulse above which the joint breaks, and whether it has.
             public float BreakingThreshold = float.PositiveInfinity;
             public bool Broken;
@@ -403,6 +433,13 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             if (warn)
                 PhysicsScene.Logger.WarnFormat("{0} {1}", LogHeader, message);
             else
+                PhysicsScene.Logger.DebugFormat("{0} {1}", LogHeader, message);
+        }
+
+        // Same for a constraint, which knows its world's state but not the world.
+        internal void LogOnce(RapierWorldState state, string key, string message)
+        {
+            if (state.LoggedOnce.Add(key))
                 PhysicsScene.Logger.DebugFormat("{0} {1}", LogHeader, message);
         }
 
@@ -502,19 +539,21 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         {
         }
 
+        // Map row 9: pass the poses of bodies that moved on to their colliders.
         public override void UpdateAabbs(BulletWorld world)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(UpdateAabbs));
+            RapierNative.Check(RapierNative.r3RigidBodyPropagateModifiedBodyPositionsToColliders(((BulletWorldRapier)world).World));
         }
 
+        // Map rows 10 and 11: the flag is kept; there is nothing to set in Rapier.
         public override bool GetForceUpdateAllAabbs(BulletWorld world)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(GetForceUpdateAllAabbs));
+            return ((BulletWorldRapier)world).State.ForceUpdateAllAabbs;
         }
 
         public override void SetForceUpdateAllAabbs(BulletWorld world, bool force)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(SetForceUpdateAllAabbs));
+            ((BulletWorldRapier)world).State.ForceUpdateAllAabbs = force;
         }
     }
 }

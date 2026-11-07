@@ -163,6 +163,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             BulletBodyRapier body = (BulletBodyRapier)pBody;
             if (!body.HasPhysicalBody)
                 return;
+            body.Activation = (int)state;
 
             if (state == ActivationState.DISABLE_SIMULATION)
             {
@@ -239,29 +240,46 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             return (((BulletBodyRapier)obj).Flags & CollisionFlags.CF_NO_CONTACT_RESPONSE) == 0;
         }
 
+        // Bullet's number for the state (ActivationState): what the body was last forced to, except that a body Rapier has
+        // put to sleep is ISLAND_SLEEPING and one that has woken from a forced sleep is active again (map row 64).
         public override int GetActivationState(BulletBody obj)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(GetActivationState));
+            BulletBodyRapier body = (BulletBodyRapier)obj;
+            if (body.SimulationDisabled)
+                return (int)ActivationState.DISABLE_SIMULATION;
+            bool asleep = body.HasPhysicalBody && RapierNative.r3RigidBody_IsSleeping(body.Body) != 0;
+            if (asleep)
+                return (int)ActivationState.ISLAND_SLEEPING;
+            return body.Activation == (int)ActivationState.ISLAND_SLEEPING ? (int)ActivationState.ACTIVE_TAG : body.Activation;
         }
 
+        // Bullet's setActivationState: the same as forcing the state (map row 65). A number that is no state is ignored.
         public override void SetActivationState(BulletBody obj, int state)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(SetActivationState));
+            if (state >= (int)ActivationState.ACTIVE_TAG && state <= (int)ActivationState.DISABLE_SIMULATION)
+                ForceActivationState(obj, (ActivationState)state);
         }
 
+        // A gap (map row 66): rapier.h has no sleep timer, so Rapier's own sleep rules apply. The value is kept for
+        // GetDeactivationTime.
         public override void SetDeactivationTime(BulletBody obj, float dtime)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(SetDeactivationTime));
+            BulletBodyRapier body = (BulletBodyRapier)obj;
+            body.DeactivationTime = dtime;
+            LogOnce(body, "deactivation-time", "SetDeactivationTime is ignored: Rapier has no sleep timer to set "
+                        + "(map row 66); its own sleep rules apply");
         }
 
         public override float GetDeactivationTime(BulletBody obj)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(GetDeactivationTime));
+            return ((BulletBodyRapier)obj).DeactivationTime;
         }
 
+        // Awake and simulated (map row 70).
         public override bool IsActive(BulletBody obj)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(IsActive));
+            BulletBodyRapier body = (BulletBodyRapier)obj;
+            return body.HasPhysicalBody && !body.SimulationDisabled && RapierNative.r3RigidBody_IsSleeping(body.Body) == 0;
         }
 
         // A volume-detect body (H4): a rigid body whose collider is a sensor. A sensor reports overlaps instead of making
