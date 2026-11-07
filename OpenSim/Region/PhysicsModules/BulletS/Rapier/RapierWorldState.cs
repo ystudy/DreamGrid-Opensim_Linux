@@ -45,6 +45,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         // The step length last given to r3SetTimeStep, so it is only set again when BSScene changes it.
         public float TimeStep;
 
+        // BSScene's FixedTimeStep when the world was made: the step length to assume before the first step has set
+        // TimeStep (constraint softness, say).
+        public float ConfiguredTimeStep;
+
         // Simulated time BSScene handed over but PhysicsStep has not stepped yet (Bullet's m_localTime).
         public float Accumulator;
 

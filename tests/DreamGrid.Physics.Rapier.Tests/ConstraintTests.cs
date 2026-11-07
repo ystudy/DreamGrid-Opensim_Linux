@@ -267,6 +267,37 @@ public class ConstraintTests
         Assert.Empty(log.Errors);
     }
 
+    // A CFM set before the world has ever stepped (the first frame's taints) is worked out for the step the scene will
+    // take: a near-rigid CFM is capped at a quarter of the step rate, 12.5 Hz at Rapier's 0.02 s, not 1/60's 15 Hz.
+    [Fact]
+    public void Softness_BeforeTheFirstStep_UsesTheSceneStep()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            Assert.Equal(0f, ((BSAPIRapier.BulletWorldRapier)scene.World).State.TimeStep);
+            ShapeData data = new ShapeData { Type = BSPhysicsShapeType.SHAPE_BOX, Scale = Vector3.One };
+            BulletBody a = scene.PE.CreateBodyFromShape(scene.World, scene.PE.BuildNativeShape(scene.World, data), 9101, Sky, Quaternion.Identity);
+            BulletBody b = scene.PE.CreateBodyFromShape(scene.World, scene.PE.BuildNativeShape(scene.World, data), 9102,
+                        Sky + new Vector3(2f, 0f, 0f), Quaternion.Identity);
+            scene.PE.SetMassProps(a, 1f, Vector3.One);
+            scene.PE.SetMassProps(b, 1f, Vector3.One);
+
+            BSConstraint6Dof joint = new BSConstraint6Dof(scene.World, a, b, Sky + new Vector3(1f, 0f, 0f), true, true);
+            Assert.True(joint.SetCFMAndERP(1e-6f, 1f));
+            RapierNative.JointDesc soft = RapierNative.r3ImpulseJoint_Desc(((BSAPIRapier.BulletConstraintRapier)joint.Constraint).Joint);
+            Assert.Equal(0.25f / scene.m_fixedTimeStep, soft.softness.naturalFrequency, 3);
+            Assert.Equal(12.5f, soft.softness.naturalFrequency, 3);
+            joint.Dispose();
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
     [Fact]
     public void ToPointJoint_ErpCfmSoftness_AndSolverIterations()
     {

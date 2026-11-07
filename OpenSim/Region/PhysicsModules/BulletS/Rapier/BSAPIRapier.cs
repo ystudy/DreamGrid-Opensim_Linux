@@ -512,6 +512,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             {
                 // BulletS gives the strength of gravity along Z; it is the same vector for the whole world.
                 state.Gravity = new Vector3(0f, 0f, parms.gravity);
+                state.ConfiguredTimeStep = PhysicsScene.m_fixedTimeStep;
                 RapierNative.Check(RapierNative.r3SetGravity(world, ToNative(state.Gravity)));
 
                 // Collision events (start and stop) from the colliders that want collisions, read after each substep.

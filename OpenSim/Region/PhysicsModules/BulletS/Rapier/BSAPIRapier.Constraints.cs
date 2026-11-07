@@ -425,7 +425,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                 constraint.Desc.softness = RapierNative.r3DefaultJointDesc().softness;
                 return;
             }
-            float step = constraint.State.TimeStep > 0f ? constraint.State.TimeStep : 1f / 60f;
+            // Before the first step, the step BSScene will use (0.02 s for Rapier by default, not Bullet's 1/60).
+            RapierWorldState state = constraint.State;
+            float step = state.TimeStep > 0f ? state.TimeStep
+                        : state.ConfiguredTimeStep > 0f ? state.ConfiguredTimeStep : BSScene.BulletFixedTimeStep;
             float erp = Math.Min(Math.Max(constraint.Erp, 1e-4f), 1f);
             float stiffness = erp / (cfm * step);
             float damping = (1f - erp) / cfm;
