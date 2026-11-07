@@ -53,12 +53,12 @@ public sealed class GridControllerWiringTests : IDisposable
     private const string MissingMariaDb = "no-such-dir";
 
     /// <param name="launchStandIns">A program the controller starts is a stand-in serving like a leftover one, instead of OpenSim.</param>
-    private GridController NewGrid(TimeProvider time, Action<int, IReadOnlyList<int>, CpuPriority>? cpu = null, bool launchStandIns = false)
+    private GridController NewGrid(TimeProvider time, Action<int, IReadOnlyList<int>, CpuPriority>? cpu = null, bool launchStandIns = false, PlatformSupport? platform = null)
     {
         // A MariaDB that cannot start: anything past the port check fails with a non-port error.
         var missing = Path.Combine(_root, MissingMariaDb, "mariadbd");
         return new GridController(_paths, _store, new MariaDbBinaries(missing, missing, null),
-            [new LogLevelModule()], _robust, new FakeGridJoin(), new FakeOtherGrid(), _http, time, regionStores: _ => _regionStore, cpu: cpu ?? ((_, _, _) => { }))
+            [new LogLevelModule()], _robust, new FakeGridJoin(), new FakeOtherGrid(), _http, time, regionStores: _ => _regionStore, cpu: cpu ?? ((_, _, _) => { }), platform: platform)
         {
             DatabaseRunningForTests = () => _databaseUp,
             ProgramStartForTests = launchStandIns ? _ => StandIn() : null,
@@ -2387,6 +2387,30 @@ public sealed class GridControllerWiringTests : IDisposable
         var saved = Assert.Single(_store.LoadOrCreate().Programs, p => p.Instance == "Beach");
         Assert.Equal(("BulletSim", CpuPriority.BelowNormal), (saved.Physics, saved.Options!.Priority));
         Assert.False(grid.NeedsRestart("Beach"));
+    }
+
+    [Fact]
+    public async Task A_saved_Rapier_this_computer_lacks_blocks_nothing_but_choosing_it_is_refused()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var grid = NewGrid(TimeProvider.System, (_, _, _) => { }, platform: new PlatformSupport(System.Runtime.InteropServices.OSPlatform.OSX, System.Runtime.InteropServices.Architecture.Arm64));
+        HomeAndBeach(shared: false);
+        var s = _store.LoadOrCreate();
+        _store.Save(s with { Programs = s.Programs.Select(p => p.Instance == "Home" ? p with { Physics = "Rapier" } : p).ToList() });
+
+        // Other settings save while the engine stays as it was.
+        Assert.False(await grid.SaveProgramOptionsAsync("Home", "Rapier", new ProgramOptions(FramesPerSecond: 30), ct));
+        var home = Assert.Single(_store.LoadOrCreate().Programs, p => p.Instance == "Home");
+        Assert.Equal(("Rapier", 30), (home.Physics, home.Options!.FramesPerSecond));
+
+        // Choosing it for a program that did not have it is refused, and nothing is saved.
+        var refused = await Assert.ThrowsAsync<ArgumentException>(() => grid.SaveProgramOptionsAsync("Beach", "Rapier", new ProgramOptions(), ct));
+        Assert.Equal("Rapier isn't available on this computer.", refused.Message);
+        Assert.Null(Assert.Single(_store.LoadOrCreate().Programs, p => p.Instance == "Beach").Physics);
+
+        // Moving off it is fine.
+        await grid.SaveProgramOptionsAsync("Home", "BulletSim", new ProgramOptions(), ct);
+        Assert.Equal("BulletSim", Assert.Single(_store.LoadOrCreate().Programs, p => p.Instance == "Home").Physics);
     }
 
     [Fact]

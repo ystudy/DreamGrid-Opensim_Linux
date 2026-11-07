@@ -23,14 +23,15 @@ public static class RegionSettingsRules
     public static bool RapierSupportedHere() => RapierSupported(CurrentPlatform(), RuntimeInformation.OSArchitecture);
 
     /// <summary>The engines this computer can run, for the pages that offer a choice.</summary>
-    public static IReadOnlyList<string> AvailablePhysicsEngines() =>
-        RapierSupportedHere() ? PhysicsEngines : [.. PhysicsEngines.Where(e => e != "Rapier")];
+    public static IReadOnlyList<string> AvailablePhysicsEngines() => PlatformSupport.Current.Engines;
 
-    private static OSPlatform CurrentPlatform() =>
+    internal static OSPlatform CurrentPlatform() =>
         OperatingSystem.IsWindows() ? OSPlatform.Windows
         : OperatingSystem.IsLinux() ? OSPlatform.Linux
         : OperatingSystem.IsMacOS() ? OSPlatform.OSX
         : OSPlatform.Create("Other");
+
+    internal const string RapierUnavailable = "Rapier isn't available on this computer.";
 
     internal const string PriorityNeedsRoot = "On Linux only the root user can raise the priority of these regions.";
 
@@ -62,7 +63,7 @@ public static class RegionSettingsRules
         if (physics is not null && !PhysicsEngines.Contains(physics))
             errors["Physics"] = "Pick ubODE, BulletSim, BulletSimThreaded or Rapier, or use the grid default.";
         else if (physics == "Rapier" && !RapierSupported(os, arch))
-            errors["Physics"] = "Rapier isn't available on this computer.";
+            errors["Physics"] = RapierUnavailable;
         if (o.MinTimerInterval is { } t && !(t >= 0.05 && t <= 10))
             errors[nameof(ProgramOptions.MinTimerInterval)] = "Use a number of seconds from 0.05 to 10, or leave it empty for OpenSim's default.";
         if (o.FramesPerSecond is { } f && (f < 5 || f > 55))
