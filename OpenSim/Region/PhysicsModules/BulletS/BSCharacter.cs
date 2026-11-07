@@ -548,10 +548,18 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                         // This keeps us from flipping the capsule over which the veiwer does not understand.
                         float oRoll, oPitch, oYaw;
                         RawOrientation.GetEulerAngles(out oRoll, out oPitch, out oYaw);
-                        // The body already faces this way (to within float noise): nothing to set.
-                        if (PhysScene.PE.SkipsUnchangedAvatarYaw && PhysBody.HasPhysicalBody
-                                && YawWithinTolerance(PhysScene.PE.GetOrientation(PhysBody), oYaw))
-                            return;
+                        // The body already faces this way (to within float noise): nothing to set. RawOrientation
+                        // still holds the value as given, tilt included; it takes the body's yaw-only one, as the set
+                        // below would have, so a later SetTranslation (ForcePosition) cannot tilt the body.
+                        if (PhysScene.PE.SkipsUnchangedAvatarYaw && PhysBody.HasPhysicalBody)
+                        {
+                            OMV.Quaternion bodyOrientation = PhysScene.PE.GetOrientation(PhysBody);
+                            if (YawWithinTolerance(bodyOrientation, oYaw))
+                            {
+                                RawOrientation = bodyOrientation;
+                                return;
+                            }
+                        }
                         OMV.Quaternion trimmedOrientation = OMV.Quaternion.CreateFromEulers(0f, 0f, oYaw);
                         // DetailLog("{0},BSCharacter.setOrientation,taint,val={1},valDir={2},conv={3},convDir={4}",
                         //                 LocalID, RawOrientation, OMV.Vector3.UnitX * RawOrientation,

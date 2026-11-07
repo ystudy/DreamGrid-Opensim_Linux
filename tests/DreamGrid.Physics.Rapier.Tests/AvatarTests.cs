@@ -404,6 +404,33 @@ public class AvatarTests
         }
     }
 
+    [Fact]
+    public void Avatar_TiltedOrientationWithTheSameYaw_ThenAPositionSet_StaysUpright()
+    {
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            SetFlatTerrain(scene);
+            PhysicsActor avatar = AddAvatar(scene, new Vector3(128f, 128f, TerrainHeight + AvatarSize.Z / 2f + 0.3f), false);
+            avatar.Orientation = Quaternion.CreateFromEulers(0f, 0f, 0.5f);
+            RapierTestScene.Step(scene, 1.0f);
+
+            // The same yaw with a tilt (the skip leaves the body alone), then a position set in the same frame: its
+            // SetTranslation uses RawOrientation, which must not carry the tilt the yaw-only path drops.
+            avatar.Orientation = Quaternion.CreateFromEulers(0.3f, 0.2f, 0.5f);
+            avatar.Position = new Vector3(129f, 128f, avatar.Position.Z);
+            scene.Simulate(RapierTestScene.FrameSeconds);
+            Assert.True(Tilt(scene, AvatarId) < 0.001f, $"the avatar tipped by {Tilt(scene, AvatarId)} rad");
+            RapierTestScene.Step(scene, 0.5f);
+            Assert.True(Tilt(scene, AvatarId) < 0.001f, $"the avatar tipped by {Tilt(scene, AvatarId)} rad");
+            Assert.Equal(0.5f, BodyYaw(scene), 3);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
     [Theory]
     [InlineData(0.0011f)]    // just over the tolerance
     [InlineData(0.0175f)]    // one degree
