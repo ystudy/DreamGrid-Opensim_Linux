@@ -412,6 +412,16 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         public static extern uint r3SetNumThreads(IntPtr world, UIntPtr numThreads);
 
+        // How many rigid bodies, colliders and impulse joints the world holds (size_t in rapier.h).
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern UIntPtr r3RigidBodyCount(IntPtr world);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern UIntPtr r3ColliderCount(IntPtr world);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern UIntPtr r3ImpulseJointCount(IntPtr world);
+
         // hooks and events are R3PhysicsHooks* and R3EventCollector*; pass IntPtr.Zero for none.
         [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         public static extern uint r3Step(IntPtr world, IntPtr hooks, IntPtr events);
