@@ -1145,10 +1145,17 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                 object table = helper.GetField("LoadedLibs", BindingFlags.NonPublic | BindingFlags.Static)?.GetValue(null);
                 if (!(table is Dictionary<string, IntPtr> loaded))
                     return false;
-                // RegisterAssembly takes this lock around its own bookkeeping.
-                object helperLock = helper.GetField("m_mainlock", BindingFlags.NonPublic | BindingFlags.Static)?.GetValue(null);
-                lock (helperLock ?? loaded)
-                    loaded[Lib] = handle;
+                // Not thread-safe against DllmapConfigHelper itself, and no lock can make it so: the helper reads and
+                // writes LoadedLibs with no lock (its m_mainlock covers only RegisteredAssemblies). TryLoad's s_loadLock
+                // serialises the Rapier callers, and the entry is written once per process (the handle never changes
+                // after the first load). What is left is a window of microseconds during the first Rapier region's
+                // start-up: if another thread uses the table at that moment (a ubOde or BulletSim module registering
+                // its libraries, or the helper's resolver binding a DllImport of this assembly), the unsynchronised
+                // Dictionary could lose an entry or be corrupted. The helper's own writes from different threads have
+                // the same exposure to each other.
+                if (loaded.TryGetValue(Lib, out IntPtr present) && present == handle)
+                    return true;
+                loaded[Lib] = handle;
                 return true;
             }
             catch (Exception)
