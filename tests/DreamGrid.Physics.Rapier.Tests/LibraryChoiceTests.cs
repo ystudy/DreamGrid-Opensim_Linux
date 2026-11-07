@@ -48,6 +48,20 @@ public class LibraryChoiceTests
             ? h : IntPtr.Zero;
     }
 
+    // The file the dllmap lines name for this machine: rapier(-mt).dll on Windows, librapier(-mt)-<cpu>.so elsewhere.
+    private static string ShippedFileName(bool mt)
+    {
+        if (OperatingSystem.IsWindows())
+            return mt ? "rapier-mt.dll" : "rapier.dll";
+        string cpu = RuntimeInformation.ProcessArchitecture switch
+        {
+            Architecture.X64 => "x86_64",
+            Architecture.Arm64 => "arm64",
+            Architecture other => throw new PlatformNotSupportedException($"no Rapier library is shipped for {other}"),
+        };
+        return (mt ? "librapier-mt-" : "librapier-") + cpu + ".so";
+    }
+
     [Theory]
     [InlineData(0, "rapier")]
     [InlineData(1, "rapier")]
@@ -65,8 +79,8 @@ public class LibraryChoiceTests
         string? mt = RapierNative.FileOf(RapierNative.LoadFromDllmap("rapier_mt"));
         Assert.NotNull(single);
         Assert.NotNull(mt);
-        Assert.Equal(OperatingSystem.IsWindows() ? "rapier.dll" : "librapier-x86_64.so", Path.GetFileName(single));
-        Assert.Equal(OperatingSystem.IsWindows() ? "rapier-mt.dll" : "librapier-mt-x86_64.so", Path.GetFileName(mt));
+        Assert.Equal(ShippedFileName(mt: false), Path.GetFileName(single));
+        Assert.Equal(ShippedFileName(mt: true), Path.GetFileName(mt));
         // The DllImports' name must be one no other resolver can map, or it could bind them to the single-threaded
         // build after TryLoad chose rapier_mt.
         Assert.Equal(IntPtr.Zero, RapierNative.LoadFromDllmap(RapierNative.Lib));
