@@ -2,7 +2,7 @@
 
 Date: 2026-11-06. Build measured: worktree at `af52b49f` (the Task 13 build, BulletS code identical to `58c75be7`) plus
 bench-only timers. Line numbers are for `af52b49f`; where the branch head (`eebfd621`) moved a line it is given too.
-Nothing was committed. The timer patch is in `perf-timers.diff (bench-only, kept out of the repo)` next to this file.
+Nothing was committed. The bench-only timer patch is deliberately kept out of the repo.
 
 ## Short answer
 
