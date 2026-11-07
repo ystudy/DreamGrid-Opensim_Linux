@@ -1,15 +1,19 @@
 <#
-Builds rapier.dll (Rapier's C library, 3D, single precision, parallel) for 64-bit Windows from the commit in source.env.
+Builds Rapier's C library (3D, single precision) for 64-bit Windows from the commit in source.env.
 
-  build-windows.ps1 -OutDir <directory>
+  build-windows.ps1 -OutDir <directory> [-Parallel]
 
-OutDir receives rapier.dll. The C runtime is linked in statically (crt-static), so the DLL imports only KERNEL32, ntdll
+Without -Parallel the library is built without Rapier's parallel feature and OutDir receives rapier.dll, which OpenSim
+loads when RapierNumThreads is 1. With -Parallel it is built with --features parallel (rayon) and OutDir receives
+rapier-mt.dll, which OpenSim loads only when RapierNumThreads is more than 1.
+The C runtime is linked in statically (crt-static), so the DLL imports only KERNEL32, ntdll
 and api-ms-win-core-* style system DLLs, not VCRUNTIME140 or MSVCP140.
 Needs git, rustup with the toolchain named in source.env (RUST_TOOLCHAIN) and its x86_64-pc-windows-msvc target, and Visual Studio 2022 (or its Build Tools)
 with the C++ workload for the linker.
 #>
 param(
-    [Parameter(Mandatory)] [string] $OutDir
+    [Parameter(Mandatory)] [string] $OutDir,
+    [switch] $Parallel
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -46,13 +50,16 @@ try {
         Copy-Item -LiteralPath (Join-Path $here 'Cargo.lock') -Destination 'Cargo.lock'
 
         $env:RUSTFLAGS = '-C target-feature=+crt-static'
-        Invoke-Native cargo @("+$($source.RUST_TOOLCHAIN)", 'build', '--release', '--locked', '--package', $source.RAPIER_FFI_PACKAGE, '--features', 'parallel', '--target', 'x86_64-pc-windows-msvc')
+        $cargoArgs = @("+$($source.RUST_TOOLCHAIN)", 'build', '--release', '--locked', '--package', $source.RAPIER_FFI_PACKAGE, '--target', 'x86_64-pc-windows-msvc')
+        if ($Parallel) { $cargoArgs += @('--features', 'parallel') }
+        Invoke-Native cargo $cargoArgs
     } finally { Pop-Location }
 
     $dll = Join-Path $src 'target/x86_64-pc-windows-msvc/release/rapier3d_ffi.dll'
     if (-not (Test-Path -LiteralPath $dll)) { throw 'The build finished but produced no rapier3d_ffi.dll.' }
     New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
-    $target = Join-Path $OutDir 'rapier.dll'
+    $name = if ($Parallel) { 'rapier-mt.dll' } else { 'rapier.dll' }
+    $target = Join-Path $OutDir $name
     Copy-Item -LiteralPath $dll -Destination $target -Force
     Write-Host "built $target ($((Get-Item -LiteralPath $target).Length) bytes)"
 } finally {

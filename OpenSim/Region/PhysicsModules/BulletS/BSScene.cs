@@ -513,12 +513,16 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         {
             try
             {
-                string error;
-                if (!RapierNative.TryLoad(out error))
+                // BSParam is read before the engine is chosen, so RapierNumThreads picks the build: "rapier" for one
+                // thread, "rapier_mt" (parallel) for more.
+                string error, warning;
+                if (!RapierNative.TryLoad(Math.Max(1, (int)BSParam.RapierNumThreads), out error, out warning))
                 {
                     m_log.ErrorFormat("{0} Rapier native library could not be loaded: {1}", LogHeader, error);
                     return null;
                 }
+                if (warning != null)
+                    m_log.WarnFormat("{0} {1}", LogHeader, warning);
                 error = RapierNative.VerifyAbi();
                 if (error != null)
                 {

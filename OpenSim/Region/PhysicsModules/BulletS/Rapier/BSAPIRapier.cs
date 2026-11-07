@@ -525,8 +525,13 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                 int iterations = Math.Max(1, (int)BSParam.RapierSolverIterations);
                 RapierNative.Check(RapierNative.r3SetNumSolverIterations(world, (UIntPtr)iterations));
 
+                // Only the parallel build ("rapier_mt") has a pool to size. The single-threaded build steps on the
+                // calling thread; r3SetNumThreads would only answer that it is not available. A parallel build is
+                // always given a pool, even of one thread (a region that asked for 1 after another loaded rapier_mt):
+                // without one its parallel parts would use rayon's global pool, one thread per core.
                 int threads = Math.Max(1, (int)BSParam.RapierNumThreads);
-                if (RapierNative.r3SetNumThreads(world, (UIntPtr)threads) != 0)
+                if (RapierNative.r3BuildFeatures().parallel != 0
+                        && RapierNative.r3SetNumThreads(world, (UIntPtr)threads) != 0)
                 {
                     PhysicsScene.Logger.WarnFormat("{0} Could not set {1} Rapier threads, using Rapier's default: {2}",
                                 LogHeader, threads, RapierNative.LastError());

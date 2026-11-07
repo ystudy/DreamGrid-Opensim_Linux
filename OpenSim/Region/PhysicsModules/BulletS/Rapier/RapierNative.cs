@@ -43,7 +43,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
     /// </summary>
     internal static class RapierNative
     {
-        public const string Lib = "rapier";
+        // The name the DllImports bind to. No dllmap line and no file has this name, so neither the runtime's probing nor
+        // another resolver (DllmapConfigHelper's, or OpenSim's Util fallback, which would both map "rapier") can bind them
+        // to a file of its choosing: only ResolveRapier does, to the build TryLoad chose ("rapier" or "rapier_mt").
+        public const string Lib = "rapier-bound";
 
         // R3_ABI_VERSION, and R3_ABI_FEATURES for a build without RAPIER_FEM and RAPIER_ROBOTICS.
         private const uint AbiVersion = 1;
@@ -427,6 +430,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
 
         [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         public static extern uint r3SetNumThreads(IntPtr world, UIntPtr numThreads);
+
+        // The size of the world's dedicated pool; 0 for a parallel build with none, 1 for a build without parallel.
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern UIntPtr r3NumThreads(IntPtr world);
 
         // How many rigid bodies, colliders and impulse joints the world holds (size_t in rapier.h).
         [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
@@ -908,24 +915,50 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
 
         // ---- Loading ----
 
+        // The dllmap names of the two builds of the same Rapier commit in the BulletS .dll.config. "rapier" is built
+        // without Rapier's parallel feature; "rapier_mt" with it (rayon), and is loaded only for more than one thread.
+        // A parallel build runs every step inside its rayon pool, and at one thread, waking that pool's worker after the
+        // gap between two frames costs more than the whole step of a small scene.
+        internal const string SingleThreadedName = "rapier";
+        internal const string MultiThreadedName = "rapier_mt";
+
         /// <summary>When set (tests), the library is loaded from this path instead of the one in the BulletS .dll.config.</summary>
         internal static string LibraryPathOverride;
 
         private static readonly object s_loadLock = new object();
         private static IntPtr s_handle;
         private static bool s_resolverInstalled;
+        // What the first load chose (the dllmap name, or the override's path) and the thread count it was asked for.
+        private static string s_loadedName;
+        private static int s_loadedThreads;
+
+        /// <summary>The dllmap name of the build to load for this many threads (RapierNumThreads).</summary>
+        internal static string LibraryNameFor(int threads)
+        {
+            return threads > 1 ? MultiThreadedName : SingleThreadedName;
+        }
+
+        /// <summary>TryLoad for the thread count in BSParam.RapierNumThreads, with no warning reported.</summary>
+        public static bool TryLoad(out string error)
+        {
+            return TryLoad(Math.Max(1, (int)BSParam.RapierNumThreads), out error, out _);
+        }
 
         /// <summary>
-        /// Loads the Rapier library and makes the "rapier" DllImports use it. The file comes from LibraryPathOverride
-        /// or, otherwise, from the dllmap line for "rapier" in the BulletS .dll.config, read by the same
-        /// DllmapConfigHelper (and so the same os/cpu matching) that resolves the BulletSim and ODE libraries.
-        /// Safe to call again; later calls reuse the first successful load.
+        /// Loads the Rapier library and makes the DllImports above use it. The file comes from LibraryPathOverride or,
+        /// otherwise, from the BulletS .dll.config's dllmap line for the build that fits threads (LibraryNameFor), read by
+        /// the same DllmapConfigHelper (and so the same os/cpu matching) that resolves the BulletSim and ODE libraries.
+        /// The library is loaded once per process: later calls reuse it, and set warning when they ask for a thread
+        /// count the loaded build does not fit. warning is also set when the multi-threaded build could not be loaded and
+        /// the single-threaded one is used instead; it is null otherwise.
         /// </summary>
-        public static bool TryLoad(out string error)
+        public static bool TryLoad(int threads, out string error, out string warning)
         {
             lock (s_loadLock)
             {
+                warning = null;
                 IntPtr handle;
+                string name;
                 string path = LibraryPathOverride;
                 if (!string.IsNullOrEmpty(path))
                 {
@@ -934,41 +967,37 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                         error = $"Rapier library could not be loaded from {path}";
                         return false;
                     }
+                    name = path;
                 }
                 else if (s_handle != IntPtr.Zero)
                 {
+                    if (s_loadedName != LibraryNameFor(threads))
+                        warning = $"Rapier was loaded in this process as {s_loadedName} for {s_loadedThreads} thread(s). A library is loaded only once, so this region uses it too, not the build for its {threads} thread(s)";
                     error = null;
                     return true;
                 }
                 else
                 {
-                    Assembly assembly = typeof(RapierNative).Assembly;
                     try
                     {
-                        // The registration BSAPIUnman and the ODE module make. It reads the assembly's .dll.config, applies
-                        // its os/cpu rules and loads every library the matching dllmap lines name; LoadDll returns the
-                        // handle for one of them. (Its DllImport resolver only serves the public types of the assembly,
-                        // which is why the handle is handed to the runtime below instead.)
-                        DllmapConfigHelper.RegisterAssembly(assembly);
-                        handle = DllmapConfigHelper.LoadDll(Lib);
-                        if (handle == IntPtr.Zero)
-                        {
-                            error =$"{assembly.Location}.config has no dllmap line for \"{Lib}\" that fits this operating system and processor, or the library it names could not be loaded";
+                        if (!LoadBuild(threads, LoadFromDllmap, out handle, out name, out warning, out error))
                             return false;
-                        }
                     }
                     catch (Exception e)
                     {
-                        error = $"Rapier library mapping in {assembly.Location}.config could not be used: {e.Message}";
+                        error = $"Rapier library mapping in {typeof(RapierNative).Assembly.Location}.config could not be used: {e.Message}";
                         return false;
                     }
                 }
 
                 s_handle = handle;
+                s_loadedName = name;
+                s_loadedThreads = threads;
                 if (!s_resolverInstalled)
                 {
                     // ResolvingUnmanagedDll is the runtime's last try after its own probing, so it cooperates with the
-                    // DllmapConfigHelper resolver on this assembly instead of competing for the one resolver slot.
+                    // other resolvers (DllmapConfigHelper's on this assembly, OpenSim's Util fallback) instead of competing
+                    // for the one resolver slot. They have no dllmap line for Lib and leave it to this one.
                     AssemblyLoadContext.Default.ResolvingUnmanagedDll += ResolveRapier;
                     s_resolverInstalled = true;
                 }
@@ -978,9 +1007,53 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         }
 
         /// <summary>
-        /// The file the "rapier" DllImports are bound to, which is not always the one TryLoad loaded: the runtime's own
-        /// probing (the application directory, LD_LIBRARY_PATH) comes before the resolver, and may find another copy
-        /// first. Found from r3Version's string, which lives in the bound library. Null when it cannot be told.
+        /// Loads the build for threads; load gives the handle for a dllmap name, or zero when it cannot be loaded. If the
+        /// multi-threaded build cannot be loaded it sets warning and loads the single-threaded one. name is the dllmap
+        /// name of the build loaded. Leaves what TryLoad loaded alone (the tests call it directly).
+        /// </summary>
+        internal static bool LoadBuild(int threads, Func<string, IntPtr> load, out IntPtr handle, out string name,
+                                       out string warning, out string error)
+        {
+            warning = null;
+            error = null;
+            name = LibraryNameFor(threads);
+            if (name == MultiThreadedName)
+            {
+                handle = load(MultiThreadedName);
+                if (handle != IntPtr.Zero)
+                    return true;
+                warning = $"Rapier's multi-threaded library (dllmap \"{MultiThreadedName}\") could not be loaded, so Rapier runs at 1 thread, not {threads}, with \"{SingleThreadedName}\"";
+                name = SingleThreadedName;
+            }
+
+            handle = load(SingleThreadedName);
+            if (handle == IntPtr.Zero)
+            {
+                error = $"{typeof(RapierNative).Assembly.Location}.config has no dllmap line for \"{SingleThreadedName}\" that fits this operating system and processor, or the library it names could not be loaded";
+                return false;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// The handle for the library the BulletS .dll.config's dllmap line for this name loads on this machine, or zero
+        /// when no line fits or the file could not be loaded. Uses the registration BSAPIUnman and the ODE module make: it
+        /// reads the .dll.config, applies its os/cpu rules and loads every library the matching lines name, both Rapier
+        /// builds included (a library loaded and not called costs only its mapping); LoadDll returns the one asked for.
+        /// (DllmapConfigHelper.ProcessDllConfiguration, the per-name matcher, is no use here: it does not understand the
+        /// "!windows,osx" form of the Linux lines.)
+        /// </summary>
+        internal static IntPtr LoadFromDllmap(string dllName)
+        {
+            DllmapConfigHelper.RegisterAssembly(typeof(RapierNative).Assembly);
+            return DllmapConfigHelper.LoadDll(dllName);
+        }
+
+        /// <summary>
+        /// The file the DllImports are bound to. It should always be the one TryLoad loaded, since only ResolveRapier knows
+        /// the name Lib; this checks it, in case a resolver or the runtime's own probing (the application directory,
+        /// LD_LIBRARY_PATH) ever finds another file under that name first. Found from r3Version's string, which lives in
+        /// the bound library. Null when it cannot be told.
         /// </summary>
         internal static string BoundLibraryPath()
         {
@@ -990,7 +1063,12 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         /// <summary>The file TryLoad loaded (the dllmap target or the override), or null when it cannot be told.</summary>
         internal static string LoadedLibraryPath()
         {
-            IntPtr handle = s_handle;
+            return FileOf(s_handle);
+        }
+
+        /// <summary>The file of a loaded Rapier library, from its r3Version export; null when it cannot be told.</summary>
+        internal static string FileOf(IntPtr handle)
+        {
             if (handle == IntPtr.Zero || !NativeLibrary.TryGetExport(handle, "r3Version", out IntPtr address))
                 return null;
             return FileHolding(address);
