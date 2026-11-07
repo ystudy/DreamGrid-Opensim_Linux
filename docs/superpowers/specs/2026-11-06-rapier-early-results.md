@@ -112,6 +112,132 @@ bench DLL was restored afterwards. Milliseconds per frame:
   - pile-500: about 52 → 6 ms, with sleeping off.
   - kick-1000: about 30 → 13 ms.
 
+## In OpenSim (BSAPIRapier)
+
+Task 13 of the integration plan. The same scenes, run through `BSAPIRapier` (rapier 0.36.1) inside OpenSim on the
+same VM and the same bench region. **Result: the gate is only half met.** pile-500 passes, kick-1000 doesn't, and
+Rapier is slower than ubODE in most of the small scenes.
+
+- **Build:** branch `feature/rapier-backend` at `58c75be7`, Release build. Only `OpenSim.Region.PhysicsModule.BulletS.dll`
+  (and its `.dll.config`) and `lib64/librapier-x86_64.so` were swapped into the bench. The rest of the bench is the PR 48
+  build, so ubODE and Rapier ran on the same OpenSim code. The branch's only other OpenSim change is an unrelated
+  `estate reload` console command in `OpenSim.dll`, which wasn't swapped in.
+- **Settings:** `physics = BulletSim`, `meshing = Meshmerizer`, `[BulletSim] BulletEngine = Rapier`,
+  `UseSeparatePhysicsThread = false`. Rapier ran on 1 thread, with the backend's defaults (4 solver iterations).
+- **Measurement:** the same `physrun.py` and the same bench frame logger as the ubODE runs. The logger sits in
+  `Scene.Update`, so it measures `PhysicsScene.Simulate` plus the physics sync for any engine. No product code
+  changed. The ubODE columns are the rows already in `physics-results.csv`. The standalone column is from the
+  Results table above.
+- **Windows:** the table is the 30–90 s window. The run script starts its clock after the CPU has settled (it waits
+  up to 10 minutes), for ubODE and Rapier alike. Both windows (0–20 s and 30–90 s) agree to within a few percent
+  except in pile-100 and the cars scenes, where the first window was the slower one.
+
+Physics milliseconds per frame (p50 / p99) and time dilation. A frame is 91 ms:
+
+| Scene | ubODE p50 / p99 | ubODE dilation | **BSAPIRapier p50 / p99** | Rapier dilation | Rapier / ubODE (p50) | Standalone 0.36.1 p50 |
+|---|---|---|---|---|---|---|
+| pile-100 | 3.9 / 5.5 | 1.0 | **1.1 / 1.9** | 1.0 | 0.29 | 0.05 |
+| pile-500 | 48.4 / 58.4 | 1.0 | **10.9 / 13.6** | 1.0 | **0.22** | 0.95 |
+| pile-1000 | 112.9 / 128.8 | 0.24 | **20.4 / 23.6** | 1.0 | 0.18 | 2.0 |
+| pile-2000 | 119.6 / 125.9 | 0.20 | **39.7 / 46.7** | 1.0 | 0.33 | 23 |
+| kick-100 | 1.5 / 2.0 | 1.0 | **3.0 / 4.0** | 1.0 | 2.0 | 1.1 |
+| kick-500 | 10.4 / 12.9 | 1.0 | **12.5 / 15.5** | 1.0 | 1.2 | 6.1 |
+| kick-1000 | 29.3 / 37.9 | 1.0 | **26.5 / 31.5** | 1.0 | **0.90** | 12.1 |
+| kick-2000 | 121.4 / 129.7 | 0.26 | **57.9 / 68.2** | 1.0 | 0.48 | 26 |
+| cars-20 | 1.3 / 1.9 | 1.0 | **2.5 / 3.5** | 1.0 | 1.9 | |
+| cars-50 | 1.2 / 2.3 | 1.0 | **3.3 / 4.5** | 1.0 | 2.8 | |
+| rays-100 | 0.01 / 0.05 | 1.0 | **0.49 / 0.79** | 1.0 | | |
+| rays-1000 | 0.01 / 0.05 | 1.0 | **0.15 / 0.50** | 1.0 | | |
+| npcs-10 | 0.07 / 3.9 | 1.0 | **0.58 / 0.92** | 1.0 | 8 | |
+| npcs-25 | 0.19 / 4.1 | 1.0 | **1.2 / 1.6** | 1.0 | 6 | |
+| npcs-50 | 0.38 / 4.1 | 1.0 | **2.1 / 2.9** | 1.0 | 5.6 | |
+| DragonFyre + pile-500 | 54.8 / 69.0 | 1.0 | **14.2 / 16.8** | 1.0 | 0.26 | |
+
+How to read this:
+
+- **Where Rapier wins:** busy scenes. Piles are 3–6× cheaper, and at 1,000 and 2,000 objects Rapier holds time
+  dilation at 1.0 where ubODE slows the region to about a quarter. kick-2000 costs 58 ms, well inside the frame.
+- **Where it loses:** small and spread-out scenes. kick-100 and kick-500, the cars and the NPC scenes are all
+  1.2–8× more expensive than ubODE. All of them stay under 13 ms, so none of them hurts, but they show a fixed
+  per-object cost that ubODE doesn't pay.
+- **How much of the standalone gain survived:** not much on piles (pile-500: 0.95 ms alone, 10.9 ms in OpenSim,
+  about 11×). Kick scenes cost about 2.2× their standalone figure (kick-1000: 12.1 against 26.5). So most of the
+  difference is not Rapier's solver. I haven't profiled where it goes. Likely suspects are per-prim work in
+  BulletS and P/Invoke calls, but that is a guess. Whether sleeping takes effect through the backend is unchecked
+  too.
+- **Rays and NPCs:** ubODE's 0.01 ms for rays was already suspect (the rays may never have reached physics).
+  Rapier's 0.15–0.5 ms suggests that here they do, but I didn't verify it. I also didn't check that the NPCs and
+  cars actually moved the way they should.
+
+### Decision 3 check
+
+| Check | Needed | Got | Result |
+|---|---|---|---|
+| pile-500 p50 | at most 0.5 × 52 = 26 ms | 10.9 ms (0.22 ×) | **pass** |
+| kick-1000 p50 | at most 0.5 × 30 = 15 ms | 26.5 ms (0.90 ×) | **fail** |
+| No scene with time dilation below ubODE's | every scene at least ubODE's | all 16 at 1.0 | **pass** |
+
+So the "experimental" label stays on. The kick-1000 miss is close to ubODE's number, not a rounding error.
+
+### DragonFyre start-up (B1 gate)
+
+DragonFyre alone in the bench region (4,082 objects, 905 scripts under Rapier). Warm, run twice per engine, timed
+with `bench.py`. I re-ran ubODE the same day to compare. It matched the PR 48 figures of about 5.6 s and 1.5 s.
+
+| Seconds from launch | ubODE (2 runs) | BSAPIRapier (2 to 3 runs) |
+|---|---|---|
+| Scripts handed to the engine | 3.6 / 3.5 | 3.6 / 3.6 |
+| "Region up" log line | 5.4 / 5.3 | 3.8 / 3.9 (4.2 / 3.9 in two earlier runs) |
+| Physics built (ubODE: "prim actors loaded") | 5.2 / 5.1 | not logged; see below |
+| First frame done, physics ready | 5.4 / 5.3 | 7.8 (one run with a frame log) |
+| CPU settled | 6.0 / 5.9 | 8.9 / 8.9 / 8.9 |
+| Memory after start (RSS) | 465 / 461 MB | 1,156 / 1,143 / 1,133 MB |
+
+- **Why the "region up" line misleads for Rapier.** BulletS builds its physics shapes inside the first physics
+  step, after that line is logged. The frame log shows that first frame taking **4.0 s** of physics. ubODE builds
+  during start-up, about 1.6 s after the scripts are handed over. Rapier has no `prim actors loaded` line, so
+  the physics start-up is read from the frame log instead.
+- **Physics start-up on its own:** about 4.0 s for Rapier against about 1.6 s for ubODE (+2.4 s).
+- **Gate (no more than 3 s slower):** passes, but with little room.
+  - Until physics is ready: 7.8 s against 5.3 s, so **+2.5 s**.
+  - Until the CPU settles: 8.9 s against 5.9 s, so **+3.0 s**. That is right on the limit.
+  - By the log line alone it looks 1.5 s faster, which isn't a fair reading.
+- **Memory is the surprise.** The process holds about 1.1–1.4 GB after DragonFyre loads under Rapier, against about
+  0.5 GB for ubODE. On the 1.9 GB VM that is most of the free memory. I haven't found out why.
+
+### Errors in the region log
+
+All 16 Rapier runs plus the start-up runs:
+
+- **No** `NotImplementedException`, **no** crash, and **no** warning or error that mentions Rapier. The only
+  Rapier lines are `[BULLETS SCENE] Selected bullet engine Rapier -> Rapier/0.36.1+c.0+parallel` at each start.
+- The usual bench noise (GatekeeperURI, no search server, the RegionReady alert URI, WebRTC module type, and
+  `SendGridInstantMessageViaXMLRPC` connection refused) appears in every run, ubODE included.
+- **New, and worth a look:** 588 `[ERROR] Physical object kick ... went out of bounds` lines and 23 for `car ...`,
+  with a matching `[WARN] [BULLETS PRIM] Too many crossing failures` for each. Per scene: kick-100 6, kick-500 84,
+  kick-1000 164, kick-2000 334, cars-20 9, cars-50 14. The ubODE runs of the same scenes logged none.
+  - **What happens:** kicked objects and driven cars reach the edge of the region. There's no neighbour to cross
+    into, so OpenSim stops them at the edge. ubODE kept them inside.
+  - **Effect on the numbers:** up to 16–17% of the kick objects were stopped over the course of a run, so the
+    late kick figures are for slightly fewer moving objects than ubODE had. That flatters Rapier a little. It
+    doesn't change the kick-1000 verdict, which is already a miss.
+  - **Open question:** whether the real cause is a missing region-edge wall in the backend, or normal BulletS
+    behaviour that the Bullet engines show too. I haven't run a Bullet engine to check.
+
+### Caveats for this section
+
+- **One run per scene.** No repeats, so run-to-run spread is unknown. The two windows inside each run agree well.
+- **Not the same content.** ubODE and Rapier loaded the same OAR files, but the 8 extra objects in the ubODE
+  DragonFyre start (4,090 against 4,082) are unexplained.
+- **Nothing here is behaviour.** These are costs only. Walking, sitting, vehicles, collisions and the DragonFyre
+  floors are the owner's Firestorm checks, and they decide whether Rapier is correct enough, whatever its cost.
+- **Small VM.** 2 vCPUs, 1 Rapier thread. The bench shared the machine with the real grid, which was idle.
+- **Start-up frame log:** the one physics-ready figure comes from a single run with a frame log. The other
+  start-up runs didn't have one, but their CPU-settled times match to 0.1 s.
+- **Still to do:** the owner's Phase 4 checks in Firestorm, Rapier region against ubODE region: walking, stairs and
+  slopes, sitting, a vehicle, a linkset door, a volume-detect trigger, a collision script and the DragonFyre floors.
+  Results go in a `rapier-decision.md` (feasibility 5.1).
+
 ## Caveats
 
 - **Standalone versus in-OpenSim.** Rapier ran without OpenSim. The breakdown above says OpenSim's own work is
@@ -142,6 +268,10 @@ bench DLL was restored afterwards. Milliseconds per frame:
 - **Section timings:** `ubodetime-ubODE-timed-*.csv`. The columns are: timestamp, frames, steps per frame, then ms
   per frame for changes, move, collide, narrow phase, reports, quickstep and updates, then collision calls, contacts
   and active objects.
+- **Rapier in OpenSim:** `BulletSim-Rapier-*` rows in `physics-results.csv`, per-frame
+  `frames-BulletSim-Rapier-*.csv`, `physmatrix-rapier.log`, `startup-load-rapier.log` and `frames-startup-*.csv`.
+  `physrun.py` accepts the engine `BulletSim-Rapier`, and `physmatrix-rapier.sh` runs the scenes. These bench-only
+  edits are not in the repo.
 - **Scripts:**
   - **The scene and run scripts:** `make_physoar.py`, `physrun.py`, `physmatrix.sh` and `timed.sh`.
   - **The Rapier bench:** `rbench/` (0.22) and `rbench36/` (0.36.1). The copy in this repo is the 0.36.1 one.
