@@ -1,4 +1,6 @@
 using OpenMetaverse;
+using OpenSim.Framework;
+using OpenSim.Region.PhysicsModules.SharedBase;
 using OpenSim.Region.PhysicsModule.BulletS;
 using OpenSim.Region.PhysicsModule.BulletS.Rapier;
 using Xunit;
@@ -499,6 +501,138 @@ public class ShapeTests
             BulletBody body = DynamicBody(scene, mesh, 9101, new Vector3(128f, 128f, 53f), mass: 6f);
             EngineStep(scene, 3f);
             Assert.InRange(scene.PE.GetPosition(body).Z, 50.5f - 0.05f, 50.5f + 0.05f);
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+    // ---- Prim cylinders (the Rapier engine's native cylinder) ----
+
+    private const float GroundZ = 21f;
+
+    private static PhysicsActor AddCylinder(BSScene scene, uint localId, Vector3 position, Vector3 size, Quaternion rotation,
+                                            Action<PrimitiveBaseShape>? change = null)
+    {
+        // A viewer's cylinder: a circle profile on a straight path (PrimitiveBaseShape.CreateCylinder makes something else).
+        PrimitiveBaseShape pbs = PrimitiveBaseShape.CreateBox();
+        pbs.ProfileShape = ProfileShape.Circle;
+        pbs.Scale = size;
+        change?.Invoke(pbs);
+        return scene.AddPrimShape("cylinder" + localId, pbs, position, size, rotation, true, localId);
+    }
+
+    private static BSScene GroundScene()
+    {
+        BSScene scene = RapierTestScene.Create();
+        float[] map = new float[256 * 256];
+        Array.Fill(map, GroundZ);
+        scene.SetTerrain(map);
+        RapierTestScene.Step(scene, 0.3f);
+        return scene;
+    }
+
+    [Fact]
+    public void PrimCylinder_Plain_IsNativeCylinderAndStandsAtHalfItsHeight()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = GroundScene();
+        try
+        {
+            // 0.6 m across, 1.2 m tall, standing on its end.
+            PhysicsActor cylinder = AddCylinder(scene, 501, new Vector3(128f, 128f, GroundZ + 0.7f), new Vector3(0.6f, 0.6f, 1.2f),
+                                                Quaternion.Identity);
+            RapierTestScene.Step(scene, 3f);
+
+            BSShape shape = scene.PhysObjects[501].PhysShape;
+            Assert.Equal(BSPhysicsShapeType.SHAPE_CYLINDER, shape.ShapeType);
+            Assert.True(shape.physShapeInfo.isNativeShape);
+            Assert.Equal((int)BSPhysicsShapeType.SHAPE_CYLINDER, scene.PE.GetShapeType(shape.physShapeInfo));
+            // The axis is the prim's Z: it stands on its flat end, centre half its height above the ground, and upright.
+            Assert.Equal(GroundZ + 0.6f, cylinder.Position.Z, 0.02f);
+            Vector3 axis = Vector3.UnitZ * cylinder.Orientation;
+            Assert.True(axis.Z > 0.999f, $"axis {axis}");
+            // A ray down the side misses beyond the radius and hits inside it at the top face.
+            Assert.False(scene.PE.RayTest2(scene.World, new Vector3(128.35f, 128f, 30f), new Vector3(128.35f, 128f, GroundZ + 0.1f), 0xffffffff, 0xffffffff).hasHit());
+            RaycastHit top = scene.PE.RayTest2(scene.World, new Vector3(128.25f, 128f, 30f), new Vector3(128.25f, 128f, GroundZ + 0.1f), 0xffffffff, 0xffffffff);
+            Assert.True(top.hasHit());
+            Assert.Equal(GroundZ + 1.2f, top.Point.Z, 0.02f);
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    [Fact]
+    public void PrimCylinder_OnItsSide_RestsAtItsRadiusAndRollsAboutItsAxis()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = GroundScene();
+        try
+        {
+            // Turned a quarter about X, so its axis lies along Y; 0.6 m across, so the centre rests 0.3 m up.
+            Quaternion onSide = Quaternion.CreateFromAxisAngle(Vector3.UnitX, MathF.PI / 2f);
+            PhysicsActor cylinder = AddCylinder(scene, 502, new Vector3(128f, 128f, GroundZ + 0.4f), new Vector3(0.6f, 0.6f, 1.2f), onSide);
+            RapierTestScene.Step(scene, 2f);
+            Assert.Equal(BSPhysicsShapeType.SHAPE_CYLINDER, scene.PhysObjects[502].PhysShape.ShapeType);
+            Assert.Equal(GroundZ + 0.3f, cylinder.Position.Z, 0.02f);
+
+            // Pushed along X, across its axis, friction sets it rolling: it turns about +Y, one radian per 0.3 m, and keeps
+            // its line.
+            scene.TaintedObject(502, "ShapeTests", () =>
+            {
+                BulletBody body = scene.PhysObjects[502].PhysBody;
+                scene.PE.SetLinearVelocity(body, new Vector3(1.5f, 0f, 0f));
+                scene.PE.Activate(body, true);
+            });
+            RapierTestScene.Step(scene, 0.5f);
+            Vector3 spin = cylinder.RotationalVelocity;
+            Vector3 velocity = cylinder.Velocity;
+            Assert.True(velocity.X > 0.5f, $"velocity {velocity}");
+            Assert.True(spin.Y > 0.5f / 0.3f, $"spin {spin}");
+            Assert.Equal(velocity.X / 0.3f, spin.Y, 0.5f);
+            Assert.InRange(spin.X, -0.2f, 0.2f);
+            Assert.InRange(spin.Z, -0.2f, 0.2f);
+            Assert.Equal(128f, cylinder.Position.Y, 0.05f);
+            Assert.Equal(GroundZ + 0.3f, cylinder.Position.Z, 0.02f);
+            Vector3 axis = Vector3.UnitZ * cylinder.Orientation;
+            Assert.True(MathF.Abs(axis.Y) > 0.99f, $"axis {axis}");
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    [Theory]
+    [InlineData("hollow")]
+    [InlineData("cut")]
+    [InlineData("taper")]
+    [InlineData("oval")]
+    public void PrimCylinder_NotPlain_KeepsTheHull(string kind)
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = GroundScene();
+        try
+        {
+            Vector3 size = kind == "oval" ? new Vector3(0.6f, 0.9f, 1.2f) : new Vector3(0.6f, 0.6f, 1.2f);
+            AddCylinder(scene, 503, new Vector3(128f, 128f, GroundZ + 0.7f), size, Quaternion.Identity, pbs =>
+            {
+                if (kind == "hollow")
+                    pbs.ProfileHollow = 20000;
+                else if (kind == "cut")
+                    pbs.ProfileEnd = 10000;
+                else if (kind == "taper")
+                    pbs.PathTaperX = 50;
+            });
+            RapierTestScene.Step(scene, 0.5f);
+            BSShape shape = scene.PhysObjects[503].PhysShape;
+            Assert.NotEqual(BSPhysicsShapeType.SHAPE_CYLINDER, shape.ShapeType);
+            Assert.False(shape.physShapeInfo.isNativeShape);
             Assert.Empty(log.Errors);
         }
         finally
