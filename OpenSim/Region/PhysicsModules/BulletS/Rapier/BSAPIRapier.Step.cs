@@ -141,15 +141,17 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         // Rapier keeps a force or torque until it is reset, while Bullet's stepSimulation clears them at its end, whether
         // or not it took a step. BulletS applies forces in the taints before PhysicsStep, so what was added since the last
         // call has now been used (or, with no whole step in this frame, is dropped as Bullet drops it). A body whose
-        // reset fails is logged once and skipped; PhysicsStep empties the set either way.
+        // reset fails is logged once and dropped: PhysicsStep empties the set either way, so it is not tried again.
         private void ResetAppliedForces(RapierWorldState state)
         {
             foreach (BulletBodyRapier body in state.ForcedBodies)
             {
                 if (!body.HasPhysicalBody)
                     continue;
-                if ((RapierNative.r3RigidBody_ResetForces(body.Body, 0) != 0 || RapierNative.r3RigidBody_ResetTorques(body.Body, 0) != 0)
-                        && state.LoggedOnce.Add("reset-forces-failed:" + body.ID))
+                // Both resets are tried, so a failed force reset does not leave the torque in place too.
+                bool forcesFailed = RapierNative.r3RigidBody_ResetForces(body.Body, 0) != 0;
+                bool torquesFailed = RapierNative.r3RigidBody_ResetTorques(body.Body, 0) != 0;
+                if ((forcesFailed || torquesFailed) && state.LoggedOnce.Add("reset-forces-failed:" + body.ID))
                     PhysicsScene.Logger.WarnFormat("{0} Could not reset the forces on body {1}: {2}", LogHeader, body.ID,
                                 RapierNative.LastError());
             }

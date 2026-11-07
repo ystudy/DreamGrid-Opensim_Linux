@@ -118,7 +118,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         // Frees the native shape now, whether or not a body still uses it. A collider holds its own reference to the
         // geometry (r3InsertCollider and r3Collider_SetShape share it, and do not consume the shape), so a body that
         // still has a collider from this shape goes on working with the geometry it has. What is lost is only that
-        // SetLocalScaling can no longer reach it. A shape deleted twice, or one the world already freed, is ignored.
+        // SetLocalScaling can no longer reach it. A shape deleted twice, or one the world already freed, is ignored
+        // (ReleaseShape).
         public override bool DeleteCollisionShape(BulletWorld pWorld, BulletShape pShape)
         {
             BulletWorldRapier world = (BulletWorldRapier)pWorld;
@@ -130,8 +131,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             if (shape.Shape != IntPtr.Zero)
             {
                 world.State.ForgetShape(shape.Shape);
-                if (world.State.Shapes.Remove(shape.Shape))
-                    RapierNative.r3FreeSharedShape(shape.Shape);
+                ReleaseShape(world, shape.Shape);
             }
             shape.Clear();
             return true;
@@ -829,8 +829,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                     world.State.ShapeUsers[fresh] = following;
             }
 
-            if (world.State.Shapes.Remove(previous))
-                RapierNative.r3FreeSharedShape(previous);
+            ReleaseShape(world, previous);
             shape.Shape = fresh;
             shape.Scale = scale;
             if (scaledVerts != null)

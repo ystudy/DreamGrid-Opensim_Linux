@@ -544,10 +544,69 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                 RapierNative.r3FreeWorld(world.World);
                 world.World = IntPtr.Zero;
             }
-            // Shapes BulletS never released. A collider holds its own reference, so they can go after the world.
+            // Shapes BulletS never released. A collider holds its own reference, so they can go after the world. The
+            // ones BulletS's mesh and hull caches still hold are kept instead (see KeptForBulletSCaches).
+            HashSet<IntPtr> cached = ShapesInBulletSCaches();
             foreach (IntPtr shape in world.State.Shapes)
-                RapierNative.r3FreeSharedShape(shape);
+            {
+                if (cached.Contains(shape))
+                {
+                    lock (KeptForBulletSCaches)
+                        KeptForBulletSCaches.Add(shape);
+                }
+                else
+                    RapierNative.r3FreeSharedShape(shape);
+            }
             world.State.Shapes.Clear();
+        }
+
+        // BSShapeMesh.Meshes, BSShapeHull.Hulls, BSShapeConvexHull.ConvexHulls and BSShapeGImpact.GImpacts are static:
+        // one cache for the whole process, never emptied, so a second BSScene (several regions in one simulator, or a
+        // region restarted in-process) is handed the shape another world built. A Rapier shape handle belongs to no
+        // world (an owned SharedShape, an Arc'd geometry that r3FreeWorld does not touch), so it stays valid after its
+        // world is freed, and Shutdown must not free one these caches hold: the next scene would get a freed pointer.
+        // Those shapes move here and live as long as the cache entry does, which is the life of the process, as with
+        // Bullet's native backend (BSAPIUnman never frees a cached shape either). The set is only for freeing them once:
+        // if BulletS ever deletes or rescales one in a later world, ReleaseShape frees it from here. Other backends do
+        // not use it, and the caches themselves are unchanged.
+        internal static readonly HashSet<IntPtr> KeptForBulletSCaches = new HashSet<IntPtr>();
+
+        // Every Rapier shape handle in BulletS's static caches. Each cache is locked on its own, as BulletS locks them,
+        // so no lock order is imposed on BulletS.
+        private static HashSet<IntPtr> ShapesInBulletSCaches()
+        {
+            HashSet<IntPtr> found = new HashSet<IntPtr>();
+            void Add(IEnumerable<BSShape> shapes)
+            {
+                foreach (BSShape cached in shapes)
+                {
+                    if (cached.physShapeInfo is BulletShapeRapier rapier && rapier.Shape != IntPtr.Zero)
+                        found.Add(rapier.Shape);
+                }
+            }
+            lock (BSShapeMesh.Meshes)
+                Add(BSShapeMesh.Meshes.Values);
+            lock (BSShapeHull.Hulls)
+                Add(BSShapeHull.Hulls.Values);
+            lock (BSShapeConvexHull.ConvexHulls)
+                Add(BSShapeConvexHull.ConvexHulls.Values);
+            lock (BSShapeGImpact.GImpacts)
+                Add(BSShapeGImpact.GImpacts.Values);
+            return found;
+        }
+
+        // Frees a shape this world built, or one an earlier world left to BulletS's caches; any other is not ours to
+        // free (already freed, or still owned by another world) and is left alone.
+        private static void ReleaseShape(BulletWorldRapier world, IntPtr shape)
+        {
+            bool ours = world.State.Shapes.Remove(shape);
+            if (!ours)
+            {
+                lock (KeptForBulletSCaches)
+                    ours = KeptForBulletSCaches.Remove(shape);
+            }
+            if (ours)
+                RapierNative.r3FreeSharedShape(shape);
         }
 
         // Rapier refreshes the broad phase from the bodies' poses when it steps (map row 8).
