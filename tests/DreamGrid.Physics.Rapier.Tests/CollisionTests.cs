@@ -318,11 +318,16 @@ public class CollisionTests
     }
 
     // ---- Touches inside a frame's substeps ----
-    // A thin static wall (0.1 m in X, near face at x = 129.95) and a 0.2 m box that passes through it at 6 m/s, 0.1 m
-    // per 1/60 s substep, with no contact response: it overlaps the wall for about three substeps and keeps going.
+    // A thin static wall (0.1 m in X, near face at x = 129.95) and a 0.2 m box that passes through it at 0.1 m per
+    // substep, with no contact response: it overlaps the wall for about three substeps and keeps going.
 
     private const float WallNearX = 129.95f;
-    private const float PassSpeed = 6f;
+    private const float PassPerSubstep = 0.1f;
+
+    private static float PassSpeed(BSScene scene)
+    {
+        return PassPerSubstep / scene.m_fixedTimeStep;
+    }
 
     private static PhysicsActor AddSizedBox(BSScene scene, uint localId, Vector3 position, Vector3 size, bool physical)
     {
@@ -351,7 +356,7 @@ public class CollisionTests
         {
             BulletBody body = scene.PhysObjects[461].PhysBody;
             scene.PE.SetTranslation(body, new Vector3(WallNearX - gap - 0.1f, 128f, 26f), Quaternion.Identity);
-            scene.PE.SetLinearVelocity(body, new Vector3(PassSpeed, 0f, 0f));
+            scene.PE.SetLinearVelocity(body, new Vector3(PassSpeed(scene), 0f, 0f));
             scene.PE.SetAngularVelocity(body, Vector3.Zero);
             scene.PE.Activate(body, true);
         });
@@ -368,7 +373,7 @@ public class CollisionTests
     private static int NextFrameSubsteps(BSScene scene)
     {
         RapierWorldState state = ((BSAPIRapier.BulletWorldRapier)scene.World).State;
-        return (int)((state.Accumulator + RapierTestScene.FrameSeconds) / (1f / 60f));
+        return (int)((state.Accumulator + RapierTestScene.FrameSeconds) / scene.m_fixedTimeStep);
     }
 
     [Fact]
@@ -380,6 +385,8 @@ public class CollisionTests
         {
             SetUpPassThrough(scene);
             Assert.False(OverlapsWall(scene));
+            for (int ii = 0; ii < 10 && NextFrameSubsteps(scene) < 5; ii++)
+                Frame(scene);
             Assert.True(NextFrameSubsteps(scene) >= 5);
 
             // It reaches the wall in the first substep and is clear of it after the fourth, so the steps find it touching
@@ -416,7 +423,7 @@ public class CollisionTests
             // ends with the two touching, and it is clear after the second substep of the next frame: that frame's first
             // two substeps still find it touching, as BulletSim would, and the third finds it gone.
             int substeps = NextFrameSubsteps(scene);
-            Launch(scene, (substeps - 1.5f) * PassSpeed / 60f);
+            Launch(scene, (substeps - 1.5f) * PassPerSubstep);
             List<CollisionDesc> first = Frame(scene);
             Assert.True(OverlapsWall(scene), $"not at the wall after the first frame: x {scene.PE.GetPosition(scene.PhysObjects[461].PhysBody).X}");
             Assert.Contains(first, c => IsPair(c, 460, 461));

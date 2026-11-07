@@ -97,6 +97,12 @@ namespace OpenSim.Region.PhysicsModule.BulletS
 
         internal int m_maxSubSteps;
         internal float m_fixedTimeStep;
+        // Whether [BulletSim] set FixedTimeStep, so an engine's own default does not replace it.
+        private bool m_fixedTimeStepFromIni;
+
+        // The substep length the Rapier engine uses when the INI does not set FixedTimeStep: ubODE's 0.02 s, not
+        // Bullet's 1/60 s, so a frame takes fewer substeps.
+        internal const float RapierFixedTimeStep = 0.02f;
 
         internal float m_simulatedTime;     // the time simulated previously. Used for physics framerate calc.
 
@@ -388,6 +394,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                 if (pConfig != null)
                 {
                     BSParam.SetParameterConfigurationValues(this, pConfig);
+                    m_fixedTimeStepFromIni = pConfig.Contains("FixedTimeStep");
 
                     // There are two Bullet implementations to choose from
                     BulletEngineName = pConfig.GetString("BulletEngine", "BulletUnmanaged");
@@ -476,6 +483,12 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                     break;
                 case "rapier":
                     ret = SelectRapierEngine(engineName);
+                    if (ret != null && !m_fixedTimeStepFromIni)
+                    {
+                        m_log.InfoFormat("{0} Rapier steps {1} s at a time (set [BulletSim]FixedTimeStep to change it)",
+                                    LogHeader, RapierFixedTimeStep);
+                        m_fixedTimeStep = RapierFixedTimeStep;
+                    }
                     break;
             }
 

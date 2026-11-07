@@ -39,6 +39,56 @@ public class WorldAndStepTests
     }
 
     [Fact]
+    public void FixedTimeStep_DefaultsTo002ForRapier()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            Assert.Equal(0.02f, scene.m_fixedTimeStep);
+            // One frame of about 0.091 s is four or five 0.02 s substeps, and Rapier is told the length.
+            scene.Simulate(RapierTestScene.FrameSeconds);
+            Assert.Equal(0.02f, ((BSAPIRapier.BulletWorldRapier)scene.World).State.TimeStep);
+            Assert.Equal(0.02f, RapierNative.r3TimeStep(((BSAPIRapier.BulletWorldRapier)scene.World).World), 6);
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    [Theory]
+    [InlineData("0.016666667", 1f / 60f)]   // Bullet's default, set explicitly
+    [InlineData("0.01", 0.01f)]
+    public void FixedTimeStep_SetInIni_IsKeptForRapier(string configured, float expected)
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create(new Dictionary<string, string> { { "FixedTimeStep", configured } });
+        try
+        {
+            Assert.Equal(expected, scene.m_fixedTimeStep, 6);
+            scene.Simulate(RapierTestScene.FrameSeconds);
+            Assert.Equal(expected, ((BSAPIRapier.BulletWorldRapier)scene.World).State.TimeStep, 6);
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    [Fact]
+    public void FixedTimeStep_BulletDefaultUnchanged()
+    {
+        // The parameter's own default, which the Bullet engines keep: only Rapier's selection replaces it.
+        Assert.True(BSParam.TryGetParameter("FixedTimeStep", out BSParam.ParameterDefnBase defn));
+        BSScene scene = new BSScene();
+        defn.AssignDefault(scene);
+        Assert.Equal(1f / 60f, scene.m_fixedTimeStep);
+    }
+
+    [Fact]
     public void PhysicalBoxFreeFalls()
     {
         using ErrorLog log = new ErrorLog();
@@ -49,11 +99,15 @@ public class WorldAndStepTests
             RapierTestScene.Step(scene, 1.0f);
 
             // The plan asks for the position to be 200 - 4.9 within 3%; read literally that is 196.1 +- 5.9, which a body
-            // that never moved would also satisfy, so this checks the 4.9 m drop itself. The fixed 1/60 s steps stop a
-            // little short of one second and semi-implicit Euler lands a little under the exact value, which the 3% allows.
+            // that never moved would also satisfy, so this checks the drop itself. The 11 frames of one second take
+            // whole fixed steps, which stop a little short of it (0.98 s of 0.02 s steps), so the drop and speed are
+            // checked for the time stepped; semi-implicit Euler lands a little off the exact value, which the 3% allows.
+            const int frames = 11;   // what RapierTestScene.Step takes for one second
+            double stepped = Math.Floor(frames * RapierTestScene.FrameSeconds / scene.m_fixedTimeStep) * scene.m_fixedTimeStep;
             double drop = 200.0 - box.Position.Z;
-            Assert.InRange(drop, 4.9 * 0.97, 4.9 * 1.03);
-            Assert.InRange(box.Velocity.Z, -9.8 * 1.03, -9.8 * 0.97);
+            double exact = 0.5 * 9.8 * stepped * stepped;
+            Assert.InRange(drop, exact * 0.97, exact * 1.03);
+            Assert.InRange(box.Velocity.Z, -9.8 * stepped * 1.03, -9.8 * stepped * 0.97);
             Assert.Equal(128f, box.Position.X, 0.01f);
             Assert.Equal(128f, box.Position.Y, 0.01f);
             Assert.Empty(log.Errors);

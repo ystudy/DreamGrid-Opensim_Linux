@@ -490,7 +490,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                 10,
                 (s) => { return s.m_maxSubSteps; },
                 (s,v) => { s.m_maxSubSteps = (int)v; } ),
-            new ParameterDefn<float>("FixedTimeStep", "In simulation step, seconds of one substep (1/60)",
+            new ParameterDefn<float>("FixedTimeStep", "In simulation step, seconds of one substep (1/60; 0.02 for the Rapier engine unless set)",
                 1f / 60f,
                 (s) => { return s.m_fixedTimeStep; },
                 (s,v) => { s.m_fixedTimeStep = v; } ),
