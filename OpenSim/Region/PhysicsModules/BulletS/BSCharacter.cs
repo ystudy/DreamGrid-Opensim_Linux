@@ -548,6 +548,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                         // This keeps us from flipping the capsule over which the veiwer does not understand.
                         float oRoll, oPitch, oYaw;
                         RawOrientation.GetEulerAngles(out oRoll, out oPitch, out oYaw);
+                        // The body already faces this way (to within float noise): nothing to set.
+                        if (PhysScene.PE.SkipsUnchangedAvatarYaw && PhysBody.HasPhysicalBody
+                                && YawWithinTolerance(PhysScene.PE.GetOrientation(PhysBody), oYaw))
+                            return;
                         OMV.Quaternion trimmedOrientation = OMV.Quaternion.CreateFromEulers(0f, 0f, oYaw);
                         // DetailLog("{0},BSCharacter.setOrientation,taint,val={1},valDir={2},conv={3},convDir={4}",
                         //                 LocalID, RawOrientation, OMV.Vector3.UnitX * RawOrientation,
@@ -556,6 +560,25 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                     });
                 }
             }
+        }
+
+        // How far, in radians, the yaw the simulator gives the avatar may be from its body's before the body is turned
+        // (BSAPITemplate.SkipsUnchangedAvatarYaw). The value the simulator sets every frame comes back from the engine
+        // through quaternion and Euler conversions, so it differs from the body's by float noise, about 1e-6 rad. A
+        // turn anyone can see is a degree or more (0.017 rad); 0.001 rad (0.06 degrees) moves the edge of a 0.6 m wide
+        // avatar by 0.3 mm. The test is against the body's own yaw, not the last value asked for, so slow turns in
+        // steps smaller than this still add up and the body is never more than this far behind.
+        internal const float AvatarYawTolerance = 0.001f;
+
+        // Whether the yaw of this (upright) orientation is within AvatarYawTolerance of yaw. The body's yaw is worked out
+        // here in double: Quaternion.GetEulerAngles snaps components under about 0.001 to zero, so it reads every yaw
+        // within 0.002 rad of 0 as 0.
+        internal static bool YawWithinTolerance(OMV.Quaternion current, float yaw)
+        {
+            double x = current.X, y = current.Y, z = current.Z, w = current.W;
+            double currentYaw = Math.Atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z));
+            double difference = Math.IEEERemainder(yaw - currentYaw, 2.0 * Math.PI);
+            return Math.Abs(difference) < AvatarYawTolerance;
         }
 
         // Go directly to Bullet to get/set the value.

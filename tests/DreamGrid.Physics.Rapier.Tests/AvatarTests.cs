@@ -365,4 +365,110 @@ public class AvatarTests
             scene.Dispose();
         }
     }
+
+    // ---- The orientation the simulator sets every frame (BSAPITemplate.SkipsUnchangedAvatarYaw) ----
+
+    private static float BodyYaw(BSScene scene)
+    {
+        scene.PE.GetOrientation(BodyOf(scene, AvatarId)).GetEulerAngles(out _, out _, out float yaw);
+        return yaw;
+    }
+
+    [Fact]
+    public void Avatar_OrientationWithTheSameYaw_IsNotSetAgain()
+    {
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            Assert.True(scene.PE.SkipsUnchangedAvatarYaw);
+            SetFlatTerrain(scene);
+            PhysicsActor avatar = AddAvatar(scene, new Vector3(128f, 128f, TerrainHeight + AvatarSize.Z / 2f + 0.3f), false);
+            avatar.Orientation = Quaternion.CreateFromEulers(0f, 0f, 0.5f);
+            RapierTestScene.Step(scene, 1.0f);
+            Quaternion before = scene.PE.GetOrientation(BodyOf(scene, AvatarId));
+            Assert.Equal(0.5f, BodyYaw(scene), 4);
+
+            // What the simulator does each frame: the same yaw back, off by float noise (and with the tilt the viewer
+            // may add, which BSCharacter drops). The body is left exactly as it was.
+            for (int frame = 0; frame < 20; frame++)
+            {
+                float noise = (frame % 2 == 0 ? 1f : -1f) * 2e-5f * frame / 20f;
+                avatar.Orientation = Quaternion.CreateFromEulers(0.01f * noise, 0f, 0.5f + noise);
+                scene.Simulate(RapierTestScene.FrameSeconds);
+                Assert.Equal(before, scene.PE.GetOrientation(BodyOf(scene, AvatarId)));
+            }
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    [Theory]
+    [InlineData(0.0011f)]    // just over the tolerance
+    [InlineData(0.0175f)]    // one degree
+    [InlineData(3.0f)]       // turning round
+    public void Avatar_TurnBeyondTheTolerance_IsAppliedTheSameFrame(float turn)
+    {
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            SetFlatTerrain(scene);
+            PhysicsActor avatar = AddAvatar(scene, new Vector3(128f, 128f, TerrainHeight + AvatarSize.Z / 2f + 0.3f), false);
+            avatar.Orientation = Quaternion.CreateFromEulers(0f, 0f, 0.5f);
+            RapierTestScene.Step(scene, 1.0f);
+
+            avatar.Orientation = Quaternion.CreateFromEulers(0f, 0f, 0.5f + turn);
+            scene.Simulate(RapierTestScene.FrameSeconds);
+            float expected = (float)Math.IEEERemainder(0.5f + turn, 2.0 * Math.PI);
+            Assert.Equal(expected, BodyYaw(scene), 4);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    [Fact]
+    public void Avatar_SlowTurnInStepsBelowTheTolerance_NeverFallsFurtherBehind()
+    {
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            SetFlatTerrain(scene);
+            PhysicsActor avatar = AddAvatar(scene, new Vector3(128f, 128f, TerrainHeight + AvatarSize.Z / 2f + 0.3f), false);
+            // Away from 0, where Quaternion.GetEulerAngles (which BSCharacter trims the orientation with) reads small
+            // yaws as 0.
+            avatar.Orientation = Quaternion.CreateFromEulers(0f, 0f, 0.5f);
+            RapierTestScene.Step(scene, 1.0f);
+
+            // 0.0004 rad a frame: each step alone is under the tolerance, but the body is turned once it is behind.
+            float yaw = 0.5f;
+            for (int frame = 0; frame < 50; frame++)
+            {
+                yaw += 0.0004f;
+                avatar.Orientation = Quaternion.CreateFromEulers(0f, 0f, yaw);
+                scene.Simulate(RapierTestScene.FrameSeconds);
+                Assert.True(Math.Abs(yaw - BodyYaw(scene)) < BSCharacter.AvatarYawTolerance + 1e-5f,
+                            $"frame {frame}: asked {yaw}, body {BodyYaw(scene)}");
+            }
+            Assert.True(BodyYaw(scene) > 0.518f, $"the body turned only to {BodyYaw(scene)}");
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    [Theory]
+    [InlineData(0.5f, 0.5f, true)]
+    [InlineData(0.5f, 0.5009f, true)]
+    [InlineData(0.5f, 0.5011f, false)]
+    [InlineData(3.1414f, -3.1414f, true)]    // the same direction across +-pi
+    [InlineData(0f, 0.0175f, false)]
+    public void YawWithinTolerance_ComparesTheYawOnly(float current, float asked, bool within)
+    {
+        Quaternion body = Quaternion.CreateFromEulers(0f, 0f, current);
+        Assert.Equal(within, BSCharacter.YawWithinTolerance(body, asked));
+    }
 }

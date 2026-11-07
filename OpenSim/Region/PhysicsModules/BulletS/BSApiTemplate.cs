@@ -352,6 +352,12 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         // capsule in that box, so the avatar is as tall as the cube and stands at the same height. For an engine whose
         // contacts are cheaper on a capsule than on a box.
         public virtual bool CapsuleAvatars { get { return false; } }
+
+        // Whether BSCharacter leaves the avatar's orientation alone when the yaw it is given is within
+        // BSCharacter.AvatarYawTolerance of the body's. The simulator sets the orientation every frame, mostly to the
+        // value it already has; an engine for which setting it is a teleport (Rapier: r3RigidBody_SetPosition) asks
+        // for this. Bullet keeps setting it every time.
+        public virtual bool SkipsUnchangedAvatarYaw { get { return false; } }
         
         // Initialization and simulation
         public abstract BulletWorld Initialize(Vector3 maxPosition, ConfigurationParameters parms,
