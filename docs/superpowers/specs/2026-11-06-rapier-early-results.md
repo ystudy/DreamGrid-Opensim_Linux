@@ -237,6 +237,14 @@ All 16 Rapier runs plus the start-up runs:
 - **Still to do:** the owner's Phase 4 checks in Firestorm, Rapier region against ubODE region: walking, stairs and
   slopes, sitting, a vehicle, a linkset door, a volume-detect trigger, a collision script and the DragonFyre floors.
   Results go in a `rapier-decision.md` (feasibility 5.1).
+- **Also still to do:**
+  - **Out-of-bounds check:** run kick-500 once with `BulletEngine=BulletUnmanaged`. If the out-of-bounds count is
+    similar, it is BulletS's own edge handling plus Bullet-style friction, as the final review concluded. If it is
+    near zero, the backend is the cause.
+  - **Memory A/B on DragonFyre RSS:** (a) as is; (b) without the trimesh internal-edge fix on static meshes;
+    (c) without the managed vertex copies.
+  - **Where the in-OpenSim time goes:** see [`2026-11-06-rapier-perf-investigation.md`](2026-11-06-rapier-perf-investigation.md),
+    which ranks ten fixes.
 
 ## Caveats
 
