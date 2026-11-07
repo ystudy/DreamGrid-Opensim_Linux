@@ -219,10 +219,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                     if (DDetail) DetailLog("{0},BSShapeCollection.CreateGeom,box,force={1},rebuilt={2},shape={3}",
                                             prim.LocalID, forceRebuild, ret, prim.PhysShape);
                 }
-                // The Rapier engine also has a native cylinder (Bullet's is not used here, so the Bullet engines keep
-                //    their convex hull). Like the sphere it needs a round cross section: the radius comes from Scale.X.
+                // An engine that asks for it (Rapier) also gets a native cylinder (Bullet's is not used here, so the Bullet
+                //    engines keep their convex hull). Like the sphere it needs a round cross section: the radius comes from Scale.X.
                 if (!haveShape
-                        && m_physicsScene.PE is Rapier.BSAPIRapier
+                        && m_physicsScene.PE.NativeCylinderPrims
                         && pbs.ProfileShape == ProfileShape.Circle && pbs.PathCurve == (byte)Extrusion.Straight
                         && pbs.Scale.X == pbs.Scale.Y)
                 {

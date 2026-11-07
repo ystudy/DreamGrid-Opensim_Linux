@@ -423,6 +423,9 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         public override string BulletEngineName { get { return "Rapier"; } }
         public override string BulletEngineVersion { get; protected set; }
 
+        // Rapier's cylinder is exact and cheaper than a hull of the prim's mesh.
+        public override bool NativeCylinderPrims { get { return true; } }
+
         public BSAPIRapier(string paramName, BSScene physScene)
         {
             PhysicsScene = physScene;

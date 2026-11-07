@@ -202,6 +202,17 @@ public class WorldAndStepTests
     }
 
     [Fact]
+    public void Capabilities_RapierAsksForThem_BulletDoesNot()
+    {
+        BSAPITemplate? rapier = BSScene.SelectEngineForTest("Rapier");
+        Assert.NotNull(rapier);
+        Assert.True(rapier!.NativeCylinderPrims);
+        // BulletXNA is managed, so it can be made here; it keeps the template's defaults, as BSAPIUnman does.
+        BSAPITemplate xna = new BSAPIXNA("BulletXNA", new BSScene());
+        Assert.False(xna.NativeCylinderPrims);
+    }
+
+    [Fact]
     public void SelectEngine_HyphenSuffixKeepsTheWholeName()
     {
         // "Rapier-0.36" must select "rapier", not "rapie".
