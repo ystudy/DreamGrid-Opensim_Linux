@@ -1,0 +1,108 @@
+name: rapier
+
+# Builds the Rapier C library (bin/lib64/librapier-*.so, rapier.dll) from the commit, Rust version (RUST_TOOLCHAIN) and
+# dependency lockfile (Cargo.lock, built with --locked) pinned in ThirdParty/rapier,
+# so the binaries committed to bin/lib64 can be rebuilt and checked. Each job checks that the library exports exactly the
+# r3 functions in ThirdParty/rapier/exports.txt (the list DreamGrid's P/Invoke layer is written against). The Linux jobs
+# also check that nothing needs a newer glibc than Debian 12 has, and the Windows job checks that the DLL imports no
+# VC++ runtime. The libraries are uploaded as artifacts; copying them into bin/lib64 and committing them is done by hand.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'ThirdParty/rapier/**'
+      - 'bin/lib64/librapier-*'
+      - 'bin/lib64/rapier.dll'
+      - '.github/workflows/rapier.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    # Debian 12 is the oldest system DreamGrid supports (glibc 2.36); building there keeps the glibc requirement low.
+    container: debian:12
+    timeout-minutes: 45
+    steps:
+      - name: Build tools
+        run: |
+          apt-get update -q
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
+            build-essential git ca-certificates curl binutils
+      - uses: actions/checkout@v4
+      - name: Rust (the exact version in ThirdParty/rapier/source.env)
+        run: |
+          . ThirdParty/rapier/source.env
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain "$RUST_TOOLCHAIN"
+      - name: Build librapier-${{ matrix.arch }}.so
+        run: |
+          . "$HOME/.cargo/env"
+          . ThirdParty/rapier/source.env
+          cargo "+$RUST_TOOLCHAIN" --version
+          sh ThirdParty/rapier/build-linux.sh out
+      - name: Exports are exactly ThirdParty/rapier/exports.txt
+        run: |
+          nm -D --defined-only out/librapier-${{ matrix.arch }}.so | awk '$3 ~ /^r3/ {print $3}' | LC_ALL=C sort > built.txt
+          echo "expected $(wc -l < ThirdParty/rapier/exports.txt), built $(wc -l < built.txt)"
+          diff ThirdParty/rapier/exports.txt built.txt
+      - name: No glibc symbol newer than 2.36
+        run: |
+          objdump -T out/librapier-${{ matrix.arch }}.so | grep -o 'GLIBC_[0-9.]*' | sort -uV > glibc.txt
+          echo "highest: $(tail -1 glibc.txt)"
+          newest=$(sed 's/GLIBC_//' glibc.txt | sort -V | tail -1)
+          [ "$(printf '%s\n2.36\n' "$newest" | sort -V | tail -1)" = "2.36" ]
+      - uses: actions/upload-artifact@v4
+        with:
+          name: librapier-${{ matrix.arch }}
+          path: out/librapier-${{ matrix.arch }}.so
+          if-no-files-found: error
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust (the exact version in ThirdParty/rapier/source.env)
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path ThirdParty/rapier/source.env -Pattern '^RUST_TOOLCHAIN=(.+)$').Matches[0].Groups[1].Value.Trim()
+          rustup toolchain install $version --profile minimal --target x86_64-pc-windows-msvc
+          cargo "+$version" --version
+      - name: Build rapier.dll
+        shell: pwsh
+        run: ThirdParty/rapier/build-windows.ps1 -OutDir out
+      - name: Exports and imports
+        shell: pwsh
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          $vs = & $vswhere -latest -products * -property installationPath
+          $dumpbin = Get-ChildItem (Join-Path $vs 'VC\Tools\MSVC') -Recurse -Filter dumpbin.exe |
+            Where-Object FullName -match 'Hostx64\\x64' | Select-Object -First 1
+          $built = @(& $dumpbin.FullName /nologo /exports out/rapier.dll | ForEach-Object {
+            if ($_ -match '^\s+\d+\s+[0-9A-F]+\s+[0-9A-F]+\s+(r3\S+)') { $Matches[1] } } | Sort-Object -CaseSensitive)
+          $expected = @(Get-Content ThirdParty/rapier/exports.txt)
+          Write-Host "expected $($expected.Count), built $($built.Count)"
+          $diff = Compare-Object $expected $built -CaseSensitive
+          if ($diff) { $diff | Format-Table | Out-String | Write-Host; throw 'The exported r3 functions differ from exports.txt.' }
+          # The DLL must not need the VC++ runtime (built with crt-static): the Windows installer copies only the runtime DLLs
+          # the other lib64 natives import, so a VCRUNTIME140 or MSVCP140 import would be missing on a clean Windows.
+          $imports = @(& $dumpbin.FullName /nologo /dependents out/rapier.dll | ForEach-Object {
+            if ($_ -match '^\s+(\S+\.dll)\s*$') { $Matches[1].ToUpperInvariant() } })
+          Write-Host "imports: $($imports -join ', ')"
+          $unexpected = @($imports | Where-Object { $_ -notmatch '^(KERNEL32|NTDLL|BCRYPT)\.DLL$' -and $_ -notmatch '^API-MS-WIN-CORE-[A-Z0-9-]+\.DLL$' })
+          if ($unexpected) { throw "Unexpected imports: $($unexpected -join ', ')" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rapier-windows-x64
+          path: out/rapier.dll
+          if-no-files-found: error

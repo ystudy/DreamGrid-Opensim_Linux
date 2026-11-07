@@ -219,6 +219,27 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                     if (DDetail) DetailLog("{0},BSShapeCollection.CreateGeom,box,force={1},rebuilt={2},shape={3}",
                                             prim.LocalID, forceRebuild, ret, prim.PhysShape);
                 }
+                // An engine that asks for it (Rapier) also gets a native cylinder (Bullet's is not used here, so the Bullet
+                //    engines keep their convex hull). Like the sphere it needs a round cross section: the radius comes from Scale.X.
+                if (!haveShape
+                        && m_physicsScene.PE.NativeCylinderPrims
+                        && pbs.ProfileShape == ProfileShape.Circle && pbs.PathCurve == (byte)Extrusion.Straight
+                        && pbs.Scale.X == pbs.Scale.Y)
+                {
+                    haveShape = true;
+                    if (forceRebuild
+                            || prim.Scale != scaleOfExistingShape
+                            || prim.PhysShape.ShapeType != BSPhysicsShapeType.SHAPE_CYLINDER
+                            )
+                    {
+                        DereferenceExistingShape(prim, shapeCallback);
+                        prim.PhysShape = BSShapeNative.GetReference(m_physicsScene, prim,
+                                                BSPhysicsShapeType.SHAPE_CYLINDER, FixedShapeKey.KEY_CYLINDER);
+                        ret = true;
+                    }
+                    if (DDetail) DetailLog("{0},BSShapeCollection.CreateGeom,cylinder,force={1},rebuilt={2},shape={3}",
+                                            prim.LocalID, forceRebuild, ret, prim.PhysShape);
+                }
             }
 	    
             // If a simple shape is not happening, create a mesh and possibly a hull.

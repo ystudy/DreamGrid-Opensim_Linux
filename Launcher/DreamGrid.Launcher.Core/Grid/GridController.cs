@@ -36,7 +36,8 @@ public sealed partial class GridController(
     TimeProvider time,
     ILoggerFactory? loggers = null,
     Func<LauncherSettings, IRegionStore>? regionStores = null,
-    Action<int, IReadOnlyList<int>, CpuPriority>? cpu = null) : IGridController
+    Action<int, IReadOnlyList<int>, CpuPriority>? cpu = null,
+    PlatformSupport? platform = null) : IGridController
 {
     private static readonly TimeSpan ConsoleSettle = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan LoginWait = TimeSpan.FromSeconds(300);
@@ -287,7 +288,10 @@ public sealed partial class GridController(
             var check = (options.Cores ?? []).SequenceEqual(before.Cores ?? [])
                 ? options with { Cores = RegionSettingsRules.UsableCores(options.Cores, Environment.ProcessorCount) }
                 : options;
-            if (RegionSettingsRules.Program(physics, check, Environment.ProcessorCount) is { Ok: false } invalid)
+            // A Rapier saved on another computer blocks nothing while it stays as it was: only a change is checked.
+            var here = platform ?? PlatformSupport.Current;
+            var checkPhysics = physics == saved?.Physics ? null : physics;
+            if (RegionSettingsRules.Program(checkPhysics, check, Environment.ProcessorCount, here.Os, here.Arch) is { Ok: false } invalid)
                 throw new ArgumentException(invalid.Errors.Values.First());
             if (saved is null) throw new ArgumentException("There is no such group of regions.");
             UpdateSettings(l => l with

@@ -687,7 +687,11 @@ namespace OpenSim.Region.PhysicsModule.BulletS
 
         public override void AvatarJump(float impulseZ)
         {
-            AddForce(false, new OMV.Vector3(0, 0, 0.22f * Mass * impulseZ / PhysScene.m_fixedTimeStep));
+            // BulletS's jump was tuned at Bullet's 1/60 s substeps: the force is on for every substep, so dividing by the
+            // substep length makes the impulse grow with the substep count. An engine that asks for it (Rapier) divides
+            // by 1/60 instead, so its jump depends on the frame time only and matches Bullet's at any FixedTimeStep.
+            float jumpStep = PhysScene.PE.JumpUsesBulletStepLength ? BSScene.BulletFixedTimeStep : PhysScene.m_fixedTimeStep;
+            AddForce(false, new OMV.Vector3(0, 0, 0.22f * Mass * impulseZ / jumpStep));
         }
 
         public override void AddForce(OMV.Vector3 force, bool pushforce)

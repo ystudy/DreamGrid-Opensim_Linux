@@ -38,7 +38,7 @@ jobs:
           rm gitleaks.tar.gz
 
       - name: Scan files
-        run: $RUNNER_TEMP/gitleaks dir . --config .gitleaks.toml --redact --no-banner
+        run: $RUNNER_TEMP/gitleaks dir . --config .gitleaks.toml --redact --verbose --no-banner
 
       # A new branch has no "before" commit, so its range is everything not yet on V7.
       - name: Scan new commits
@@ -73,6 +73,11 @@ jobs:
       - name: Unit tests
         run: dotnet test --project tests/DreamGrid.Platform.Tests -c Release
 
+      # Both runners are x64, which is the shipped Rapier library (bin/lib64). When an arm64 job is added, skip these
+      # two Rapier steps there until librapier-arm64.so ships from rapier.yml.
+      - name: Rapier tests
+        run: dotnet test --project tests/DreamGrid.Physics.Rapier.Tests -c Release
+
       - name: Smoke (ubODE)
         run: dotnet run --project tests/DreamGrid.Smoke -c Release -- --bin bin --keep --physics ubODE
         env:
@@ -81,6 +86,12 @@ jobs:
 
       - name: Smoke (BulletSim)
         run: dotnet run --project tests/DreamGrid.Smoke -c Release -- --bin bin --keep --physics BulletSim
+        env:
+          TMP: ${{ runner.temp }}
+          TEMP: ${{ runner.temp }}
+
+      - name: Smoke (Rapier)
+        run: dotnet run --project tests/DreamGrid.Smoke -c Release -- --bin bin --keep --physics Rapier
         env:
           TMP: ${{ runner.temp }}
           TEMP: ${{ runner.temp }}
@@ -131,11 +142,19 @@ jobs:
       - name: Unit tests
         run: dotnet test --project tests/DreamGrid.Platform.Tests -c Release
 
+      # Both runners are x64, which is the shipped Rapier library (bin/lib64). When an arm64 job is added, skip these
+      # two Rapier steps there until librapier-arm64.so ships from rapier.yml.
+      - name: Rapier tests
+        run: dotnet test --project tests/DreamGrid.Physics.Rapier.Tests -c Release
+
       - name: Smoke (ubODE)
         run: dotnet run --project tests/DreamGrid.Smoke -c Release -- --bin bin --keep --physics ubODE
 
       - name: Smoke (BulletSim)
         run: dotnet run --project tests/DreamGrid.Smoke -c Release -- --bin bin --keep --physics BulletSim
+
+      - name: Smoke (Rapier)
+        run: dotnet run --project tests/DreamGrid.Smoke -c Release -- --bin bin --keep --physics Rapier
 
       - name: Smoke (ubODE, German locale)
         run: dotnet run --project tests/DreamGrid.Smoke -c Release -- --bin bin --keep --physics ubODE --culture de_DE.UTF-8

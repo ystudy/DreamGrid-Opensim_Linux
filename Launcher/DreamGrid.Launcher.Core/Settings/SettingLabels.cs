@@ -6,8 +6,13 @@ namespace DreamGrid.Launcher.Core.Settings;
 /// </summary>
 public static class SettingLabels
 {
-    /// <summary>"ubODE", "BulletSim" or "BulletSim in its own thread"; an unknown engine as it is stored.</summary>
-    public static string Physics(string engine) => engine == "BulletSimThreaded" ? "BulletSim in its own thread" : engine;
+    /// <summary>"ubODE", "BulletSim", "BulletSim in its own thread" or "Rapier (experimental)"; an unknown engine as it is stored.</summary>
+    public static string Physics(string engine) => engine switch
+    {
+        "BulletSimThreaded" => "BulletSim in its own thread",
+        "Rapier" => "Rapier (experimental)",
+        _ => engine,
+    };
 
     public static string Map(MapQuality map) => map == MapQuality.None ? "No map" : map.ToString();
 

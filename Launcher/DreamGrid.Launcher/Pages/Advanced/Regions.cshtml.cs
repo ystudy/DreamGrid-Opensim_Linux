@@ -9,11 +9,14 @@ namespace DreamGrid.Launcher.Pages.Advanced;
 /// The physics engine and script setting that regions without their own choice use. A save goes through
 /// IGridController.UpdateSettings; a value the form does not offer is a 400 and nothing is saved.
 /// </summary>
-public sealed class RegionsModel(IGridController grid, Func<LauncherSettings> settings) : PageModel
+public sealed class RegionsModel(IGridController grid, Func<LauncherSettings> settings, PlatformSupport platform) : PageModel
 {
     /// <summary>The engines offered, with the words the region Physics tab uses.</summary>
-    public static readonly IReadOnlyList<(string Value, string Text)> PhysicsChoices =
-        [.. RegionSettingsRules.PhysicsEngines.Select(e => (e, SettingLabels.Physics(e)))];
+    public IReadOnlyList<(string Value, string Text)> PhysicsChoices =>
+        [.. platform.Engines.Select(e => (e, SettingLabels.Physics(e)))];
+
+    /// <summary>Set when the saved grid default is an engine this computer cannot run (settings moved from another computer).</summary>
+    public string? PhysicsNotice { get; private set; }
 
     [BindProperty] public string? DefaultPhysics { get; set; }
 
@@ -29,7 +32,7 @@ public sealed class RegionsModel(IGridController grid, Func<LauncherSettings> se
 
     public IActionResult OnPost()
     {
-        if (DefaultPhysics is null || !RegionSettingsRules.PhysicsEngines.Contains(DefaultPhysics)
+        if (DefaultPhysics is null || !platform.Engines.Contains(DefaultPhysics)
             || DefaultScripts is not ("true" or "false"))
             return BadRequest();
         var physics = DefaultPhysics;
@@ -70,6 +73,8 @@ public sealed class RegionsModel(IGridController grid, Func<LauncherSettings> se
     private void Fill(LauncherSettings s)
     {
         DefaultPhysics = s.DefaultPhysics;
+        PhysicsNotice = platform.Unavailable(s.DefaultPhysics) is null ? null
+            : $"The grid default is set to {SettingLabels.Physics(s.DefaultPhysics)}, which isn't available on this computer. Pick another engine and save.";
         DefaultScripts = s.DefaultScripts ? "true" : "false";
     }
 }

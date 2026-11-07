@@ -214,6 +214,36 @@
     <Compile Include="ExtendedPhysics.cs">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="Rapier\BSAPIRapier.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Rapier\BSAPIRapier.Bodies.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Rapier\BSAPIRapier.Constraints.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Rapier\BSAPIRapier.Flags.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Rapier\BSAPIRapier.Queries.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Rapier\BSAPIRapier.Shapes.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Rapier\BSAPIRapier.Step.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Rapier\BSAPIRapier.Terrain.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Rapier\RapierNative.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Rapier\RapierWorldState.cs">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="Properties\AssemblyInfo.cs">
       <SubType>Code</SubType>
     </Compile>
