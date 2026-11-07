@@ -28,6 +28,7 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Loader;
 
@@ -120,6 +121,64 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
 
         [StructLayout(LayoutKind.Sequential)]
         public struct ImpulseJointHandle { public IntPtr world; public uint index, generation; }
+
+        // ---- Joints ----
+
+        // R3_JOINT_DOF_COUNT (6 in 3D): axes 0 to 2 are translations along the joint frame's X, Y and Z, 3 to 5 rotations
+        // about them. A mask over the axes has bit n for axis n (the R3_LOCK_* bits).
+        public const int JointDof = 6;
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct JointLimits { public float min, max; }
+
+        // R3JointMotor. model: 0 acceleration-based, 1 force-based.
+        [StructLayout(LayoutKind.Sequential)]
+        public struct JointMotor
+        {
+            public float targetVel, targetPos, stiffness, damping, maxForce;
+            public uint model;
+        }
+
+        [InlineArray(JointDof)]
+        public struct JointLimitsArray { private JointLimits _element; }
+
+        [InlineArray(JointDof)]
+        public struct JointMotorArray { private JointMotor _element; }
+
+        [InlineArray(JointDof)]
+        public struct JointImpulseArray { private float _element; }
+
+        // R3SpringCoefficients: Rapier's joint softness, a natural frequency in Hz and a damping ratio.
+        [StructLayout(LayoutKind.Sequential)]
+        public struct SpringCoefficients { public float naturalFrequency, dampingRatio; }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct JointDesc
+        {
+            public Pose localFrame1;
+            public Pose localFrame2;
+            public byte lockedAxes;
+            public byte limitAxes;
+            public byte motorAxes;
+            public byte coupledAxes;
+            public JointLimitsArray limits;
+            public JointMotorArray motors;
+            public SpringCoefficients softness;
+            public uint contactsEnabled;
+            public uint enabled;
+            public UserData userData;
+        }
+
+        // R3JointImpulses (3D: the angular impulse is a vector): what the solver applied in the last step, along the
+        // joint frame's axes.
+        [StructLayout(LayoutKind.Sequential)]
+        public struct JointImpulses
+        {
+            public Vector linear;
+            public Vector angular;
+            public JointImpulseArray limits;
+            public JointImpulseArray motors;
+        }
 
         [StructLayout(LayoutKind.Sequential)]
         public struct MassProperties
@@ -598,6 +657,37 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         public static extern UserData r3Collider_UserData(ColliderHandle handle);
 
+        // ---- Impulse joints ----
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern JointDesc r3DefaultJointDesc();
+
+        // Joins two bodies of one world. An invalid handle (and an error status) when it fails.
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern ImpulseJointHandle r3InsertImpulseJoint(RigidBodyHandle body1, RigidBodyHandle body2, in JointDesc joint);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3RemoveImpulseJoint(ImpulseJointHandle handle, uint wakeUp);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern JointDesc r3ImpulseJoint_Desc(ImpulseJointHandle handle);
+
+        // Replaces the whole configuration and resets the cached limit and motor impulses.
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3ImpulseJoint_SetDesc(ImpulseJointHandle handle, in JointDesc desc, uint wakeUp);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3ImpulseJoint_SetEnabled(ImpulseJointHandle handle, uint value, uint wakeUp);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern JointImpulses r3ImpulseJoint_Impulses(ImpulseJointHandle handle);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern float r3RigidBody_Mass(RigidBodyHandle handle);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3RigidBody_SetAdditionalSolverIterations(RigidBodyHandle handle, UIntPtr value);
+
         // ---- Queries ----
 
         [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
@@ -657,6 +747,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                     ("RigidBodyDesc", Marshal.SizeOf<RigidBodyDesc>(), (int)native.rigidBodyDesc),
                     ("ColliderDesc", Marshal.SizeOf<ColliderDesc>(), (int)native.colliderDesc),
                     ("ShapeDesc", Marshal.SizeOf<ShapeDesc>(), (int)native.shapeDesc),
+                    ("JointDesc", Marshal.SizeOf<JointDesc>(), (int)native.jointDesc),
                 });
             }
             catch (Exception e) when (e is DllNotFoundException || e is EntryPointNotFoundException || e is BadImageFormatException)

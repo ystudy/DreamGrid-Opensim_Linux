@@ -117,6 +117,31 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             public Vector3 RootChildPos;
             public Quaternion RootChildRot = Quaternion.Identity;
 
+            // The constraints this body is joined by; they die with it.
+            private List<BulletConstraintRapier> m_joints;
+
+            public void AddJoint(BulletConstraintRapier joint)
+            {
+                if (m_joints == null)
+                    m_joints = new List<BulletConstraintRapier>();
+                m_joints.Add(joint);
+            }
+
+            public void RemoveJoint(BulletConstraintRapier joint)
+            {
+                m_joints?.Remove(joint);
+            }
+
+            /// <summary>Rapier removes a body's joints with it: mark them dead so nothing calls Rapier with their handles.</summary>
+            public void KillJoints()
+            {
+                if (m_joints == null)
+                    return;
+                foreach (BulletConstraintRapier joint in m_joints.ToArray())
+                    joint.MarkDead();
+                m_joints = null;
+            }
+
             private bool m_valid;
 
             public BulletBodyRapier(uint id, RapierNative.RigidBodyHandle body, RapierWorldState state)
@@ -262,17 +287,66 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             public Quaternion Rot;
         }
 
+        /// <summary>
+        /// A 6-DOF constraint (H5b) as an impulse joint. Bullet's btGeneric6DofConstraint keeps its limits per axis and
+        /// BulletS sets them in several calls, so the per-axis state lives here and Desc, the joint's whole configuration,
+        /// is rebuilt from it and given to Rapier on every change. A constraint is dead once it is destroyed or one of its
+        /// bodies is: Rapier removes a body's joints with it, so the handle must not be used again.
+        /// </summary>
         internal sealed class BulletConstraintRapier : BulletConstraint
         {
-            // The impulse joint.
             public RapierNative.ImpulseJointHandle Joint;
+            public readonly RapierWorldState State;
+            // The bodies; Body1 is null for a constraint to the world, which is the state's anchor body.
+            public readonly BulletBodyRapier Body1;
+            public readonly BulletBodyRapier Body2;
+
+            // The joint's configuration as last given to Rapier.
+            public RapierNative.JointDesc Desc;
+
+            // Bullet's per-axis limits (low == high locks, low < high limits, low > high frees) and 6-DOF defaults: the
+            // linear axes locked and the angular axes free.
+            public Vector3 LinearLow = Vector3.Zero;
+            public Vector3 LinearHigh = Vector3.Zero;
+            public Vector3 AngularLow = Vector3.One;
+            public Vector3 AngularHigh = -Vector3.One;
+
+            // The translational limit motor (X axis only, as BulletSim's TranslationalLimitMotor drives it).
+            public bool TransMotor;
+            public float TransMotorVelocity;
+            public float TransMotorForce;
+
+            // The springs, one per axis (0 to 2 linear, 3 to 5 angular).
+            public readonly bool[] SpringOn = new bool[RapierNative.JointDof];
+            public readonly float[] Stiffness = new float[RapierNative.JointDof];
+            public readonly float[] Damping = new float[RapierNative.JointDof];
+            public readonly float[] Equilibrium = new float[RapierNative.JointDof];
+
+            // ERP and CFM as last set (Bullet's defaults until then).
+            public float Erp = 0.2f;
+            public float Cfm;
+
+            // The impulse above which the joint breaks, and whether it has.
+            public float BreakingThreshold = float.PositiveInfinity;
+            public bool Broken;
+
             private bool m_valid;
 
-            public BulletConstraintRapier(RapierNative.ImpulseJointHandle joint)
+            public BulletConstraintRapier(RapierWorldState state, BulletBodyRapier body1, BulletBodyRapier body2)
                 : base()
+            {
+                State = state;
+                Body1 = body1;
+                Body2 = body2;
+            }
+
+            public void Activate(RapierNative.ImpulseJointHandle joint)
             {
                 Joint = joint;
                 m_valid = true;
+                State.Joints.Add(this);
+                Body1?.AddJoint(this);
+                Body2?.AddJoint(this);
             }
 
             public override bool HasPhysicalConstraint
@@ -280,14 +354,26 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                 get { return m_valid; }
             }
 
+            /// <summary>Forget the joint without touching Rapier: it has been removed natively, or the world is going.</summary>
+            public void MarkDead()
+            {
+                if (!m_valid)
+                    return;
+                m_valid = false;
+                State.Joints.Remove(this);
+                State.Breakable.Remove(this);
+                Body1?.RemoveJoint(this);
+                Body2?.RemoveJoint(this);
+            }
+
             public override void Clear()
             {
-                m_valid = false;
+                MarkDead();
             }
 
             public override string AddrString
             {
-                get { return "RapierJoint"; }
+                get { return "RapierJoint" + Joint.index + "." + Joint.generation; }
             }
         }
 
@@ -396,6 +482,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             BulletWorldRapier world = (BulletWorldRapier)pWorld;
             if (world.World != IntPtr.Zero)
             {
+                // Constraints BulletS still holds must not reach into the world once it is gone.
+                foreach (BulletConstraintRapier joint in new List<BulletConstraintRapier>(world.State.Joints))
+                    joint.MarkDead();
+                world.State.HasWorldAnchor = false;
                 RapierNative.r3FreeWorld(world.World);
                 world.World = IntPtr.Zero;
             }

@@ -203,6 +203,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             BulletShapeRapier ownedShape = body.OwnedShape;
             DetachCompound(body);
             body.State.ForgetBody(body);
+            // r3RemoveRigidBody takes the body's joints with it.
+            body.KillJoints();
             RapierNative.r3RemoveRigidBody(body.Body, 1);
             body.Clear();
             if (ownedShape != null)

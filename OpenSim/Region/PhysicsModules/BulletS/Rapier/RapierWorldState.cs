@@ -222,6 +222,21 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         // Bodies given a force or torque since the last step, whose forces PhysicsStep resets afterwards (H11).
         public readonly HashSet<BSAPIRapier.BulletBodyRapier> ForcedBodies = new HashSet<BSAPIRapier.BulletBodyRapier>();
 
+        // ---- Constraints (H5b) ----
+
+        // Every constraint that is alive, so Shutdown can mark them dead before the world goes.
+        public readonly HashSet<BSAPIRapier.BulletConstraintRapier> Joints = new HashSet<BSAPIRapier.BulletConstraintRapier>();
+
+        // The constraints with a finite breaking threshold that are enabled and not broken: the only ones PhysicsStep reads
+        // impulses of.
+        public readonly HashSet<BSAPIRapier.BulletConstraintRapier> Breakable = new HashSet<BSAPIRapier.BulletConstraintRapier>();
+
+        // The fixed body a constraint 'to the world' joins the body to, made when first needed. It has no colliders, so it
+        // makes no contacts and is never awake, and it has no localID, so it is never reported. It sits at the origin with
+        // no rotation: the frame given for it is a world frame.
+        public RapierNative.RigidBodyHandle WorldAnchor;
+        public bool HasWorldAnchor;
+
         // Every native shape that has been built and not freed, so Shutdown frees the ones BulletS never released and
         // a shape is never freed twice.
         public readonly HashSet<IntPtr> Shapes = new HashSet<IntPtr>();

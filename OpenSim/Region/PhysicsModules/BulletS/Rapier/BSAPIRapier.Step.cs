@@ -64,6 +64,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                 // Collisions are gathered after every substep, as in BulletSim: something can touch and bounce off
                 // within one frame.
                 GatherCollisions(world);
+                BreakOverstrainedJoints(state);
             }
             ResetAppliedForces(state);
 
