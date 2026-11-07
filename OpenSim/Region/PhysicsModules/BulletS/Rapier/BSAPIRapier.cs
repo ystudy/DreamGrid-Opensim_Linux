@@ -517,8 +517,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
 
                 // Collision events (start and stop) from the colliders that want collisions, read after each substep.
                 state.Events = RapierNative.r3NewEventCollector();
+                // Without one every step would fail, so a world without a collector is not made at all.
                 if (state.Events == IntPtr.Zero)
-                    RapierNative.Check(RapierNative.r3LastStatus());
+                    throw new InvalidOperationException("Rapier: could not make the world's collision event collector: "
+                                + RapierNative.LastError());
 
                 int iterations = Math.Max(1, (int)BSParam.RapierSolverIterations);
                 RapierNative.Check(RapierNative.r3SetNumSolverIterations(world, (UIntPtr)iterations));
