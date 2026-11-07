@@ -113,7 +113,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             if (body.Restitution.HasValue)
                 RapierNative.Check(RapierNative.r3Collider_SetRestitution(collider, body.Restitution.Value));
             if ((body.Flags & WantsCollisionsFlags) != 0)
-                body.State.WantsCollisions.Add(collider);
+                SetWantsCollisions(body, collider, true);
             if (body.IsGhost)
                 MakeSensor(body, collider);
         }

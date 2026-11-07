@@ -508,6 +508,11 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                 state.Gravity = new Vector3(0f, 0f, parms.gravity);
                 RapierNative.Check(RapierNative.r3SetGravity(world, ToNative(state.Gravity)));
 
+                // Collision events (start and stop) from the colliders that want collisions, read after each substep.
+                state.Events = RapierNative.r3NewEventCollector();
+                if (state.Events == IntPtr.Zero)
+                    RapierNative.Check(RapierNative.r3LastStatus());
+
                 int iterations = Math.Max(1, (int)BSParam.RapierSolverIterations);
                 RapierNative.Check(RapierNative.r3SetNumSolverIterations(world, (UIntPtr)iterations));
 
@@ -520,6 +525,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             }
             catch
             {
+                RapierNative.r3FreeEventCollector(state.Events);
+                state.Events = IntPtr.Zero;
                 RapierNative.r3FreeWorld(world);
                 throw;
             }
@@ -543,6 +550,11 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                 world.State.HasWorldAnchor = false;
                 RapierNative.r3FreeWorld(world.World);
                 world.World = IntPtr.Zero;
+            }
+            if (world.State.Events != IntPtr.Zero)
+            {
+                RapierNative.r3FreeEventCollector(world.State.Events);
+                world.State.Events = IntPtr.Zero;
             }
             // Shapes BulletS never released. A collider holds its own reference, so they can go after the world. The
             // ones BulletS's mesh and hull caches still hold are kept instead (see KeptForBulletSCaches).

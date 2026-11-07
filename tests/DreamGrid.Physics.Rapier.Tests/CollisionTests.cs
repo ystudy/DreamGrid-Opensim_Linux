@@ -317,6 +317,184 @@ public class CollisionTests
         }
     }
 
+    // ---- Touches inside a frame's substeps ----
+    // A thin static wall (0.1 m in X, near face at x = 129.95) and a 0.2 m box that passes through it at 6 m/s, 0.1 m
+    // per 1/60 s substep, with no contact response: it overlaps the wall for about three substeps and keeps going.
+
+    private const float WallNearX = 129.95f;
+    private const float PassSpeed = 6f;
+
+    private static PhysicsActor AddSizedBox(BSScene scene, uint localId, Vector3 position, Vector3 size, bool physical)
+    {
+        PrimitiveBaseShape pbs = PrimitiveBaseShape.CreateBox();
+        pbs.Scale = size;
+        return scene.AddPrimShape("box" + localId, pbs, position, size, Quaternion.Identity, physical, localId);
+    }
+
+    // Set up the wall (460) and the subscribed, non-solid box (461) parked away from it.
+    private static PhysicsActor SetUpPassThrough(BSScene scene)
+    {
+        SetFlatTerrain(scene);
+        AddSizedBox(scene, 460, new Vector3(WallNearX + 0.05f, 128f, 26f), new Vector3(0.1f, 2f, 2f), physical: false);
+        PhysicsActor box = AddBox(scene, 461, new Vector3(100f, 128f, 26f), physical: true, edge: 0.2f);
+        box.SubscribeEvents(50);
+        RapierTestScene.Step(scene, 0.1f);
+        Taint(scene, 461, () => scene.PE.AddToCollisionFlags(scene.PhysObjects[461].PhysBody, CollisionFlags.CF_NO_CONTACT_RESPONSE));
+        Frame(scene);
+        return box;
+    }
+
+    // In a taint before the next frame: put the box's leading face this far short of the wall, moving at PassSpeed.
+    private static void Launch(BSScene scene, float gap)
+    {
+        Taint(scene, 461, () =>
+        {
+            BulletBody body = scene.PhysObjects[461].PhysBody;
+            scene.PE.SetTranslation(body, new Vector3(WallNearX - gap - 0.1f, 128f, 26f), Quaternion.Identity);
+            scene.PE.SetLinearVelocity(body, new Vector3(PassSpeed, 0f, 0f));
+            scene.PE.SetAngularVelocity(body, Vector3.Zero);
+            scene.PE.Activate(body, true);
+        });
+    }
+
+    // Whether the box overlaps the wall in X now (the wall spans WallNearX to WallNearX + 0.1, the box x +- 0.1).
+    private static bool OverlapsWall(BSScene scene)
+    {
+        float x = scene.PE.GetPosition(scene.PhysObjects[461].PhysBody).X;
+        return x + 0.1f > WallNearX - 0.01f && x - 0.1f < WallNearX + 0.11f;
+    }
+
+    // The number of substeps the next Simulate call will take.
+    private static int NextFrameSubsteps(BSScene scene)
+    {
+        RapierWorldState state = ((BSAPIRapier.BulletWorldRapier)scene.World).State;
+        return (int)((state.Accumulator + RapierTestScene.FrameSeconds) / (1f / 60f));
+    }
+
+    [Fact]
+    public void Collisions_TouchStartsAndEndsWithinOneFrame_ReportedOnce()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            SetUpPassThrough(scene);
+            Assert.False(OverlapsWall(scene));
+            Assert.True(NextFrameSubsteps(scene) >= 5);
+
+            // It reaches the wall in the first substep and is clear of it after the fourth, so the steps find it touching
+            // only in the middle of the frame: neither the frame before nor this one ends with the two touching.
+            Launch(scene, 0.05f);
+            List<CollisionDesc> pairs = Frame(scene);
+            Assert.False(OverlapsWall(scene), $"still at the wall: x {scene.PE.GetPosition(scene.PhysObjects[461].PhysBody).X}");
+            CollisionDesc[] touch = pairs.Where(c => IsPair(c, 460, 461)).ToArray();
+            Assert.Single(touch);
+            Assert.Equal(460u, touch[0].aID);
+            Assert.InRange(touch[0].point.X, WallNearX - 0.05f, WallNearX + 0.15f);
+
+            for (int ii = 0; ii < 5; ii++)
+                Assert.DoesNotContain(Frame(scene), c => IsPair(c, 460, 461));
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    [Fact]
+    public void Collisions_TouchEndsInsideNextFrame_ReportedInBothFrames()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            SetUpPassThrough(scene);
+
+            // A step finds contacts from the poses it starts with, so a pair is touching after a substep when it
+            // overlapped after the one before. The box reaches the wall in the frame's last but one substep, so the frame
+            // ends with the two touching, and it is clear after the second substep of the next frame: that frame's first
+            // two substeps still find it touching, as BulletSim would, and the third finds it gone.
+            int substeps = NextFrameSubsteps(scene);
+            Launch(scene, (substeps - 1.5f) * PassSpeed / 60f);
+            List<CollisionDesc> first = Frame(scene);
+            Assert.True(OverlapsWall(scene), $"not at the wall after the first frame: x {scene.PE.GetPosition(scene.PhysObjects[461].PhysBody).X}");
+            Assert.Contains(first, c => IsPair(c, 460, 461));
+
+            List<CollisionDesc> second = Frame(scene);
+            Assert.False(OverlapsWall(scene), $"still at the wall after the second frame: x {scene.PE.GetPosition(scene.PhysObjects[461].PhysBody).X}");
+            Assert.Single(second, c => IsPair(c, 460, 461));
+
+            Assert.DoesNotContain(Frame(scene), c => IsPair(c, 460, 461));
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    [Fact]
+    public void Collisions_PairStaysInContact_ReportedEveryFrame()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            SetFlatTerrain(scene);
+            PhysicsActor lower = AddBox(scene, 470, new Vector3(128f, 128f, 21.25f), physical: true);
+            PhysicsActor upper = AddBox(scene, 471, new Vector3(128f, 128f, 21.75f), physical: true);
+            upper.SubscribeEvents(50);
+            RapierTestScene.Step(scene, 0.5f);
+
+            // While it settles and after: every frame, the one pair each, the box on box and nothing for the unsubscribed
+            // lower box's own terrain pair.
+            for (int ii = 0; ii < 30; ii++)
+            {
+                List<CollisionDesc> pairs = Frame(scene);
+                Assert.Single(pairs, c => IsPair(c, 470, 471));
+                Assert.DoesNotContain(pairs, c => IsPair(c, 0, 470));
+            }
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    [Fact]
+    public void Collisions_NeitherSideWants_NotReportedBesideOneThatDoes()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            SetFlatTerrain(scene);
+            // An unsubscribed stack next to a subscribed box: the world's pair list has all of their pairs.
+            AddBox(scene, 480, new Vector3(128f, 128f, 21.25f), physical: true);
+            AddBox(scene, 481, new Vector3(128f, 128f, 21.75f), physical: true);
+            PhysicsActor listener = AddBox(scene, 482, new Vector3(131f, 128f, 21.25f), physical: true);
+            listener.SubscribeEvents(50);
+
+            bool heard = false;
+            for (int ii = 0; ii < 30; ii++)
+            {
+                foreach (CollisionDesc c in Frame(scene))
+                {
+                    Assert.True(IsPair(c, 0, 482), $"pair {c.aID},{c.bID} where neither side wants collisions");
+                    heard = true;
+                }
+            }
+            Assert.True(heard, "the subscribed box reported nothing");
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
     [Fact]
     public void Collisions_MoreThanArray_Truncates()
     {

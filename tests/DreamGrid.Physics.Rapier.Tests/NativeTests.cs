@@ -87,6 +87,14 @@ public class NativeTests
     }
 
     [Fact]
+    public void CollisionEvent_MatchesRapierH()
+    {
+        // Two handles 32 + started 4 + flags 4 = 40.
+        Assert.Equal(8, IntPtr.Size);
+        Assert.Equal(40, System.Runtime.InteropServices.Marshal.SizeOf<RapierNative.CollisionEvent>());
+    }
+
+    [Fact]
     public void ShapeCastHit_MatchesRapierH()
     {
         // Handle 16 + time_of_impact 4 + witness1, witness2, normal1, normal2 48 + status 4 = 72.

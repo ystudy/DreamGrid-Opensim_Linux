@@ -55,7 +55,7 @@ of `BSAPIXNA.cs`. P/Invoke straight into `rapier.h` is enough, with no Rust shim
 | 1 | `BulletEngineName` (property) | yes | BSScene | emulate | C# constant, e.g. "Rapier". |
 | 2 | `BulletEngineVersion` (property) | yes | BSScene | direct | `r3Version` (plus `r3BuildFeatures` for the log). |
 | 3 | `Initialize` | yes | BSScene | direct | `r3CheckAbi`, `r3NewWorld`, `r3SetGravity`, `r3SetNumSolverIterations`, `r3SetNumThreads`, `r3NewEventCollector`. The update and collision arrays are plain C# arrays that the backend fills. |
-| 4 | `PhysicsStep` | yes | BSScene | emulate | C# loop: up to maxSubSteps calls of `r3Step` at `r3SetTimeStep(fixedTimeStep)`. Then `r3ActiveRigidBodies` + `r3RigidBodyReadStates`, compared with the last state sent (BulletSim's SimMotionState tolerances), fill EntityProperties. Collisions come from `r3Collider_ContactPairs` + `r3ContactPoints` for subscribed colliders and `r3IntersectionPairs` for sensors, one per pair per frame. Forces are reset after the step. See H1 and H2. |
+| 4 | `PhysicsStep` | yes | BSScene | emulate | C# loop: up to maxSubSteps calls of `r3Step` at `r3SetTimeStep(fixedTimeStep)`. Then `r3ActiveRigidBodies` + `r3RigidBodyReadStates`, compared with the last state sent (BulletSim's SimMotionState tolerances), fill EntityProperties. Collisions come from one `r3ContactPairs` + `r3ContactPoints` after the last substep, collision events (`r3EventCollector_CollisionEvents`) after each substep for touches that start or end between those reads, and `r3IntersectionPairs` for sensors, one per pair per frame. Forces are reset after the step. See H1 and H2. |
 | 5 | `UpdateParameter` | never | - | emulate (no-op) | Return false (BSAPIXNA does the same). |
 | 6 | `Shutdown` | yes | BSScene | direct | `r3FreeEventCollector`, `r3FreeWorld`, `r3FreeSharedShape` for cached shapes. |
 | 7 | `PushUpdate` | yes | BSActorMoveToTarget, BSCharacter, BSDynamics, BSLinksetConstraints | emulate | Add the body to a forced-update set that the next PhysicsStep always reports. |
@@ -318,22 +318,24 @@ are to this repo unless they name BulletSim's C++.
   - `r3IntersectionPairs` lists sensor overlaps.
   - The event collector (`r3EventCollector_CollisionEvents`) only reports start and stop. BulletS wants every
     frame of contact, so it polls pairs rather than using events.
-- **Approach:** the backend keeps a "wants collisions" set of colliders, fed by the flags (H3). After each
-  substep, for each collider in the set:
-  1. Call `r3Collider_ContactPairs`.
-  2. For each pair not yet seen this frame that has an active contact, call `r3ContactPoints`. Take the
-     deepest point, convert it to world space with the collider pose, and write a CollisionDesc.
+- **Approach:** the backend keeps a "wants collisions" set of colliders, fed by the flags (H3). Those colliders
+  also get `R3_COLLISION_EVENTS`, and every `r3Step` is given the world's event collector.
+  1. After each substep, read the collector (one call when it is empty) and clear it. A contact that started is
+     written then, from `r3ContactPair` and its deepest point. A pair that stopped in any substep but the first
+     was still touching after the one before, so it is written with the entry it had last frame.
+  2. After the last substep, one `r3ContactPairs` call lists every pair in the world, each once. For each pair
+     not yet seen this frame that has an active contact and a collider in the set, call `r3ContactPoints`. Take
+     the deepest point, convert it to world space with the collider pose, and write a CollisionDesc.
 
   Sensors come from one `r3IntersectionPairs` call. Their point is the other body's position and their
   penetration is 0. Scripts only need the detected object for volume detect.
-  - **Cost:** one call per subscribed collider per substep, plus one per touching pair. For 50 avatars and
-    some scripted objects that is hundreds of calls per frame at well under a microsecond each (unverified;
-    measure in Phase 3).
+  - **Cost:** one pair-list call per frame, one event read per substep, plus two calls per reported pair. The
+    first version called `r3Collider_ContactPairs` per subscribed collider per substep, which cost 3.9-4.3 ms
+    per frame in busy scenes (perf investigation, 2026-11-06).
   - **If the calls show up in profiles:** a small Rust shim can return all CollisionDescs in one call
     (Phase 1.3).
-  - **Cheaper option:** gather once after the last substep instead of after every substep. Brief touches
-    could then be missed. BulletS's avatar code uses `CollisionsLastTick`, so start by gathering every
-    substep.
+  - **Brief touches:** gathering only after the last substep would miss them, so the events cover the
+    substeps in between. BulletS's avatar code uses `CollisionsLastTick`.
 
 ### H3. Collision flags, activation states, body types and filter groups
 

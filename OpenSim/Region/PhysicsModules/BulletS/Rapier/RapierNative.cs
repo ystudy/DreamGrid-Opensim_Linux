@@ -92,6 +92,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         // R3_COMBINE_MULTIPLY: Bullet multiplies the two bodies' friction and restitution.
         public const uint CombineMultiply = 2;
 
+        // R3_COLLISION_EVENTS for r3Collider_SetActiveEvents, and R3_COLLISION_EVENT_SENSOR for CollisionEvent.flags.
+        public const uint ActiveCollisionEvents = 1;
+        public const uint CollisionEventSensor = 1;
+
         // ---- Structs, copied from rapier.h ----
 
         [StructLayout(LayoutKind.Sequential)]
@@ -342,6 +346,15 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             public float totalImpulseMagnitude;
             public float maxImpulse;
             public Vector maxImpulseDirection;
+        }
+
+        // R3CollisionEvent: a pair started (started = 1) or stopped touching during a step.
+        [StructLayout(LayoutKind.Sequential)]
+        public struct CollisionEvent
+        {
+            public ColliderHandle collider1, collider2;
+            public uint started;
+            public uint flags;
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -614,6 +627,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         public static extern uint r3Collider_SetSensor(ColliderHandle handle, uint value);
 
+        // Which events the collider makes during a step (R3_COLLISION_EVENTS here).
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3Collider_SetActiveEvents(ColliderHandle handle, uint value);
+
         [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         public static extern uint r3Collider_SetActiveCollisionTypes(ColliderHandle handle, ushort value);
 
@@ -633,9 +650,33 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         public static extern UIntPtr r3Collider_ContactPairs(ColliderHandle handle, [Out] ContactPair[] buffer, UIntPtr capacity);
 
+        // Every narrow-phase pair in the world, with or without an active contact, each once.
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern UIntPtr r3ContactPairs(IntPtr world, [Out] ContactPair[] buffer, UIntPtr capacity);
+
+        // The narrow-phase pair of two colliders, in the narrow phase's collider order; R3_NOT_FOUND when there is none.
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern ContactPair r3ContactPair(ColliderHandle collider1, ColliderHandle collider2);
+
         // Every sensor overlap in the world.
         [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         public static extern UIntPtr r3IntersectionPairs(IntPtr world, [Out] IntersectionPair[] buffer, UIntPtr capacity);
+
+        // ---- Event collector ----
+        // r3Step appends to it and never clears it; reading does not drain it either.
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern IntPtr r3NewEventCollector();
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3FreeEventCollector(IntPtr events);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3EventCollector_Clear(IntPtr events);
+
+        // As the pair calls: the return value is the count in all, and more than capacity means try again bigger.
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern UIntPtr r3EventCollector_CollisionEvents(IntPtr events, [Out] CollisionEvent[] buffer, UIntPtr capacity);
 
         // Contact points of a pair: collider-local points, world normal. Follow the pair's own collider order.
         [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]

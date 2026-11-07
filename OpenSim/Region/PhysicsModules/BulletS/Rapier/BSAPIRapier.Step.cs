@@ -56,8 +56,6 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                 return 0;
             }
 
-            // Pairs are written once per call, across all its substeps (BulletSim's m_collidersThisFrame).
-            state.PairsThisFrame.Clear();
             state.LastCollisionCount = 0;
 
             int steps;
@@ -70,17 +68,27 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                     state.TimeStep = stepSeconds;
                 }
                 if (steps > 0)
+                {
+                    // Pairs are written once per call, across all its substeps (BulletSim's m_collidersThisFrame). What
+                    // this frame wrote is kept for the next one, for a touch that ends during its substeps.
+                    state.StartCollisionFrame();
                     WakeNeverSleeping(state);
+                    // Nothing an earlier, failed call left in the collector belongs to this frame.
+                    RapierNative.Check(RapierNative.r3EventCollector_Clear(state.Events));
+                }
                 for (int ii = 0; ii < steps; ii++)
                 {
-                    uint status = RapierNative.r3Step(world.World, IntPtr.Zero, IntPtr.Zero);
+                    uint status = RapierNative.r3Step(world.World, IntPtr.Zero, state.Events);
                     if (StepFailed(state, status))
                         return 0;
-                    // Collisions are gathered after every substep, as in BulletSim: something can touch and bounce off
-                    // within one frame.
-                    GatherCollisions(world);
+                    // BulletSim gathers after every substep, so a touch that starts or ends between two frames' reads is
+                    // still reported. The touches that started or stopped in this substep come from Rapier's events.
+                    GatherCollisionEvents(world, ii);
                     BreakOverstrainedJoints(state);
                 }
+                // Then every pair that is touching now, once.
+                if (steps > 0)
+                    GatherCollisions(world);
                 ResetAppliedForces(state);
             }
             finally
@@ -157,41 +165,101 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             }
         }
 
-        // Collision reporting (H2, H4), after one substep. The conventions are BulletSim's (BulletSim.cpp,
-        // SubstepCollisionCallback and RecordCollision):
+        // Collision reporting (H2, H4). The conventions are BulletSim's (BulletSim.cpp, SubstepCollisionCallback and
+        // RecordCollision):
         //  - a pair is kept only if one side wants collisions (BS_SUBSCRIBE_COLLISION_EVENTS or BS_VEHICLE_COLLISIONS);
         //  - one entry per pair per frame: aID is the lower localID, bID the higher;
         //  - one contact point per pair (here the deepest), in world space;
         //  - the normal points from A to B;
         //  - the penetration is the signed distance, negative when the two have sunk into each other.
-        // Rapier lists a contact pair under either of its colliders, so the pairs are found from the colliders that want
-        // collisions and a pair seen from both sides is written once. At most the array's length is written.
+        // BulletSim looks after every substep, so a pair is reported for a frame if it touched after any of the frame's
+        // substeps. Here the pairs touching after the last substep are read once, from the world's own pair list
+        // (GatherCollisions), and the colliders that want collisions make Rapier collision events, read after each
+        // substep (GatherCollisionEvents), for the touches that start or end between two of those reads. At most the
+        // array's length is written.
         private void GatherCollisions(BulletWorldRapier world)
         {
             RapierWorldState state = world.State;
             CollisionDesc[] array = state.CollisionArray;
-            if (array == null)
+            if (array == null || state.LastCollisionCount >= array.Length)
                 return;
 
-            foreach (RapierNative.ColliderHandle collider in state.WantsCollisions)
+            if (state.WantsCollisions.Count > 0)
             {
-                if (state.LastCollisionCount >= array.Length)
-                    return;
-                if (!state.ColliderOwners.TryGetValue(collider, out BulletBodyRapier owner) || !owner.Reporting)
-                    continue;
-
-                int pairCount = (int)RapierNative.r3Collider_ContactPairs(collider, state.PairBuffer, (UIntPtr)state.PairBuffer.Length);
+                int pairCount = (int)RapierNative.r3ContactPairs(world.World, state.PairBuffer, (UIntPtr)state.PairBuffer.Length);
                 if (pairCount > state.PairBuffer.Length)
                 {
                     state.PairBuffer = new RapierNative.ContactPair[pairCount + pairCount / 2];
-                    pairCount = (int)RapierNative.r3Collider_ContactPairs(collider, state.PairBuffer, (UIntPtr)state.PairBuffer.Length);
+                    pairCount = (int)RapierNative.r3ContactPairs(world.World, state.PairBuffer, (UIntPtr)state.PairBuffer.Length);
                 }
                 for (int ii = 0; ii < pairCount && state.LastCollisionCount < array.Length; ii++)
-                    RecordContactPair(state, array, in state.PairBuffer[ii]);
+                {
+                    ref RapierNative.ContactPair pair = ref state.PairBuffer[ii];
+                    if (pair.hasAnyActiveContact == 0)
+                        continue;
+                    if (!state.WantsCollisions.Contains(pair.collider1) && !state.WantsCollisions.Contains(pair.collider2))
+                        continue;
+                    RecordContactPair(state, array, in pair);
+                }
             }
 
             if (state.Sensors.Count > 0 && state.LastCollisionCount < array.Length)
                 GatherSensorOverlaps(world, array);
+        }
+
+        // The collision events of one substep (substep counts from 0 in this frame), then the collector is emptied:
+        //  - a contact that started is written now, with this substep's deepest point, as BulletSim would have written it;
+        //  - a sensor overlap that started is written now too;
+        //  - a pair that stopped in a later substep than the first was still touching after the one before, so BulletSim
+        //    reports it for this frame: it gets the entry it had last frame, when it was touching at the end. A pair that
+        //    stopped in the first substep was not touching after any substep of this frame, and BulletSim does not
+        //    report it either.
+        // Only the event list is read here; when nothing started or stopped that is one native call.
+        private void GatherCollisionEvents(BulletWorldRapier world, int substep)
+        {
+            RapierWorldState state = world.State;
+            int count = (int)RapierNative.r3EventCollector_CollisionEvents(state.Events, state.EventBuffer, (UIntPtr)state.EventBuffer.Length);
+            if (count == 0)
+                return;
+            if (count > state.EventBuffer.Length)
+            {
+                state.EventBuffer = new RapierNative.CollisionEvent[count + count / 2];
+                count = (int)RapierNative.r3EventCollector_CollisionEvents(state.Events, state.EventBuffer, (UIntPtr)state.EventBuffer.Length);
+            }
+            RapierNative.Check(RapierNative.r3EventCollector_Clear(state.Events));
+
+            CollisionDesc[] array = state.CollisionArray;
+            if (array == null)
+                return;
+            for (int ii = 0; ii < count && state.LastCollisionCount < array.Length; ii++)
+            {
+                ref RapierNative.CollisionEvent collision = ref state.EventBuffer[ii];
+                if (!state.ColliderOwners.TryGetValue(collision.collider1, out BulletBodyRapier body1) || !body1.Reporting
+                        || !state.ColliderOwners.TryGetValue(collision.collider2, out BulletBodyRapier body2) || !body2.Reporting)
+                    continue;
+                if (((body1.Flags | body2.Flags) & WantsCollisionsFlags) == 0)
+                    continue;
+                ulong key = PairKey(body1.ID, body2.ID);
+                if (state.PairsThisFrame.ContainsKey(key))
+                    continue;
+
+                if (collision.started == 0)
+                {
+                    if (substep > 0 && state.PairsLastFrame.TryGetValue(key, out CollisionDesc last))
+                        WriteCollision(state, array, key, last);
+                }
+                else if ((collision.flags & RapierNative.CollisionEventSensor) != 0)
+                {
+                    RecordSensorPair(state, array, collision.collider1, collision.collider2, body1, body2, key);
+                }
+                else
+                {
+                    // The pair as the narrow phase holds it: its collider order is the one its contact points follow.
+                    RapierNative.ContactPair pair = RapierNative.r3ContactPair(collision.collider1, collision.collider2);
+                    if (RapierNative.r3LastStatus() == 0)
+                        RecordContactPair(state, array, in pair);
+                }
+            }
         }
 
         private static void RecordContactPair(RapierWorldState state, CollisionDesc[] array, in RapierNative.ContactPair pair)
@@ -202,7 +270,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                     || !state.ColliderOwners.TryGetValue(pair.collider2, out BulletBodyRapier body2) || !body2.Reporting)
                 return;
             ulong key = PairKey(body1.ID, body2.ID);
-            if (state.PairsThisFrame.Contains(key))
+            if (state.PairsThisFrame.ContainsKey(key))
                 return;
 
             // The deepest point of the pair.
@@ -227,12 +295,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             Vector3 point = ToVector3(pose.translation) + ToVector3(contact.localP2) * ToQuaternion(pose.rotation);
             Vector3 normal = ToVector3(contact.normal);
 
-            state.PairsThisFrame.Add(key);
-            WriteCollision(state, array, body1.ID, body2.ID, point, normal, contact.distance);
+            WriteCollision(state, array, key, MakeCollision(body1.ID, body2.ID, point, normal, contact.distance));
         }
 
-        // Sensor overlaps (volume detect). There is no contact point, so the point is the position of the body the sensor
-        // detected, the normal runs from the lower ID's body to the higher's, and the penetration is zero.
+        // Sensor overlaps (volume detect), from the world's intersection pairs.
         private static void GatherSensorOverlaps(BulletWorldRapier world, CollisionDesc[] array)
         {
             RapierWorldState state = world.State;
@@ -253,19 +319,25 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                 if (((body1.Flags | body2.Flags) & WantsCollisionsFlags) == 0)
                     continue;
                 ulong key = PairKey(body1.ID, body2.ID);
-                if (state.PairsThisFrame.Contains(key))
+                if (state.PairsThisFrame.ContainsKey(key))
                     continue;
-                state.PairsThisFrame.Add(key);
-
-                BulletBodyRapier detected = (state.Sensors.Contains(pair.collider2) && !state.Sensors.Contains(pair.collider1)) ? body1 : body2;
-                Vector3 point = ToVector3(RapierNative.r3RigidBody_Translation(detected.Body));
-                Vector3 position1 = ToVector3(RapierNative.r3RigidBody_Translation(body1.Body));
-                Vector3 position2 = ToVector3(RapierNative.r3RigidBody_Translation(body2.Body));
-                Vector3 normal = position2 - position1;
-                float lengthSquared = normal.LengthSquared();
-                normal = (lengthSquared > 1e-12f) ? normal * (1f / MathF.Sqrt(lengthSquared)) : Vector3.UnitZ;
-                WriteCollision(state, array, body1.ID, body2.ID, point, normal, 0f);
+                RecordSensorPair(state, array, pair.collider1, pair.collider2, body1, body2, key);
             }
+        }
+
+        // A sensor overlap has no contact point, so the point is the position of the body the sensor detected, the normal
+        // runs from the lower ID's body to the higher's, and the penetration is zero.
+        private static void RecordSensorPair(RapierWorldState state, CollisionDesc[] array, RapierNative.ColliderHandle collider1,
+                                    RapierNative.ColliderHandle collider2, BulletBodyRapier body1, BulletBodyRapier body2, ulong key)
+        {
+            BulletBodyRapier detected = (state.Sensors.Contains(collider2) && !state.Sensors.Contains(collider1)) ? body1 : body2;
+            Vector3 point = ToVector3(RapierNative.r3RigidBody_Translation(detected.Body));
+            Vector3 position1 = ToVector3(RapierNative.r3RigidBody_Translation(body1.Body));
+            Vector3 position2 = ToVector3(RapierNative.r3RigidBody_Translation(body2.Body));
+            Vector3 normal = position2 - position1;
+            float lengthSquared = normal.LengthSquared();
+            normal = (lengthSquared > 1e-12f) ? normal * (1f / MathF.Sqrt(lengthSquared)) : Vector3.UnitZ;
+            WriteCollision(state, array, key, MakeCollision(body1.ID, body2.ID, point, normal, 0f));
         }
 
         private static ulong PairKey(uint idA, uint idB)
@@ -275,8 +347,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
 
         // BulletSim's RecordCollision after its keep-the-pair tests: the lower ID is A, and swapping flips the normal.
         // The normal given runs from the first body to the second.
-        private static void WriteCollision(RapierWorldState state, CollisionDesc[] array, uint id1, uint id2, Vector3 point,
-                                    Vector3 normal1To2, float distance)
+        private static CollisionDesc MakeCollision(uint id1, uint id2, Vector3 point, Vector3 normal1To2, float distance)
         {
             if (id1 > id2)
             {
@@ -285,7 +356,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                 id2 = swap;
                 normal1To2 = -normal1To2;
             }
-            array[state.LastCollisionCount++] = new CollisionDesc
+            return new CollisionDesc
             {
                 aID = id1,
                 bID = id2,
@@ -293,6 +364,13 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                 normal = normal1To2,
                 penetration = distance
             };
+        }
+
+        // Write one entry and remember it for the rest of this frame and for the next.
+        private static void WriteCollision(RapierWorldState state, CollisionDesc[] array, ulong key, CollisionDesc collision)
+        {
+            array[state.LastCollisionCount++] = collision;
+            state.PairsThisFrame[key] = collision;
         }
 
         // Decide what to report this step and fill the update array with it (H1). As with BulletSim's SimMotionState, a

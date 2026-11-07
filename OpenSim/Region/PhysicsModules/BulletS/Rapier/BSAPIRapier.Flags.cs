@@ -110,12 +110,22 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             if (wasWanting != isWanting)
             {
                 foreach (RapierNative.ColliderHandle collider in body.Colliders)
-                {
-                    if (isWanting)
-                        body.State.WantsCollisions.Add(collider);
-                    else
-                        body.State.WantsCollisions.Remove(collider);
-                }
+                    SetWantsCollisions(body, collider, isWanting);
+            }
+        }
+
+        // Put the collider in WantsCollisions or take it out, and have it make Rapier collision events or not to match.
+        // Rapier makes a pair's events when either collider asks for them, which is BulletSim's rule for keeping a pair.
+        private static void SetWantsCollisions(BulletBodyRapier body, RapierNative.ColliderHandle collider, bool wants)
+        {
+            if (wants)
+            {
+                if (body.State.WantsCollisions.Add(collider))
+                    RapierNative.Check(RapierNative.r3Collider_SetActiveEvents(collider, RapierNative.ActiveCollisionEvents));
+            }
+            else if (body.State.WantsCollisions.Remove(collider))
+            {
+                RapierNative.Check(RapierNative.r3Collider_SetActiveEvents(collider, 0));
             }
         }
 

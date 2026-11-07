@@ -152,8 +152,12 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         // ---- Collision reporting (H2, H4) ----
 
         // The colliders of bodies that have BS_SUBSCRIBE_COLLISION_EVENTS or BS_VEHICLE_COLLISIONS (BulletSim's
-        // BS_WANTS_COLLISIONS). Only their contact pairs are looked at after a substep.
+        // BS_WANTS_COLLISIONS). Only pairs with one of them are reported, and they are the colliders that make Rapier
+        // collision events (R3_COLLISION_EVENTS).
         public readonly HashSet<RapierNative.ColliderHandle> WantsCollisions = new HashSet<RapierNative.ColliderHandle>();
+
+        // The world's event collector, given to every r3Step and emptied after each one.
+        public IntPtr Events;
 
         // Sensor colliders (volume detect), whose overlaps are read from the world's intersection pairs.
         public readonly HashSet<RapierNative.ColliderHandle> Sensors = new HashSet<RapierNative.ColliderHandle>();
@@ -162,14 +166,26 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         public readonly Dictionary<RapierNative.ColliderHandle, BSAPIRapier.BulletBodyRapier> ColliderOwners =
                     new Dictionary<RapierNative.ColliderHandle, BSAPIRapier.BulletBodyRapier>();
 
-        // The pairs (low localID << 32 | high localID) already written since the step began: one entry per pair per
-        // BSScene.Simulate call, however many substeps it took.
-        public readonly HashSet<ulong> PairsThisFrame = new HashSet<ulong>();
+        // The pairs (low localID << 32 | high localID) already written since the step began, with what was written: one
+        // entry per pair per BSScene.Simulate call, however many substeps it took. PairsLastFrame is what the last call
+        // that stepped wrote, for a pair that stops touching during this call's substeps.
+        public Dictionary<ulong, CollisionDesc> PairsThisFrame = new Dictionary<ulong, CollisionDesc>();
+        public Dictionary<ulong, CollisionDesc> PairsLastFrame = new Dictionary<ulong, CollisionDesc>();
+
+        /// <summary>A call that steps begins: this call's pairs become the last call's, and this call has none yet.</summary>
+        public void StartCollisionFrame()
+        {
+            Dictionary<ulong, CollisionDesc> last = PairsLastFrame;
+            PairsLastFrame = PairsThisFrame;
+            PairsThisFrame = last;
+            PairsThisFrame.Clear();
+        }
 
         // Scratch buffers for the contact queries, grown as needed and reused.
         public RapierNative.ContactPair[] PairBuffer = new RapierNative.ContactPair[64];
         public RapierNative.ContactPoint[] PointBuffer = new RapierNative.ContactPoint[32];
         public RapierNative.IntersectionPair[] SensorBuffer = new RapierNative.IntersectionPair[64];
+        public RapierNative.CollisionEvent[] EventBuffer = new RapierNative.CollisionEvent[64];
 
         public void ForgetCollider(RapierNative.ColliderHandle collider)
         {
