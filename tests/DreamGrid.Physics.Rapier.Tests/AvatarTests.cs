@@ -8,7 +8,7 @@ using Xunit;
 namespace DreamGrid.Physics.Rapier.Tests;
 
 /// <summary>
-/// BulletS's avatar (BSCharacter and BSActorAvatarMove, unchanged) on the Rapier backend (H10): a dynamic box with
+/// BulletS's avatar (BSCharacter and BSActorAvatarMove) on the Rapier backend (H10): a dynamic capsule (a box with AvatarShape=1) with
 /// locked rotation that never sleeps, moved by impulses from BulletS's velocity motor, flying by reduced gravity (H6).
 /// Every avatar comes from scene.AddAvatar, as the simulator makes them.
 /// </summary>
@@ -261,6 +261,103 @@ public class AvatarTests
             float expected = 0.22f * impulseZ * 60f * n1 * dt;
             _output.WriteLine($"step {dt}: n {n1}, jump dVz {jump}, expected {expected}");
             Assert.InRange(jump, expected * 0.95f, expected * 1.05f);
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    // ---- Capsule avatars (BSAPITemplate.CapsuleAvatars) ----
+
+    [Theory]
+    [InlineData(null, BSPhysicsShapeType.SHAPE_CAPSULE)]
+    [InlineData("0", BSPhysicsShapeType.SHAPE_CAPSULE)]
+    [InlineData("1", BSPhysicsShapeType.SHAPE_BOX)]
+    public void Avatar_IsACapsuleUnlessTheIniSaysOtherwise(string? avatarShape, BSPhysicsShapeType expected)
+    {
+        Dictionary<string, string>? ini = avatarShape == null ? null : new Dictionary<string, string> { { "AvatarShape", avatarShape } };
+        BSScene scene = RapierTestScene.Create(ini);
+        try
+        {
+            Assert.True(scene.PE.CapsuleAvatars);
+            SetFlatTerrain(scene);
+            AddAvatar(scene, new Vector3(128f, 128f, TerrainHeight + AvatarSize.Z / 2f + 0.3f), false);
+            RapierTestScene.Step(scene, 0.2f);
+            Assert.Equal(expected, scene.PhysObjects[AvatarId].PhysShape.physShapeInfo.shapeType);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    // Where the avatar settles on flat terrain and its mass, as a box (AvatarShape=1) or as the default capsule.
+    private (float z, float mass, RapierNative.Aabb bounds) Settle(string avatarShape, Vector3 size)
+    {
+        Dictionary<string, string>? ini = avatarShape == "" ? null : new Dictionary<string, string> { { "AvatarShape", avatarShape } };
+        BSScene scene = RapierTestScene.Create(ini);
+        try
+        {
+            SetFlatTerrain(scene);
+            PhysicsActor avatar = scene.AddAvatar(AvatarId, "avatar", new Vector3(128f, 128f, TerrainHeight + size.Z / 2f + 0.3f),
+                                                  size, 0f, false);
+            avatar.SubscribeEvents(100);
+            RapierTestScene.Step(scene, 2.0f);
+            IntPtr shape = ((BSAPIRapier.BulletShapeRapier)scene.PhysObjects[AvatarId].PhysShape.physShapeInfo).Shape;
+            RapierNative.Pose identity = new RapierNative.Pose { rotation = new RapierNative.Rotation { w = 1f } };
+            return (avatar.Position.Z, avatar.Mass, RapierNative.r3SharedShape_ComputeAabb(shape, identity));
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    [Theory]
+    [InlineData(1.9f)]
+    [InlineData(1.4f)]
+    [InlineData(2.4f)]
+    public void Avatar_CapsuleIsAsTallAsTheBox_AndStandsAtTheSameHeight(float height)
+    {
+        Vector3 size = new Vector3(AvatarSize.X, AvatarSize.Y, height);
+        var box = Settle("1", size);
+        var capsule = Settle("", size);
+        _output.WriteLine($"height {height}: box Z {box.z:F4}, capsule Z {capsule.z:F4}; mass box {box.mass:F3}, capsule {capsule.mass:F3}");
+
+        float boxHeight = box.bounds.maxs.z - box.bounds.mins.z;
+        Assert.Equal(boxHeight, capsule.bounds.maxs.z - capsule.bounds.mins.z, 3);
+        // Never wider than the box: its radius is half the smaller side.
+        Assert.Equal(Math.Min(size.X, size.Y), capsule.bounds.maxs.x - capsule.bounds.mins.x, 3);
+        Assert.Equal(Math.Min(size.X, size.Y), capsule.bounds.maxs.y - capsule.bounds.mins.y, 3);
+        Assert.InRange(capsule.z - box.z, -0.01f, 0.01f);
+        Assert.Equal(box.mass, capsule.mass, 3);
+    }
+
+    [Fact]
+    public void Avatar_SitsAndStandsUp_AsACapsule()
+    {
+        // Sitting takes the avatar out of physics (ScenePresence.RemoveFromPhysicalScene); standing up adds a new one
+        // where the seat was, a little above the ground.
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            SetFlatTerrain(scene);
+            PhysicsActor avatar = AddAvatar(scene, new Vector3(128f, 128f, TerrainHeight + AvatarSize.Z / 2f + 0.3f), false);
+            RapierTestScene.Step(scene, 1.0f);
+            scene.RemoveAvatar(avatar);
+            RapierTestScene.Step(scene, 1.0f);
+            Assert.False(scene.PhysObjects.ContainsKey(AvatarId));
+
+            avatar = AddAvatar(scene, new Vector3(130f, 128f, TerrainHeight + AvatarSize.Z / 2f + 0.5f), false);
+            RapierTestScene.Step(scene, 2.0f);
+            Assert.Equal(BSPhysicsShapeType.SHAPE_CAPSULE, scene.PhysObjects[AvatarId].PhysShape.physShapeInfo.shapeType);
+            float feet = FeetAboveTerrain(scene, avatar);
+            _output.WriteLine($"feet above terrain after standing up: {feet:F4} m");
+            Assert.InRange(feet, -0.05f, 0.05f);
+            Assert.True(Tilt(scene, AvatarId) < 0.01f, $"the avatar tipped by {Tilt(scene, AvatarId)} rad");
             Assert.Empty(log.Errors);
         }
         finally

@@ -99,6 +99,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         internal float m_fixedTimeStep;
         // Whether [BulletSim] set FixedTimeStep, so an engine's own default does not replace it.
         private bool m_fixedTimeStepFromIni;
+        // Whether [BulletSim] set AvatarShape, so an engine's own default (capsules, PE.CapsuleAvatars) does not replace it.
+        private bool m_avatarShapeFromIni;
 
         // The substep length the Rapier engine uses when the INI does not set FixedTimeStep: ubODE's 0.02 s, not
         // Bullet's 1/60 s, so a frame takes fewer substeps.
@@ -334,6 +336,13 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                 throw new InvalidOperationException(message);
             }
 
+            // An engine whose avatars are cheaper as capsules makes them the default; AvatarShape in the INI still wins.
+            if (PE.CapsuleAvatars && !m_avatarShapeFromIni
+                    && BSParam.TryGetParameter("AvatarShape", out BSParam.ParameterDefnBase avatarShape))
+            {
+                avatarShape.SetValue(this, BSShapeCollection.AvatarShapeCapsule.ToString());
+            }
+
             // Enable very detailed logging.
             // By creating an empty logger when not logging, the log message invocation code
             //     can be left in and every call doesn't have to check for null.
@@ -397,6 +406,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                 {
                     BSParam.SetParameterConfigurationValues(this, pConfig);
                     m_fixedTimeStepFromIni = pConfig.Contains("FixedTimeStep");
+                    m_avatarShapeFromIni = pConfig.Contains("AvatarShape");
 
                     // There are two Bullet implementations to choose from
                     BulletEngineName = pConfig.GetString("BulletEngine", "BulletUnmanaged");

@@ -785,7 +785,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                         heightAdjust += ((midHeightOffset) / (AVATAR_HI - AVATAR_MID)) * BSParam.AvatarHeightHighFudge;
                     }
                 }
-                if (BSParam.AvatarShape == BSShapeCollection.AvatarShapeCapsule)
+                // An engine with CapsuleAvatars fits its capsule in the cube's box, so it gets the cube's scale.
+                if (BSParam.AvatarShape == BSShapeCollection.AvatarShapeCapsule && !PhysScene.PE.CapsuleAvatars)
                 {
                     newScale.X = size.X / 2f;
                     newScale.Y = size.Y / 2f;
@@ -817,7 +818,9 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         // set _avatarVolume and _mass based on capsule size, _density and Scale
         private void ComputeAvatarVolumeAndMass()
         {
-            if (BSParam.AvatarShape == BSShapeCollection.AvatarShapeCapsule)
+            // An engine with CapsuleAvatars keeps the cube's mass, so forces tuned on the cube (the jump, pushes) and
+            // collisions with objects are unchanged.
+            if (BSParam.AvatarShape == BSShapeCollection.AvatarShapeCapsule && !PhysScene.PE.CapsuleAvatars)
             {
                 _avatarVolume = (float)(
                                 Math.PI

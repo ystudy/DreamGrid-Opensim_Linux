@@ -90,15 +90,24 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             }
         }
 
-        // BulletS's capsule: a radius and the length of its cylinder part, along Z, both multiplied by the scale
-        // (Bullet scales a Z capsule's radius by Scale.X and its half length by Scale.Z).
+        // The avatar's capsule (BSShapeNative's only use of it, always with radius and height 1). With CapsuleAvatars,
+        // BSCharacter gives it the scale a cube avatar has, so the capsule fills that box: along Z, as tall as the box
+        // (the avatar stands at the cube's height), its radius half the box's smaller side so it is never wider than the
+        // cube. radius and height scale that capsule, as Bullet's unit capsule is scaled; at 1 it is the box's.
         public override BulletShape BuildCapsuleShape(BulletWorld pWorld, float radius, float height, Vector3 scale)
         {
-            BulletShapeRapier shape = RegisterShape((BulletWorldRapier)pWorld, MakeZCapsule(radius * scale.X, height * scale.Z),
+            BulletShapeRapier shape = RegisterShape((BulletWorldRapier)pWorld, MakeBoxCapsule(scale, radius, height),
                                                     BSPhysicsShapeType.SHAPE_CAPSULE, scale);
-            shape.BuildNativeAt = at => MakeZCapsule(radius * at.X, height * at.Z);
+            shape.BuildNativeAt = at => MakeBoxCapsule(at, radius, height);
             shape.isNativeShape = true;
             return shape;
+        }
+
+        // A capsule along Z that fills a box of this size: radius half the smaller of X and Y, total height Z.
+        private static IntPtr MakeBoxCapsule(Vector3 box, float radius, float height)
+        {
+            float r = radius * 0.5f * Math.Min(box.X, box.Y);
+            return MakeZCapsule(r, Math.Max(height * box.Z - 2f * r, 0f));
         }
 
         // A capsule along Z with this radius and cylinder length, already at its final size.

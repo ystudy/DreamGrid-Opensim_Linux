@@ -346,6 +346,12 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         // the jump grow with the substep count; an engine whose default step is not 1/60 asks for this so its jumps
         // match Bullet's at any FixedTimeStep.
         public virtual bool JumpUsesBulletStepLength { get { return false; } }
+
+        // Whether avatars are capsules unless the INI sets [BulletSim]AvatarShape, with the capsule filling the box a cube
+        // avatar would have: BSCharacter gives it the cube's scale (and mass), and the engine's BuildCapsuleShape fits a
+        // capsule in that box, so the avatar is as tall as the cube and stands at the same height. For an engine whose
+        // contacts are cheaper on a capsule than on a box.
+        public virtual bool CapsuleAvatars { get { return false; } }
         
         // Initialization and simulation
         public abstract BulletWorld Initialize(Vector3 maxPosition, ConfigurationParameters parms,
