@@ -936,6 +936,69 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             }
         }
 
+        /// <summary>
+        /// The file the "rapier" DllImports are bound to, which is not always the one TryLoad loaded: the runtime's own
+        /// probing (the application directory, LD_LIBRARY_PATH) comes before the resolver, and may find another copy
+        /// first. Found from r3Version's string, which lives in the bound library. Null when it cannot be told.
+        /// </summary>
+        internal static string BoundLibraryPath()
+        {
+            return FileHolding(r3Version());
+        }
+
+        /// <summary>The file TryLoad loaded (the dllmap target or the override), or null when it cannot be told.</summary>
+        internal static string LoadedLibraryPath()
+        {
+            IntPtr handle = s_handle;
+            if (handle == IntPtr.Zero || !NativeLibrary.TryGetExport(handle, "r3Version", out IntPtr address))
+                return null;
+            return FileHolding(address);
+        }
+
+        // The path of the loaded module that holds this address: GetModuleHandleEx and GetModuleFileName on Windows,
+        // dladdr elsewhere (glibc 2.34 and later have it in libc; older ones in libdl).
+        private static unsafe string FileHolding(IntPtr address)
+        {
+            try
+            {
+                if (OperatingSystem.IsWindows())
+                {
+                    const uint FromAddress = 4, UnchangedRefCount = 2;
+                    if (!GetModuleHandleExW(FromAddress | UnchangedRefCount, address, out IntPtr module))
+                        return null;
+                    char[] buffer = new char[4096];
+                    uint length = GetModuleFileNameW(module, buffer, (uint)buffer.Length);
+                    return (length == 0) ? null : new string(buffer, 0, (int)length);
+                }
+                IntPtr dladdr = IntPtr.Zero;
+                foreach (string name in new[] { "libc.so.6", "libdl.so.2", "libSystem.dylib" })
+                {
+                    if (NativeLibrary.TryLoad(name, out IntPtr lib) && NativeLibrary.TryGetExport(lib, "dladdr", out dladdr))
+                        break;
+                }
+                if (dladdr == IntPtr.Zero)
+                    return null;
+                DlInfo info;
+                int found = ((delegate* unmanaged<IntPtr, DlInfo*, int>)dladdr)(address, &info);
+                return (found == 0 || info.fileName == IntPtr.Zero) ? null : Marshal.PtrToStringUTF8(info.fileName);
+            }
+            catch (Exception e) when (e is DllNotFoundException || e is EntryPointNotFoundException)
+            {
+                return null;
+            }
+        }
+
+        // Dl_info from dlfcn.h.
+        [StructLayout(LayoutKind.Sequential)]
+        private struct DlInfo { public IntPtr fileName, fileBase, symbolName, symbolAddress; }
+
+        [DllImport("kernel32", ExactSpelling = true, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetModuleHandleExW(uint flags, IntPtr address, out IntPtr module);
+
+        [DllImport("kernel32", ExactSpelling = true, SetLastError = true, CharSet = CharSet.Unicode)]
+        private static extern uint GetModuleFileNameW(IntPtr module, [Out] char[] fileName, uint size);
+
         private static IntPtr ResolveRapier(Assembly assembly, string libraryName)
         {
             if (libraryName == Lib && assembly == typeof(RapierNative).Assembly)

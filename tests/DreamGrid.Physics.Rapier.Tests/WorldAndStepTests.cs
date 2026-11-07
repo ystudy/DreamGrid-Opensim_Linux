@@ -405,4 +405,25 @@ public class WorldAndStepTests
             scene.Dispose();
         }
     }
+
+    [Fact]
+    public void Loading_LogsTheNativeLibraryPath()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            string line = Assert.Single(log.Infos, i => i.Contains("native library:"));
+            string path = RapierNative.BoundLibraryPath()!;
+            Assert.NotNull(path);
+            Assert.True(File.Exists(path), path);
+            Assert.Contains(path, line);
+            Assert.Equal(path, RapierNative.LoadedLibraryPath());
+            Assert.DoesNotContain(log.Warnings, w => w.Contains("calls go to"));
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
 }

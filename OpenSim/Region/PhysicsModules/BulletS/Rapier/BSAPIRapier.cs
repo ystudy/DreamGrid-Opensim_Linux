@@ -430,6 +430,15 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             if (RapierNative.r3BuildFeatures().parallel != 0)
                 version += "+parallel";
             BulletEngineVersion = version;
+
+            // Which file is in use, as the log should say: the runtime's own probing can find a copy before the dllmap
+            // target, and then the DllImports use that copy.
+            string bound = RapierNative.BoundLibraryPath();
+            string loaded = RapierNative.LoadedLibraryPath();
+            PhysicsScene.Logger.InfoFormat("{0} Rapier {1} native library: {2}", LogHeader, version, bound ?? loaded ?? "(path unknown)");
+            if (bound != null && loaded != null && !string.Equals(bound, loaded, StringComparison.Ordinal))
+                PhysicsScene.Logger.WarnFormat("{0} Rapier was loaded from {1} but the calls go to {2}, which was found first",
+                            LogHeader, loaded, bound);
         }
 
         // Log a message the first time this key is seen for the world; later calls do nothing.
