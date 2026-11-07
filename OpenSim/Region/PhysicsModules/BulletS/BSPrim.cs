@@ -1943,8 +1943,11 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                 entprop.Acceleration = _acceleration;
             }
 
-            OMV.Vector3 direction = OMV.Vector3.UnitX * RawOrientation;   // DEBUG DEBUG DEBUG
-            DetailLog("{0},BSPrim.UpdateProperties,call,entProp={1},dir={2}", LocalID, entprop, direction);
+            if (PhysScene.PhysicsLogging.Enabled)
+            {
+                OMV.Vector3 direction = OMV.Vector3.UnitX * RawOrientation;   // DEBUG DEBUG DEBUG
+                DetailLog("{0},BSPrim.UpdateProperties,call,entProp={1},dir={2}", LocalID, entprop, direction);
+            }
 
             // remember the current and last set values
             LastEntityProperties = CurrentEntityProperties;

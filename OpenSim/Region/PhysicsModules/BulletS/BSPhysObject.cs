@@ -582,7 +582,9 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                 {
                     CollisionCollection.AddCollider(collideeLocalID, newContact);
                 }
-                DetailLog("{0},{1}.Collision.AddCollider,call,with={2},point={3},normal={4},depth={5},speed={6},colliderMoving={7}",
+                // Checked here as well as in DetailLog, so the arguments are not boxed for every collision when not logging.
+                if (PhysScene.PhysicsLogging.Enabled)
+                    DetailLog("{0},{1}.Collision.AddCollider,call,with={2},point={3},normal={4},depth={5},speed={6},colliderMoving={7}",
                                 LocalID, TypeName, collideeLocalID, contactPoint, contactNormal, pentrationDepth,
                                 newContact.RelativeSpeed, ColliderIsMoving);
 
@@ -617,7 +619,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                     ret = false;
                 }
 
-                DetailLog("{0},{1}.SendCollisionUpdate,call,numCollisions={2}", LocalID, TypeName, CollisionCollection.Count);
+                if (PhysScene.PhysicsLogging.Enabled)
+                    DetailLog("{0},{1}.SendCollisionUpdate,call,numCollisions={2}", LocalID, TypeName, CollisionCollection.Count);
                 base.SendCollisionUpdate(CollisionCollection);
 
                 // Remember the collisions from this tick for some collision specific processing.

@@ -854,8 +854,9 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         {
             if (!m_initialized) return 5.0f;
 
-            DetailLog("{0},SendUpdatesToSimulator,collisions={1},updates={2},simedTime={3}",
-                BSScene.DetailLogZero, ObjectsWithCollisions.Count, ObjectsWithUpdates.Count, m_simulatedTime);
+            if (PhysicsLogging.Enabled)
+                DetailLog("{0},SendUpdatesToSimulator,collisions={1},updates={2},simedTime={3}",
+                    BSScene.DetailLogZero, ObjectsWithCollisions.Count, ObjectsWithUpdates.Count, m_simulatedTime);
             // Push the collisions into the simulator.
             lock (CollisionLock)
             {
@@ -938,7 +939,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS
             if (!PhysObjects.TryGetValue(localID, out collider))
             {
                 // If the object that is colliding cannot be found, just ignore the collision.
-                DetailLog("{0},BSScene.SendCollision,colliderNotInObjectList,id={1},with={2}", DetailLogZero, localID, collidingWith);
+                if (PhysicsLogging.Enabled)
+                    DetailLog("{0},BSScene.SendCollision,colliderNotInObjectList,id={1},with={2}", DetailLogZero, localID, collidingWith);
                 return;
             }
 
