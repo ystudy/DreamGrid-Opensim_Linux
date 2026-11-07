@@ -74,9 +74,15 @@ jobs:
         run: dotnet test --project tests/DreamGrid.Platform.Tests -c Release
 
       # Both runners are x64, which is the shipped Rapier library (bin/lib64). When an arm64 job is added, skip these
-      # two Rapier steps there until librapier-arm64.so ships from rapier.yml.
+      # three Rapier steps there until librapier-arm64.so and librapier-mt-arm64.so ship from rapier.yml.
       - name: Rapier tests
         run: dotnet test --project tests/DreamGrid.Physics.Rapier.Tests -c Release
+
+      # The same tests on the parallel build (rapier_mt), which RapierNumThreads > 1 loads.
+      - name: Rapier tests (rapier_mt)
+        run: dotnet test --project tests/DreamGrid.Physics.Rapier.Tests -c Release --no-build
+        env:
+          RAPIER_TEST_THREADS: '2'
 
       - name: Smoke (ubODE)
         run: dotnet run --project tests/DreamGrid.Smoke -c Release -- --bin bin --keep --physics ubODE
@@ -143,9 +149,15 @@ jobs:
         run: dotnet test --project tests/DreamGrid.Platform.Tests -c Release
 
       # Both runners are x64, which is the shipped Rapier library (bin/lib64). When an arm64 job is added, skip these
-      # two Rapier steps there until librapier-arm64.so ships from rapier.yml.
+      # three Rapier steps there until librapier-arm64.so and librapier-mt-arm64.so ship from rapier.yml.
       - name: Rapier tests
         run: dotnet test --project tests/DreamGrid.Physics.Rapier.Tests -c Release
+
+      # The same tests on the parallel build (rapier_mt), which RapierNumThreads > 1 loads.
+      - name: Rapier tests (rapier_mt)
+        run: dotnet test --project tests/DreamGrid.Physics.Rapier.Tests -c Release --no-build
+        env:
+          RAPIER_TEST_THREADS: '2'
 
       - name: Smoke (ubODE)
         run: dotnet run --project tests/DreamGrid.Smoke -c Release -- --bin bin --keep --physics ubODE
