@@ -101,6 +101,30 @@ public sealed class ErrorLog : IDisposable
         }
     }
 
+    /// <summary>Every warning-level message so far, with its exception when it has one.</summary>
+    public List<string> Warnings
+    {
+        get
+        {
+            return _appender.GetEvents()
+                .Where(e => e.Level == log4net.Core.Level.Warn)
+                .Select(e => e.RenderedMessage + (e.ExceptionObject != null ? Environment.NewLine + e.ExceptionObject : ""))
+                .ToList();
+        }
+    }
+
+    /// <summary>Every info-level message so far.</summary>
+    public List<string> Infos
+    {
+        get
+        {
+            return _appender.GetEvents()
+                .Where(e => e.Level == log4net.Core.Level.Info)
+                .Select(e => e.RenderedMessage)
+                .ToList();
+        }
+    }
+
     public void Dispose()
     {
         _repository.Root.RemoveAppender(_appender);

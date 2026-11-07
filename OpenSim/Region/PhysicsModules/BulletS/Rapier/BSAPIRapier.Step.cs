@@ -45,62 +45,114 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         {
             BulletWorldRapier world = (BulletWorldRapier)pWorld;
             RapierWorldState state = world.State;
+            updatedEntityCount = 0;
+            collidersCount = 0;
+
+            // A world Rapier panicked in is not stepped again (rapier.h: discard what a panicking call mutated). The
+            // region stops simulating, with the one error logged when it happened.
+            if (state.Poisoned)
+            {
+                state.ForcedBodies.Clear();
+                return 0;
+            }
 
             // Pairs are written once per call, across all its substeps (BulletSim's m_collidersThisFrame).
             state.PairsThisFrame.Clear();
             state.LastCollisionCount = 0;
 
-            int steps = state.PlanSteps(timeStep, maxSubSteps, fixedTimeStep, out float stepSeconds);
-            if (steps > 0 && stepSeconds != state.TimeStep)
+            int steps;
+            try
             {
-                RapierNative.Check(RapierNative.r3SetTimeStep(world.World, stepSeconds));
-                state.TimeStep = stepSeconds;
+                steps = state.PlanSteps(timeStep, maxSubSteps, fixedTimeStep, out float stepSeconds);
+                if (steps > 0 && stepSeconds != state.TimeStep)
+                {
+                    RapierNative.Check(RapierNative.r3SetTimeStep(world.World, stepSeconds));
+                    state.TimeStep = stepSeconds;
+                }
+                if (steps > 0)
+                    WakeNeverSleeping(state);
+                for (int ii = 0; ii < steps; ii++)
+                {
+                    uint status = RapierNative.r3Step(world.World, IntPtr.Zero, IntPtr.Zero);
+                    if (StepFailed(state, status))
+                        return 0;
+                    // Collisions are gathered after every substep, as in BulletSim: something can touch and bounce off
+                    // within one frame.
+                    GatherCollisions(world);
+                    BreakOverstrainedJoints(state);
+                }
+                ResetAppliedForces(state);
             }
-            if (steps > 0)
-                WakeNeverSleeping(state);
-            for (int ii = 0; ii < steps; ii++)
+            finally
             {
-                RapierNative.Check(RapierNative.r3Step(world.World, IntPtr.Zero, IntPtr.Zero));
-                // Collisions are gathered after every substep, as in BulletSim: something can touch and bounce off
-                // within one frame.
-                GatherCollisions(world);
-                BreakOverstrainedJoints(state);
+                // Whatever happened, the forces given before this call have had their step (or been dropped, as Bullet
+                // drops them); a body whose reset failed must not be tried again every frame.
+                state.ForcedBodies.Clear();
             }
-            ResetAppliedForces(state);
 
             collidersCount = state.LastCollisionCount;
             updatedEntityCount = GatherUpdates(world);
             return steps;
         }
 
+        // What r3Step's status means for the step. R3_PANIC poisons the world: one ERROR, and no more steps (true is
+        // returned, and PhysicsStep reports nothing). Any other failure throws, as before. False when the step went well.
+        internal bool StepFailed(RapierWorldState state, uint status)
+        {
+            if (status == 0)
+                return false;
+            if (status == RapierNative.StatusPanic)
+            {
+                state.Poisoned = true;
+                PhysicsScene.Logger.ErrorFormat("{0} Rapier panicked while stepping the world, so this region's physics "
+                            + "has stopped: nothing will move until the region restarts. {1}", LogHeader, RapierNative.LastError());
+                return true;
+            }
+            RapierNative.Check(status);
+            return false;
+        }
+
         // DISABLE_DEACTIVATION (H3): rapier.h can only allow sleeping when a body is created, so the bodies BulletS asked
         // never to sleep are woken before each step. A strong wake-up also restarts the body's rest timer, so it is
         // still awake when the step ends. A body that is out of the world, simulation-disabled or no longer dynamic is
-        // skipped (it keeps its place in the set; BulletS forces the state again if it wants it back).
-        private static void WakeNeverSleeping(RapierWorldState state)
+        // skipped (it keeps its place in the set; BulletS forces the state again if it wants it back). A body Rapier
+        // will not wake (a stale handle, say) is logged once and leaves the set, so it cannot stop every later step.
+        private void WakeNeverSleeping(RapierWorldState state)
         {
+            List<BulletBodyRapier> failed = null;
             foreach (BulletBodyRapier body in state.NeverSleep)
             {
-                if (body.Reporting && BodyTypeFor(body.Flags) == RapierNative.BodyDynamic)
-                    RapierNative.Check(RapierNative.r3RigidBody_WakeUp(body.Body, 1));
+                if (body.Reporting && BodyTypeFor(body.Flags) == RapierNative.BodyDynamic
+                        && RapierNative.r3RigidBody_WakeUp(body.Body, 1) != 0)
+                {
+                    if (state.LoggedOnce.Add("wake-failed:" + body.ID))
+                        PhysicsScene.Logger.WarnFormat("{0} Could not wake body {1}, which BulletS asked never to sleep; it "
+                                    + "is no longer woken before each step: {2}", LogHeader, body.ID, RapierNative.LastError());
+                    (failed ??= new List<BulletBodyRapier>()).Add(body);
+                }
+            }
+            if (failed != null)
+            {
+                foreach (BulletBodyRapier body in failed)
+                    state.NeverSleep.Remove(body);
             }
         }
 
         // Rapier keeps a force or torque until it is reset, while Bullet's stepSimulation clears them at its end, whether
         // or not it took a step. BulletS applies forces in the taints before PhysicsStep, so what was added since the last
-        // call has now been used (or, with no whole step in this frame, is dropped as Bullet drops it).
-        private static void ResetAppliedForces(RapierWorldState state)
+        // call has now been used (or, with no whole step in this frame, is dropped as Bullet drops it). A body whose
+        // reset fails is logged once and skipped; PhysicsStep empties the set either way.
+        private void ResetAppliedForces(RapierWorldState state)
         {
-            if (state.ForcedBodies.Count == 0)
-                return;
             foreach (BulletBodyRapier body in state.ForcedBodies)
             {
                 if (!body.HasPhysicalBody)
                     continue;
-                RapierNative.Check(RapierNative.r3RigidBody_ResetForces(body.Body, 0));
-                RapierNative.Check(RapierNative.r3RigidBody_ResetTorques(body.Body, 0));
+                if ((RapierNative.r3RigidBody_ResetForces(body.Body, 0) != 0 || RapierNative.r3RigidBody_ResetTorques(body.Body, 0) != 0)
+                        && state.LoggedOnce.Add("reset-forces-failed:" + body.ID))
+                    PhysicsScene.Logger.WarnFormat("{0} Could not reset the forces on body {1}: {2}", LogHeader, body.ID,
+                                RapierNative.LastError());
             }
-            state.ForcedBodies.Clear();
         }
 
         // Collision reporting (H2, H4), after one substep. The conventions are BulletSim's (BulletSim.cpp,

@@ -244,6 +244,9 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         // The flag SetForceUpdateAllAabbs last set (map rows 10 and 11); Rapier has nothing to set.
         public bool ForceUpdateAllAabbs;
 
+        // Set when r3Step reported R3_PANIC: the world may be corrupt, so PhysicsStep steps it no more.
+        public bool Poisoned;
+
         // Messages already logged once for this world (ignored flags and the like), so a repeated call logs nothing.
         public readonly HashSet<string> LoggedOnce = new HashSet<string>();
 

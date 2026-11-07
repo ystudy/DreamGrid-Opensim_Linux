@@ -117,6 +117,13 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             public Vector3 RootChildPos;
             public Quaternion RootChildRot = Quaternion.Identity;
 
+            // The pose and velocities last read from Rapier or set, which the getters return for a body that is gone or
+            // a read Rapier refuses: the creation pose and zero velocities until then.
+            public Vector3 KnownPosition;
+            public Quaternion KnownRotation = Quaternion.Identity;
+            public Vector3 KnownVelocity;
+            public Vector3 KnownAngularVelocity;
+
             // The shape last put on the body (CreateBodyFromShape, SetCollisionShape), for GetCollisionShape and sweeps.
             public BulletShapeRapier Shape;
 

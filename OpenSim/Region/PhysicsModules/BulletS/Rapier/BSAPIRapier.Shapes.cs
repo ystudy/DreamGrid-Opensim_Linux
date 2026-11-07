@@ -591,7 +591,19 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             BulletBodyRapier body = compound.Body;
             if (body == null)
                 return;
-            compound.Colliders.Add(AddChildColliders(body, child, pos, rot));
+            List<ChildCollider> parts;
+            try
+            {
+                parts = AddChildColliders(body, child, pos, rot);
+            }
+            catch
+            {
+                // AddChildColliders has removed what it made. The child stays in the compound (BulletS counts on its
+                // index) with no colliders, so Colliders still lines up with Children.
+                compound.Colliders.Add(new List<ChildCollider>());
+                throw;
+            }
+            compound.Colliders.Add(parts);
             if (compound.Children.Count == 1)
                 NoteRootChild(body, compound);
             WakeAfterShapeChange(body);

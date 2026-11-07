@@ -177,8 +177,15 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             BulletConstraintRapier constraint = (BulletConstraintRapier)constrain;
             if (!constraint.HasPhysicalConstraint)
                 return true;
-            RapierNative.Check(RapierNative.r3RemoveImpulseJoint(constraint.Joint, 1));
-            constraint.MarkDead();
+            try
+            {
+                RapierNative.Check(RapierNative.r3RemoveImpulseJoint(constraint.Joint, 1));
+            }
+            finally
+            {
+                // Even if Rapier refused, the constraint leaves Joints and Breakable, so no later step asks about it.
+                constraint.MarkDead();
+            }
             return true;
         }
 

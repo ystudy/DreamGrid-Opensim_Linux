@@ -56,7 +56,20 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             RapierNative.Check(RapierNative.r3LastStatus());
 
             BulletBodyRapier body = new BulletBodyRapier(id, handle, world.State);
-            AttachShape(body, shape);
+            body.KnownPosition = pos;
+            body.KnownRotation = rot;
+            try
+            {
+                AttachShape(body, shape);
+            }
+            catch
+            {
+                // AttachShape has taken its colliders back out of the tables; the native body must not stay behind
+                // without a C# owner.
+                RapierNative.r3RemoveRigidBody(handle, 1);
+                body.Clear();
+                throw;
+            }
             world.State.Bodies[id] = body;
             return body;
         }
@@ -115,39 +128,81 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
 
         // Make the shape the body's colliders: one for a plain shape, one per (flattened) child for a compound, which is
         // then on this body until another shape replaces it, the body goes or the compound is deleted.
+        //
+        // All or nothing: if Rapier refuses a collider, the colliders this call made are removed again and the body is
+        // left with no shape and no compound, so no table claims a collider or shape the native side does not have.
+        // The exception then goes on to the caller.
         private static void AttachShape(BulletBodyRapier body, BulletShapeRapier shape)
         {
-            body.Shape = shape;
+            int firstNew = body.Colliders.Count;
             CompoundState compound = shape.Compound;
-            if (compound == null)
+            try
             {
-                AddCollider(body, shape, shape.LocalPos, shape.LocalRot);
-                NoteRootChild(body, null);
-                return;
+                body.Shape = shape;
+                if (compound == null)
+                {
+                    AddCollider(body, shape, shape.LocalPos, shape.LocalRot);
+                    NoteRootChild(body, null);
+                    return;
+                }
+                // A compound is on one body at a time; one already on another body leaves that body's colliders alone.
+                if (compound.Body != null)
+                    DetachCompound(compound.Body);
+                compound.Body = body;
+                body.Compound = compound;
+                compound.Colliders.Clear();
+                foreach ((BulletShapeRapier child, Vector3 pos, Quaternion rot) in compound.Children)
+                    compound.Colliders.Add(AddChildColliders(body, child, pos, rot));
+                NoteRootChild(body, compound);
             }
-            // A compound is on one body at a time; one already on another body leaves that body's colliders alone.
-            if (compound.Body != null)
-                DetachCompound(compound.Body);
-            compound.Body = body;
-            body.Compound = compound;
-            compound.Colliders.Clear();
-            foreach ((BulletShapeRapier child, Vector3 pos, Quaternion rot) in compound.Children)
-                compound.Colliders.Add(AddChildColliders(body, child, pos, rot));
-            NoteRootChild(body, compound);
+            catch
+            {
+                RemoveCollidersFrom(body, firstNew);
+                if (compound != null)
+                    DetachCompound(body);
+                body.Shape = null;
+                NoteRootChild(body, null);
+                throw;
+            }
         }
 
-        // The colliders for one compound child at this pose: one per native shape the child is made of.
+        // The colliders for one compound child at this pose: one per native shape the child is made of. All or nothing,
+        // as AttachShape.
         private static List<ChildCollider> AddChildColliders(BulletBodyRapier body, BulletShapeRapier child, Vector3 pos, Quaternion rot)
         {
             List<(BulletShapeRapier leaf, Vector3 pos, Quaternion rot)> leaves = new List<(BulletShapeRapier leaf, Vector3 pos, Quaternion rot)>();
             Flatten(child, Vector3.Zero, Quaternion.Identity, 0, leaves);
             List<ChildCollider> parts = new List<ChildCollider>(leaves.Count);
-            foreach ((BulletShapeRapier leaf, Vector3 leafPos, Quaternion leafRot) in leaves)
+            int firstNew = body.Colliders.Count;
+            try
             {
-                Compose(pos, rot, leafPos, leafRot, out Vector3 at, out Quaternion turned);
-                parts.Add(new ChildCollider { Collider = AddCollider(body, leaf, at, turned), Pos = leafPos, Rot = leafRot });
+                foreach ((BulletShapeRapier leaf, Vector3 leafPos, Quaternion leafRot) in leaves)
+                {
+                    Compose(pos, rot, leafPos, leafRot, out Vector3 at, out Quaternion turned);
+                    parts.Add(new ChildCollider { Collider = AddCollider(body, leaf, at, turned), Pos = leafPos, Rot = leafRot });
+                }
+            }
+            catch
+            {
+                RemoveCollidersFrom(body, firstNew);
+                throw;
             }
             return parts;
+        }
+
+        // Undo a failed attach: the body's colliders from index first on leave every table and, as far as Rapier still
+        // has them, the world. (AddCollider records a collider as soon as Rapier has inserted it, so these are exactly
+        // the ones the failed call made.) The native status is not checked: the attach has already failed, and a collider
+        // Rapier no longer has is gone either way.
+        private static void RemoveCollidersFrom(BulletBodyRapier body, int first)
+        {
+            for (int ii = body.Colliders.Count - 1; ii >= first; ii--)
+            {
+                RapierNative.ColliderHandle collider = body.Colliders[ii];
+                body.State.ForgetCollider(collider);
+                body.Colliders.RemoveAt(ii);
+                RapierNative.r3RemoveCollider(collider, 0);
+            }
         }
 
         // The compound stops following the body: its colliders stay as they are.
@@ -206,7 +261,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             body.State.ForgetBody(body);
             // r3RemoveRigidBody takes the body's joints with it.
             body.KillJoints();
-            RapierNative.r3RemoveRigidBody(body.Body, 1);
+            // The C# side has already forgotten the body, which is right whatever Rapier says; a failure is only logged.
+            if (RapierNative.r3RemoveRigidBody(body.Body, 1) != 0)
+                PhysicsScene.Logger.WarnFormat("{0} Could not remove the body of {1} from Rapier: {2}", LogHeader, body.ID,
+                            RapierNative.LastError());
             body.Clear();
             if (ownedShape != null)
                 DeleteCollisionShape(world, ownedShape);
@@ -255,40 +313,74 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
 
         // ---- Pose and velocity ----
 
+        // The getters never ask Rapier about a body that has been destroyed, and a read Rapier refuses (a stale handle)
+        // is not taken as a value: either way the answer is the last value read or set (the creation pose, zero
+        // velocities, until there is one). BulletS writes these back to the prim, so zeros would move it to the origin.
         public override Vector3 GetPosition(BulletBody obj)
         {
-            return ToVector3(RapierNative.r3RigidBody_Translation(((BulletBodyRapier)obj).Body));
+            BulletBodyRapier body = (BulletBodyRapier)obj;
+            if (!body.HasPhysicalBody)
+                return body.KnownPosition;
+            RapierNative.Vector value = RapierNative.r3RigidBody_Translation(body.Body);
+            if (RapierNative.r3LastStatus() == 0)
+                body.KnownPosition = ToVector3(value);
+            return body.KnownPosition;
         }
 
         public override Quaternion GetOrientation(BulletBody obj)
         {
-            return ToQuaternion(RapierNative.r3RigidBody_Rotation(((BulletBodyRapier)obj).Body));
+            BulletBodyRapier body = (BulletBodyRapier)obj;
+            if (!body.HasPhysicalBody)
+                return body.KnownRotation;
+            RapierNative.Rotation value = RapierNative.r3RigidBody_Rotation(body.Body);
+            if (RapierNative.r3LastStatus() == 0)
+                body.KnownRotation = ToQuaternion(value);
+            return body.KnownRotation;
         }
 
         public override void SetTranslation(BulletBody obj, Vector3 position, Quaternion rotation)
         {
+            BulletBodyRapier body = (BulletBodyRapier)obj;
             RapierNative.Pose pose = new RapierNative.Pose { translation = ToNative(position), rotation = ToNative(rotation) };
-            RapierNative.Check(RapierNative.r3RigidBody_SetPosition(((BulletBodyRapier)obj).Body, pose, 1));
+            RapierNative.Check(RapierNative.r3RigidBody_SetPosition(body.Body, pose, 1));
+            body.KnownPosition = position;
+            body.KnownRotation = rotation;
         }
 
         public override Vector3 GetLinearVelocity(BulletBody obj)
         {
-            return ToVector3(RapierNative.r3RigidBody_Linvel(((BulletBodyRapier)obj).Body));
+            BulletBodyRapier body = (BulletBodyRapier)obj;
+            if (!body.HasPhysicalBody)
+                return body.KnownVelocity;
+            RapierNative.Vector value = RapierNative.r3RigidBody_Linvel(body.Body);
+            if (RapierNative.r3LastStatus() == 0)
+                body.KnownVelocity = ToVector3(value);
+            return body.KnownVelocity;
         }
 
         public override Vector3 GetAngularVelocity(BulletBody obj)
         {
-            return ToVector3(RapierNative.r3RigidBody_Angvel(((BulletBodyRapier)obj).Body));
+            BulletBodyRapier body = (BulletBodyRapier)obj;
+            if (!body.HasPhysicalBody)
+                return body.KnownAngularVelocity;
+            RapierNative.Vector value = RapierNative.r3RigidBody_Angvel(body.Body);
+            if (RapierNative.r3LastStatus() == 0)
+                body.KnownAngularVelocity = ToVector3(value);
+            return body.KnownAngularVelocity;
         }
 
         public override void SetLinearVelocity(BulletBody obj, Vector3 val)
         {
-            RapierNative.Check(RapierNative.r3RigidBody_SetLinvel(((BulletBodyRapier)obj).Body, ToNative(val), 1));
+            BulletBodyRapier body = (BulletBodyRapier)obj;
+            RapierNative.Check(RapierNative.r3RigidBody_SetLinvel(body.Body, ToNative(val), 1));
+            body.KnownVelocity = val;
         }
 
         public override void SetAngularVelocity(BulletBody obj, Vector3 angularVelocity)
         {
-            RapierNative.Check(RapierNative.r3RigidBody_SetAngvel(((BulletBodyRapier)obj).Body, ToNative(angularVelocity), 1));
+            BulletBodyRapier body = (BulletBodyRapier)obj;
+            RapierNative.Check(RapierNative.r3RigidBody_SetAngvel(body.Body, ToNative(angularVelocity), 1));
+            body.KnownAngularVelocity = angularVelocity;
         }
 
         // Bullet's clearForces plus zero linear and angular velocity. (BulletSim's ClearAllForces does the same.)

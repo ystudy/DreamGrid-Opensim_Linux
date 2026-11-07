@@ -64,6 +64,9 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         // R3_NOT_FOUND: the status a query reports when nothing was hit (not an error).
         public const uint StatusNotFound = 7;
 
+        // R3_PANIC: Rust panicked inside the call; rapier.h says to discard the objects it mutated.
+        public const uint StatusPanic = 6;
+
         // R3_LOCK_* bits for RigidBodyDesc.lockedAxes.
         public const byte LockTranslationX = 1;
         public const byte LockTranslationY = 2;
