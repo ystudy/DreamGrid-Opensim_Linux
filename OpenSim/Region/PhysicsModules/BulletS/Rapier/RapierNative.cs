@@ -524,6 +524,24 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         public static extern uint r3RigidBody_ApplyTorqueImpulse(RigidBodyHandle handle, Vector value, uint wakeUp);
 
+        // The force and the point are both in world space.
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3RigidBody_AddForceAtPoint(RigidBodyHandle handle, Vector value, Vector point, uint wakeUp);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3RigidBody_ApplyImpulseAtPoint(RigidBodyHandle handle, Vector value, Vector point, uint wakeUp);
+
+        // What r3RigidBody_AddForce / _AddTorque (and the at-point forms) have accumulated since the last reset, in world space.
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern Vector r3RigidBody_UserForce(RigidBodyHandle handle);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern Vector r3RigidBody_UserTorque(RigidBodyHandle handle);
+
+        // The world-space centre of mass.
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern Vector r3RigidBody_CenterOfMass(RigidBodyHandle handle);
+
         // axes is a mask of the R3_LOCK_* bits below.
         [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         public static extern uint r3RigidBody_SetLockedAxes(RigidBodyHandle handle, byte axes, uint wakeUp);

@@ -200,6 +200,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             public Func<Vector3, IntPtr> BuildNativeAt;
             public Func<float[], IntPtr> BuildFromVerts;
             public bool VertsAreHullList;
+            // Bullet's collision margin, kept for GetMargin only: Rapier shapes have none (map rows 24, 40 and 41).
+            public float Margin;
 
             public BulletShapeRapier(IntPtr shape, BSPhysicsShapeType type, Vector3 scale)
                 : base()

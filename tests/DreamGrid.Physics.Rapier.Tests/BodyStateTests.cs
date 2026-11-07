@@ -440,6 +440,141 @@ public class BodyStateTests
         }
     }
 
+    // A force added and then the body taken out (RemoveObjectFromWorld) or switched off (DISABLE_SIMULATION) before the
+    // step must not stay on the native body for when it comes back: Bullet drops it at the end of the next step.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Forces_DroppedWhenBodyLeavesTheStep(bool disableSimulation)
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            AddBox(scene, 566, new Vector3(128f, 128f, 100f), physical: true);
+            RapierTestScene.Step(scene, 0.2f);
+            BSAPIRapier.BulletBodyRapier body = BodyOf(scene, 566);
+            scene.PE.SetGravity(body, Vector3.Zero);
+            scene.PE.SetLinearVelocity(body, Vector3.Zero);
+            scene.PE.SetAngularVelocity(body, Vector3.Zero);
+
+            scene.PE.ApplyCentralForce(body, new Vector3(50f, 0f, 0f));
+            scene.PE.ApplyTorque(body, new Vector3(0f, 0f, 5f));
+            if (disableSimulation)
+                scene.PE.ForceActivationState(body, ActivationState.DISABLE_SIMULATION);
+            else
+                scene.PE.RemoveObjectFromWorld(scene.World, body);
+            EngineStep(scene, 0.1f, 2);
+            if (disableSimulation)
+                scene.PE.ForceActivationState(body, ActivationState.ACTIVE_TAG);
+            else
+                scene.PE.AddObjectToWorld(scene.World, body);
+
+            Assert.Equal(Vector3.Zero, BSAPIRapier.ToVector3(RapierNative.r3RigidBody_UserForce(body.Body)));
+            Assert.Equal(Vector3.Zero, BSAPIRapier.ToVector3(RapierNative.r3RigidBody_UserTorque(body.Body)));
+            EngineStep(scene, 0.1f, 3);
+            Assert.Equal(0f, scene.PE.GetLinearVelocity(body).X, 4);
+            Assert.Equal(0f, scene.PE.GetAngularVelocity(body).Z, 4);
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    // What BSCharacter calls: ClearForces drops what was added, SetObjectForce replaces it (map rows 107 and 118).
+    [Fact]
+    public void ClearForces_And_SetObjectForce()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            AddBox(scene, 567, new Vector3(128f, 128f, 100f), physical: true);
+            RapierTestScene.Step(scene, 0.2f);
+            BSAPIRapier.BulletBodyRapier body = BodyOf(scene, 567);
+
+            scene.PE.ApplyCentralForce(body, new Vector3(50f, 0f, 0f));
+            scene.PE.ApplyTorque(body, new Vector3(0f, 0f, 5f));
+            scene.PE.ClearForces(body);
+            Assert.Equal(Vector3.Zero, scene.PE.GetTotalForce(body));
+            Assert.Equal(Vector3.Zero, scene.PE.GetTotalTorque(body));
+
+            scene.PE.ApplyCentralForce(body, new Vector3(50f, 0f, 0f));
+            scene.PE.SetObjectForce(body, new Vector3(0f, 7f, 0f));
+            Assert.Equal(new Vector3(0f, 7f, 0f), scene.PE.GetTotalForce(body));
+            // It is still a force of this step only.
+            EngineStep(scene, 0.1f, 1);
+            Assert.Equal(Vector3.Zero, scene.PE.GetTotalForce(body));
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    // Bullet's point is relative to the centre of mass (map rows 114 and 117): off centre the push also turns the body.
+    [Fact]
+    public void ForceAndImpulseAtPoint_TurnTheBody()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            AddBox(scene, 568, new Vector3(128f, 128f, 100f), physical: true);
+            RapierTestScene.Step(scene, 0.2f);
+            BSAPIRapier.BulletBodyRapier body = BodyOf(scene, 568);
+            scene.PE.SetGravity(body, Vector3.Zero);
+            scene.PE.SetLinearVelocity(body, Vector3.Zero);
+            scene.PE.SetAngularVelocity(body, Vector3.Zero);
+
+            // +X at +Y from the centre turns the body about -Z.
+            scene.PE.ApplyImpulse(body, new Vector3(1f, 0f, 0f), new Vector3(0f, 0.25f, 0f));
+            Assert.True(scene.PE.GetLinearVelocity(body).X > 0.01f);
+            Assert.True(scene.PE.GetAngularVelocity(body).Z < -0.01f);
+
+            scene.PE.SetLinearVelocity(body, Vector3.Zero);
+            scene.PE.SetAngularVelocity(body, Vector3.Zero);
+            scene.PE.ApplyForce(body, new Vector3(0f, 10f, 0f), new Vector3(0.25f, 0f, 0f));
+            Assert.Equal(new Vector3(0f, 10f, 0f), scene.PE.GetTotalForce(body));
+            Assert.True(scene.PE.GetTotalTorque(body).Z > 0.1f);
+            EngineStep(scene, 0.1f, 1);
+            Assert.True(scene.PE.GetLinearVelocity(body).Y > 0.01f);
+            Assert.True(scene.PE.GetAngularVelocity(body).Z > 0.01f);
+            Assert.Equal(Vector3.Zero, scene.PE.GetTotalForce(body));
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    // Rapier has no collision margins (map rows 24, 40 and 41): setting one changes nothing and reads back.
+    [Fact]
+    public void Margins_AreStoredOnly()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            AddBox(scene, 569, new Vector3(128f, 128f, 100f), physical: true);
+            RapierTestScene.Step(scene, 0.2f);
+            BulletShape shape = scene.PhysObjects[569].PhysShape.physShapeInfo;
+            scene.PE.SetMargin(shape, 0.04f);
+            Assert.Equal(0.04f, scene.PE.GetMargin(shape));
+            scene.PE.SetShapeCollisionMargin(shape, 0.02f);
+            Assert.Equal(0.02f, scene.PE.GetMargin(shape));
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
     [Fact]
     public void Ccd_ThresholdTurnsItOn_AndIsKept()
     {

@@ -199,7 +199,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                 return;
             body.SimulationDisabled = true;
             body.State.NeverSleep.Remove(body);
-            body.State.ForcedBodies.Remove(body);
+            DropAppliedForces(body);
             // Nothing more is reported for it, and what was last sent for it means nothing now.
             body.State.ForgetUpdates(body.ID);
             if (body.InWorld)

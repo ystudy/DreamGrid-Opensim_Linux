@@ -548,9 +548,11 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             return shape;
         }
 
+        // Rapier has no collision margins (map row 24); the nearest thing, r3Collider_SetContactSkin, stays 0. The value is
+        // kept for GetMargin.
         public override void SetShapeCollisionMargin(BulletShape shape, float margin)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(SetShapeCollisionMargin));
+            ((BulletShapeRapier)shape).Margin = margin;
         }
 
         // ---- Compound shapes (H5a, option b) ----
@@ -850,14 +852,16 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             }
         }
 
+        // As SetShapeCollisionMargin: stored, and nothing native (map rows 40 and 41). BSCharacter sets one on the avatar
+        // shape before scaling it.
         public override void SetMargin(BulletShape shape, float val)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(SetMargin));
+            ((BulletShapeRapier)shape).Margin = val;
         }
 
         public override float GetMargin(BulletShape shape)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(GetMargin));
+            return ((BulletShapeRapier)shape).Margin;
         }
 
         public override float GetAngularMotionDisc(BulletShape shape)

@@ -234,7 +234,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             RapierNative.Check(RapierNative.r3RigidBody_SetEnabled(body.Body, 0));
             body.InWorld = false;
             body.State.ForgetUpdates(body.ID);
-            body.State.ForcedBodies.Remove(body);
+            DropAppliedForces(body);
             return true;
         }
 
@@ -615,19 +615,37 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             body.State.ForcedBodies.Add(body);
         }
 
-        public override void SetObjectForce(BulletBody obj, Vector3 force)
+        // A body that stops being stepped (RemoveObjectFromWorld, DISABLE_SIMULATION) before PhysicsStep has reset the
+        // forces added to it this frame loses them now. Otherwise they would stay on the native body, which PhysicsStep no
+        // longer resets, and push it for good once it is back (Bullet drops them at the end of the step either way).
+        private static void DropAppliedForces(BulletBodyRapier body)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(SetObjectForce));
+            if (!body.State.ForcedBodies.Remove(body) || !body.HasPhysicalBody)
+                return;
+            RapierNative.Check(RapierNative.r3RigidBody_ResetForces(body.Body, 0));
+            RapierNative.Check(RapierNative.r3RigidBody_ResetTorques(body.Body, 0));
         }
 
+        // Replace the force of this step with this one (map row 107). The torque stays.
+        public override void SetObjectForce(BulletBody obj, Vector3 force)
+        {
+            BulletBodyRapier body = (BulletBodyRapier)obj;
+            if (!body.HasPhysicalBody)
+                return;
+            RapierNative.Check(RapierNative.r3RigidBody_ResetForces(body.Body, 0));
+            RapierNative.Check(RapierNative.r3RigidBody_AddForce(body.Body, ToNative(force), force != Vector3.Zero ? 1u : 0u));
+            body.State.ForcedBodies.Add(body);
+        }
+
+        // What has been added since the last step, in world space (map row 108).
         public override Vector3 GetTotalForce(BulletBody obj)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(GetTotalForce));
+            return ToVector3(RapierNative.r3RigidBody_UserForce(((BulletBodyRapier)obj).Body));
         }
 
         public override Vector3 GetTotalTorque(BulletBody obj)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(GetTotalTorque));
+            return ToVector3(RapierNative.r3RigidBody_UserTorque(((BulletBodyRapier)obj).Body));
         }
 
         public override Vector3 GetInvInertiaDiagLocal(BulletBody obj)
@@ -649,9 +667,16 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             body.State.ForcedBodies.Add(body);
         }
 
+        // Bullet's point (btRigidBody::applyForce's rel_pos) is the offset from the centre of mass, in world axes; Rapier
+        // wants the world point (map row 114).
         public override void ApplyForce(BulletBody obj, Vector3 force, Vector3 pos)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(ApplyForce));
+            BulletBodyRapier body = (BulletBodyRapier)obj;
+            if (!body.HasPhysicalBody)
+                return;
+            RapierNative.Vector point = ToNative(ToVector3(RapierNative.r3RigidBody_CenterOfMass(body.Body)) + pos);
+            RapierNative.Check(RapierNative.r3RigidBody_AddForceAtPoint(body.Body, ToNative(force), point, force != Vector3.Zero ? 1u : 0u));
+            body.State.ForcedBodies.Add(body);
         }
 
         public override void ApplyCentralImpulse(BulletBody obj, Vector3 imp)
@@ -668,14 +693,25 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                 RapierNative.Check(RapierNative.r3RigidBody_ApplyTorqueImpulse(body.Body, ToNative(imp), imp != Vector3.Zero ? 1u : 0u));
         }
 
+        // As ApplyForce, the point is relative to the centre of mass (map row 117).
         public override void ApplyImpulse(BulletBody obj, Vector3 imp, Vector3 pos)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(ApplyImpulse));
+            BulletBodyRapier body = (BulletBodyRapier)obj;
+            if (!body.HasPhysicalBody)
+                return;
+            RapierNative.Vector point = ToNative(ToVector3(RapierNative.r3RigidBody_CenterOfMass(body.Body)) + pos);
+            RapierNative.Check(RapierNative.r3RigidBody_ApplyImpulseAtPoint(body.Body, ToNative(imp), point, imp != Vector3.Zero ? 1u : 0u));
         }
 
+        // Bullet's clearForces: the force and torque of this step go (map row 118); the velocities stay.
         public override void ClearForces(BulletBody obj)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(ClearForces));
+            BulletBodyRapier body = (BulletBodyRapier)obj;
+            if (!body.HasPhysicalBody)
+                return;
+            RapierNative.Check(RapierNative.r3RigidBody_ResetForces(body.Body, 0));
+            RapierNative.Check(RapierNative.r3RigidBody_ResetTorques(body.Body, 0));
+            body.State.ForcedBodies.Remove(body);
         }
 
         public override Vector3 GetVelocityInLocalPoint(BulletBody obj, Vector3 pos)
