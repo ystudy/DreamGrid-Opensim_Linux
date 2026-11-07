@@ -45,7 +45,9 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
     {
         // The name the DllImports bind to. No dllmap line and no file has this name, so neither the runtime's probing nor
         // another resolver (DllmapConfigHelper's, or OpenSim's Util fallback, which would both map "rapier") can bind them
-        // to a file of its choosing: only ResolveRapier does, to the build TryLoad chose ("rapier" or "rapier_mt").
+        // to a file of its choosing. TryLoad puts the build it chose ("rapier" or "rapier_mt") under this name in
+        // DllmapConfigHelper's table, so that resolver answers first (RegisterWithDllmapHelper); ResolveRapier is the
+        // fallback.
         public const string Lib = "rapier-bound";
 
         // R3_ABI_VERSION, and R3_ABI_FEATURES for a build without RAPIER_FEM and RAPIER_ROBOTICS.
@@ -993,11 +995,13 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                 s_handle = handle;
                 s_loadedName = name;
                 s_loadedThreads = threads;
+                s_registeredWithDllmap = RegisterWithDllmapHelper(handle);
                 if (!s_resolverInstalled)
                 {
                     // ResolvingUnmanagedDll is the runtime's last try after its own probing, so it cooperates with the
                     // other resolvers (DllmapConfigHelper's on this assembly, OpenSim's Util fallback) instead of competing
-                    // for the one resolver slot. They have no dllmap line for Lib and leave it to this one.
+                    // for the one resolver slot. They have no dllmap line for Lib and leave it to this one. It is only
+                    // reached when RegisterWithDllmapHelper could not register the handle.
                     AssemblyLoadContext.Default.ResolvingUnmanagedDll += ResolveRapier;
                     s_resolverInstalled = true;
                 }
@@ -1117,6 +1121,41 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
 
         [DllImport("kernel32", ExactSpelling = true, SetLastError = true, CharSet = CharSet.Unicode)]
         private static extern uint GetModuleFileNameW(IntPtr module, [Out] char[] fileName, uint size);
+
+        /// <summary>Whether the last TryLoad registered its handle under Lib with DllmapConfigHelper (for the tests).</summary>
+        internal static bool RegisteredWithDllmapHelper { get { return s_registeredWithDllmap; } }
+        private static bool s_registeredWithDllmap;
+
+        /// <summary>
+        /// Puts the chosen handle under Lib in DllmapConfigHelper's table of loaded libraries, which the DllImport resolver
+        /// it set on this assembly (in RegisterAssembly) answers from. That resolver is the first thing the runtime asks
+        /// when an import is first called. Without the entry each of the imports, on its first call, went on to the
+        /// runtime's failed probing for a file named Lib and to OpenSim's Util.LoadNativeDllFallback, which re-reads and
+        /// parses this assembly's .dll.config. Measured on Windows for all 129 imports (Marshal.PrelinkAll): 260 ms with
+        /// the chain, 4 ms with the entry; and 108 s while another process held the .dll.config open (Mantis 9177), as
+        /// the fallback then sleeps 4 x 200 ms per import. The table is private to OpenMetaverse.dll, so it is reached by
+        /// reflection; if that fails (another OpenMetaverse) the imports still bind, through the slow chain and
+        /// ResolveRapier. Util itself is left alone, so no other module changes.
+        /// </summary>
+        private static bool RegisterWithDllmapHelper(IntPtr handle)
+        {
+            try
+            {
+                Type helper = typeof(DllmapConfigHelper);
+                object table = helper.GetField("LoadedLibs", BindingFlags.NonPublic | BindingFlags.Static)?.GetValue(null);
+                if (!(table is Dictionary<string, IntPtr> loaded))
+                    return false;
+                // RegisterAssembly takes this lock around its own bookkeeping.
+                object helperLock = helper.GetField("m_mainlock", BindingFlags.NonPublic | BindingFlags.Static)?.GetValue(null);
+                lock (helperLock ?? loaded)
+                    loaded[Lib] = handle;
+                return true;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
 
         private static IntPtr ResolveRapier(Assembly assembly, string libraryName)
         {

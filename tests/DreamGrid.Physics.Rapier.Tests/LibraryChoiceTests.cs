@@ -86,7 +86,8 @@ public class LibraryChoiceTests
         Assert.Equal(ShippedFileName(mt: true), Path.GetFileName(mt));
         // The DllImports' name must be one no other resolver can map, or it could bind them to the single-threaded
         // build after TryLoad chose rapier_mt.
-        Assert.Equal(IntPtr.Zero, RapierNative.LoadFromDllmap(RapierNative.Lib));
+        string config = File.ReadAllText(typeof(RapierNative).Assembly.Location + ".config");
+        Assert.DoesNotContain($"dll=\"{RapierNative.Lib}\"", config);
     }
 
     [Fact]
@@ -208,5 +209,19 @@ public class LibraryChoiceTests
             repository.Root.Level = previousLevel;
             repository.Root.RemoveAppender(appender);
         }
+    }
+
+    [Fact]
+    public void TryLoad_RegistersTheHandleWithTheAssemblysOwnResolver()
+    {
+        // DllmapConfigHelper's resolver on the BulletS assembly is the first one the runtime asks for an import. With the
+        // handle in its table, no import goes on to the runtime's probing and OpenSim's Util fallback (260 ms for the 129
+        // imports, 108 s while another process holds the .dll.config). NativeLibrary.TryLoad with an assembly asks
+        // that resolver as an import does.
+        Assert.True(RapierNative.TryLoad(1, out string? error, out _), error);
+        Assert.True(RapierNative.RegisteredWithDllmapHelper,
+                    "OpenMetaverse's DllmapConfigHelper no longer has the LoadedLibs table RapierNative fills");
+        Assert.True(NativeLibrary.TryLoad(RapierNative.Lib, typeof(RapierNative).Assembly, null, out IntPtr bound));
+        Assert.Equal(RapierNative.LoadedLibraryPath(), RapierNative.FileOf(bound));
     }
 }
