@@ -13,7 +13,7 @@ public sealed class RegionsModel(IGridController grid, Func<LauncherSettings> se
 {
     /// <summary>The engines offered, with the words the region Physics tab uses.</summary>
     public static readonly IReadOnlyList<(string Value, string Text)> PhysicsChoices =
-        [.. RegionSettingsRules.PhysicsEngines.Select(e => (e, SettingLabels.Physics(e)))];
+        [.. RegionSettingsRules.AvailablePhysicsEngines().Select(e => (e, SettingLabels.Physics(e)))];
 
     [BindProperty] public string? DefaultPhysics { get; set; }
 
@@ -29,7 +29,7 @@ public sealed class RegionsModel(IGridController grid, Func<LauncherSettings> se
 
     public IActionResult OnPost()
     {
-        if (DefaultPhysics is null || !RegionSettingsRules.PhysicsEngines.Contains(DefaultPhysics)
+        if (DefaultPhysics is null || !RegionSettingsRules.AvailablePhysicsEngines().Contains(DefaultPhysics)
             || DefaultScripts is not ("true" or "false"))
             return BadRequest();
         var physics = DefaultPhysics;

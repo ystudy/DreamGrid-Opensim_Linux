@@ -137,6 +137,8 @@ public sealed class GridConfigWriter(LauncherPaths paths)
         os.Set("Startup", "physics", physics == "ubODE" ? "ubODE" : "BulletSim");
         os.Set("Startup", "meshing", physics == "ubODE" ? "ubODEMeshmerizer" : "Meshmerizer");
         if (physics != "ubODE") os.Set("BulletSim", "UseSeparatePhysicsThread", physics == "BulletSimThreaded" ? "true" : "false");
+        // Rapier is a third engine under BulletSim; without this key BulletSim keeps its default, BulletUnmanaged.
+        if (physics == "Rapier") os.Set("BulletSim", "BulletEngine", "Rapier");
         WriteProgramOptions(os, s, program, regions);
         // The region reads [Network] console_port (OpenSim.cs), unlike Robust's ConsolePort.
         SetNetwork(os, s, "console_port", program.ConsolePort);

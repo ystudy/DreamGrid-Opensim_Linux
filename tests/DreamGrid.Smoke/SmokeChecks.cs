@@ -26,6 +26,17 @@ public static class SmokeChecks
         return new CheckResult("C1", ok, ok ? "region reported LOGINS ENABLED" : "no 'INITIALIZATION COMPLETE ... LOGINS ENABLED' line");
     }
 
+    /// <summary>
+    /// C8 (Rapier only): BSScene logged the engine it selected. The version may be followed by "+parallel", so this is a
+    /// prefix match.
+    /// </summary>
+    public static CheckResult RapierSelected(string log)
+    {
+        const string line = "Selected bullet engine Rapier -> Rapier/0.36.1";
+        bool ok = log.Contains(line, StringComparison.Ordinal);
+        return new CheckResult("C8", ok, ok ? "BSScene selected Rapier/0.36.1" : $"no '{line}' line");
+    }
+
     /// <summary>C2: none of the runtime-gap exceptions appear anywhere in the log.</summary>
     public static CheckResult NoForbiddenExceptions(string log)
     {

@@ -2369,7 +2369,7 @@ public sealed class GridControllerWiringTests : IDisposable
             Assert.True(grid.NeedsRestart("Home"));
 
             var bad = await Assert.ThrowsAsync<ArgumentException>(() => grid.SaveProgramOptionsAsync("Home", "Havok", new ProgramOptions(), ct));
-            Assert.Equal("Pick ubODE, BulletSim or BulletSimThreaded, or use the grid default.", bad.Message);
+            Assert.Equal("Pick ubODE, BulletSim, BulletSimThreaded or Rapier, or use the grid default.", bad.Message);
         }
         finally { await EndAllAsync(grid, fakes); }
     }

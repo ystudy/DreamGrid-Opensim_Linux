@@ -1,7 +1,7 @@
 using DreamGrid.Smoke;
 
 // Usage: dotnet run --project tests/DreamGrid.Smoke -c Release -- --bin <path-to-bin>
-//            [--physics ubODE|BulletSim] [--culture <name>] [--timeout <seconds>] [--keep]
+//            [--physics ubODE|BulletSim|Rapier] [--culture <name>] [--timeout <seconds>] [--keep]
 // Exit code 0 when every check passes, 1 otherwise.
 
 string? bin = null, culture = null;

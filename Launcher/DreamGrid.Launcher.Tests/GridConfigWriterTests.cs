@@ -571,6 +571,30 @@ public sealed class GridConfigWriterTests : IDisposable
     }
 
     [Fact]
+    public void GridConfigWriter_Rapier_WritesBulletSimWithRapierEngine()
+    {
+        Write(WithOptions(physics: "Rapier"));
+
+        var os = ProgramIni("Home");
+        Assert.Equal("BulletSim", os.Get("Startup", "physics"));
+        Assert.Equal("Meshmerizer", os.Get("Startup", "meshing"));
+        Assert.Equal("Rapier", os.Get("BulletSim", "BulletEngine"));
+        Assert.Equal("false", os.Get("BulletSim", "UseSeparatePhysicsThread"));
+    }
+
+    [Theory]
+    [InlineData("BulletSim")]
+    [InlineData("BulletSimThreaded")]
+    [InlineData("ubODE")]
+    public void GridConfigWriter_BulletSim_DoesNotWriteRapierEngine(string physics)
+    {
+        Write(WithOptions(physics: physics));
+
+        var engine = ProgramIni("Home").Get("BulletSim", "BulletEngine");
+        Assert.True(engine is null or "BulletUnmanaged", $"BulletEngine was {engine}");
+    }
+
+    [Fact]
     public void Scripts_off_disables_yengine()
     {
         Write(WithOptions(new ProgramOptions(Scripts: false)));
