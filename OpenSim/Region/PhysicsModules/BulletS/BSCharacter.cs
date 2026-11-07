@@ -540,6 +540,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                 if (RawOrientation != value)
                 {
                     RawOrientation = value;
+                    // The value this taint was queued for: the setter may store a newer one before the taint runs.
+                    OMV.Quaternion queued = value;
                     PhysScene.TaintedObject(LocalID, "BSCharacter.setOrientation", delegate()
                     {
                         // Bullet assumes we know what we are doing when forcing orientation
@@ -550,13 +552,18 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                         RawOrientation.GetEulerAngles(out oRoll, out oPitch, out oYaw);
                         // The body already faces this way (to within float noise): nothing to set. RawOrientation
                         // still holds the value as given, tilt included; it takes the body's yaw-only one, as the set
-                        // below would have, so a later SetTranslation (ForcePosition) cannot tilt the body.
+                        // below would have, so a later SetTranslation (ForcePosition) cannot tilt the body. Only if it
+                        // is still the value this taint was queued for: a newer one belongs to the taint the setter
+                        // queued with it, which reads RawOrientation and would otherwise find the old yaw there and
+                        // drop that turn. (The check and the
+                        // write are not atomic against the setter's thread; the window left is nanoseconds wide.)
                         if (PhysScene.PE.SkipsUnchangedAvatarYaw && PhysBody.HasPhysicalBody)
                         {
                             OMV.Quaternion bodyOrientation = PhysScene.PE.GetOrientation(PhysBody);
                             if (YawWithinTolerance(bodyOrientation, oYaw))
                             {
-                                RawOrientation = bodyOrientation;
+                                if (RawOrientation == queued)
+                                    RawOrientation = bodyOrientation;
                                 return;
                             }
                         }
