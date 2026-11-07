@@ -195,11 +195,17 @@ public class LibraryChoiceTests
         repository.Root.Level = Level.All;
         repository.Configured = true;
         BSScene? scene = null;
+        // log4net's LoggingEvent.ThreadName: the thread's name, or its managed id when it has none.
+        string thisThread = string.IsNullOrEmpty(Thread.CurrentThread.Name)
+            ? Environment.CurrentManagedThreadId.ToString() : Thread.CurrentThread.Name;
         try
         {
             scene = RapierTestScene.Create(new Dictionary<string, string> { { "RapierNumThreads", threads.ToString() } });
+            // Only this thread's events: the appender is on the root, and the assembly's tests already run one at a
+            // time (CollectionPerAssembly), but a scene made on another thread must not be able to add a warning here.
             LoggingEvent[] warnings = appender.GetEvents()
-                .Where(e => e.Level == Level.Warn && e.RenderedMessage.Contains("loaded only once")).ToArray();
+                .Where(e => e.ThreadName == thisThread && e.Level == Level.Warn && e.RenderedMessage.Contains("loaded only once"))
+                .ToArray();
             Assert.Equal(loadedParallel != (threads > 1), warnings.Length > 0);
             Assert.All(warnings, e => Assert.Contains($"its {threads} thread(s)", e.RenderedMessage));
         }
