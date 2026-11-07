@@ -43,6 +43,64 @@ public class NativeTests
         Assert.DoesNotContain("RigidBodyDesc", message);
     }
 
+    // The structs VerifyAbi does not size-check, because r3PodLayout does not report them: their sizes from rapier.h
+    // (3D, single precision, 64-bit: a handle is a pointer and two uint32, 16 bytes, and size_t is 8), so a header bump
+    // that changes one fails here. Each literal is the field sum plus the padding to the struct's alignment.
+
+    [Fact]
+    public void RigidBodyState_MatchesRapierH()
+    {
+        // Pose 28 + linvel 12 + angvel 12 + sleeping 4 + enabled 4 = 60, padded to 64 for the 8-aligned UserData 16.
+        Assert.Equal(8, IntPtr.Size);
+        Assert.Equal(80, System.Runtime.InteropServices.Marshal.SizeOf<RapierNative.RigidBodyState>());
+    }
+
+    [Fact]
+    public void ContactPair_MatchesRapierH()
+    {
+        // Two handles 32 + has_any_active_contact 4 + total_impulse 12 + two reals 8 + max_impulse_direction 12 = 68 -> 72.
+        Assert.Equal(8, IntPtr.Size);
+        Assert.Equal(72, System.Runtime.InteropServices.Marshal.SizeOf<RapierNative.ContactPair>());
+    }
+
+    [Fact]
+    public void ContactPoint_MatchesRapierH()
+    {
+        // manifold_index 8 + local_p1, local_p2, normal 36 + distance, impulse 8 + tangent_impulse[2] 8 = 60 -> 64.
+        Assert.Equal(8, IntPtr.Size);
+        Assert.Equal(64, System.Runtime.InteropServices.Marshal.SizeOf<RapierNative.ContactPoint>());
+    }
+
+    [Fact]
+    public void MassProperties_MatchesRapierH()
+    {
+        // local_com 12 + mass 4 + principal_inertia 12 + principal_inertia_local_frame 16 = 44, all 4-aligned.
+        Assert.Equal(44, System.Runtime.InteropServices.Marshal.SizeOf<RapierNative.MassProperties>());
+    }
+
+    [Fact]
+    public void IntersectionPair_MatchesRapierH()
+    {
+        // Two handles 32 + intersecting 4 = 36 -> 40.
+        Assert.Equal(8, IntPtr.Size);
+        Assert.Equal(40, System.Runtime.InteropServices.Marshal.SizeOf<RapierNative.IntersectionPair>());
+    }
+
+    [Fact]
+    public void ShapeCastHit_MatchesRapierH()
+    {
+        // Handle 16 + time_of_impact 4 + witness1, witness2, normal1, normal2 48 + status 4 = 72.
+        Assert.Equal(8, IntPtr.Size);
+        Assert.Equal(72, System.Runtime.InteropServices.Marshal.SizeOf<RapierNative.ShapeCastHit>());
+    }
+
+    [Fact]
+    public void JointImpulses_MatchesRapierH()
+    {
+        // linear 12 + angular 12 + limits[6] 24 + motors[6] 24 = 72, all 4-aligned.
+        Assert.Equal(72, System.Runtime.InteropServices.Marshal.SizeOf<RapierNative.JointImpulses>());
+    }
+
     [Fact]
     public void BoxFallsUnderGravity()
     {
