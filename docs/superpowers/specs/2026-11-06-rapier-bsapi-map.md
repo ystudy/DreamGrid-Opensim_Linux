@@ -311,6 +311,7 @@ are to this repo unless they name BulletSim's C++.
   - Each pair is stored once per frame as low ID, high ID, one point, one normal and the penetration.
   - Ghost objects add pairs from their pair cache (contacts with distance < 0).
   - BSScene sends every pair in both directions. The cap is 2,048 per frame (`MaxCollisionsPerFrame`).
+    Limit of the Rapier backend: a pair that stops touching after the first substep of a frame is reported for that frame only if the previous frame wrote it, so it is lost when the previous frame's array was full or when neither side wanted collisions then.
 - **Rapier:** the matching calls all exist:
   - `r3Collider_ContactPairs(collider, ...)` lists the narrow-phase pairs that involve one collider. Each
     R3ContactPair carries `has_any_active_contact` and impulse totals.
