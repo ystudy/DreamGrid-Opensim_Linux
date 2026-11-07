@@ -340,6 +340,12 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         // Whether a plain prim cylinder (circle profile, straight path, no cuts, round cross section) should get the
         // engine's native SHAPE_CYLINDER rather than a convex hull of its mesh. Bullet's cylinder is not used for prims.
         public virtual bool NativeCylinderPrims { get { return false; } }
+
+        // Whether BSCharacter.AvatarJump divides its force by Bullet's 1/60 s step (BSScene.BulletFixedTimeStep) rather
+        // than by FixedTimeStep. The force is on for every substep of the frame, so dividing by the substep length makes
+        // the jump grow with the substep count; an engine whose default step is not 1/60 asks for this so its jumps
+        // match Bullet's at any FixedTimeStep.
+        public virtual bool JumpUsesBulletStepLength { get { return false; } }
         
         // Initialization and simulation
         public abstract BulletWorld Initialize(Vector3 maxPosition, ConfigurationParameters parms,

@@ -221,4 +221,51 @@ public class AvatarTests
             scene.Dispose();
         }
     }
+    // BulletS's jump is a force of 0.22 m impulseZ / step that stays on for every substep of the frame. Rapier divides
+    // by Bullet's 1/60 s, whatever its step, so one frame's jump adds 0.22 impulseZ 60 (n dt) to Vz, n dt being the
+    // time the frame's substeps cover: the same as Bullet at its 1/60 default, and the same at any FixedTimeStep.
+    [Theory]
+    [InlineData(null)]            // Rapier's default, 0.02 s
+    [InlineData("0.016666667")]
+    [InlineData("0.01")]
+    public void Avatar_JumpImpulse_FollowsTheFrameTimeNotTheStep(string? fixedTimeStep)
+    {
+        const float impulseZ = 9.4f;   // what ScenePresenceAnimator asks for
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create(fixedTimeStep == null ? null
+                    : new Dictionary<string, string> { { "FixedTimeStep", fixedTimeStep } });
+        try
+        {
+            SetFlatTerrain(scene);
+            // High in the air, so only gravity and the jump act on it.
+            PhysicsActor avatar = AddAvatar(scene, new Vector3(128f, 128f, 150f), false);
+            RapierTestScene.Step(scene, 0.3f);
+            RapierWorldState state = ((BSAPIRapier.BulletWorldRapier)scene.World).State;
+            float dt = scene.m_fixedTimeStep;
+            Func<int> nextSubsteps = () => (int)((state.Accumulator + RapierTestScene.FrameSeconds) / dt);
+            Func<float> vz = () => scene.PE.GetLinearVelocity(BodyOf(scene, AvatarId)).Z;
+
+            // One frame of falling, for the pull of gravity per substep.
+            int n0 = nextSubsteps();
+            float v0 = vz();
+            scene.Simulate(RapierTestScene.FrameSeconds);
+            float gravityPerSubstep = (vz() - v0) / n0;
+            Assert.True(gravityPerSubstep < 0f, $"gravity per substep {gravityPerSubstep}");
+
+            int n1 = nextSubsteps();
+            float v1 = vz();
+            avatar.AvatarJump(impulseZ);
+            scene.Simulate(RapierTestScene.FrameSeconds);
+            float jump = vz() - v1 - gravityPerSubstep * n1;
+
+            float expected = 0.22f * impulseZ * 60f * n1 * dt;
+            _output.WriteLine($"step {dt}: n {n1}, jump dVz {jump}, expected {expected}");
+            Assert.InRange(jump, expected * 0.95f, expected * 1.05f);
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
 }

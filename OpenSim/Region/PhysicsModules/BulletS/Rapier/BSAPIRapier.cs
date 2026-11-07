@@ -426,6 +426,9 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         // Rapier's cylinder is exact and cheaper than a hull of the prim's mesh.
         public override bool NativeCylinderPrims { get { return true; } }
 
+        // Rapier steps 0.02 s by default (BSScene.RapierFixedTimeStep); the jump keeps Bullet's tuning.
+        public override bool JumpUsesBulletStepLength { get { return true; } }
+
         public BSAPIRapier(string paramName, BSScene physScene)
         {
             PhysicsScene = physScene;

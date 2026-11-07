@@ -103,6 +103,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         // The substep length the Rapier engine uses when the INI does not set FixedTimeStep: ubODE's 0.02 s, not
         // Bullet's 1/60 s, so a frame takes fewer substeps.
         internal const float RapierFixedTimeStep = 0.02f;
+        // Bullet's own default FixedTimeStep, which BulletS's tuning (the avatar jump) was done at.
+        internal const float BulletFixedTimeStep = 1f / 60f;
 
         internal float m_simulatedTime;     // the time simulated previously. Used for physics framerate calc.
 
