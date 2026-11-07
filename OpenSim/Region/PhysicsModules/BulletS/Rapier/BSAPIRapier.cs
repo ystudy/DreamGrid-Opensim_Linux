@@ -630,6 +630,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         public override void UpdateAabbs(BulletWorld world)
         {
             RapierNative.Check(RapierNative.r3RigidBodyPropagateModifiedBodyPositionsToColliders(((BulletWorldRapier)world).World));
+            ((BulletWorldRapier)world).State.CollidersStale = false;
         }
 
         // Map rows 10 and 11: the flag is kept; there is nothing to set in Rapier.

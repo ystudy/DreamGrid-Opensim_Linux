@@ -671,6 +671,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                 Compose(pos, rot, part.Pos, part.Rot, out Vector3 partPos, out Quaternion partRot);
                 RapierNative.Pose pose = new RapierNative.Pose { translation = ToNative(partPos), rotation = ToNative(partRot) };
                 RapierNative.Check(RapierNative.r3Collider_SetPositionWrtParent(part.Collider, pose));
+                body.State.CollidersStale = true;
             }
             if (childIndex == 0)
                 NoteRootChild(body, compound);
@@ -821,6 +822,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                     }
                     following.Add(collider);
                     world.State.ColliderShapes[collider] = fresh;
+                    world.State.CollidersStale = true;
                     // A body that was resting on the old size has to look again.
                     if (world.State.ColliderOwners.TryGetValue(collider, out BulletBodyRapier owner))
                         RapierNative.r3RigidBody_WakeUp(owner.Body, 1);

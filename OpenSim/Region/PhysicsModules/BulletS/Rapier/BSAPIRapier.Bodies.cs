@@ -54,6 +54,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             desc.enabled = 0;
             RapierNative.RigidBodyHandle handle = RapierNative.r3InsertRigidBody(world.World, in desc);
             RapierNative.Check(RapierNative.r3LastStatus());
+            world.State.CollidersStale = true;
 
             BulletBodyRapier body = new BulletBodyRapier(id, handle, world.State);
             body.KnownPosition = pos;
@@ -92,6 +93,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             desc.userData.low = body.ID;
             RapierNative.ColliderHandle collider = RapierNative.r3InsertCollider(body.Body, in desc);
             RapierNative.Check(RapierNative.r3LastStatus());
+            body.State.CollidersStale = true;
             body.Colliders.Add(collider);
             body.State.ColliderOwners[collider] = body;
             body.State.NoteShapeUse(shape.Shape, collider);
@@ -278,6 +280,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             if (!body.HasPhysicalBody)
                 return false;
             RapierNative.Check(RapierNative.r3RigidBody_SetEnabled(body.Body, 1));
+            body.State.CollidersStale = true;
             body.InWorld = true;
             body.SimulationDisabled = false;
             // The collision groups live in the colliders, which are only worth setting once the body is in.
@@ -291,6 +294,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             if (!body.HasPhysicalBody)
                 return false;
             RapierNative.Check(RapierNative.r3RigidBody_SetEnabled(body.Body, 0));
+            body.State.CollidersStale = true;
             body.InWorld = false;
             body.State.ForgetUpdates(body.ID);
             DropAppliedForces(body);
@@ -343,6 +347,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             BulletBodyRapier body = (BulletBodyRapier)obj;
             RapierNative.Pose pose = new RapierNative.Pose { translation = ToNative(position), rotation = ToNative(rotation) };
             RapierNative.Check(RapierNative.r3RigidBody_SetPosition(body.Body, pose, 1));
+            body.State.CollidersStale = true;
             body.KnownPosition = position;
             body.KnownRotation = rotation;
         }
@@ -769,6 +774,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             body.CenterOfMass = pos;
             body.InertiaFrame = rot;
             ApplyMassProperties(body);
+            body.State.CollidersStale = true;
         }
 
         // A force and a torque stay on a Rapier body until reset, so the body is noted and PhysicsStep resets it (H11).
@@ -895,7 +901,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         {
             BulletBodyRapier body = (BulletBodyRapier)obj;
             if (body.HasPhysicalBody)
+            {
                 RapierNative.Check(RapierNative.r3RigidBody_SetTranslation(body.Body, ToNative(BodyPosition(body) + trans), 1));
+                body.State.CollidersStale = true;
+            }
         }
 
         public override void UpdateDeactivation(BulletBody obj, float timeStep)

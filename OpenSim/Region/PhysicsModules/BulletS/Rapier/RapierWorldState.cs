@@ -260,6 +260,11 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         // The flag SetForceUpdateAllAabbs last set (map rows 10 and 11); Rapier has nothing to set.
         public bool ForceUpdateAllAabbs;
 
+        // Whether C# has changed a pose or a collider since the last r3Step or propagate, so a query must first pass the
+        // bodies' poses on to their colliders (r3RigidBodyPropagateModifiedBodyPositionsToColliders). r3Step does that
+        // itself, so the flag is cleared after each step.
+        public bool CollidersStale = true;
+
         // Set when r3Step reported R3_PANIC: the world may be corrupt, so PhysicsStep steps it no more.
         public bool Poisoned;
 

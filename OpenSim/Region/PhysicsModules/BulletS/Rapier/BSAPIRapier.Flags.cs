@@ -94,7 +94,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             uint oldType = BodyTypeFor(old);
             uint newType = BodyTypeFor(now);
             if (oldType != newType)
+            {
                 RapierNative.Check(RapierNative.r3RigidBody_SetBodyType(body.Body, newType, 1));
+                body.State.CollidersStale = true;
+            }
 
             if (((old ^ now) & CollisionFlags.CF_NO_CONTACT_RESPONSE) != 0)
             {
@@ -214,7 +217,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             // Nothing more is reported for it, and what was last sent for it means nothing now.
             body.State.ForgetUpdates(body.ID);
             if (body.InWorld)
+            {
                 RapierNative.Check(RapierNative.r3RigidBody_SetEnabled(body.Body, 0));
+                body.State.CollidersStale = true;
+            }
         }
 
         private static void EnableSimulation(BulletBodyRapier body)
@@ -222,7 +228,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             body.SimulationDisabled = false;
             // A body outside the world stays disabled until AddObjectToWorld.
             if (body.InWorld)
+            {
                 RapierNative.Check(RapierNative.r3RigidBody_SetEnabled(body.Body, 1));
+                body.State.CollidersStale = true;
+            }
         }
 
         // Wake the body (map row 69). A fixed body has nothing to wake.

@@ -177,4 +177,60 @@ public class TerrainTests
             scene.Dispose();
         }
     }
+    // BulletS teleports a body in a taint and can cast a ray in the same taint pass, before any step. Rapier's broad
+    // phase only learns a collider's new bounding box in a step, so until then a ray finds the body only through the box
+    // it had at the last step; what the backend must do is pass the new pose on to the colliders, so the ray tests the
+    // body where it now is, and not where it was. After the next step the ray finds it anywhere.
+    [Theory]
+    [InlineData(true)]    // a resting physical box
+    [InlineData(false)]   // a static box
+    public void Ray_RightAfterATeleportInTheSameFrame_TestsTheNewPose(bool physical)
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            SetTerrain(scene, MakeMap(256, (x, y) => 21f));
+            AddBox(scene, 203, new Vector3(128f, 128f, physical ? 21.3f : 30f), physical);
+            RapierTestScene.Step(scene, 2f);
+            float oldTop = physical ? 21.5f : 30.25f;
+
+            RaycastHit beforeOld = default, afterMove = default, secondOld = default;
+            scene.TaintedObject(203, "TerrainTests", () =>
+            {
+                BulletBody body = scene.PhysObjects[203].PhysBody;
+                // A ray first, so whatever was waiting to reach the colliders has been passed on.
+                beforeOld = RayDown(scene, 128f, 128f);
+                // Up, and a little along, so this ray still crosses the old bounding box and the new place.
+                scene.PE.SetTranslation(body, new Vector3(128.2f, 128f, 40f), Quaternion.Identity);
+                afterMove = RayDown(scene, 128f, 128f);
+                // A second move with nothing else between, then a ray over the place it left.
+                scene.PE.SetTranslation(body, new Vector3(140f, 128f, 45f), Quaternion.Identity);
+                secondOld = RayDown(scene, 128.2f, 128f);
+            });
+            scene.Simulate(RapierTestScene.FrameSeconds);
+
+            Assert.True(beforeOld.hasHit());
+            Assert.Equal(203u, beforeOld.ID);
+            Assert.Equal(oldTop, beforeOld.Point.Z, 0.05f);
+            // The box is hit at its new height, not its old one.
+            Assert.True(afterMove.hasHit());
+            Assert.Equal(203u, afterMove.ID);
+            Assert.Equal(40.25f, afterMove.Point.Z, 0.05f);
+            // And once it has gone, the ray over the place it left reaches the terrain.
+            Assert.True(secondOld.hasHit());
+            Assert.Equal(BSScene.TERRAIN_ID, secondOld.ID);
+
+            // A step later the ray finds it where it went (a static box stays there; a physical one has begun to fall).
+            RaycastHit now = RayDown(scene, 140f, 128f);
+            Assert.True(now.hasHit());
+            Assert.Equal(203u, now.ID);
+            Assert.InRange(now.Point.Z, 44f, 45.3f);
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
 }

@@ -85,6 +85,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                     // still reported. The touches that started or stopped in this substep come from Rapier's events.
                     GatherCollisionEvents(world, ii);
                     BreakOverstrainedJoints(state);
+                    // r3Step has passed every modified body's pose on to its colliders.
+                    state.CollidersStale = false;
                 }
                 // Then every pair that is touching now, once.
                 if (steps > 0)

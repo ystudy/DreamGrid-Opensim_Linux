@@ -56,7 +56,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             if (leaves.Count == 0)
                 return result;
 
-            RapierNative.Check(RapierNative.r3RigidBodyPropagateModifiedBodyPositionsToColliders(rapierWorld.World));
+            PropagateIfStale(rapierWorld);
             RapierNative.QueryOptions options = new RapierNative.QueryOptions();
             options.filter = RapierNative.r3DefaultQueryFilter();
             options.filter.excludeRigidBody = body.Body;
@@ -88,6 +88,16 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             return found ? result : new SweepHit();
         }
 
+        // Pass the poses C# set since the last step or propagate on to the colliders, once: a frame's rays after the
+        // first find nothing to do. The broad phase itself still only learns the new bounding boxes in the next step.
+        private static void PropagateIfStale(BulletWorldRapier world)
+        {
+            if (!world.State.CollidersStale)
+                return;
+            RapierNative.Check(RapierNative.r3RigidBodyPropagateModifiedBodyPositionsToColliders(world.World));
+            world.State.CollidersStale = false;
+        }
+
         public override RaycastHit RayTest2(
             BulletWorld world,
             Vector3 from,
@@ -102,7 +112,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                 return result;
 
             // Colliders that moved since the last step are not in the query structures until their poses are passed on.
-            RapierNative.Check(RapierNative.r3RigidBodyPropagateModifiedBodyPositionsToColliders(rapierWorld.World));
+            PropagateIfStale(rapierWorld);
 
             // The ray is from + delta * t for t in [0, 1], so the time of impact is Bullet's hit fraction. The same
             // group and mask rule as the colliders' own decides what it can hit (H3).
