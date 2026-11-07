@@ -735,4 +735,51 @@ public class LinksetTests
             scene.Dispose();
         }
     }
+    // A plain cylinder linked as a child keeps its native cylinder in the root's compound: the child prim's shape is
+    // SHAPE_CYLINDER, the linkset rests flat, and rays find the child's round edge, not a square one.
+    [Fact]
+    public void Linkset_NativeCylinderChild_IsRoundAndRests()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            SetFlatTerrain(scene);
+            PhysicsActor root = AddBox(scene, 721, new Vector3(128f, 128f, 23f), physical: true);
+            PrimitiveBaseShape pbs = PrimitiveBaseShape.CreateBox();
+            pbs.ProfileShape = ProfileShape.Circle;
+            Vector3 size = new Vector3(Edge, Edge, Edge);
+            pbs.Scale = size;
+            PhysicsActor child = scene.AddPrimShape("cylinder722", pbs, new Vector3(128.6f, 128f, 23f), size, Quaternion.Identity, true, 722);
+            Frame(scene);
+            Assert.Equal(BSPhysicsShapeType.SHAPE_CYLINDER, scene.PhysObjects[722].PhysShape.ShapeType);
+            Link(root, child);
+            RapierTestScene.Step(scene, 4f);
+
+            BSAPIRapier.BulletBodyRapier body = BodyOf(scene, 721);
+            Assert.Equal(2, body.Colliders.Count);
+            Assert.Equal(BSPhysicsShapeType.SHAPE_CYLINDER, scene.PhysObjects[722].PhysShape.ShapeType);
+            foreach (RapierNative.ColliderHandle collider in body.Colliders)
+                Assert.InRange(ColliderPosition(collider).Z, RestZ - 0.03f, RestZ + 0.03f);
+
+            // The cylinder's axis stays upright: its collider carries the quarter turn from Rapier's Y axis to Z.
+            Vector3 centre = ColliderPosition(body.Colliders[1]);
+            Vector3 axis = Turn(ColliderRotation(body.Colliders[1]), Vector3.UnitY);
+            Assert.True(MathF.Abs(axis.Z) > 0.999f, $"cylinder axis {axis}");
+            // Inside the radius the top face is hit; in the corner of its bounding square, outside the radius, the ray
+            // goes past it to the terrain.
+            RaycastHit inside = Ray(scene, centre + new Vector3(0.18f, 0f, 5f), centre + new Vector3(0.18f, 0f, -5f));
+            Assert.True(inside.hasHit());
+            Assert.Equal(721u, inside.ID);
+            Assert.Equal(RestZ + Edge / 2f, inside.Point.Z, 0.02f);
+            RaycastHit corner = Ray(scene, centre + new Vector3(0.2f, 0.2f, 5f), centre + new Vector3(0.2f, 0.2f, -5f));
+            Assert.True(corner.hasHit());
+            Assert.Equal(BSScene.TERRAIN_ID, corner.ID);
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
 }

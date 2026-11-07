@@ -337,10 +337,16 @@ public class CollisionTests
     }
 
     // Set up the wall (460) and the subscribed, non-solid box (461) parked away from it.
-    private static PhysicsActor SetUpPassThrough(BSScene scene)
+    // With sensorWall the wall is a subscribed volume-detect prim instead.
+    private static PhysicsActor SetUpPassThrough(BSScene scene, bool sensorWall = false)
     {
         SetFlatTerrain(scene);
-        AddSizedBox(scene, 460, new Vector3(WallNearX + 0.05f, 128f, 26f), new Vector3(0.1f, 2f, 2f), physical: false);
+        PhysicsActor wall = AddSizedBox(scene, 460, new Vector3(WallNearX + 0.05f, 128f, 26f), new Vector3(0.1f, 2f, 2f), physical: false);
+        if (sensorWall)
+        {
+            wall.SetVolumeDetect(1);
+            wall.SubscribeEvents(50);
+        }
         PhysicsActor box = AddBox(scene, 461, new Vector3(100f, 128f, 26f), physical: true, edge: 0.2f);
         box.SubscribeEvents(50);
         RapierTestScene.Step(scene, 0.1f);
@@ -398,6 +404,45 @@ public class CollisionTests
             Assert.Single(touch);
             Assert.Equal(460u, touch[0].aID);
             Assert.InRange(touch[0].point.X, WallNearX - 0.05f, WallNearX + 0.15f);
+
+            for (int ii = 0; ii < 5; ii++)
+                Assert.DoesNotContain(Frame(scene), c => IsPair(c, 460, 461));
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    [Fact]
+    public void VolumeDetect_OverlapStartsAndEndsWithinOneFrame_ReportedOnce()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            SetUpPassThrough(scene, sensorWall: true);
+            Assert.False(OverlapsWall(scene));
+            for (int ii = 0; ii < 10 && NextFrameSubsteps(scene) < 5; ii++)
+                Frame(scene);
+            Assert.True(NextFrameSubsteps(scene) >= 5);
+
+            // As the contact case: the box is inside the sensor only in the middle of the frame, so only the sensor's
+            // start event can report it.
+            Launch(scene, 0.05f);
+            List<CollisionDesc> pairs = Frame(scene);
+            Assert.False(OverlapsWall(scene), $"still in the sensor: x {scene.PE.GetPosition(scene.PhysObjects[461].PhysBody).X}");
+            CollisionDesc[] overlap = pairs.Where(c => IsPair(c, 460, 461)).ToArray();
+            Assert.Single(overlap);
+            // Sensor rules: no penetration, and the point is the detected body's position.
+            Assert.Equal(0f, overlap[0].penetration);
+            Assert.InRange(overlap[0].point.X, WallNearX - 0.1f, WallNearX + 0.3f);
+            // The point is where the box was when the overlap began, and the normal runs from the wall's centre to it.
+            Vector3 fromWall = overlap[0].point - scene.PE.GetPosition(scene.PhysObjects[460].PhysBody);
+            Assert.True(Vector3.Distance(Vector3.Normalize(fromWall), overlap[0].normal) < 0.01f, $"normal {overlap[0].normal}, wall to point {fromWall}");
+            // The sensor pushed nothing: the box went on at its speed.
+            Assert.Equal(PassSpeed(scene), scene.PE.GetLinearVelocity(scene.PhysObjects[461].PhysBody).X, 0.05f);
 
             for (int ii = 0; ii < 5; ii++)
                 Assert.DoesNotContain(Frame(scene), c => IsPair(c, 460, 461));

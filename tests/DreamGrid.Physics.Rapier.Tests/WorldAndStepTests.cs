@@ -81,7 +81,9 @@ public class WorldAndStepTests
     [Fact]
     public void FixedTimeStep_BulletDefaultUnchanged()
     {
-        // The parameter's own default, which the Bullet engines keep: only Rapier's selection replaces it.
+        // The parameter's own default, which the Bullet engines keep: only Rapier's selection replaces it. This is as far
+        // as the test can go: the Bullet engines' native library is not loaded here, so a scene that selects
+        // BulletUnmanaged cannot be built, and the selection code for the Bullet cases is not reached.
         Assert.True(BSParam.TryGetParameter("FixedTimeStep", out BSParam.ParameterDefnBase defn));
         BSScene scene = new BSScene();
         defn.AssignDefault(scene);

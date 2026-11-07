@@ -640,4 +640,53 @@ public class ShapeTests
             scene.Dispose();
         }
     }
+    // A plain cylinder edited in world: hollowed it becomes a hull, made plain again it is native again, and made oval
+    // (X != Y) it is a hull again. Each time it still rests on its flat end.
+    [Fact]
+    public void PrimCylinder_EditedAtRuntime_RebuildsTheRightShape()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = GroundScene();
+        try
+        {
+            Vector3 size = new Vector3(0.6f, 0.6f, 1.2f);
+            PhysicsActor cylinder = AddCylinder(scene, 504, new Vector3(128f, 128f, GroundZ + 0.7f), size, Quaternion.Identity);
+            RapierTestScene.Step(scene, 1f);
+            Assert.Equal(BSPhysicsShapeType.SHAPE_CYLINDER, scene.PhysObjects[504].PhysShape.ShapeType);
+
+            PrimitiveBaseShape Plain(Vector3 scale)
+            {
+                PrimitiveBaseShape pbs = PrimitiveBaseShape.CreateBox();
+                pbs.ProfileShape = ProfileShape.Circle;
+                pbs.Scale = scale;
+                return pbs;
+            }
+
+            PrimitiveBaseShape hollow = Plain(size);
+            hollow.ProfileHollow = 20000;
+            cylinder.Shape = hollow;
+            RapierTestScene.Step(scene, 1f);
+            Assert.NotEqual(BSPhysicsShapeType.SHAPE_CYLINDER, scene.PhysObjects[504].PhysShape.ShapeType);
+            Assert.False(scene.PhysObjects[504].PhysShape.physShapeInfo.isNativeShape);
+            Assert.Equal(GroundZ + 0.6f, cylinder.Position.Z, 0.05f);
+
+            cylinder.Shape = Plain(size);
+            RapierTestScene.Step(scene, 1f);
+            Assert.Equal(BSPhysicsShapeType.SHAPE_CYLINDER, scene.PhysObjects[504].PhysShape.ShapeType);
+            Assert.Equal(GroundZ + 0.6f, cylinder.Position.Z, 0.02f);
+
+            Vector3 oval = new Vector3(0.6f, 0.9f, 1.2f);
+            cylinder.Shape = Plain(oval);
+            cylinder.Size = oval;
+            RapierTestScene.Step(scene, 1f);
+            Assert.NotEqual(BSPhysicsShapeType.SHAPE_CYLINDER, scene.PhysObjects[504].PhysShape.ShapeType);
+            Assert.False(scene.PhysObjects[504].PhysShape.physShapeInfo.isNativeShape);
+            Assert.Equal(GroundZ + 0.6f, cylinder.Position.Z, 0.05f);
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
 }
