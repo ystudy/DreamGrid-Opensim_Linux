@@ -38,7 +38,7 @@ jobs:
           rm gitleaks.tar.gz
 
       - name: Scan files
-        run: $RUNNER_TEMP/gitleaks dir . --config .gitleaks.toml --redact --no-banner
+        run: $RUNNER_TEMP/gitleaks dir . --config .gitleaks.toml --redact --verbose --no-banner
 
       # A new branch has no "before" commit, so its range is everything not yet on V7.
       - name: Scan new commits
