@@ -367,7 +367,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         }
 
         // The EntityProperties BulletS wants for a body. With BS_RETURN_ROOT_COMPOUND_SHAPE the pose is that of compound
-        // child 0 (BulletSim: worldTrans * getChildTransform(0)); the angular and linear velocities stay the body's.
+        // child 0 (BulletSim: worldTrans * getChildTransform(0), so the rotation is world rotation times child rotation
+        // in btQuaternion's order); the angular and linear velocities stay the body's.
         private static EntityProperties ToEntityProperties(BulletBodyRapier body, in RapierNative.RigidBodyState bodyState, bool stopped)
         {
             EntityProperties update = new EntityProperties();
@@ -376,8 +377,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             Quaternion rotation = ToQuaternion(bodyState.position.rotation);
             if (body.HasRootChild && (body.Flags & CollisionFlags.BS_RETURN_ROOT_COMPOUND_SHAPE) != 0)
             {
-                position += body.RootChildPos * rotation;
-                rotation = rotation * body.RootChildRot;
+                Compose(position, rotation, body.RootChildPos, body.RootChildRot, out position, out rotation);
             }
             update.Position = position;
             update.Rotation = rotation;

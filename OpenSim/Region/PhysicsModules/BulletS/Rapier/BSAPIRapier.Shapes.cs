@@ -119,6 +119,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         {
             BulletWorldRapier world = (BulletWorldRapier)pWorld;
             BulletShapeRapier shape = (BulletShapeRapier)pShape;
+            // A compound frees nothing native. A body it is on keeps the colliders it has (as with any shape), which
+            // just no longer follow the compound.
+            if (shape.Compound != null && shape.Compound.Body != null)
+                DetachCompound(shape.Compound.Body);
             if (shape.Shape != IntPtr.Zero)
             {
                 world.State.ForgetShape(shape.Shape);
@@ -139,7 +143,11 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         public override Vector3 CalculateLocalInertia(BulletShape pShape, float mass)
         {
             BulletShapeRapier shape = (BulletShapeRapier)pShape;
-            if (mass <= 0f || shape.Shape == IntPtr.Zero)
+            if (mass <= 0f)
+                return Vector3.Zero;
+            if (shape.Compound != null)
+                return CompoundInertia(shape, mass);
+            if (shape.Shape == IntPtr.Zero)
                 return Vector3.Zero;
             // A trimesh has no volume, so Rapier gives it no mass properties. A mesh that ends up on a dynamic body
             // (BulletS's GImpact shape) gets the inertia of its bounding box instead.
@@ -172,6 +180,31 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                 axes[0].X * axes[0].X * principal[0] + axes[1].X * axes[1].X * principal[1] + axes[2].X * axes[2].X * principal[2],
                 axes[0].Y * axes[0].Y * principal[0] + axes[1].Y * axes[1].Y * principal[1] + axes[2].Y * axes[2].Y * principal[2],
                 axes[0].Z * axes[0].Z * principal[0] + axes[1].Z * axes[1].Z * principal[1] + axes[2].Z * axes[2].Z * principal[2]);
+        }
+
+        // btCompoundShape::calculateLocalInertia: the inertia of a solid box of this mass that fills the compound's bounds
+        // in its own frame (Bullet's 'approximation: take the inertia from the aabb for now'). Rapier has no margins, so
+        // the bounds are the shapes' own.
+        private static Vector3 CompoundInertia(BulletShapeRapier compound, float mass)
+        {
+            List<(BulletShapeRapier leaf, Vector3 pos, Quaternion rot)> leaves = new List<(BulletShapeRapier leaf, Vector3 pos, Quaternion rot)>();
+            Flatten(compound, Vector3.Zero, Quaternion.Identity, 0, leaves);
+            if (leaves.Count == 0)
+                return Vector3.Zero;
+            Vector3 min = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
+            Vector3 max = new Vector3(float.MinValue, float.MinValue, float.MinValue);
+            foreach ((BulletShapeRapier leaf, Vector3 pos, Quaternion rot) in leaves)
+            {
+                RapierNative.Pose pose = new RapierNative.Pose { translation = ToNative(pos), rotation = ToNative(rot) };
+                RapierNative.Aabb box = RapierNative.r3SharedShape_ComputeAabb(leaf.Shape, pose);
+                min = Vector3.Min(min, ToVector3(box.mins));
+                max = Vector3.Max(max, ToVector3(box.maxs));
+            }
+            Vector3 size = max - min;
+            float k = mass / 12f;
+            return new Vector3(k * (size.Y * size.Y + size.Z * size.Z),
+                               k * (size.X * size.X + size.Z * size.Z),
+                               k * (size.X * size.X + size.Y * size.Y));
         }
 
         // The inertia of a solid box of this mass that fits the vertices (x, y, z triples), about its own axes.
@@ -404,9 +437,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         // (x, y, z) and its vertices (x, y, z each). BSAPIXNA.CreateHullShape reads it the same way: the centroid is the
         // hull's offset in the compound and the vertices are not moved by it (BulletS always writes a centroid of zero).
         //
-        // The hulls become one native compound shape, so the whole list is one collider on its body. A hull list is one
-        // child of a linkset, and the linkset design is one collider per child (H5, option b), so this needs nothing
-        // special there. It is also what Bullet builds: a btCompoundShape.
+        // The hulls become one native compound shape, so the whole list is one collider on its body; Bullet builds a
+        // btCompoundShape of hulls the same way. In a linkset a hull list is one child, and each child is its own
+        // collider on the root body (H5, option b), so this native compound is never put inside another native compound
+        // (Parry allows no compound inside a compound). BulletS compounds are not native shapes at all (CompoundState).
         private static IntPtr BuildHullListNative(float[] hulls)
         {
             int hullCount = (int)hulls[0];
@@ -519,53 +553,166 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             throw new NotImplementedException("BSAPIRapier." + nameof(SetShapeCollisionMargin));
         }
 
+        // ---- Compound shapes (H5a, option b) ----
+        //
+        // A compound is a C# list of children (CompoundState) and nothing native until it is put on a body
+        // (CreateBodyFromShape, SetCollisionShape). On a body every child is a collider of that body, at the child's pose
+        // relative to the body, with the body's localID as its user data: BulletS's linkset compounds are reported under
+        // the root's ID, as Bullet reports a compound under its one user pointer. A child that is itself a BulletS
+        // compound is flattened, one collider per shape it holds. Changes to a compound that is on a body (a child
+        // added, moved or removed) change that body's colliders at once.
+
         public override BulletShape CreateCompoundShape(BulletWorld sim, bool enableDynamicAabbTree)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(CreateCompoundShape));
+            BulletShapeRapier shape = new BulletShapeRapier(IntPtr.Zero, BSPhysicsShapeType.SHAPE_COMPOUND, Vector3.One);
+            shape.Compound = new CompoundState();
+            return shape;
         }
 
         public override int GetNumberOfCompoundChildren(BulletShape cShape)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(GetNumberOfCompoundChildren));
+            CompoundState compound = ((BulletShapeRapier)cShape).Compound;
+            return (compound == null) ? 0 : compound.Children.Count;
         }
 
-        public override void AddChildShapeToCompoundShape(
-            BulletShape cShape,
-            BulletShape addShape,
-            Vector3 pos,
-            Quaternion rot)
+        public override void AddChildShapeToCompoundShape(BulletShape cShape, BulletShape addShape, Vector3 pos, Quaternion rot)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(AddChildShapeToCompoundShape));
+            CompoundState compound = CompoundOf(cShape, nameof(AddChildShapeToCompoundShape));
+            if (compound == null)
+                return;
+            BulletShapeRapier child = (BulletShapeRapier)addShape;
+            compound.Children.Add((child, pos, rot));
+            BulletBodyRapier body = compound.Body;
+            if (body == null)
+                return;
+            compound.Colliders.Add(AddChildColliders(body, child, pos, rot));
+            if (compound.Children.Count == 1)
+                NoteRootChild(body, compound);
+            WakeAfterShapeChange(body);
         }
 
+        // Bullet does not check the index (BSLinksetCompound does before it calls); one out of range gets a shape with
+        // nothing in it.
         public override BulletShape GetChildShapeFromCompoundShapeIndex(BulletShape cShape, int indx)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(GetChildShapeFromCompoundShapeIndex));
+            CompoundState compound = ((BulletShapeRapier)cShape).Compound;
+            if (compound == null || indx < 0 || indx >= compound.Children.Count)
+                return new BulletShapeRapier(IntPtr.Zero, BSPhysicsShapeType.SHAPE_UNKNOWN, Vector3.One);
+            return compound.Children[indx].child;
         }
 
+        // Returns the child's own wrapper, which BulletS then releases (BSShapeCompound.Dereference).
         public override BulletShape RemoveChildShapeFromCompoundShapeIndex(BulletShape cShape, int indx)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(RemoveChildShapeFromCompoundShapeIndex));
+            CompoundState compound = CompoundOf(cShape, nameof(RemoveChildShapeFromCompoundShapeIndex));
+            if (compound == null || indx < 0 || indx >= compound.Children.Count)
+                return new BulletShapeRapier(IntPtr.Zero, BSPhysicsShapeType.SHAPE_UNKNOWN, Vector3.One);
+            BulletShapeRapier child = compound.Children[indx].child;
+            compound.Children.RemoveAt(indx);
+            BulletBodyRapier body = compound.Body;
+            if (body != null)
+            {
+                foreach (ChildCollider part in compound.Colliders[indx])
+                    RemoveBodyCollider(body, part.Collider);
+                compound.Colliders.RemoveAt(indx);
+                if (indx == 0)
+                    NoteRootChild(body, compound);
+                WakeAfterShapeChange(body);
+            }
+            return child;
         }
 
+        // Every child made from this shape goes, as btCompoundShape::removeChildShape removes them all.
         public override void RemoveChildShapeFromCompoundShape(BulletShape cShape, BulletShape removeShape)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(RemoveChildShapeFromCompoundShape));
+            CompoundState compound = CompoundOf(cShape, nameof(RemoveChildShapeFromCompoundShape));
+            if (compound == null)
+                return;
+            BulletShapeRapier remove = (BulletShapeRapier)removeShape;
+            for (int ii = compound.Children.Count - 1; ii >= 0; ii--)
+            {
+                BulletShapeRapier child = compound.Children[ii].child;
+                if (ReferenceEquals(child, remove) || child.ReferenceSame(remove))
+                    RemoveChildShapeFromCompoundShapeIndex(cShape, ii);
+            }
         }
 
-        public override void UpdateChildTransform(
-            BulletShape pShape,
-            int childIndex,
-            Vector3 pos,
-            Quaternion rot,
-            bool shouldRecalculateLocalAabb)
+        // The child's new pose relative to the compound; on a body, its colliders move with it (map row 32).
+        public override void UpdateChildTransform(BulletShape pShape, int childIndex, Vector3 pos, Quaternion rot, bool shouldRecalculateLocalAabb)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(UpdateChildTransform));
+            CompoundState compound = CompoundOf(pShape, nameof(UpdateChildTransform));
+            if (compound == null || childIndex < 0 || childIndex >= compound.Children.Count)
+                return;
+            BulletShapeRapier child = compound.Children[childIndex].child;
+            compound.Children[childIndex] = (child, pos, rot);
+            BulletBodyRapier body = compound.Body;
+            if (body == null)
+                return;
+            foreach (ChildCollider part in compound.Colliders[childIndex])
+            {
+                Compose(pos, rot, part.Pos, part.Rot, out Vector3 partPos, out Quaternion partRot);
+                RapierNative.Pose pose = new RapierNative.Pose { translation = ToNative(partPos), rotation = ToNative(partRot) };
+                RapierNative.Check(RapierNative.r3Collider_SetPositionWrtParent(part.Collider, pose));
+            }
+            if (childIndex == 0)
+                NoteRootChild(body, compound);
+            WakeAfterShapeChange(body);
         }
 
+        // Each child is its own collider, so there is no compound bound to recompute (map row 33).
         public override void RecalculateCompoundShapeLocalAabb(BulletShape cShape)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(RecalculateCompoundShapeLocalAabb));
+        }
+
+        private CompoundState CompoundOf(BulletShape shape, string caller)
+        {
+            CompoundState compound = ((BulletShapeRapier)shape).Compound;
+            if (compound == null)
+                LogOnce(SceneWorld, true, "not-compound-" + caller, caller + " was given a shape that is not a compound; ignored.");
+            return compound;
+        }
+
+        // The pose (pos2, rot2) given relative to (pos1, rot1), as one pose: Bullet's transform product, with the rotations
+        // multiplied as btQuaternion multiplies (rot1 rot2, Hamilton's order), whatever OpenMetaverse's operator does.
+        internal static void Compose(Vector3 pos1, Quaternion rot1, Vector3 pos2, Quaternion rot2, out Vector3 pos, out Quaternion rot)
+        {
+            pos = pos1 + Rotate(rot1, pos2);
+            rot = Multiply(rot1, rot2);
+        }
+
+        internal static Quaternion Multiply(Quaternion a, Quaternion b)
+        {
+            return new Quaternion(
+                a.W * b.X + a.X * b.W + a.Y * b.Z - a.Z * b.Y,
+                a.W * b.Y - a.X * b.Z + a.Y * b.W + a.Z * b.X,
+                a.W * b.Z + a.X * b.Y - a.Y * b.X + a.Z * b.W,
+                a.W * b.W - a.X * b.X - a.Y * b.Y - a.Z * b.Z);
+        }
+
+        // Nested compounds deeper than this are not followed (a compound that holds itself would never end).
+        private const int MaxCompoundDepth = 16;
+
+        // The native shapes a shape is made of, each with its pose relative to the shape: a plain shape is itself at its
+        // own offset (LocalPos, LocalRot); a compound is what its children are made of, at their poses.
+        private static void Flatten(BulletShapeRapier shape, Vector3 pos, Quaternion rot, int depth,
+                                    List<(BulletShapeRapier leaf, Vector3 pos, Quaternion rot)> leaves)
+        {
+            if (shape.Compound != null)
+            {
+                if (depth >= MaxCompoundDepth)
+                    return;
+                foreach ((BulletShapeRapier child, Vector3 childPos, Quaternion childRot) in shape.Compound.Children)
+                {
+                    Compose(pos, rot, childPos, childRot, out Vector3 at, out Quaternion turned);
+                    Flatten(child, at, turned, depth + 1, leaves);
+                }
+                return;
+            }
+            // A child whose native shape was deleted has nothing to collide with.
+            if (shape.Shape == IntPtr.Zero)
+                return;
+            Compose(pos, rot, shape.LocalPos, shape.LocalRot, out Vector3 leafPos, out Quaternion leafRot);
+            leaves.Add((shape, leafPos, leafRot));
         }
 
         // A new wrapper over a new native handle that shares the original's geometry (r3SharedShape_Clone), so the two
@@ -583,8 +730,12 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                     RapierNative.Check(RapierNative.r3LastStatus());
                 world.State.Shapes.Add(copy.Shape);
             }
-            if (source.Children != null)
-                copy.Children = new List<(BulletShapeRapier child, Vector3 pos, Quaternion rot)>(source.Children);
+            // A copied compound has the same children and is on no body.
+            if (source.Compound != null)
+            {
+                copy.Compound = new CompoundState();
+                copy.Compound.Children.AddRange(source.Compound.Children);
+            }
             return copy;
         }
 
@@ -744,9 +895,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             throw new NotImplementedException("BSAPIRapier." + nameof(IsConcave));
         }
 
+        // A BulletS compound (CreateCompoundShape). A hull list is one native shape, as BulletS treats it.
         public override bool IsCompound(BulletShape shape)
         {
-            throw new NotImplementedException("BSAPIRapier." + nameof(IsCompound));
+            return ((BulletShapeRapier)shape).Compound != null;
         }
 
         public override bool IsSoftBody(BulletShape shape)

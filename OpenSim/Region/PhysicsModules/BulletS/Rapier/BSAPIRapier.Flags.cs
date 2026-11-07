@@ -47,6 +47,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
 
         private const CollisionFlags WantsCollisionsFlags = CollisionFlags.BS_SUBSCRIBE_COLLISION_EVENTS | CollisionFlags.BS_VEHICLE_COLLISIONS;
 
+        // The solver groups of a CF_NO_CONTACT_RESPONSE collider: a member of every group, solving against none.
+        private static readonly RapierNative.InteractionGroups NoContactResponseGroups =
+                    new RapierNative.InteractionGroups { memberships = uint.MaxValue, filter = 0u, testMode = 0 };
+
         public override CollisionFlags GetCollisionFlags(BulletBody obj)
         {
             return ((BulletBodyRapier)obj).Flags;
@@ -95,7 +99,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             if (((old ^ now) & CollisionFlags.CF_NO_CONTACT_RESPONSE) != 0)
             {
                 RapierNative.InteractionGroups groups = (now & CollisionFlags.CF_NO_CONTACT_RESPONSE) != 0
-                            ? new RapierNative.InteractionGroups { memberships = uint.MaxValue, filter = 0u, testMode = 0 }
+                            ? NoContactResponseGroups
                             : RapierNative.r3DefaultColliderDesc().solverGroups;
                 foreach (RapierNative.ColliderHandle collider in body.Colliders)
                     RapierNative.Check(RapierNative.r3Collider_SetSolverGroups(collider, groups));
@@ -132,6 +136,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             if (!body.HasPhysicalBody)
                 return false;
             RapierNative.InteractionGroups groups = new RapierNative.InteractionGroups { memberships = filter, filter = mask, testMode = 0 };
+            body.Groups = groups;
+            body.HasGroups = true;
             foreach (RapierNative.ColliderHandle collider in body.Colliders)
                 RapierNative.Check(RapierNative.r3Collider_SetCollisionGroups(collider, groups));
             return true;
@@ -143,10 +149,13 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         //  - WANTS_DEACTIVATION is Bullet's 'about to sleep', which Rapier works out for itself: it only ends the other
         //    states;
         //  - DISABLE_DEACTIVATION puts the body in the never-sleep set, which PhysicsStep wakes before each step;
-        //  - DISABLE_SIMULATION leaves a fixed body (terrain, the ground plane, a static prim) as it is, since fixed bodies
-        //    do not simulate but still collide, and disables a dynamic one in Rapier (BSLinksetCompound hides the children
-        //    it has borrowed shapes from this way). BulletS still counts the body as in the world (IsInWorld); it just
-        //    reports nothing for it (BulletBodyRapier.Reporting) until another state, or AddObjectToWorld, enables it.
+        //  - DISABLE_SIMULATION leaves the terrain and the ground plane (the bodies that own their shapes) as they are,
+        //    since they do not simulate but must still collide, and disables any other body in Rapier, fixed or dynamic.
+        //    BulletS sends it to those for one reason: BSLinksetCompound hides the linkset children whose shapes it has put
+        //    on the root this way, and a child's own body, static or physical, must then make no contacts, push nothing
+        //    and report nothing, or every touch of the child would be counted twice. BulletS still counts the body as in
+        //    the world (IsInWorld); it just reports nothing for it (BulletBodyRapier.Reporting) until another state, or
+        //    AddObjectToWorld, enables it.
         // Any state but DISABLE_DEACTIVATION takes the body out of the never-sleep set, as Bullet's one tag replaces
         // another.
         public override void ForceActivationState(BulletBody pBody, ActivationState state)
@@ -186,7 +195,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
 
         private static void DisableSimulation(BulletBodyRapier body)
         {
-            if (body.SimulationDisabled || RapierNative.r3RigidBody_BodyType(body.Body) != RapierNative.BodyDynamic)
+            if (body.SimulationDisabled || body.OwnedShape != null)
                 return;
             body.SimulationDisabled = true;
             body.State.NeverSleep.Remove(body);
@@ -268,13 +277,16 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             BulletBodyRapier body = CreateRigidBody((BulletWorldRapier)sim, (BulletShapeRapier)shape, id, pos, rot, RapierNative.BodyDynamic);
             body.IsGhost = true;
             foreach (RapierNative.ColliderHandle collider in body.Colliders)
-            {
-                RapierNative.Check(RapierNative.r3Collider_SetSensor(collider, 1));
-                RapierNative.Check(RapierNative.r3Collider_SetActiveCollisionTypes(collider,
-                            (ushort)(RapierNative.CollisionTypesDefault | RapierNative.CollisionTypesKinematicFixed | RapierNative.CollisionTypesFixedFixed)));
-                body.State.Sensors.Add(collider);
-            }
+                MakeSensor(body, collider);
             return body;
+        }
+
+        private static void MakeSensor(BulletBodyRapier body, RapierNative.ColliderHandle collider)
+        {
+            RapierNative.Check(RapierNative.r3Collider_SetSensor(collider, 1));
+            RapierNative.Check(RapierNative.r3Collider_SetActiveCollisionTypes(collider,
+                        (ushort)(RapierNative.CollisionTypesDefault | RapierNative.CollisionTypesKinematicFixed | RapierNative.CollisionTypesFixedFixed)));
+            body.State.Sensors.Add(collider);
         }
     }
 }

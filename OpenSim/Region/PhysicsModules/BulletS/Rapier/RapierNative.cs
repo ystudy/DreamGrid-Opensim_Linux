@@ -103,6 +103,9 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         public struct UserData { public ulong low, high; }
 
         [StructLayout(LayoutKind.Sequential)]
+        public struct Aabb { public Vector mins, maxs; }
+
+        [StructLayout(LayoutKind.Sequential)]
         public struct RigidBodyHandle { public IntPtr world; public uint index, generation; }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -528,6 +531,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         public static extern Pose r3Collider_Position(ColliderHandle handle);
 
+        // The collider's pose relative to its parent body.
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3Collider_SetPositionWrtParent(ColliderHandle handle, Pose value);
+
         // ---- Contacts and sensor overlaps ----
         // For all three the buffer takes up to capacity entries and the return value is how many there are in all:
         // when it is more than capacity, nothing useful was written and the call is made again with a bigger buffer.
@@ -606,6 +613,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         // Local mass properties of the shape at the given density (mass = density * volume).
         [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         public static extern MassProperties r3SharedShape_MassProperties(IntPtr shape, float density);
+
+        // The shape's axis-aligned bounds at the given pose.
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern Aabb r3SharedShape_ComputeAabb(IntPtr shape, Pose pose);
 
         // ---- Status and ABI helpers ----
 

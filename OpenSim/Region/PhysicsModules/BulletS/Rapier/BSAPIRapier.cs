@@ -76,15 +76,26 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             // Set for a body that owns its shape (terrain and the ground plane), whose shape goes when the body does.
             public BulletShapeRapier OwnedShape;
 
-            // The local pose of compound child 0, for BS_RETURN_ROOT_COMPOUND_SHAPE (H1). Set when the body is built on a
-            // compound shape.
+            // The local pose of compound child 0, for BS_RETURN_ROOT_COMPOUND_SHAPE (H1): kept equal to the pose of child 0
+            // of the compound on the body (RootChildPos, RootChildRot), and cleared when the body's shape is not a
+            // compound.
             public bool HasRootChild;
+
+            // The compound shape whose children are this body's colliders, or null (H5a).
+            public CompoundState Compound;
+
+            // What BulletS last set on the body that lives in the colliders, so colliders added later (SetCollisionShape,
+            // a child added to the compound) get it too.
+            public bool HasGroups;
+            public RapierNative.InteractionGroups Groups;
+            public float? Friction;
+            public float? Restitution;
 
             // Whether BulletS has the body in the world (AddObjectToWorld, until RemoveObjectFromWorld). IsInWorld answers
             // this, whatever the activation state.
             public bool InWorld;
 
-            // The body was forced to DISABLE_SIMULATION while dynamic, so Rapier has it disabled although BulletS still
+            // The body (not terrain) was forced to DISABLE_SIMULATION, so Rapier has it disabled although BulletS still
             // has it in the world (H3). Only AddObjectToWorld or another activation state ends it.
             public bool SimulationDisabled;
 
@@ -126,6 +137,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                 m_valid = false;
                 Colliders.Clear();
                 OwnedShape = null;
+                Compound = null;
+                HasRootChild = false;
             }
 
             public override string AddrString
@@ -144,8 +157,15 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             // those get a quarter turn about X.
             public Vector3 LocalPos = Vector3.Zero;
             public Quaternion LocalRot = Quaternion.Identity;
-            // A compound shape is only this list until it is put on a body (H5a).
-            public List<(BulletShapeRapier child, Vector3 pos, Quaternion rot)> Children;
+            // Set for a compound shape (H5a), which has no native shape: it is a list of children until it is put on a
+            // body, and then one collider per child on that body.
+            public CompoundState Compound;
+
+            // The compound's children, or null for a shape that is not a compound.
+            public List<(BulletShapeRapier child, Vector3 pos, Quaternion rot)> Children
+            {
+                get { return Compound?.Children; }
+            }
             // The mesh a hull was built from, kept so a hull can be rebuilt (H9).
             public float[] MeshVerts;
             public int[] MeshIndices;
@@ -166,12 +186,13 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
 
             public override bool HasPhysicalShape
             {
-                get { return Shape != IntPtr.Zero; }
+                get { return Shape != IntPtr.Zero || Compound != null; }
             }
 
             public override void Clear()
             {
                 Shape = IntPtr.Zero;
+                Compound = null;
             }
 
             public override BulletShape Clone()
@@ -181,7 +202,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                 ret.isNativeShape = isNativeShape;
                 ret.LocalPos = LocalPos;
                 ret.LocalRot = LocalRot;
-                ret.Children = Children;
+                // The same compound: a clone is another handle on it, as a copied btCompoundShape pointer would be.
+                ret.Compound = Compound;
                 ret.MeshVerts = MeshVerts;
                 ret.MeshIndices = MeshIndices;
                 ret.BuildNativeAt = BuildNativeAt;
@@ -193,13 +215,51 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             public override bool ReferenceSame(BulletShape other)
             {
                 BulletShapeRapier otherRapier = other as BulletShapeRapier;
-                return (otherRapier != null) && (this.Shape == otherRapier.Shape);
+                if (otherRapier == null)
+                    return false;
+                // Compounds have no native pointer, so they are the same when they are the same compound.
+                if (this.Compound != null || otherRapier.Compound != null)
+                    return ReferenceEquals(this.Compound, otherRapier.Compound);
+                return this.Shape == otherRapier.Shape;
             }
 
+            // BSShapeCompound keeps its compounds in a table by this string, so each compound needs its own.
             public override string AddrString
             {
-                get { return "RapierShape" + Shape.ToString("X"); }
+                get { return (Compound != null) ? "RapierCompound" + Compound.Id : "RapierShape" + Shape.ToString("X"); }
             }
+        }
+
+        /// <summary>
+        /// A compound shape (H5a, option b). Parry allows no composite shape inside a compound, and BulletS changes
+        /// single children of a linkset's compound in place, so a BulletS compound is not a native shape: it is this
+        /// list of children, and on a body each child is one or more colliders of that body (a child that is itself a
+        /// BulletS compound is flattened into one collider per shape it holds). A hull list is not a BulletS compound:
+        /// it is one native compound of convex hulls, so one collider.
+        /// </summary>
+        internal sealed class CompoundState
+        {
+            private static long s_nextId;
+
+            public readonly long Id = System.Threading.Interlocked.Increment(ref s_nextId);
+
+            public readonly List<(BulletShapeRapier child, Vector3 pos, Quaternion rot)> Children =
+                        new List<(BulletShapeRapier child, Vector3 pos, Quaternion rot)>();
+
+            // The body the compound is on, or null.
+            public BulletBodyRapier Body;
+
+            // While on a body: for each child, by the same index, its colliders and the pose of each within the child.
+            public readonly List<List<ChildCollider>> Colliders = new List<List<ChildCollider>>();
+        }
+
+        internal struct ChildCollider
+        {
+            public RapierNative.ColliderHandle Collider;
+            // The collider's pose relative to its compound child: the shape's own offset (LocalPos, LocalRot), composed
+            // with the poses inside a nested compound.
+            public Vector3 Pos;
+            public Quaternion Rot;
         }
 
         internal sealed class BulletConstraintRapier : BulletConstraint

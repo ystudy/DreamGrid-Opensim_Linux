@@ -26,6 +26,7 @@
  */
 
 using System;
+using System.Collections.Generic;
 
 using OpenMetaverse;
 
@@ -35,15 +36,13 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
     {
         // ---- Body lifetime ----
 
-        // Insert a rigid body with one collider for the shape. Rapier bodies are in the world from the moment they are
-        // inserted, while BulletS adds a body to the world in a separate step, so the body starts disabled and
-        // AddObjectToWorld enables it (map row 12). The body's user data carries the localID.
+        // Insert a rigid body with a collider for the shape (one per child for a compound). Rapier bodies are in the
+        // world from the moment they are inserted, while BulletS adds a body to the world in a separate step, so the
+        // body starts disabled and AddObjectToWorld enables it (map row 12). The body's user data carries the localID.
         internal static BulletBodyRapier CreateRigidBody(BulletWorldRapier world, BulletShapeRapier shape, uint id,
                                                     Vector3 pos, Quaternion rot, uint bodyType)
         {
-            if (shape.Children != null && shape.Children.Count > 0)
-                throw new NotImplementedException("BSAPIRapier." + nameof(CreateBodyFromShape) + " for compound shapes");
-            if (shape.Shape == IntPtr.Zero)
+            if (!shape.HasPhysicalShape)
                 throw new InvalidOperationException("Rapier: a body was asked for from a shape that has been deleted");
 
             RapierNative.RigidBodyDesc desc = (bodyType == RapierNative.BodyFixed)
@@ -57,30 +56,136 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             RapierNative.Check(RapierNative.r3LastStatus());
 
             BulletBodyRapier body = new BulletBodyRapier(id, handle, world.State);
-            AddCollider(body, shape, id);
+            AttachShape(body, shape);
             world.State.Bodies[id] = body;
             return body;
         }
 
-        // Put the shape on the body as a collider. The collider carries no density: the body's mass comes from
-        // SetMassProps, as Bullet's does. Friction and restitution of two bodies multiply, as in Bullet.
-        private static void AddCollider(BulletBodyRapier body, BulletShapeRapier shape, uint id)
+        // Put a native shape on the body as a collider at this pose relative to the body. The collider carries no
+        // density: the body's mass comes from SetMassProps, as Bullet's does. Friction and restitution of two bodies
+        // multiply, as in Bullet. Its user data is the body's localID, which for a linkset is the root's. What BulletS
+        // has already set on the body that lives in colliders is given to it (ConfigureCollider).
+        private static RapierNative.ColliderHandle AddCollider(BulletBodyRapier body, BulletShapeRapier shape, Vector3 pos, Quaternion rot)
         {
             RapierNative.ColliderDesc desc = RapierNative.r3DefaultColliderDesc();
             desc.shape.kind = RapierNative.ShapeKindShared;
             desc.shape.sharedShape = shape.Shape;
-            desc.position.translation = ToNative(shape.LocalPos);
-            desc.position.rotation = ToNative(shape.LocalRot);
+            desc.position.translation = ToNative(pos);
+            desc.position.rotation = ToNative(rot);
             desc.massMode = RapierNative.MassModeDensity;
             desc.density = 0f;
             desc.frictionCombineRule = RapierNative.CombineMultiply;
             desc.restitutionCombineRule = RapierNative.CombineMultiply;
-            desc.userData.low = id;
+            desc.userData.low = body.ID;
             RapierNative.ColliderHandle collider = RapierNative.r3InsertCollider(body.Body, in desc);
             RapierNative.Check(RapierNative.r3LastStatus());
             body.Colliders.Add(collider);
             body.State.ColliderOwners[collider] = body;
             body.State.NoteShapeUse(shape.Shape, collider);
+            ConfigureCollider(body, collider);
+            return collider;
+        }
+
+        // Give a new collider what the body was told that lives in the colliders: the filter group and mask, no contact
+        // response, friction, restitution, collision events and being a sensor. A body's first collider is made before
+        // any of that is set, so it gets nothing here.
+        private static void ConfigureCollider(BulletBodyRapier body, RapierNative.ColliderHandle collider)
+        {
+            if (body.HasGroups)
+                RapierNative.Check(RapierNative.r3Collider_SetCollisionGroups(collider, body.Groups));
+            if ((body.Flags & CollisionFlags.CF_NO_CONTACT_RESPONSE) != 0)
+                RapierNative.Check(RapierNative.r3Collider_SetSolverGroups(collider, NoContactResponseGroups));
+            if (body.Friction.HasValue)
+                RapierNative.Check(RapierNative.r3Collider_SetFriction(collider, body.Friction.Value));
+            if (body.Restitution.HasValue)
+                RapierNative.Check(RapierNative.r3Collider_SetRestitution(collider, body.Restitution.Value));
+            if ((body.Flags & WantsCollisionsFlags) != 0)
+                body.State.WantsCollisions.Add(collider);
+            if (body.IsGhost)
+                MakeSensor(body, collider);
+        }
+
+        // Take a collider off the body and out of every table.
+        private static void RemoveBodyCollider(BulletBodyRapier body, RapierNative.ColliderHandle collider)
+        {
+            body.State.ForgetCollider(collider);
+            body.Colliders.Remove(collider);
+            RapierNative.Check(RapierNative.r3RemoveCollider(collider, 0));
+        }
+
+        // Make the shape the body's colliders: one for a plain shape, one per (flattened) child for a compound, which is
+        // then on this body until another shape replaces it, the body goes or the compound is deleted.
+        private static void AttachShape(BulletBodyRapier body, BulletShapeRapier shape)
+        {
+            CompoundState compound = shape.Compound;
+            if (compound == null)
+            {
+                AddCollider(body, shape, shape.LocalPos, shape.LocalRot);
+                NoteRootChild(body, null);
+                return;
+            }
+            // A compound is on one body at a time; one already on another body leaves that body's colliders alone.
+            if (compound.Body != null)
+                DetachCompound(compound.Body);
+            compound.Body = body;
+            body.Compound = compound;
+            compound.Colliders.Clear();
+            foreach ((BulletShapeRapier child, Vector3 pos, Quaternion rot) in compound.Children)
+                compound.Colliders.Add(AddChildColliders(body, child, pos, rot));
+            NoteRootChild(body, compound);
+        }
+
+        // The colliders for one compound child at this pose: one per native shape the child is made of.
+        private static List<ChildCollider> AddChildColliders(BulletBodyRapier body, BulletShapeRapier child, Vector3 pos, Quaternion rot)
+        {
+            List<(BulletShapeRapier leaf, Vector3 pos, Quaternion rot)> leaves = new List<(BulletShapeRapier leaf, Vector3 pos, Quaternion rot)>();
+            Flatten(child, Vector3.Zero, Quaternion.Identity, 0, leaves);
+            List<ChildCollider> parts = new List<ChildCollider>(leaves.Count);
+            foreach ((BulletShapeRapier leaf, Vector3 leafPos, Quaternion leafRot) in leaves)
+            {
+                Compose(pos, rot, leafPos, leafRot, out Vector3 at, out Quaternion turned);
+                parts.Add(new ChildCollider { Collider = AddCollider(body, leaf, at, turned), Pos = leafPos, Rot = leafRot });
+            }
+            return parts;
+        }
+
+        // The compound stops following the body: its colliders stay as they are.
+        private static void DetachCompound(BulletBodyRapier body)
+        {
+            CompoundState compound = body.Compound;
+            if (compound == null)
+                return;
+            if (ReferenceEquals(compound.Body, body))
+            {
+                compound.Body = null;
+                compound.Colliders.Clear();
+            }
+            body.Compound = null;
+        }
+
+        // Child 0's pose, for BS_RETURN_ROOT_COMPOUND_SHAPE (H1): kept from the compound on the body, and none when the
+        // body's shape is not a compound (or is an empty one).
+        private static void NoteRootChild(BulletBodyRapier body, CompoundState compound)
+        {
+            if (compound != null && compound.Children.Count > 0)
+            {
+                body.HasRootChild = true;
+                body.RootChildPos = compound.Children[0].pos;
+                body.RootChildRot = compound.Children[0].rot;
+            }
+            else
+            {
+                body.HasRootChild = false;
+                body.RootChildPos = Vector3.Zero;
+                body.RootChildRot = Quaternion.Identity;
+            }
+        }
+
+        // A body whose shape changed must look at its contacts again.
+        private static void WakeAfterShapeChange(BulletBodyRapier body)
+        {
+            if (body.HasPhysicalBody && body.Reporting && RapierNative.r3RigidBody_BodyType(body.Body) == RapierNative.BodyDynamic)
+                RapierNative.Check(RapierNative.r3RigidBody_WakeUp(body.Body, 1));
         }
 
         public override BulletBody CreateBodyFromShape(BulletWorld pWorld, BulletShape pShape, UInt32 id, Vector3 pos, Quaternion rot)
@@ -96,6 +201,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             if (!body.HasPhysicalBody)
                 return;
             BulletShapeRapier ownedShape = body.OwnedShape;
+            DetachCompound(body);
             body.State.ForgetBody(body);
             RapierNative.r3RemoveRigidBody(body.Body, 1);
             body.Clear();
@@ -233,13 +339,17 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
 
         public override void SetFriction(BulletBody obj, float val)
         {
-            foreach (RapierNative.ColliderHandle collider in ((BulletBodyRapier)obj).Colliders)
+            BulletBodyRapier body = (BulletBodyRapier)obj;
+            body.Friction = val;
+            foreach (RapierNative.ColliderHandle collider in body.Colliders)
                 RapierNative.Check(RapierNative.r3Collider_SetFriction(collider, val));
         }
 
         public override void SetRestitution(BulletBody obj, float val)
         {
-            foreach (RapierNative.ColliderHandle collider in ((BulletBodyRapier)obj).Colliders)
+            BulletBodyRapier body = (BulletBodyRapier)obj;
+            body.Restitution = val;
+            foreach (RapierNative.ColliderHandle collider in body.Colliders)
                 RapierNative.Check(RapierNative.r3Collider_SetRestitution(collider, val));
         }
 
@@ -306,13 +416,28 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             return 0;
         }
 
-        // BulletS clears a body's shape before destroying it so Bullet does not free a shape other bodies share. A
-        // Rapier body never frees BulletS's shapes, so there is nothing to clear. Putting another shape on a body
-        // comes with the shape work.
+        // Replace the body's colliders with the shape's (map row 59): BSLinksetCompound puts the linkset's compound on
+        // the root this way, between RemoveObjectFromWorld and AddObjectToWorld, and the body (its handle, pose, velocity
+        // and mass) stays. The old colliders leave every table; the new ones get what the body was told (groups, no
+        // contact response, friction, restitution, collision events, sensor). A null shape is BulletS clearing a
+        // body's shape before destroying it so Bullet does not free a shape other bodies share; a Rapier body never
+        // frees BulletS's shapes, so there is nothing to do.
         public override void SetCollisionShape(BulletWorld sim, BulletBody obj, BulletShape shape)
         {
-            if (shape != null)
-                throw new NotImplementedException("BSAPIRapier." + nameof(SetCollisionShape));
+            if (shape == null)
+                return;
+            BulletBodyRapier body = (BulletBodyRapier)obj;
+            BulletShapeRapier newShape = (BulletShapeRapier)shape;
+            if (!body.HasPhysicalBody)
+                return;
+            if (!newShape.HasPhysicalShape)
+                throw new InvalidOperationException("Rapier: SetCollisionShape was given a shape that has been deleted");
+
+            DetachCompound(body);
+            foreach (RapierNative.ColliderHandle collider in body.Colliders.ToArray())
+                RemoveBodyCollider(body, collider);
+            AttachShape(body, newShape);
+            WakeAfterShapeChange(body);
         }
 
         // Bullet's contact bookkeeping with no Rapier counterpart (map rows 85 and 112).
