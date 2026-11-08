@@ -341,6 +341,12 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         // engine's native SHAPE_CYLINDER rather than a convex hull of its mesh. Bullet's cylinder is not used for prims.
         public virtual bool NativeCylinderPrims { get { return false; } }
 
+        // How far, in metres along X and Y, the engine's terrain heightfield puts heightmap sample (i, j) from (i, j).
+        // BSTerrainHeightmap centres the field (sizeX samples, sizeX - 1 metres wide) on the region's centre, so Bullet's
+        // samples sit at (i + 0.5, j + 0.5). BSTerrainHeightmap.GetTerrainHeightAtXYZ looks the map up this far back, so
+        // the height it gives is the surface the engine collides with.
+        public virtual float TerrainSampleOffset { get { return 0.5f; } }
+
         // Whether BSCharacter.AvatarJump divides its force by Bullet's 1/60 s step (BSScene.BulletFixedTimeStep) rather
         // than by FixedTimeStep. The force is on for every substep of the frame, so dividing by the substep length makes
         // the jump grow with the substep count; an engine whose default step is not 1/60 asks for this so its jumps

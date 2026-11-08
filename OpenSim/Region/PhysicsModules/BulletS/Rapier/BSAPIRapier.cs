@@ -429,6 +429,9 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         // Rapier steps 0.02 s by default (BSScene.RapierFixedTimeStep); the jump keeps Bullet's tuning.
         public override bool JumpUsesBulletStepLength { get { return true; } }
 
+        // CreateTerrainShape puts heightmap sample (i, j) at (i, j), as the simulator and ubODE have it.
+        public override float TerrainSampleOffset { get { return 0f; } }
+
         // 50 walking avatars step 18% faster as capsules than as boxes (Speed Step 2, standalone).
         public override bool CapsuleAvatars { get { return true; } }
 
