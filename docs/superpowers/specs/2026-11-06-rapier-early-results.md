@@ -31,7 +31,7 @@ Against the plan's thresholds:
   absolute numbers are pessimistic. The 4–8 core runs are still to do.
 - **ubODE:** the PR 48 build (with the trimesh preprocess fix), inside OpenSim on the `/root/bench` standalone
   region. A bench-only frame logger (`DG_FRAMELOG`) records physics milliseconds every frame.
-- **Rapier:** a standalone Rust program, [`rapier-bench/`](rapier-bench/), with no OpenSim involved.
+- **Rapier:** a standalone Rust program (`rbench`), with no OpenSim involved. It is bench-only and kept on the VM, not in the repo.
   - **The scenes** rebuild what `make_physoar.py` puts in the test OARs: the same shapes, sizes, positions and
     kick script behaviour.
   - **Simulation settings match ubODE's:** 0.02 s physics steps inside 0.0909 s OpenSim frames, gravity −9.8,
@@ -282,6 +282,6 @@ All 16 Rapier runs plus the start-up runs:
   edits are not in the repo.
 - **Scripts:**
   - **The scene and run scripts:** `make_physoar.py`, `physrun.py`, `physmatrix.sh` and `timed.sh`.
-  - **The Rapier bench:** `rbench/` (0.22) and `rbench36/` (0.36.1). The copy in this repo is the 0.36.1 one.
+  - **The Rapier bench:** `rbench/` (0.22) and `rbench36/` (0.36.1). Neither is in the repo.
 - **Build tools:** gcc and a Rust toolchain were installed on the VM for this. `pkgs-before-rust.txt` lists the
   packages from before, for removing them later.
