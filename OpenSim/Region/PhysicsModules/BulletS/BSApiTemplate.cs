@@ -381,7 +381,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS
 
         // Whether BSActorAvatarMove.WalkUpStairs takes a contact near the feet for a step only when the object has a
         // walkable top within the step height just past it (a ray down, HasWalkableTop). Without it, a wall touched near
-        // the feet is a step too and the avatar is popped up it. Bullet keeps its old behaviour.
+        // the feet is a step too and the avatar is popped up it. It is the default of [BulletSim]AvatarStepsNeedAWalkableTop,
+        // which the INI wins over. Bullet keeps its old behaviour.
         public virtual bool StepsNeedAWalkableTop { get { return false; } }
 
         // The engine's default for [BulletSim]AvatarStepHeight: the height above the feet (less AvatarStepGroundFudge)

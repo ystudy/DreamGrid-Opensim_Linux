@@ -167,6 +167,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         public static int AvatarJumpFrames { get; private set; }
         public static float AvatarBelowGroundUpCorrectionMeters { get; private set; }
         public static float AvatarStepHeight { get; private set; }
+        public static bool AvatarStepsNeedAWalkableTop { get; private set; }
         public static float AvatarStepAngle { get; private set; }
         public static float AvatarStepGroundFudge { get; private set; }
         public static float AvatarStepApproachFactor { get; private set; }
@@ -678,7 +679,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                 0.1f ),
             new ParameterDefn<float>("AvatarAddForcePushFactor", "BSCharacter.AddForce is multiplied by this and mass to be like other physics engines",
                 0.315f ),
-            new ParameterDefn<float>("AvatarStopZeroThreshold", "Movement velocity below which avatar is assumed to be stopped",
+            new ParameterDefn<float>("AvatarStopZeroThreshold", "Movement velocity below which avatar is assumed to be stopped; 0.45, or the engine's own default (Rapier: 0.7) unless set",
                 0.45f,
                 (s) => { return (float)AvatarStopZeroThreshold; },
                 (s,v) => { AvatarStopZeroThreshold = v; AvatarStopZeroThresholdSquared = v * v; } ),
@@ -688,6 +689,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                 4 ),
             new ParameterDefn<float>("AvatarStepHeight", "Height of a step obstacle to consider step correction; 0.999, or the engine's own default (Rapier: 0.5) unless set",
                 0.999f ) ,
+            new ParameterDefn<bool>("AvatarStepsNeedAWalkableTop", "Whether a contact near the feet is a step only if the object has a walkable top within AvatarStepHeight just past it, so walls are not climbed; false, or the engine's own default (Rapier: true) unless set",
+                false ),
             new ParameterDefn<float>("AvatarStepAngle", "The angle (in radians) for a vertical surface to be considered a step",
                 0.3f ) ,
             new ParameterDefn<float>("AvatarStepGroundFudge", "Fudge factor subtracted from avatar base when comparing collision height",

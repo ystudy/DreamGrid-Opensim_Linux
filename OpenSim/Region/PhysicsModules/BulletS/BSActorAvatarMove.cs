@@ -401,7 +401,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                                         //    thus the difference between our facing orientation and the normal should be small.
                                         float diff = Math.Abs(OMV.Vector3.Distance(directionFacing, touchNormal));
                                         if (diff < BSParam.AvatarStepApproachFactor
-                                            && (!m_physicsScene.PE.StepsNeedAWalkableTop
+                                            && (!BSParam.AvatarStepsNeedAWalkableTop
                                                 || HasWalkableTop(kvp.Key, touchPosition, nearFeetHeightMax)))
                                         {
                                             if (highestTouchPosition.Z < touchPosition.Z)
@@ -456,7 +456,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         // Whether the object touched has a surface to stand on just past the touch point, no higher than the step range:
         // a ray straight down, StepTopProbeReach beyond the touch (away from the avatar), from the top of the range to
         // just below the touch. On a real step it lands on the step's top. In a wall it starts inside the solid, where
-        // the ray reports no upward face, so a wall is not taken for a step (BSAPITemplate.StepsNeedAWalkableTop).
+        // the ray reports no upward face, so a wall is not taken for a step (BSParam.AvatarStepsNeedAWalkableTop, defaulted by BSAPITemplate.StepsNeedAWalkableTop).
         private bool HasWalkableTop(uint touchedId, OMV.Vector3 touch, float rangeTopZ)
         {
             OMV.Vector3 away = touch - m_controllingPrim.RawPosition;

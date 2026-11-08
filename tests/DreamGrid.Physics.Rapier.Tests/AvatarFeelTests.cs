@@ -382,12 +382,13 @@ public class AvatarFeelTests
 
     // A 6 m high, 2 m thick wall whose near face is at x = 110, walked into from ten distances (so the touch falls at
     // different points of the frame): it is not a step.
-    private static float WorstWallRise(string engine, int approaches, float thickness = 2f)
+    private static float WorstWallRise(string engine, int approaches, float thickness = 2f,
+                                        Dictionary<string, string>? ini = null)
     {
         float worst = 0f;
         for (int ii = 0; ii < approaches; ii++)
         {
-            BSScene scene = MakeScene(engine, null);
+            BSScene scene = MakeScene(engine, ini);
             try
             {
                 AddBox(scene, WallId, new Vector3(110f + thickness / 2f, 128f, TerrainHeight + 3f), new Vector3(thickness, 20f, 6f));
@@ -422,6 +423,19 @@ public class AvatarFeelTests
         float worst = WorstWallRise("Rapier", 10);
         _output.WriteLine($"Rapier: worst rise walking into the wall {worst:F3} m (ubODE {UbodeWallRise:F3})");
         Assert.True(worst < 0.05f, $"the avatar rose {worst} m walking into the wall");
+        Assert.Empty(log.Errors);
+    }
+
+    // AvatarStepsNeedAWalkableTop=false in the INI wins over Rapier's default: the old step test is back, and with the
+    // old 0.999 m step height the avatar climbs the wall again.
+    [Fact]
+    public void Avatar_WallFixFromTheIni_CanBeTurnedOff()
+    {
+        using ErrorLog log = new ErrorLog();
+        float worst = WorstWallRise("Rapier", 10, 2f, new Dictionary<string, string>
+                    { { "AvatarStepsNeedAWalkableTop", "false" }, { "AvatarStepHeight", "0.999" } });
+        _output.WriteLine($"Rapier without the wall fix: worst rise {worst:F3} m");
+        Assert.True(worst > 0.1f, $"the avatar rose only {worst} m");
         Assert.Empty(log.Errors);
     }
 
