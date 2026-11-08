@@ -128,7 +128,10 @@ This is a later stage (section 6); freezing covers the common case.
 - **Permission:** the launcher runs as `dreamgrid`, not root, so `dreamgrid.service` gets **`Delegate=yes`**. systemd then hands the service its own cgroup subtree to manage. Under cgroup v2, processes must live in leaf cgroups, so the launcher moves itself to `dreamgrid.service/launcher` at start-up, and Robust and MariaDB get their own leaves too. All the tests ran as root, so **this part is untested** and is the first thing stage 1 must prove (section 7).
 - **Adopted programs** (still running from before a launcher restart) are already in their cgroup, since cgroups survive a launcher restart.
 - **Fallback without cgroups** (an older system, or delegation refused): `SIGSTOP` / `SIGCONT` (same user, no extra rights) plus `process_madvise(MADV_PAGEOUT)`, which pushed DragonFyre from 454 to 71 MB in the tests regardless of cgroup. Whether it works without root still needs checking.
-- **Windows (later):** suspend the process (the old DreamGrid way, `NtSuspendProcess`) and trim its working set (`EmptyWorkingSet`). Untested.
+- **Windows (later):** suspend the process (the old DreamGrid way, `NtSuspendProcess` / `NtResumeProcess`) and trim its working set (`EmptyWorkingSet`). Tested on a standalone bench 2026-11-08 (A.5): it works, with three differences from Linux:
+  - Trimmed memory goes to Windows' modified list, not straight to disk. Windows writes it to the page file only when RAM runs short, so the launcher can't force or measure "pushed out" the way `memory.reclaim` does. The RAM is still free for other programs.
+  - **TCP knocks are visible:** while a program is suspended, Windows still completes incoming TCP connections, and `GetExtendedTcpTable` (what `netstat -ano` reads) shows them as ESTABLISHED to the suspended process. The request is answered as soon as it resumes.
+  - **UDP knocks are not:** Windows has no per-socket view of waiting datagrams. Viewer traffic must wake a sleeping program through the Smart Start hook (5.3, item 1), or through the launcher watching TCP.
 
 ### 5.6 Swap
 A sleeping region's memory goes to swap, so swap decides how much land can sleep.
@@ -172,6 +175,8 @@ Scripts don't run while a region sleeps. Timers stop, and outside callers can't 
 2. **Long sleeps:** hours and days. The database side is covered by the dropped-connection test (MariaDB `wait_timeout` is 8 h). Robust and hypergrid links after a long sleep are not.
 3. **Many sleeping regions,** and several waking at once at peak (swap reads in parallel).
 4. **How often Robust's lookups and neighbours knock** idle regions awake on a real grid.
+5. **Thread-pool jobs cancelled after a long sleep (found 2026-11-08, Windows bench; same code on Linux):** OpenSim's pool watchdog (`Util.ThreadPoolWatchdog`, OpenSim/Framework/Util.cs) cancels any pool job that has been running for 10 minutes by wall-clock tick count. A sleep longer than that makes every job that was mid-run when it froze look too old, and the watchdog cancels it as the program wakes. In the 30-minute test 9 jobs were cancelled (they started during start-up, just before the freeze). The region ran and saved normally afterwards, but in-flight work can be lost. Sleeping only after the idle delay makes this rarer. A fix in OpenSim: have the watchdog notice a long gap between its own runs (a freeze) and restart the jobs' clocks instead of cancelling them.
+6. **Windows under memory pressure:** whether trimmed pages really reach the page file, and how fast they come back, wasn't tested (the test PC has 63 GB).
 5. **RemoteAdmin teleport** for the parking path (5.4).
 6. **Unexplained:** loading DragonFyre reported 4,660 objects, but only about 4,082–4,090 came back after a restart, varying slightly. It may be temporary objects or scripts rezzing things. It is not part of this design, but worth its own look.
 
@@ -230,3 +235,25 @@ Heavy synthetic, warm: program start ~1.5 s, loading objects from the database ~
 - `make_oar.py`: synthetic OARs. `bench.py`: start, time phases from the log, stop. `series.sh`: warm and cold restarts. `attach.sh`: the spare-program test. `load.sh`: load an OAR and save it.
 - `freeze.py`: the bench freeze test. `welcome_freeze.py`: Welcome freeze with wake-on-login (watches Robust's log). `region_freeze.py PROGRAM status|freeze|wake|watch [--pageout]`: any program, wake on a knock, memory out with `process_madvise`.
 - Logs: `/root/bench/welcome-freeze.log`, `/root/bench/region-freeze.log`.
+
+### A.5 Suspend on Windows (bench, 2026-11-08)
+A standalone copy of this branch's `bin` on the owner's Windows 11 PC (20 threads, 63 GB RAM, 4 GB page file), set up like the VM bench but with SQLite, ports 9200/9201, Groups and Gloebit off. The owner was playing a game at the same time, so start-up times are noisy.
+
+| Step | Mountain Retreat, 60 s | DragonFyre, 5 min | DragonFyre, 30 min |
+|---|---|---|---|
+| Suspend (`NtSuspendProcess`) | < 0.001 s | < 0.001 s | < 0.001 s |
+| CPU used while suspended | 0 | 0 | 0 |
+| Trim (`EmptyWorkingSet`) | 44 → 0 MB, 0.01 s | 462 → 0 MB, 0.05 s | 486 → 0 MB, 0.06 s |
+| Windows' modified list | — | 73 → 483 MB | 79 → 511 MB |
+| Page file in use | 80 MB, unchanged | 82 MB, unchanged | 82 MB, unchanged |
+| TCP knock while suspended | connected, shown ESTABLISHED to the region | same | same |
+| Resume, then web status answers | 0.00 s | 0.01 s | 0.01 s |
+| The request sent while suspended | answered on resume | answered on resume | answered on resume |
+| Working set 30 s after waking | 22 MB | 278 MB | 284 MB |
+| Database write after waking | saved | saved | saved (later than the test's 10 s check) |
+| Running after waking | dilation 1.00, 55 FPS, 172 scripts | dilation 1.00, 55 FPS, 912 scripts | dilation 1.00, 55 FPS, 911 scripts |
+| Log after waking | clean | 1 missing-mesh warning (damaged OAR) | the same, plus 9 "Timeout in threadfunc" (section 7, item 5) |
+
+- **ubODE on Windows:** this branch still ships the old `ubode.dll` (PR 48 is not merged). DragonFyre's physics start-up took 16.3 s with it, and 1.4 s with PR 48's `ubode.dll` (region up 22.0 s → 10.5 s). So the trimesh fix holds on Windows too.
+- Loading the 2.5 GB DragonFyre OAR into SQLite took 351 s, and saving it took about 14 minutes (on MariaDB on the VM it took about 140 s). That's a SQLite cost, not part of sleeping.
+- Tools, in `C:\Users\ystud\Desktop\CODE\winbench` (outside the repo): `make_ini.py` writes the config from the VM bench's OpenSim.ini. `winbench.py` does start, cmd, wait and stop. `winfreeze.py SECONDS [--trim] [--knock] [--object NAME] [--scale X]` is the test. Results are in `results-*.txt`.
