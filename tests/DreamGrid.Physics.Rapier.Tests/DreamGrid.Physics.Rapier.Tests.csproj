@@ -28,6 +28,9 @@
     <Reference Include="OpenMetaverseTypes">
       <HintPath>$(DgRoot)bin/OpenMetaverseTypes.dll</HintPath>
     </Reference>
+    <Reference Include="OpenMetaverse.StructuredData">
+      <HintPath>$(DgRoot)bin/OpenMetaverse.StructuredData.dll</HintPath>
+    </Reference>
     <Reference Include="Nini">
       <HintPath>$(DgRoot)bin/Nini.dll</HintPath>
     </Reference>

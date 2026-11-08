@@ -222,6 +222,20 @@ namespace OpenSim.Region.PhysicsModule.BulletS
             return pbs.GetMeshKey(size, lod);
         }
 
+        // Asks the mesher for a mesh it does not cache. BulletS keeps each shape it builds in its own cache (Meshes,
+        // Hulls, ...), keyed as the mesher would key it, so a copy in the mesher's cache is never used and only costs
+        // memory (280 MB on a 13,868-prim region). The generic Meshmerizer's 8-argument CreateMesh drops isPhysical and
+        // shouldCache and caches every mesh; its 6-argument one honours them. Another mesher gets the IMesher call.
+        // Call with the mesher locked: the Meshmerizer keeps the asset hulls of the mesh it made last (GetConvexHulls).
+        public static IMesh CreateMeshNotCached(BSScene physicsScene, BSPhysObject prim, PrimitiveBaseShape pbs,
+                                                OMV.Vector3 size, float lod, bool isPhysical)
+        {
+            Meshmerizer realMesher = physicsScene.mesher as Meshmerizer;
+            if (realMesher != null)
+                return realMesher.CreateMesh(prim.PhysObjectName, pbs, size, lod, isPhysical, false /* shouldCache */);
+            return physicsScene.mesher.CreateMesh(prim.PhysObjectName, pbs, size, lod, isPhysical, false /* shouldCache */, false, false);
+        }
+
         // The creation of a mesh or hull can fail if an underlying asset is not available.
         // There are two cases: 1) the asset is not in the cache and it needs to be fetched;
         //     and 2) the asset cannot be converted (like failed decompression of JPEG2000s).
@@ -553,12 +567,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS
             IMesh meshData = null;
             lock (physicsScene.mesher)
             {
-                meshData = physicsScene.mesher.CreateMesh(prim.PhysObjectName, pbs, size, lod,
-                                                false,  // say it is not physical so a bounding box is not built
-                                                false,   // do not cache the mesh and do not use previously built versions
-                                                false,
-                                                false
-                                                );
+                // Not physical: a tiny prim (under the mesher's MinSizeForComplexMesh on every axis) gets its bounding box.
+                meshData = CreateMeshNotCached(physicsScene, prim, pbs, size, lod, false /* isPhysical */);
             }
 
             if (meshData != null)
@@ -713,8 +723,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS
             List<List<OMV.Vector3>> allHulls = null;
             lock (physicsScene.mesher)
             {
-                // Pass true for physicalness as this prevents the creation of bounding box which is not needed
-                meshData = physicsScene.mesher.CreateMesh(prim.PhysObjectName, pbs, size, lod, true /* isPhysical */, false /* shouldCache */, false, false);
+                // The 8-argument call this replaces asked for isPhysical = true (no bounding box for a tiny prim), but the
+                // Meshmerizer's 8-argument CreateMesh passed false on, so a tiny prim's hull has been made from its
+                // bounding box. false keeps that.
+                meshData = CreateMeshNotCached(physicsScene, prim, pbs, size, lod, false /* isPhysical */);
 
                 // If we should use the asset's hull info, fetch it out of the locked mesher
                 if (meshData != null && BSParam.ShouldUseAssetHulls)
