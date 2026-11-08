@@ -1,0 +1,267 @@
+diff --git a/src/shape/trimesh.rs b/src/shape/trimesh.rs
+index 8215214..81b5945 100644
+--- a/src/shape/trimesh.rs
++++ b/src/shape/trimesh.rs
+@@ -23,6 +23,20 @@ use crate::transformation::ear_clipping::triangulate_ear_clipping;
+ 
+ use crate::query::details::NormalConstraints;
+ 
++// EDGE-CODES PATCH: layout of `TriMesh::edge_codes`.
++#[cfg(feature = "dim3")]
++use crate::math::Real;
++#[cfg(feature = "dim3")]
++const FRAC_PI_2: Real = core::f64::consts::FRAC_PI_2 as Real;
++#[cfg(feature = "dim3")]
++const EDGE_CODE_BITS: u32 = 10;
++#[cfg(feature = "dim3")]
++const EDGE_CODE_MASK: u32 = (1 << EDGE_CODE_BITS) - 1;
++#[cfg(feature = "dim3")]
++const EDGE_CODE_MAX: i32 = (1 << (EDGE_CODE_BITS - 1)) - 1; // 511
++#[cfg(feature = "dim3")]
++const EDGE_CODE_DEGENERATE: i32 = -(1 << (EDGE_CODE_BITS - 1)); // -512
++
+ /// Errors that occur when computing or validating triangle mesh topology.
+ ///
+ /// Triangle mesh topology describes the connectivity and adjacency relationships between
+@@ -527,6 +541,10 @@ pub struct TriMesh {
+     indices: Vec<[u32; 3]>,
+     #[cfg(feature = "dim3")]
+     pub(crate) pseudo_normals: Option<TriMeshPseudoNormals>,
++    /// EDGE-CODES PATCH: with `FIX_INTERNAL_EDGES` but not `ORIENTED`, one `u32` per triangle
++    /// replaces the pseudo-normals: three 10-bit edge angles (see `compute_edge_codes`).
++    #[cfg(feature = "dim3")]
++    pub(crate) edge_codes: Option<Vec<u32>>,
+     topology: Option<TriMeshTopology>,
+     connected_components: Option<TriMeshConnectedComponents>,
+     flags: TriMeshFlags,
+@@ -749,6 +767,8 @@ impl TriMesh {
+             indices,
+             #[cfg(feature = "dim3")]
+             pseudo_normals: None,
++            #[cfg(feature = "dim3")]
++            edge_codes: None,
+             topology: None,
+             connected_components: None,
+             flags: TriMeshFlags::empty(),
+@@ -773,10 +793,18 @@ impl TriMesh {
+             self.topology = None;
+         }
+ 
++        // EDGE-CODES PATCH: full pseudo-normals only for ORIENTED (point containment needs the
++        // vertex and edge pseudo-normals); FIX_INTERNAL_EDGES alone gets the compact edge codes.
++        // `contains` rather than `intersects`: FIX_INTERNAL_EDGES includes the
++        // MERGE_DUPLICATE_VERTICES bit, so `intersects` turned pseudo-normals on for merging alone.
+         #[cfg(feature = "dim3")]
+-        if !flags.intersects(TriMeshFlags::ORIENTED | TriMeshFlags::FIX_INTERNAL_EDGES) {
++        if !flags.contains(TriMeshFlags::ORIENTED) {
+             self.pseudo_normals = None;
+         }
++        #[cfg(feature = "dim3")]
++        if !Self::wants_edge_codes(flags) {
++            self.edge_codes = None;
++        }
+ 
+         if !flags.contains(TriMeshFlags::CONNECTED_COMPONENTS) {
+             self.connected_components = None;
+@@ -808,9 +836,13 @@ impl TriMesh {
+         }
+ 
+         #[cfg(feature = "dim3")]
+-        if difference.intersects(TriMeshFlags::ORIENTED | TriMeshFlags::FIX_INTERNAL_EDGES) {
++        if flags.contains(TriMeshFlags::ORIENTED) && self.pseudo_normals.is_none() {
+             self.compute_pseudo_normals();
+         }
++        #[cfg(feature = "dim3")]
++        if Self::wants_edge_codes(flags) && self.edge_codes.is_none() {
++            self.compute_edge_codes();
++        }
+ 
+         if prev_indices_len != self.indices.len() {
+             self.rebuild_bvh();
+@@ -839,6 +871,8 @@ impl TriMesh {
+             flags: _,
+             #[cfg(feature = "dim3")]
+             pseudo_normals,
++            #[cfg(feature = "dim3")]
++            edge_codes,
+         } = self;
+         let sz_bvh = bvh.heap_memory_size();
+         let sz_vertices = vertices.capacity() * size_of::<Vector>();
+@@ -851,6 +885,12 @@ impl TriMesh {
+                     + pn.edges_pseudo_normal.capacity() * size_of::<[Vector; 3]>()
+             })
+             .unwrap_or(0);
++        #[cfg(feature = "dim3")]
++        let sz_pseudo_normals = sz_pseudo_normals
++            + edge_codes
++                .as_ref()
++                .map(|c| c.capacity() * size_of::<u32>())
++                .unwrap_or(0);
+         #[cfg(feature = "dim2")]
+         let sz_pseudo_normals = 0;
+         let sz_topology = topology
+@@ -995,6 +1035,10 @@ impl TriMesh {
+         if self.pseudo_normals.is_some() {
+             self.compute_pseudo_normals();
+         }
++        #[cfg(feature = "dim3")]
++        if self.edge_codes.is_some() {
++            self.compute_edge_codes();
++        }
+     }
+ 
+     /// Updates every triangle's leaf AABB and refits the BVH in place, keeping its structure.
+@@ -1076,16 +1120,25 @@ impl TriMesh {
+         let mut bvh = self.bvh.clone();
+         bvh.scale(scale);
+ 
+-        Self {
++        #[allow(unused_mut)]
++        let mut result = Self {
+             bvh,
+             vertices: self.vertices,
+             indices: self.indices,
+             #[cfg(feature = "dim3")]
+             pseudo_normals: self.pseudo_normals,
++            #[cfg(feature = "dim3")]
++            edge_codes: self.edge_codes,
+             topology: self.topology,
+             connected_components: self.connected_components,
+             flags: self.flags,
++        };
++        // EDGE-CODES PATCH: a non-uniform scale changes the dihedral angles; recompute them.
++        #[cfg(feature = "dim3")]
++        if result.edge_codes.is_some() {
++            result.compute_edge_codes();
+         }
++        result
+     }
+ 
+     /// Appends a second triangle mesh to this triangle mesh.
+@@ -1323,6 +1376,12 @@ impl TriMesh {
+             }
+         }
+ 
++        // EDGE-CODES PATCH: the normals flip and the edges change order and direction.
++        #[cfg(feature = "dim3")]
++        if self.edge_codes.is_some() {
++            self.compute_edge_codes();
++        }
++
+         if self.flags.contains(TriMeshFlags::HALF_EDGE_TOPOLOGY) {
+             // TODO: this could be done more efficiently.
+             let _ = self.compute_topology(false);
+@@ -1408,6 +1467,10 @@ impl TriMesh {
+         if self.pseudo_normals.is_some() {
+             self.compute_pseudo_normals();
+         }
++        #[cfg(feature = "dim3")]
++        if self.edge_codes.is_some() {
++            self.compute_edge_codes();
++        }
+ 
+         // Vertices and indices changed: the topology no longer valid.
+         #[cfg(feature = "dim3")]
+@@ -1493,6 +1556,65 @@ impl TriMesh {
+         })
+     }
+ 
++    /// EDGE-CODES PATCH: whether these flags store the compact edge codes.
++    #[cfg(feature = "dim3")]
++    fn wants_edge_codes(flags: TriMeshFlags) -> bool {
++        flags.contains(TriMeshFlags::FIX_INTERNAL_EDGES) && !flags.contains(TriMeshFlags::ORIENTED)
++    }
++
++    /// EDGE-CODES PATCH: computes `edge_codes`.
++    ///
++    /// For each edge, Parry's edge pseudo-normal is the normalised sum of the normals of every
++    /// triangle using that edge (`compute_pseudo_normals`). All those normals are orthogonal to
++    /// the edge, so the pseudo-normal is `cos(phi) n + sin(phi) (e x n)` for the triangle's normal
++    /// `n` and edge direction `e`: storing `phi` is enough. `phi` is clamped to [-pi/2, pi/2]
++    /// (it only leaves that range on folded or non-manifold edges) and quantised to 10 bits;
++    /// 0 means a flat seam or a boundary (pseudo-normal = face normal, exactly as before), and
++    /// `EDGE_CODE_DEGENERATE` a sum that cannot be normalised (two opposite faces), for which
++    /// the unpatched code returned no constraints for the triangle.
++    #[cfg(feature = "dim3")]
++    fn compute_edge_codes(&mut self) {
++        let mut sums: HashMap<SortedPair<u32>, Vector> = HashMap::default();
++        for (i, idx) in self.indices.iter().enumerate() {
++            if let Some(n) = self.triangle(i as u32).normal() {
++                for k in 0..3 {
++                    *sums
++                        .entry(SortedPair::new(idx[k], idx[(k + 1) % 3]))
++                        .or_insert(Vector::ZERO) += n;
++                }
++            }
++        }
++
++        let scale = EDGE_CODE_MAX as Real / FRAC_PI_2;
++        let codes = (0..self.indices.len())
++            .map(|i| {
++                let tri = self.triangle(i as u32);
++                let Some(n) = tri.normal() else {
++                    return 0; // triangle_normal_constraints returns None for it anyway.
++                };
++                let idx = self.indices[i];
++                let pts = [tri.a, tri.b, tri.c];
++                let mut packed = 0u32;
++                for k in 0..3 {
++                    let sum = sums
++                        .get(&SortedPair::new(idx[k], idx[(k + 1) % 3]))
++                        .copied()
++                        .unwrap_or(n);
++                    let code = if sum.try_normalize().is_none() {
++                        EDGE_CODE_DEGENERATE
++                    } else {
++                        let side = (pts[(k + 1) % 3] - pts[k]).normalize_or_zero().cross(n);
++                        let phi = sum.dot(side).atan2(sum.dot(n)).clamp(-FRAC_PI_2, FRAC_PI_2);
++                        (phi * scale).round() as i32
++                    };
++                    packed |= ((code as u32) & EDGE_CODE_MASK) << (EDGE_CODE_BITS * k as u32);
++                }
++                packed
++            })
++            .collect();
++        self.edge_codes = Some(codes);
++    }
++
+     fn delete_bad_topology_triangles(&mut self) {
+         let mut half_edge_set = HashSet::default();
+         let mut deleted_any = false;
+@@ -1991,6 +2113,36 @@ impl TriMesh {
+     #[cfg(feature = "dim3")]
+     pub fn triangle_normal_constraints(&self, i: u32) -> Option<TrianglePseudoNormals> {
+         if self.flags.contains(TriMeshFlags::FIX_INTERNAL_EDGES) {
++            // EDGE-CODES PATCH: decode the compact edge codes (see `compute_edge_codes`).
++            if let Some(codes) = self.edge_codes.as_ref() {
++                let tri = self.triangle(i);
++                let n = tri.normal()?;
++                let pts = [tri.a, tri.b, tri.c];
++                let packed = codes[i as usize];
++                let mut edges = [n; 3];
++                for k in 0..3 {
++                    let raw = (packed >> (EDGE_CODE_BITS * k as u32)) & EDGE_CODE_MASK;
++                    // Sign-extend the 10-bit field.
++                    let code = ((raw << (32 - EDGE_CODE_BITS)) as i32) >> (32 - EDGE_CODE_BITS);
++                    if code == EDGE_CODE_DEGENERATE {
++                        return None;
++                    }
++                    if code != 0 {
++                        let phi = code as Real * (FRAC_PI_2 / EDGE_CODE_MAX as Real);
++                        let side = (pts[(k + 1) % 3] - pts[k]).normalize_or_zero().cross(n);
++                        let (s, c) = phi.sin_cos();
++                        edges[k] = n * c + side * s;
++                    }
++                }
++                return Some(TrianglePseudoNormals {
++                    face: n,
++                    edges,
++                    two_sided: self
++                        .flags
++                        .contains(TriMeshFlags::FIX_INTERNAL_EDGES_TWO_SIDED),
++                });
++            }
++
+             let triangle = self.triangle(i);
+             let pseudo_normals = self.pseudo_normals.as_ref()?;
+             let edges_pseudo_normals = pseudo_normals.edges_pseudo_normal[i as usize];

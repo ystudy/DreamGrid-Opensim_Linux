@@ -9,7 +9,11 @@
 # mt      built with --features parallel (rayon), named librapier-mt-x86_64.so or librapier-mt-arm64.so. OpenSim loads
 #         it only when RapierNumThreads is more than 1.
 #
-# Needs git, a C compiler (the linker), and rustup with the toolchain named in source.env (RUST_TOOLCHAIN). Build on the oldest distribution the library has
+# Parry (Rapier's collision library) is downloaded from crates.io, checked against PARRY_CRATE_SHA256, patched with
+# patches/parry3d-$PARRY_VERSION-edge-codes.patch (the build stops if it does not apply) and tested with edge-codes-test
+# before Rapier is built against it.
+#
+# Needs git, curl, sha256sum, a C compiler (the linker), and rustup with the toolchain named in source.env (RUST_TOOLCHAIN). Build on the oldest distribution the library has
 # to run on (DreamGrid: Debian 12), because the result links against that glibc.
 set -eu
 
@@ -31,7 +35,11 @@ case $(uname -m) in
 esac
 
 work=$(mktemp -d)
-trap 'rm -rf "$work"' EXIT
+# The patched Parry goes to a fixed directory, not into $work: Rust records the source paths of a path dependency in
+# the library (panic messages), and a random one would make every build differ. One per variant, so single and mt can
+# build at the same time; two builds of the same variant on one machine at once would collide.
+parry="/tmp/rapier-parry3d-$PARRY_VERSION-$variant"
+trap 'rm -rf "$work" "$parry"' EXIT
 
 git -c init.defaultBranch=main init -q "$work/src"
 cd "$work/src"
@@ -45,9 +53,24 @@ echo "rapier $RAPIER_TAG $(git rev-parse HEAD) ($variant)"
 # Rapier has no Cargo.lock; this folder's one fixes every dependency version.
 cp "$here/Cargo.lock" Cargo.lock
 
+# The patched Parry, outside the Rapier checkout (git apply works relative to an enclosing repository).
+curl -fsSL --proto '=https' -o "$work/parry3d.crate" "https://static.crates.io/crates/parry3d/parry3d-$PARRY_VERSION.crate"
+echo "$PARRY_CRATE_SHA256  $work/parry3d.crate" | sha256sum -c -
+rm -rf "$parry"
+mkdir "$parry"
+tar xzf "$work/parry3d.crate" -C "$parry" --strip-components=1
+(cd "$parry" && git apply --verbose "$here/patches/parry3d-$PARRY_VERSION-edge-codes.patch") \
+    || { echo "patches/parry3d-$PARRY_VERSION-edge-codes.patch does not apply to parry3d $PARRY_VERSION" >&2; exit 1; }
+patch_parry="patch.crates-io.parry3d.path='$parry'"
+CARGO_TARGET_DIR="$work/edge-codes-test" cargo "+$RUST_TOOLCHAIN" test --release --locked \
+    --manifest-path "$here/edge-codes-test/Cargo.toml" --config "$patch_parry" > "$work/test.log" 2>&1 \
+    || { tail -60 "$work/test.log"; exit 1; }
+echo "edge-codes-test: $(grep -c '^test .* \.\.\. ok$' "$work/test.log") tests passed"
+
 # $features is unquoted on purpose: nothing for single, two words for mt.
 # shellcheck disable=SC2086
-cargo "+$RUST_TOOLCHAIN" build --release --locked --package "$RAPIER_FFI_PACKAGE" $features > "$work/cargo.log" 2>&1 \
+cargo "+$RUST_TOOLCHAIN" build --release --locked --config "$patch_parry" --package "$RAPIER_FFI_PACKAGE" $features \
+    > "$work/cargo.log" 2>&1 \
     || { tail -60 "$work/cargo.log"; exit 1; }
 
 mkdir -p "$out"
