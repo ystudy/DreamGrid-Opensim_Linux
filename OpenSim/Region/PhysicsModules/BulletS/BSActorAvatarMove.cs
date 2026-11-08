@@ -136,7 +136,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS
             {
                 // Infinite decay and timescale values so motor only changes current to target values.
                 m_velocityMotor = new BSVMotor("BSCharacter.Velocity",
-                                                    0.2f,                       // time scale
+                                                    BSParam.AvatarMotorTimeScale, // time scale (0.2 s unless the engine or INI says)
                                                     BSMotor.Infinite,           // decay time scale
                                                     1f                          // efficiency
                 );

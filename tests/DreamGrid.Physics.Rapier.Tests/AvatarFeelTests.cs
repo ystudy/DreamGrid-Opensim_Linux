@@ -147,4 +147,112 @@ public class AvatarFeelTests
         Assert.InRange(bullet, before * 0.995f, before * 1.005f);
         Assert.Empty(log.Errors);
     }
+
+    // ---- Stopping (symptom 1) ----
+
+    // ubODE, measured as above: walking at full speed, then the key released (the rotation sets stop) and the target
+    // set to zero, the avatar slides 0.061 m and is at rest one frame later. Starting from standing, it reaches 79% of its
+    // speed in the first frame and 99% in the second.
+    private const float UbodeSlide = 0.061f;
+    private const float UbodeRestSeconds = 0.091f;
+    private const float UbodeStartFirstFrame = 0.79f;
+
+    // Bullet, the same script measured on this branch before the stop change (8f947116).
+    private const float BulletSlide = 0.4283f;
+    private const float BulletRestSeconds = 0.3636f;
+
+    private sealed class StopRun
+    {
+        public float Slide;
+        public float RestSeconds;
+        public List<float> StartSpeeds = new List<float>();
+        public float Target;
+    }
+
+    // Walk 2 s along +X with the key held, then release: the rotation sets stop and the target goes to zero (ScenePresence
+    // does that 250 ms later; that time is the same on every engine and is left out). Watched for 2 s after.
+    private static StopRun WalkThenStop(string engine, Dictionary<string, string>? ini = null)
+    {
+        BSScene scene = MakeScene(engine, ini);
+        try
+        {
+            PhysicsActor avatar = AddAvatar(scene, new Vector3(100f, 128f, TerrainHeight + AvatarSize.Z / 2f + 0.05f), false);
+            RapierTestScene.Step(scene, 2f);
+            StopRun run = new StopRun();
+            avatar.TargetVelocity = new Vector3(WalkSpeed, 0f, 0f);
+            run.Target = avatar.TargetVelocity.X;
+            for (int ii = 0; ii < 22; ii++)
+            {
+                Frame(scene, avatar, ii, true);
+                if (ii < 5)
+                    run.StartSpeeds.Add(avatar.Velocity.X);
+            }
+            avatar.TargetVelocity = Vector3.Zero;
+            List<float> x = new List<float> { avatar.Position.X };
+            for (int ii = 0; ii < 22; ii++)
+            {
+                Frame(scene, avatar, ii, false);
+                x.Add(avatar.Position.X);
+            }
+            run.Slide = x[x.Count - 1] - x[0];
+            // The frame after which it moves less than 1 mm a frame for good.
+            int rest = x.Count - 1;
+            while (rest > 0 && Math.Abs(x[rest] - x[rest - 1]) <= 0.001f)
+                rest--;
+            run.RestSeconds = rest * RapierTestScene.FrameSeconds;
+            return run;
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    [Fact]
+    public void Avatar_StopsLikeUbode()
+    {
+        using ErrorLog log = new ErrorLog();
+        StopRun run = WalkThenStop("Rapier");
+        _output.WriteLine($"Rapier: slide {run.Slide:F3} m, at rest after {run.RestSeconds:F3} s; start {string.Join(", ", run.StartSpeeds.Select(v => (v / run.Target).ToString("F2")))} of {run.Target:F3}");
+        Assert.InRange(run.Slide, 0f, UbodeSlide + 0.04f);
+        Assert.InRange(run.RestSeconds, 0f, UbodeRestSeconds + 0.01f);
+        Assert.Empty(log.Errors);
+    }
+
+    // Walking start-up stays smooth: no faster than ubODE's first frame by much, and never past the target.
+    [Fact]
+    public void Avatar_StartsWalkingLikeUbode()
+    {
+        using ErrorLog log = new ErrorLog();
+        StopRun run = WalkThenStop("Rapier");
+        _output.WriteLine($"Rapier start: {string.Join(", ", run.StartSpeeds.Select(v => (v / run.Target).ToString("F2")))} of {run.Target:F3}");
+        Assert.InRange(run.StartSpeeds[0] / run.Target, UbodeStartFirstFrame - 0.15f, UbodeStartFirstFrame + 0.15f);
+        Assert.True(run.StartSpeeds[2] / run.Target > 0.95f, $"third frame {run.StartSpeeds[2]}");
+        Assert.True(run.StartSpeeds.Max() / run.Target < 1.02f, $"peak {run.StartSpeeds.Max()}");
+        Assert.Empty(log.Errors);
+    }
+
+    // The INI wins over Rapier's stop defaults: Bullet's 0.2 s timescale and 0.45 m/s threshold give back its long slide.
+    [Fact]
+    public void Avatar_StopTuningFromTheIni_WinsOverRapiersDefault()
+    {
+        using ErrorLog log = new ErrorLog();
+        StopRun run = WalkThenStop("Rapier", new Dictionary<string, string>
+                    { { "AvatarMotorTimeScale", "0.2" }, { "AvatarStopZeroThreshold", "0.45" } });
+        _output.WriteLine($"Rapier with Bullet's stop tuning: slide {run.Slide:F3} m, at rest after {run.RestSeconds:F3} s");
+        Assert.True(run.Slide > 0.25f, $"slide {run.Slide}");
+        Assert.True(run.RestSeconds > 0.3f, $"rest {run.RestSeconds}");
+        Assert.Empty(log.Errors);
+    }
+
+    [Fact]
+    public void Avatar_OnBullet_StopsAsBefore()
+    {
+        using ErrorLog log = new ErrorLog();
+        StopRun run = WalkThenStop("BulletUnmanaged");
+        _output.WriteLine($"Bullet: slide {run.Slide:F4} m, at rest after {run.RestSeconds:F4} s; start {string.Join(", ", run.StartSpeeds.Select(v => (v / run.Target).ToString("F3")))}");
+        Assert.InRange(run.Slide, BulletSlide - 0.005f, BulletSlide + 0.005f);
+        Assert.InRange(run.RestSeconds, BulletRestSeconds - 0.01f, BulletRestSeconds + 0.01f);
+        Assert.Empty(log.Errors);
+    }
 }

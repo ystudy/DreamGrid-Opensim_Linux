@@ -440,6 +440,12 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         // so without this it would cover the full 4.07 and 16.39 m/s.
         public override float AvatarSpeedFactor { get { return 1f / 1.3f; } }
 
+        // And stop and start like ubODE's: at the 0.0909 s frame, a 0.11 s timescale gets 80% of the way in the first
+        // frame (ubODE 79%), and the 0.7 m/s threshold ends the stop in the next one, so a walking avatar slides 0.05 m
+        // and is at rest within one frame (ubODE: 0.06 m, one frame). Bullet's 0.2 s and 0.45 m/s slide 0.3 m in 0.36 s.
+        public override float AvatarMotorTimeScale { get { return 0.11f; } }
+        public override float AvatarStopZeroThreshold { get { return 0.7f; } }
+
         public BSAPIRapier(string paramName, BSScene physScene)
         {
             PhysicsScene = physScene;

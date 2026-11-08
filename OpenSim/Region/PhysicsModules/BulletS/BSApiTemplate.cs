@@ -364,6 +364,13 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         // avatar already covers about 8.7% less ground than that, because each orientation set (SetTranslation) puts it
         // back to its interpolated pose, which trails the body.
         public virtual float AvatarSpeedFactor { get { return 1f; } }
+
+        // The engine's defaults for [BulletSim]AvatarMotorTimeScale and AvatarStopZeroThreshold: how fast the avatar's
+        // velocity motor (BSActorAvatarMove) closes the gap to the target speed, and below what error it stops. The INI
+        // values win. Bullet's are the parameters' own (0.2 s and 0.45 m/s), which stop a walking avatar in 0.36 s and
+        // 0.43 m.
+        public virtual float AvatarMotorTimeScale { get { return 0.2f; } }
+        public virtual float AvatarStopZeroThreshold { get { return 0.45f; } }
         
         // Initialization and simulation
         public abstract BulletWorld Initialize(Vector3 maxPosition, ConfigurationParameters parms,
