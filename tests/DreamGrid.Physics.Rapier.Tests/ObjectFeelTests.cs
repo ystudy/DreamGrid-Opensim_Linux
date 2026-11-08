@@ -333,15 +333,18 @@ public class ObjectFeelTests
         Assert.Empty(log.Errors);
     }
 
-    // Bullet's ball is unchanged: pushed at 3 m/s it goes 2.10 m/s after 2 s and 58.1 m in 40 s (measured at 07881f6c).
+    // Bullet's ball is unchanged: pushed at 3 m/s it goes 2.10 m/s after 2 s and 58.1 m in 40 s on Windows (BulletSim
+    // 3.26), 2.08 m/s and 61.3 m on Linux (BulletSim 2.86); both measured before these changes, at e6744974.
     [Fact]
     public void Ball_OnBullet_RollsAsBefore()
     {
         using ErrorLog log = new ErrorLog();
         (float speed2, _, float distance40, _) = Ball("BulletUnmanaged", 0f);
         _output.WriteLine($"Bullet, ball pushed at 3 m/s: {speed2:F3} m/s after 2 s, {distance40:F2} m in 40 s");
-        Assert.InRange(speed2, 2.10f - 0.03f, 2.10f + 0.03f);
-        Assert.InRange(distance40, 58.06f - 1f, 58.06f + 1f);
+        float beforeSpeed = OperatingSystem.IsWindows() ? 2.097f : 2.081f;
+        float beforeDistance = OperatingSystem.IsWindows() ? 58.06f : 61.30f;
+        Assert.InRange(speed2, beforeSpeed - 0.03f, beforeSpeed + 0.03f);
+        Assert.InRange(distance40, beforeDistance - 1f, beforeDistance + 1f);
         Assert.Empty(log.Errors);
     }
 
