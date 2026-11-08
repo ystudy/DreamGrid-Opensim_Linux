@@ -432,6 +432,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         // CreateTerrainShape puts heightmap sample (i, j) at (i, j), as the simulator and ubODE have it.
         public override float TerrainSampleOffset { get { return 0f; } }
 
+        // Parry's heightfield splits every cell along the diagonal from sample (i, j) to (i + 1, j + 1) (measured: 2,000
+        // rays on 0.3 m rough terrain match that split to 0.3 mm).
+        public override TerrainTriangles TerrainTriangleRule { get { return TerrainTriangles.DiagonalUp; } }
+
         // Objects slide like ubODE's: ubODE combines two frictions as sqrt(mu1 x mu2), so a wood box gets 0.42 on the
         // terrain and 0.6 on wood, where the product gave 0.18 and 0.36 and the box slid down a 20 degree hill.
         public override bool FrictionCombineGeometric { get { return true; } }

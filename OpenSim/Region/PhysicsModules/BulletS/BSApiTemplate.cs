@@ -329,6 +329,19 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         AXIS_ALL
     };
     
+    // How an engine's terrain heightfield splits each cell of samples into two triangles, for
+    // BSTerrainHeightmap.GetTerrainHeightAtXYZ. "Up" is the diagonal from sample (i, j) to (i + 1, j + 1), "down" the one
+    // from (i + 1, j) to (i, j + 1). A diamond alternates them like a checkerboard, by the parity of i + j. Bilinear is a
+    // blend for an engine whose split is not known.
+    public enum TerrainTriangles
+    {
+        Bilinear,
+        DiagonalUp,
+        DiagonalDown,
+        DiamondEvenUp,
+        DiamondEvenDown,
+    }
+
     public abstract class BSAPITemplate
     {
         // Returns the name of the underlying Bullet engine
@@ -346,6 +359,11 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         // samples sit at (i + 0.5, j + 0.5). BSTerrainHeightmap.GetTerrainHeightAtXYZ looks the map up this far back, so
         // the height it gives is the surface the engine collides with.
         public virtual float TerrainSampleOffset { get { return 0.5f; } }
+
+        // How the engine's terrain heightfield splits each cell into triangles, so the looked-up height is on the surface
+        // the engine collides with even on rough terrain (a bilinear blend is up to 0.1 m off on 0.3 m roughness, enough
+        // for PositionSanityCheck to lift small prims). An engine that does not say gets the blend.
+        public virtual TerrainTriangles TerrainTriangleRule { get { return TerrainTriangles.Bilinear; } }
 
         // The engine's default for [BulletSim]FrictionCombineGeometric: whether two bodies' frictions combine as
         // sqrt(f1 x f2) (ubODE's rule) rather than f1 x f2 (Bullet's). The INI value wins. Bullet keeps the product.

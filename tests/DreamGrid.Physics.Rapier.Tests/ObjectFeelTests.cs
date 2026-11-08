@@ -94,6 +94,105 @@ public class ObjectFeelTests
         }
     }
 
+    // Rough terrain: 30 m plus up to 0.3 m of noise on every sample (seeded), so no cell is planar.
+    private static float[] SetRoughTerrain(BSScene scene, float roughness, int seed)
+    {
+        Random random = new Random(seed);
+        float[] map = new float[256 * 256];
+        for (int ii = 0; ii < map.Length; ii++)
+            map[ii] = 30f + (float)(random.NextDouble() * roughness);
+        scene.SetTerrain(map);
+        RapierTestScene.Step(scene, 0.3f);
+        return map;
+    }
+
+    // On rough terrain the height BulletS looks up is the surface the engine collides with: each engine splits a cell
+    // into two triangles its own way (BSAPITemplate.TerrainTriangleRule), and a bilinear blend reads up to 0.1 m off.
+    [Theory]
+    [InlineData("Rapier")]
+    [InlineData("BulletUnmanaged")]
+    public void TerrainHeight_OnRoughTerrain_IsTheEnginesSurface(string engine)
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create(new Dictionary<string, string> { { "BulletEngine", engine } });
+        try
+        {
+            SetRoughTerrain(scene, 0.3f, 5);
+            Random random = new Random(17);
+            float worst = 0f;
+            for (int ii = 0; ii < 2000; ii++)
+            {
+                float x = 20f + (float)random.NextDouble() * 200f;
+                float y = 20f + (float)random.NextDouble() * 200f;
+                float looked = scene.TerrainManager.GetTerrainHeightAtXYZ(new Vector3(x, y, 0f));
+                RaycastHit hit = scene.PE.RayTest2(scene.World, new Vector3(x, y, 100f), new Vector3(x, y, 0f), 0xffff, 0xffff);
+                Assert.True(hit.hasHit(), $"no terrain under ({x}, {y})");
+                worst = Math.Max(worst, Math.Abs(looked - hit.Point.Z));
+            }
+            _output.WriteLine($"{engine} ({scene.PE.BulletEngineVersion}), 0.3 m rough terrain: worst height error {worst:F4} m");
+            Assert.True(worst < 0.001f, $"the looked-up terrain height is off by up to {worst} m");
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    // Small prims resting on rough terrain are never lifted by PositionSanityCheck: forty 5 x 5 x 2.5 cm cubes set down
+    // on 0.3 m roughness and watched for 10 s never rise. (A resting cube does not rise by itself; PositionSanityCheck
+    // moving one up to the looked-up height does.) Rapier only: on Bullet these 2.5 cm cubes fall into its heightfield
+    // (its 4 cm collision margins) every other frame, and PositionSanityCheck rightly brings them back up, with an exact
+    // lookup too (measured: about 2,800 rescues in 10 s, the cube 1-3 cm below the surface each time).
+    [Theory]
+    [InlineData("Rapier")]
+    public void SmallCubes_OnRoughTerrain_AreNotLifted(string engine)
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create(new Dictionary<string, string> { { "BulletEngine", engine } });
+        try
+        {
+            SetRoughTerrain(scene, 0.3f, 7);
+            Random random = new Random(23);
+            List<PhysicsActor> cubes = new List<PhysicsActor>();
+            Vector3 size = new Vector3(0.05f, 0.05f, 0.025f);
+            for (int ii = 0; ii < 40; ii++)
+            {
+                float x = 60f + (float)random.NextDouble() * 120f;
+                float y = 60f + (float)random.NextDouble() * 120f;
+                RaycastHit hit = scene.PE.RayTest2(scene.World, new Vector3(x, y, 100f), new Vector3(x, y, 0f), 0xffff, 0xffff);
+                cubes.Add(AddPrim(scene, (uint)(3000 + ii), PrimitiveBaseShape.CreateBox(), new Vector3(x, y, hit.Point.Z + 0.03f),
+                                    size, Quaternion.Identity, true));
+            }
+            RapierTestScene.Step(scene, 1f);
+            List<float> lastZ = cubes.Select(c => c.Position.Z).ToList();
+            int rises = 0;
+            HashSet<int> risen = new HashSet<int>();
+            int frames = (int)Math.Round(10f / RapierTestScene.FrameSeconds);
+            for (int frame = 0; frame < frames; frame++)
+            {
+                scene.Simulate(RapierTestScene.FrameSeconds);
+                for (int ii = 0; ii < cubes.Count; ii++)
+                {
+                    float z = cubes[ii].Position.Z;
+                    if (z - lastZ[ii] > 0.003f)
+                    {
+                        rises++;
+                        risen.Add(ii);
+                    }
+                    lastZ[ii] = z;
+                }
+            }
+            _output.WriteLine($"{engine}: {rises} rises on {risen.Count} of {cubes.Count} cubes in 10 s");
+            Assert.Equal(0, rises);
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
     // ---- Shared helpers for the object scripts ----
 
     private const uint BoxId = 2001;

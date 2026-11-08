@@ -161,9 +161,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                 float diffX = px - (float)baseX;
                 float diffY = py - (float)baseY;
 
-                // The four samples around the point (rows of sizeX), and bilinear interpolation between them. (The old
-                // sum took a Y difference for its X rise and halved both, so on a 30 degree slope it was up to 0.57 m
-                // off, and PositionSanityCheck lifted and stopped physical prims resting on it.)
+                // The four samples around the point (rows of sizeX), and the height on the triangle of the cell the engine
+                // collides with (BSAPITemplate.TerrainTriangleRule). (The old sum took a Y difference for its X rise and
+                // halved both, so on a 30 degree slope it was up to 0.57 m off, and PositionSanityCheck lifted and stopped
+                // physical prims resting on it. A bilinear blend is still up to 0.1 m off on rough terrain.)
                 int nextX = Math.Min(baseX + 1, maxX - 1);
                 int nextY = Math.Min(baseY + 1, maxY - 1);
                 float h00 = m_mapInfo.heightMap[baseY * maxX + baseX];
@@ -171,9 +172,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                 float h01 = m_mapInfo.heightMap[nextY * maxX + baseX];
                 float h11 = m_mapInfo.heightMap[nextY * maxX + nextX];
 
-                float atY0 = h00 + (h10 - h00) * diffX;
-                float atY1 = h01 + (h11 - h01) * diffX;
-                ret = atY0 + (atY1 - atY0) * diffY;
+                ret = HeightInCell(m_physicsScene.PE.TerrainTriangleRule, baseX, baseY, diffX, diffY, h00, h10, h01, h11);
                 // m_physicsScene.DetailLog("{0},BSTerrainHeightMap,GetTerrainHeightAtXYZ,pos={1},{2}/{3}/{4}/{5},ret={6}",
                 //         BSScene.DetailLogZero, pos, mapHeight1, mapHeight2, mapHeight3, mapHeight4, ret);
             }
@@ -185,6 +184,42 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                 ret = BSTerrainManager.HEIGHT_GETHEIGHT_RET;
             }
             return ret;
+        }
+
+        // The height at (fx, fy) within cell (cellX, cellY), whose corner samples are h00 (0,0), h10 (1,0), h01 (0,1) and
+        // h11 (1,1), on the triangle the rule's split gives.
+        internal static float HeightInCell(TerrainTriangles rule, int cellX, int cellY, float fx, float fy,
+                                            float h00, float h10, float h01, float h11)
+        {
+            bool upDiagonal;
+            switch (rule)
+            {
+                case TerrainTriangles.DiagonalUp:
+                    upDiagonal = true;
+                    break;
+                case TerrainTriangles.DiagonalDown:
+                    upDiagonal = false;
+                    break;
+                case TerrainTriangles.DiamondEvenUp:
+                    upDiagonal = ((cellX + cellY) & 1) == 0;
+                    break;
+                case TerrainTriangles.DiamondEvenDown:
+                    upDiagonal = ((cellX + cellY) & 1) != 0;
+                    break;
+                default:
+                    float atY0 = h00 + (h10 - h00) * fx;
+                    float atY1 = h01 + (h11 - h01) * fx;
+                    return atY0 + (atY1 - atY0) * fy;
+            }
+            if (upDiagonal)
+            {
+                // Split along (0,0)-(1,1).
+                return (fx >= fy) ? h00 + (h10 - h00) * fx + (h11 - h10) * fy
+                                  : h00 + (h01 - h00) * fy + (h11 - h01) * fx;
+            }
+            // Split along (1,0)-(0,1).
+            return (fx + fy <= 1f) ? h00 + (h10 - h00) * fx + (h01 - h00) * fy
+                                   : h11 + (h01 - h11) * (1f - fx) + (h10 - h11) * (1f - fy);
         }
 
         // The passed position is relative to the base of the region.
