@@ -446,7 +446,7 @@ public class AvatarFeelTests
     // A 6 m high, 2 m thick wall whose near face is at x = 110, walked into from ten distances (so the touch falls at
     // different points of the frame): it is not a step.
     private static float WorstWallRise(string engine, int approaches, float thickness = 2f,
-                                        Dictionary<string, string>? ini = null)
+                                        Dictionary<string, string>? ini = null, float ledgeDepth = 0f, float ledgeHeight = 0f)
     {
         float worst = 0f;
         for (int ii = 0; ii < approaches; ii++)
@@ -455,8 +455,11 @@ public class AvatarFeelTests
             try
             {
                 AddBox(scene, WallId, new Vector3(110f + thickness / 2f, 128f, TerrainHeight + 3f), new Vector3(thickness, 20f, 6f));
+                if (ledgeDepth > 0f)
+                    AddBox(scene, StepId, new Vector3(110f - ledgeDepth / 2f, 128f, TerrainHeight + ledgeHeight / 2f),
+                            new Vector3(ledgeDepth, 20f, ledgeHeight));
                 (float rise, _, float endX) = WalkInto(scene, 106f + ii * 0.037f, 3f);
-                Assert.True(endX > 109f, $"the avatar stopped at x {endX}, short of the wall");
+                Assert.True(endX > 109f - ledgeDepth, $"the avatar stopped at x {endX}, short of the wall");
                 worst = Math.Max(worst, rise);
             }
             finally
@@ -465,6 +468,55 @@ public class AvatarFeelTests
             }
         }
         return worst;
+    }
+
+    // A 0.25 m step turned 30 degrees to the path, and one that is a physical (dynamic) box, are still climbed with the
+    // room-to-stand ray.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Avatar_ClimbsARotatedOrPhysicalStep(bool physical)
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = MakeScene("Rapier", null);
+        try
+        {
+            const float height = 0.25f;
+            Vector3 size = new Vector3(3f, 8f, height);
+            PrimitiveBaseShape pbs = PrimitiveBaseShape.CreateBox();
+            pbs.Scale = size;
+            Quaternion rotation = physical ? Quaternion.Identity : Quaternion.CreateFromEulers(0f, 0f, 30f * MathF.PI / 180f);
+            scene.AddPrimShape("step", pbs, new Vector3(128.5f + (physical ? 0f : 0.5f), 128f, TerrainHeight + height / 2f),
+                                size, rotation, physical, StepId);
+            RapierTestScene.Step(scene, 0.5f);
+            (float maxRise, _, float endX) = WalkInto(scene, 124f, 3f);
+            _output.WriteLine($"{(physical ? "physical" : "rotated")} step: ended at x {endX:F3}, highest {maxRise:F3} m");
+            Assert.True(endX > 127.5f, $"the avatar stopped at x {endX}, before the step");
+            Assert.InRange(maxRise, height - 0.05f, height + 0.1f);
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    // A wall with a shallow ledge in front of it (a skirting board, a plinth or a kerb strip, 1 to 4 cm deep and 0.25 or
+    // 0.3 m high, a separate prim against the wall) is not a step: there is no room to stand on the ledge.
+    [Theory]
+    [InlineData(0.01f, 0.25f)]
+    [InlineData(0.03f, 0.25f)]
+    [InlineData(0.04f, 0.25f)]
+    [InlineData(0.01f, 0.3f)]
+    [InlineData(0.03f, 0.3f)]
+    [InlineData(0.04f, 0.3f)]
+    public void Avatar_WalkingIntoAWallWithALedge_DoesNotClimbIt(float ledgeDepth, float ledgeHeight)
+    {
+        using ErrorLog log = new ErrorLog();
+        float worst = WorstWallRise("Rapier", 5, 2f, null, ledgeDepth, ledgeHeight);
+        _output.WriteLine($"Rapier: worst rise walking into the wall with a {ledgeHeight} m x {ledgeDepth} m ledge {worst:F3} m");
+        Assert.True(worst < 0.05f, $"the avatar rose {worst} m at the ledge");
+        Assert.Empty(log.Errors);
     }
 
     // A thin wall (3 cm, a glass pane or a partition) is not a step either, for all that the probe looks only 1 cm past

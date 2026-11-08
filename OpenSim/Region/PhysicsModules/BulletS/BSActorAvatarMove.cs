@@ -402,7 +402,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                                         float diff = Math.Abs(OMV.Vector3.Distance(directionFacing, touchNormal));
                                         if (diff < BSParam.AvatarStepApproachFactor
                                             && (!BSParam.AvatarStepsNeedAWalkableTop
-                                                || HasWalkableTop(kvp.Key, touchPosition, nearFeetHeightMax)))
+                                                || HasWalkableTop(kvp.Key, touchPosition, nearFeetHeightMin, nearFeetHeightMax)))
                                         {
                                             if (highestTouchPosition.Z < touchPosition.Z)
                                                 highestTouchPosition = touchPosition;
@@ -452,30 +452,49 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         private const uint StepTopRayGroup = (uint)CollisionFilterGroups.BCharacterGroup;
         private const uint StepTopRayMask = (uint)(CollisionFilterGroups.BAllGroup
                                     & ~(CollisionFilterGroups.BCharacterGroup | CollisionFilterGroups.BSensorTrigger));
+        // How far past the touch point the second, "room to stand" ray looks: about the capsule's radius (0.225 m for the
+        // default avatar), where the avatar's centre would be once on the step.
+        private const float StepRoomProbeReach = 0.2f;
 
-        // Whether the object touched has a surface to stand on just past the touch point, no higher than the step range:
-        // a ray straight down, StepTopProbeReach beyond the touch (away from the avatar), from the top of the range to
-        // just below the touch. On a real step it lands on the step's top. In a wall it starts inside the solid, where
-        // the ray reports no upward face, so a wall is not taken for a step (BSParam.AvatarStepsNeedAWalkableTop, defaulted by BSAPITemplate.StepsNeedAWalkableTop).
-        private bool HasWalkableTop(uint touchedId, OMV.Vector3 touch, float rangeTopZ)
+        // Whether the object touched is a step the avatar can stand on. Two rays straight down, from the top of the step
+        // range (BSParam.AvatarStepsNeedAWalkableTop, defaulted by BSAPITemplate.StepsNeedAWalkableTop):
+        //  - the top: StepTopProbeReach beyond the touch (away from the avatar), down to just below the touch, must land
+        //    on the touched object's upward face. In a wall it starts inside the solid, where the ray reports no upward
+        //    face, so a wall is not taken for a step;
+        //  - room to stand: StepRoomProbeReach beyond the touch, down to the bottom of the step range, must land on an
+        //    upward face of anything (the step's top, or the ground beyond a thin board). A shallow ledge in front of a wall
+        //    (a skirting board, a plinth) passes the first ray, but this one starts inside the wall and is refused.
+        private bool HasWalkableTop(uint touchedId, OMV.Vector3 touch, float rangeBottomZ, float rangeTopZ)
         {
             OMV.Vector3 away = touch - m_controllingPrim.RawPosition;
             away.Z = 0f;
             float length = away.Length();
             if (length < 1e-4f)
                 return false;
-            OMV.Vector3 probe = touch + away * (StepTopProbeReach / length);
+            away /= length;
+            OMV.Vector3 probe = touch + away * StepTopProbeReach;
             OMV.Vector3 from = new OMV.Vector3(probe.X, probe.Y, rangeTopZ);
             OMV.Vector3 to = new OMV.Vector3(probe.X, probe.Y, touch.Z - StepTopProbeDepth);
             if (from.Z <= to.Z)
                 return false;
-            // The ray looks as an avatar does (so static prims, which collide only with avatars and solids, are hit) and
-            // sees neither avatars nor volume-detect sensors, which would otherwise be hit first and hide the step's top.
+            // The rays look as an avatar does (so static prims, which collide only with avatars and solids, are hit) and
+            // see neither avatars nor volume-detect sensors, which would otherwise be hit first and hide the step's top.
             RaycastHit hit = m_physicsScene.PE.RayTest2(m_physicsScene.World, from, to, StepTopRayGroup, StepTopRayMask);
             bool walkable = hit.hasHit() && hit.ID == touchedId && hit.Normal.Z >= StepTopMinNormalZ;
-            m_physicsScene.DetailLog("{0},BSCharacter.WalkUpStairs.HasWalkableTop,touched={1},from={2},hitID={3},hitNormal={4},walkable={5}",
-                            m_controllingPrim.LocalID, touchedId, from, hit.ID, hit.Normal, walkable);
-            return walkable;
+            bool room = false;
+            OMV.Vector3 roomNormal = OMV.Vector3.Zero;
+            if (walkable)
+            {
+                OMV.Vector3 roomProbe = touch + away * StepRoomProbeReach;
+                OMV.Vector3 roomFrom = new OMV.Vector3(roomProbe.X, roomProbe.Y, rangeTopZ);
+                OMV.Vector3 roomTo = new OMV.Vector3(roomProbe.X, roomProbe.Y, rangeBottomZ);
+                RaycastHit roomHit = m_physicsScene.PE.RayTest2(m_physicsScene.World, roomFrom, roomTo, StepTopRayGroup, StepTopRayMask);
+                roomNormal = roomHit.Normal;
+                room = roomHit.hasHit() && roomHit.Normal.Z >= StepTopMinNormalZ;
+            }
+            m_physicsScene.DetailLog("{0},BSCharacter.WalkUpStairs.HasWalkableTop,touched={1},from={2},hitID={3},hitNormal={4},walkable={5},roomNormal={6},room={7}",
+                            m_controllingPrim.LocalID, touchedId, from, hit.ID, hit.Normal, walkable, roomNormal, room);
+            return walkable && room;
         }
 
         private OMV.Vector3 ComputeStairCorrection(float stepUp)
