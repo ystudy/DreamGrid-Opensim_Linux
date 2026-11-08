@@ -357,6 +357,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS
             SetEngineDefault("AvatarStepHeight", PE.AvatarStepHeight);
             SetEngineDefault("AvatarStepsNeedAWalkableTop", PE.StepsNeedAWalkableTop);
             SetEngineDefault("FrictionCombineGeometric", PE.FrictionCombineGeometric);
+            SetEngineDefault("LinearDamping", PE.DefaultLinearDamping);
+            SetEngineDefault("AngularDamping", PE.DefaultAngularDamping);
             SetEngineDefault("AvatarAlwaysRunFactor", PE.AvatarAlwaysRunFactor);
             SetEngineDefault("AvatarRunFactorWhenFlying", PE.AvatarRunFactorWhenFlying);
 

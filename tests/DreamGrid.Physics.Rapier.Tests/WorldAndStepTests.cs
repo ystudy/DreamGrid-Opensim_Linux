@@ -94,7 +94,8 @@ public class WorldAndStepTests
     public void PhysicalBoxFreeFalls()
     {
         using ErrorLog log = new ErrorLog();
-        BSScene scene = RapierTestScene.Create();
+        // Undamped, to check the fall itself (Rapier's default LinearDamping is ubODE's 0.0953 a second).
+        BSScene scene = RapierTestScene.Create(new Dictionary<string, string> { { "LinearDamping", "0" }, { "AngularDamping", "0" } });
         try
         {
             PhysicsActor box = AddBox(scene, 101, new Vector3(128f, 128f, 200f), physical: true);

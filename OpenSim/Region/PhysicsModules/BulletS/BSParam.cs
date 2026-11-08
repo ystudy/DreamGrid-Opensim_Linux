@@ -569,12 +569,12 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                 (s,o) => { s.PE.SetGravity(o.PhysBody, new Vector3(0f,0f,Gravity)); } ),
 
 
-            new ParameterDefn<float>("LinearDamping", "Factor to damp linear movement per second (0.0 - 1.0)",
+            new ParameterDefn<float>("LinearDamping", "Factor to damp linear movement per second (0.0 - 1.0); 0, or the engine's own default (Rapier: 0.0953, ubODE's) unless set",
                 0f,
                 (s) => { return LinearDamping; },
                 (s,v) => { LinearDamping = v; },
                 (s,o) => { s.PE.SetDamping(o.PhysBody, LinearDamping, AngularDamping); } ),
-            new ParameterDefn<float>("AngularDamping", "Factor to damp angular movement per second (0.0 - 1.0)",
+            new ParameterDefn<float>("AngularDamping", "Factor to damp angular movement per second (0.0 - 1.0); 0, or the engine's own default (Rapier: 0.0247, ubODE's) unless set",
                 0f,
                 (s) => { return AngularDamping; },
                 (s,v) => { AngularDamping = v; },

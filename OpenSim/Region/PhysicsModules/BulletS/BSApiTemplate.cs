@@ -351,6 +351,11 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         // sqrt(f1 x f2) (ubODE's rule) rather than f1 x f2 (Bullet's). The INI value wins. Bullet keeps the product.
         public virtual bool FrictionCombineGeometric { get { return false; } }
 
+        // The engine's defaults for [BulletSim]LinearDamping and AngularDamping (the share of a physical prim's speed lost
+        // per second). The INI values win. Bullet's are the parameters' own 0.
+        public virtual float DefaultLinearDamping { get { return 0f; } }
+        public virtual float DefaultAngularDamping { get { return 0f; } }
+
         // Whether BSCharacter.AvatarJump divides its force by Bullet's 1/60 s step (BSScene.BulletFixedTimeStep) rather
         // than by FixedTimeStep. The force is on for every substep of the frame, so dividing by the substep length makes
         // the jump grow with the substep count; an engine whose default step is not 1/60 asks for this so its jumps

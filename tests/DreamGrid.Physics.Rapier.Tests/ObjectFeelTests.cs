@@ -256,4 +256,36 @@ public class ObjectFeelTests
         Assert.False(BSParam.FrictionCombineGeometric);
         Assert.Empty(log.Errors);
     }
+
+    // A body in free flight keeps ubODE's damping: thrown at 5 m/s, high above the ground, it keeps 0.998^50 = 90.5% of
+    // its horizontal speed a second (ubODE's BodySetDamping(0.002, ...) per 0.02 s step). Bullet, with BulletS's
+    // LinearDamping of 0, keeps it all.
+    [Theory]
+    [InlineData("Rapier", 5f * 0.9047f)]
+    [InlineData("BulletUnmanaged", 5f)]
+    public void Ball_InFreeFlight_LosesSpeedAsOnUbode(string engine, float expected)
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create(new Dictionary<string, string> { { "BulletEngine", engine } });
+        try
+        {
+            SetHill(scene, 0f, 0f);
+            PhysicsActor ball = AddPrim(scene, BoxId, PrimitiveBaseShape.CreateSphere(), new Vector3(60f, 128f, 200f),
+                                        new Vector3(0.5f, 0.5f, 0.5f), Quaternion.Identity, true);
+            RapierTestScene.Step(scene, 0.1f);
+            ball.Velocity = new Vector3(5f, 0f, 0f);
+            RapierTestScene.Step(scene, 0.0909f);
+            float x0 = ball.Position.X;
+            float v0 = ball.Velocity.X;
+            Watch(scene, ball, ball.Position, 11 * RapierTestScene.FrameSeconds);
+            float ratio = ball.Velocity.X / v0;
+            _output.WriteLine($"{engine}: horizontal speed {v0:F3} -> {ball.Velocity.X:F3} m/s over 11 frames ({ratio:F4} of it)");
+            Assert.InRange(ball.Velocity.X / v0, expected / 5f - 0.01f, expected / 5f + 0.01f);
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
 }

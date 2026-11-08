@@ -381,7 +381,8 @@ public class BodyStateTests
     public void Forces_ClearedAfterStep()
     {
         using ErrorLog log = new ErrorLog();
-        BSScene scene = RapierTestScene.Create();
+        // Undamped, so a velocity left alone stays exactly the same (Rapier's default damping is ubODE's).
+        BSScene scene = RapierTestScene.Create(new Dictionary<string, string> { { "LinearDamping", "0" }, { "AngularDamping", "0" } });
         try
         {
             AddBox(scene, 560, new Vector3(128f, 128f, 100f), physical: true);

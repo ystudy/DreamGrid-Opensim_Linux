@@ -436,6 +436,12 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         // terrain and 0.6 on wood, where the product gave 0.18 and 0.36 and the box slid down a 20 degree hill.
         public override bool FrictionCombineGeometric { get { return true; } }
 
+        // And slow down like ubODE's: ubODE damps every body by 0.2% of its linear and 0.05% of its angular speed each
+        // 0.02 s step (ODEPrim, BodySetDamping(0.002, 0.0005)), 1 - 0.998^50 = 9.5% and 1 - 0.9995^50 = 2.5% a second.
+        // With none, a pushed ball rolled on for good.
+        public override float DefaultLinearDamping { get { return 0.0953f; } }
+        public override float DefaultAngularDamping { get { return 0.0247f; } }
+
         // 50 walking avatars step 18% faster as capsules than as boxes (Speed Step 2, standalone).
         public override bool CapsuleAvatars { get { return true; } }
 
