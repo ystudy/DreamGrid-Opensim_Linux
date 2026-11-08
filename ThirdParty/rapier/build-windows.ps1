@@ -35,6 +35,17 @@ function Invoke-Native([string] $exe, [string[]] $arguments) {
     if ($LASTEXITCODE -ne 0) { throw "$exe $($arguments -join ' ') exited with $LASTEXITCODE" }
 }
 
+# Runs $block with these environment variables set ($null: unset), then puts back the caller's values.
+function Invoke-WithEnv([hashtable] $vars, [scriptblock] $block) {
+    $saved = @{}
+    foreach ($k in $vars.Keys) {
+        $saved[$k] = [Environment]::GetEnvironmentVariable($k, 'Process')
+        [Environment]::SetEnvironmentVariable($k, $vars[$k], 'Process')
+    }
+    try { & $block }
+    finally { foreach ($k in $saved.Keys) { [Environment]::SetEnvironmentVariable($k, $saved[$k], 'Process') } }
+}
+
 $work = Join-Path ([System.IO.Path]::GetTempPath()) ("rapier-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $work | Out-Null
 try {
@@ -52,7 +63,7 @@ try {
         # Rapier has no Cargo.lock; this folder's one fixes every dependency version.
         Copy-Item -LiteralPath (Join-Path $here 'Cargo.lock') -Destination 'Cargo.lock'
 
-        # The patched Parry, outside the Rapier checkout (git apply works relative to an enclosing repository).
+        # The patched Parry, outside the Rapier checkout (inside a git work tree, git apply would skip the file).
         $version = $source.PARRY_VERSION
         $crate = Join-Path $work 'parry3d.crate'
         Invoke-WebRequest -UseBasicParsing -Uri "https://static.crates.io/crates/parry3d/parry3d-$version.crate" -OutFile $crate
@@ -69,17 +80,36 @@ try {
             try { Invoke-Native git @('apply', '--verbose', $patch) }
             catch { throw "patches/parry3d-$version-edge-codes.patch does not apply to parry3d $version`: $_" }
         } finally { Pop-Location }
+        if (-not (Select-String -LiteralPath (Join-Path $parry 'src/shape/trimesh.rs') -Pattern 'EDGE-CODES PATCH' -SimpleMatch -Quiet)) {
+            throw "git apply reported success but $parry\src\shape\trimesh.rs is not patched."
+        }
         $patchParry = "patch.crates-io.parry3d.path='$($parry -replace '\\', '/')'"
-        $env:CARGO_TARGET_DIR = Join-Path $work 'edge-codes-test'
-        try {
-            Invoke-Native cargo @("+$($source.RUST_TOOLCHAIN)", 'test', '--release', '--locked',
-                '--manifest-path', (Join-Path $here 'edge-codes-test/Cargo.toml'), '--config', $patchParry)
-        } finally { Remove-Item Env:CARGO_TARGET_DIR }
 
-        $env:RUSTFLAGS = '-C target-feature=+crt-static'
+        # Every test in the file must have run and passed: a run of no tests also exits 0.
+        $testLog = Join-Path $work 'test.log'
+        Invoke-WithEnv @{ CARGO_TARGET_DIR = (Join-Path $work 'edge-codes-test') } {
+            $ErrorActionPreference = 'Continue'
+            & cargo "+$($source.RUST_TOOLCHAIN)" test --release --locked --manifest-path (Join-Path $here 'edge-codes-test/Cargo.toml') `
+                --config $patchParry *> $testLog
+            if ($LASTEXITCODE -ne 0) { Get-Content -LiteralPath $testLog -Tail 60 | Write-Host; throw "edge-codes-test failed ($LASTEXITCODE)." }
+        }
+        $expected = @(Select-String -LiteralPath (Join-Path $here 'edge-codes-test/tests/edge_codes.rs') -Pattern '^#\[test\]').Count
+        $passed = @(Select-String -LiteralPath $testLog -Pattern '^test .* \.\.\. ok$').Count
+        if ($expected -eq 0 -or $passed -ne $expected) {
+            Get-Content -LiteralPath $testLog -Tail 60 | Write-Host
+            throw "edge-codes-test: $passed of $expected tests passed."
+        }
+        Write-Host "edge-codes-test: $passed of $expected tests passed"
+
+        # Rust records the source paths of dependencies in the library (panic messages). Mapping the build directory
+        # and Cargo's home to fixed names keeps the user's and the temporary directory's names out of the DLL.
+        $cargoHome = if ($env:CARGO_HOME) { $env:CARGO_HOME } else { Join-Path $env:USERPROFILE '.cargo' }
+        $rustFlags = @('-C', 'target-feature=+crt-static', "--remap-path-prefix=$work=/build", "--remap-path-prefix=$cargoHome=/cargo")
         $cargoArgs = @("+$($source.RUST_TOOLCHAIN)", 'build', '--release', '--locked', '--config', $patchParry, '--package', $source.RAPIER_FFI_PACKAGE, '--target', 'x86_64-pc-windows-msvc')
         if ($Parallel) { $cargoArgs += @('--features', 'parallel') }
-        Invoke-Native cargo $cargoArgs
+        Invoke-WithEnv @{ CARGO_ENCODED_RUSTFLAGS = ($rustFlags -join [char]0x1f); RUSTFLAGS = $null; CARGO_TARGET_DIR = (Join-Path $src 'target') } {
+            Invoke-Native cargo $cargoArgs
+        }
     } finally { Pop-Location }
 
     $dll = Join-Path $src 'target/x86_64-pc-windows-msvc/release/rapier3d_ffi.dll'

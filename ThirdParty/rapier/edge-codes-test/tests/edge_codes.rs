@@ -5,6 +5,7 @@
 // merge vertices the same way, so triangle i is the same triangle in both, and
 // `triangle_normal_constraints(i)` (what contact generation reads) is compared between them.
 use parry3d::math::{Pose, Vector};
+use parry3d::query::details::NormalConstraints;
 use parry3d::shape::{TriMesh, TriMeshFlags, TrianglePseudoNormals};
 use std::f32::consts::PI;
 
@@ -236,4 +237,125 @@ fn codes_follow_transforms_scaling_and_reversal() {
     let mut reversed_ref = reference(&m);
     reversed_ref.reverse();
     compare(&reversed, &reversed_ref, 90.0);
+}
+
+#[test]
+fn set_vertices_recomputes_the_codes() {
+    // Built flat (every code 0), then bent in place: the codes must follow the new shape.
+    let flat = fix(&tiles(10, |_, _| 0.0));
+    let bent: Vec<Vector> = flat
+        .vertices()
+        .iter()
+        .map(|p| Vector::new(p.x, p.y, 0.3 * (p.x * 0.6).sin() + 0.2 * (p.y * 0.5).cos()))
+        .collect();
+    let mut moved = flat.clone();
+    moved.set_vertices(&bent);
+    let fresh = (bent, flat.indices().to_vec());
+    let worst = compare(&moved, &reference(&fresh), 90.0);
+    assert!(worst > 0.0, "the bent mesh should have non-zero edge angles");
+}
+
+#[test]
+fn two_sided_meshes_match_parry() {
+    let m = tiles(12, |x, y| 0.3 * (x * 0.5).sin() + 0.2 * (y * 0.4).cos());
+    let flags = TriMeshFlags::FIX_INTERNAL_EDGES_TWO_SIDED;
+    let codes = TriMesh::with_flags(m.0.clone(), m.1.clone(), flags).unwrap();
+    let full = TriMesh::with_flags(m.0.clone(), m.1.clone(), flags | TriMeshFlags::ORIENTED).unwrap();
+    compare(&codes, &full, 90.0);
+    // Directions from behind the triangles are kept and mirrored, the same way in both.
+    for i in 0..codes.num_triangles() as u32 {
+        let (c, f) = (codes.triangle_normal_constraints(i).unwrap(), full.triangle_normal_constraints(i).unwrap());
+        assert!(c.two_sided && f.two_sided);
+        for d in [-c.face, (-c.face + Vector::X * 0.3).normalize(), (-c.face - Vector::Y * 0.6).normalize()] {
+            let (pc, pf) = (c.project_local_normal(d), f.project_local_normal(d));
+            assert_eq!(pc.is_some(), pf.is_some(), "triangle {i}: kept in one build only");
+            if let (Some(pc), Some(pf)) = (pc, pf) {
+                // A direction outside the cone comes back reflected about an adjusted pseudo-normal, which magnifies
+                // the stored angle's error (at most 0.088 degrees); 0.7 degrees is the worst seen here.
+                assert!(angle_deg(pc, pf) < 1.5, "triangle {i}: back directions {} degrees apart", angle_deg(pc, pf));
+            }
+        }
+    }
+}
+
+#[test]
+fn non_coplanar_slivers_on_a_crease_match_parry() {
+    // A 30-degree ridge along x = 4, with needle triangles standing on its crease edges: each has a real normal (it
+    // leans 1 mm off the crease into the other face's plane), two very short edges, and one crease edge shared with
+    // the big triangles. A zero-area triangle lies along the crease too.
+    let slope = (15.0f32).to_radians().tan();
+    let (mut v, mut t) = tiles(8, |x, _| (4.0 - (x - 4.0).abs()) * slope);
+    for j in 0..8 {
+        let (y0, y1) = (j as f32, j as f32 + 1.0);
+        let top = 4.0 * slope;
+        let b = v.len() as u32;
+        // On the far side of the ridge, 1 mm down its slope from the crease's midpoint.
+        v.extend([
+            Vector::new(4.0, y0, top),
+            Vector::new(4.0, y1, top),
+            Vector::new(4.001, (y0 + y1) / 2.0, top - 0.001 * slope),
+            Vector::new(4.0, (y0 + y1) / 2.0, top),
+        ]);
+        t.push([b, b + 2, b + 1]);
+        t.push([b, b + 3, b + 1]); // collinear: no normal, no constraints in either build
+    }
+    let m = (v, t);
+    let codes = fix(&m);
+    compare(&codes, &reference(&m), 90.0);
+    let needles = (0..codes.num_triangles() as u32)
+        .filter(|&i| {
+            let tri = codes.triangle(i);
+            tri.normal().is_some() && (tri.b - tri.a).length().min((tri.c - tri.b).length()).min((tri.a - tri.c).length()) < 0.6
+        })
+        .count();
+    assert!(needles >= 8, "the needles should be in the mesh ({needles})");
+}
+
+#[test]
+fn non_manifold_edges() {
+    // A fin standing on a floor seam: three triangles on one edge, whose sum stays within 90 degrees of each face.
+    let (mut v, mut t) = tiles(4, |_, _| 0.0);
+    let b = v.len() as u32;
+    v.extend([Vector::new(2.0, 1.0, 0.0), Vector::new(2.0, 2.0, 0.0), Vector::new(2.0, 1.5, 0.8)]);
+    t.push([b, b + 1, b + 2]);
+    let fin = (v, t);
+    compare(&fix(&fin), &reference(&fin), 90.0);
+
+    // A flat fold (two coplanar triangles with opposite normals, n and -n, on one edge) plus a third face m on that
+    // edge, 150 degrees from n. For the triangle with normal n the edge's sum is m, more than 90 degrees from n.
+    // The codes store 90 degrees there (the clamp, see compute_edge_codes): the cone reaches every direction, so
+    // contacts at that edge are unconstrained, as without FIX_INTERNAL_EDGES. Every other edge matches Parry.
+    let a = Vector::new(0.0, 0.0, 0.0);
+    let e = Vector::new(0.0, 1.0, 0.0);
+    let m_dir = Vector::new((120.0f32).to_radians().cos(), 0.0, (120.0f32).to_radians().sin());
+    // The third face leans 30 degrees off the vertical, away from triangle 0; its normal m is 150 degrees from n.
+    let v = vec![
+        a,
+        e,
+        Vector::new(1.0, 0.5, 0.0),      // triangle 0, normal +Z
+        Vector::new(-1.0, 0.5, 0.0),     // triangle 1, coplanar, normal -Z
+        Vector::new(0.0, 0.5, 0.0) + Vector::new(m_dir.z, 0.0, -m_dir.x), // triangle 2, normal m
+    ];
+    let t = vec![[0, 2, 1], [0, 3, 1], [0, 1, 4]];
+    let m = (v, t);
+    let codes = fix(&m);
+    let full = reference(&m);
+    let n0 = codes.triangle(0).normal().unwrap();
+    assert!(angle_deg(n0, Vector::Z) < 1.0e-3);
+    let c = codes.triangle_normal_constraints(0).unwrap();
+    let f = full.triangle_normal_constraints(0).unwrap();
+    // The fold edge (vertices 1 -> 0 of triangle [0, 2, 1] is edge 2): Parry's pseudo-normal is more than 90 degrees
+    // from the face, the code's exactly 90.
+    assert!(angle_deg(f.edges[2], n0) > 100.0, "{}", angle_deg(f.edges[2], n0));
+    assert!((angle_deg(c.edges[2], n0) - 90.0).abs() < 0.2, "{}", angle_deg(c.edges[2], n0));
+    // Its other two edges are boundaries, as in Parry.
+    for k in 0..2 {
+        assert!(angle_deg(c.edges[k], f.edges[k]) <= TOLERANCE_DEG);
+    }
+    // Directions whose closest pseudo-normal is the fold edge's are kept as they are, even one from behind.
+    // (The stored pseudo-normal is +X, the side of the edge the sum m leans to.)
+    assert!(angle_deg(c.edges[2], Vector::X) < 0.2, "{:?}", c.edges[2]);
+    for d in [Vector::new(1.0, 0.0, 0.05).normalize(), Vector::new(0.8, 0.0, -0.6).normalize()] {
+        assert_eq!(c.project_local_normal(d), Some(d));
+    }
 }

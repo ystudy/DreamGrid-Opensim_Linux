@@ -75,20 +75,46 @@ per triangle. `patches/parry3d-0.31.1-edge-codes.patch` does the same for Parry,
   recomputes the edge data for the new shape.
 - Visible change: `TriMesh::pseudo_normals()` is `None` for a mesh built with `FIX_INTERNAL_EDGES` alone, so Rapier's
   debug renderer draws no pseudo-normals for it.
+- One case is not reproduced. Some edges are shared by three or more triangles, such as a flat fold (two faces with
+  opposite normals) plus a third face. There, the sum can be more than 90 degrees from a triangle's normal. The angle
+  is stored as 90 degrees, so contacts at that edge are unconstrained, as without `FIX_INTERNAL_EDGES`. Parry would
+  still narrow the cone there.
 
-The cost of the internal-edge data falls from about 42 to 4 bytes per triangle, and contacts are the same: identical on
-flat tiles, and within 0.1 degrees on curved meshes. The measurements are in
-`.superpowers/sdd/2026-11-06-rapier-opensim-integration/edge-flags-design.md`. `edge-codes-test` checks, on a tiled
-floor, a curved mesh, creases, and slivers and degenerate triangles, that `triangle_normal_constraints` gives what
-Parry's own pseudo-normals give. It also checks the memory and the transforms.
+The cost of the internal-edge data falls from about 42 to 4 bytes per triangle. Precision:
+
+- Each stored edge pseudo-normal is within 0.088 degrees (half a step) of Parry's. `edge-codes-test` allows 0.12, for
+  f32 rounding.
+- On flat tiles they are exactly Parry's.
+- In contact generation, a direction that the cone corrects is reflected, which magnifies the stored error. Across
+  many random directions on a noisy mesh, the corrected normals were within 0.17 degrees of unpatched Parry's for 99 %
+  of them.
+- Rapier runs with the patch and without it ended within 12 mm of each other over 5 s on a curved mesh,
+  and identically on flat tiles. `MeshSeamTests` in `tests/DreamGrid.Physics.Rapier.Tests` checks this on a flat and
+  a curved floor.
+
+`edge-codes-test` checks that `triangle_normal_constraints` gives what Parry's own pseudo-normals give on these
+meshes:
+
+- a tiled floor and a curved mesh;
+- creases;
+- slivers, including needles across a crease, and degenerate triangles;
+- non-manifold edges;
+- two-sided meshes.
+
+It also checks the memory, `set_vertices`, the transforms, scaling and reversal.
+
+To run it by hand (from this folder, against an extracted and patched Parry):
+`cargo +1.99.1 test --release --manifest-path edge-codes-test/Cargo.toml --config "patch.crates-io.parry3d.path='<dir>'"`.
+Without the `--config` argument, Cargo cannot resolve `parry3d`, because the lockfile records it as a patched path
+dependency.
 
 How the scripts use it:
 
 1. They download `parry3d-$PARRY_VERSION.crate` from crates.io and check its SHA-256 against `PARRY_CRATE_SHA256` in
    `source.env`.
 2. They extract it outside the Rapier checkout and `git apply` the patch. **The build stops if the patch does not
-   apply.**
-3. They run `edge-codes-test`.
+   apply**, or if `src/shape/trimesh.rs` does not have the patch's `EDGE-CODES PATCH` marker afterwards.
+3. They run `edge-codes-test`. The build stops unless every `#[test]` in the file ran and passed.
 4. They build Rapier with `--config patch.crates-io.parry3d.path=<that directory>`.
 
 `Cargo.lock` therefore has no `source` or `checksum` line for `parry3d`: Cargo records a patched path dependency that
@@ -126,11 +152,19 @@ One dependency is not from crates.io: Rapier's workspace patches `puffin_egui` (
 (github.com/tedsteen/puffin), and `Cargo.lock` pins it to rev `11771ebe00fd257aedbb545df3339ad597b1cc34`. The build is
 therefore not hermetic: it still needs network access to fetch crates.io and that git repository.
 
-The x86_64 Linux libraries rebuilt from these pins in a `debian:12` container are byte-identical to the committed ones
-(checked for the Parry-patched build by building both twice). That is why `build-linux.sh` extracts the patched Parry
-to a fixed directory, `/tmp/rapier-parry3d-<version>-<variant>`: Rust records a path dependency's source paths in the
-library. The Windows DLL
-differs from build to build in embedded paths, so compare its exports and imports, not its bytes.
+The x86_64 Linux libraries rebuilt from these pins in a `debian:12` container are byte-identical to the committed ones,
+whoever builds them. This was checked by building both twice, as root and with `HOME=/github/home` as GitHub's
+container jobs have it.
+
+Rust records the source paths of dependencies in the library, so `build-linux.sh` builds everything under one fixed
+directory, `/tmp/rapier-build-<variant>`, with Cargo's downloads there too (`CARGO_HOME`). The directory doubles as a
+lock: a second build of the same variant on one machine stops at once.
+
+`--remap-path-prefix` cannot do this job, because its text is hashed into the build. Remapping a random directory
+therefore still changes the library.
+
+The Windows DLL maps its build and Cargo directories to `/build` and `/cargo`, so it names no user or temporary path.
+It still differs from build to build, so compare its exports and imports, not its bytes.
 
 To bump Rapier or Rust: change `RAPIER_TAG`/`RAPIER_COMMIT` and/or `RUST_TOOLCHAIN`; fetch the new commit in a scratch
 checkout (same sparse set as the scripts), delete `Cargo.lock` there, run `cargo +NEWVERSION generate-lockfile`, and copy

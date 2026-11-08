@@ -1,5 +1,5 @@
 diff --git a/src/shape/trimesh.rs b/src/shape/trimesh.rs
-index 8215214..81b5945 100644
+index 8215214..a70e36a 100644
 --- a/src/shape/trimesh.rs
 +++ b/src/shape/trimesh.rs
 @@ -23,6 +23,20 @@ use crate::transformation::ear_clipping::triangulate_ear_clipping;
@@ -162,7 +162,7 @@ index 8215214..81b5945 100644
  
          // Vertices and indices changed: the topology no longer valid.
          #[cfg(feature = "dim3")]
-@@ -1493,6 +1556,65 @@ impl TriMesh {
+@@ -1493,6 +1556,71 @@ impl TriMesh {
          })
      }
  
@@ -177,11 +177,17 @@ index 8215214..81b5945 100644
 +    /// For each edge, Parry's edge pseudo-normal is the normalised sum of the normals of every
 +    /// triangle using that edge (`compute_pseudo_normals`). All those normals are orthogonal to
 +    /// the edge, so the pseudo-normal is `cos(phi) n + sin(phi) (e x n)` for the triangle's normal
-+    /// `n` and edge direction `e`: storing `phi` is enough. `phi` is clamped to [-pi/2, pi/2]
-+    /// (it only leaves that range on folded or non-manifold edges) and quantised to 10 bits;
-+    /// 0 means a flat seam or a boundary (pseudo-normal = face normal, exactly as before), and
-+    /// `EDGE_CODE_DEGENERATE` a sum that cannot be normalised (two opposite faces), for which
-+    /// the unpatched code returned no constraints for the triangle.
++    /// `n` and edge direction `e`: storing `phi` is enough. It is quantised to 10 bits over
++    /// [-pi/2, pi/2] (steps of 0.18 degrees). 0 means a flat seam or a boundary (pseudo-normal =
++    /// face normal, exactly as before), and `EDGE_CODE_DEGENERATE` a sum that cannot be normalised
++    /// (two opposite faces), for which the unpatched code returned no constraints either.
++    ///
++    /// The clamp: with two triangles on an edge, |phi| is half the angle between their normals,
++    /// so it is below pi/2. Only an edge shared by three or more triangles can have a sum more
++    /// than pi/2 from this triangle's normal (for example a flat fold, n and -n, plus a third
++    /// face). Such an edge is stored at pi/2: its cone then reaches every direction, so contacts
++    /// at that edge are left unconstrained, as without FIX_INTERNAL_EDGES, where Parry would
++    /// still narrow the cone.
 +    #[cfg(feature = "dim3")]
 +    fn compute_edge_codes(&mut self) {
 +        let mut sums: HashMap<SortedPair<u32>, Vector> = HashMap::default();
@@ -228,7 +234,7 @@ index 8215214..81b5945 100644
      fn delete_bad_topology_triangles(&mut self) {
          let mut half_edge_set = HashSet::default();
          let mut deleted_any = false;
-@@ -1991,6 +2113,36 @@ impl TriMesh {
+@@ -1991,6 +2119,36 @@ impl TriMesh {
      #[cfg(feature = "dim3")]
      pub fn triangle_normal_constraints(&self, i: u32) -> Option<TrianglePseudoNormals> {
          if self.flags.contains(TriMeshFlags::FIX_INTERNAL_EDGES) {

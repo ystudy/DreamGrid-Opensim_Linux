@@ -34,12 +34,18 @@ case $(uname -m) in
     *) echo "unsupported machine $(uname -m)" >&2; exit 1 ;;
 esac
 
-work=$(mktemp -d)
-# The patched Parry goes to a fixed directory, not into $work: Rust records the source paths of a path dependency in
-# the library (panic messages), and a random one would make every build differ. One per variant, so single and mt can
-# build at the same time; two builds of the same variant on one machine at once would collide.
-parry="/tmp/rapier-parry3d-$PARRY_VERSION-$variant"
-trap 'rm -rf "$work" "$parry"' EXIT
+# Everything the build writes goes under one fixed directory, Cargo's downloads included (CARGO_HOME), because Rust
+# records the source paths of dependencies in the library (panic messages): with fixed paths the result is the same on
+# any machine and for any user. (Mapping a random directory with --remap-path-prefix does not work: the flag's text is
+# hashed into the build, so a random path changes the library.) Creating the directory is the lock: a second build of
+# the same variant on this machine stops here instead of sharing it.
+work=/tmp/rapier-build-$variant
+mkdir "$work" 2>/dev/null \
+    || { echo "$work exists: another $variant build is running (or one was killed; then remove $work)" >&2; exit 1; }
+trap 'rm -rf "$work"' EXIT
+CARGO_HOME=$work/cargo-home
+export CARGO_HOME
+parry="$work/parry3d-$PARRY_VERSION"
 
 git -c init.defaultBranch=main init -q "$work/src"
 cd "$work/src"
@@ -53,19 +59,25 @@ echo "rapier $RAPIER_TAG $(git rev-parse HEAD) ($variant)"
 # Rapier has no Cargo.lock; this folder's one fixes every dependency version.
 cp "$here/Cargo.lock" Cargo.lock
 
-# The patched Parry, outside the Rapier checkout (git apply works relative to an enclosing repository).
+# The patched Parry, outside the Rapier checkout (inside a git work tree, git apply would skip the file).
 curl -fsSL --proto '=https' -o "$work/parry3d.crate" "https://static.crates.io/crates/parry3d/parry3d-$PARRY_VERSION.crate"
 echo "$PARRY_CRATE_SHA256  $work/parry3d.crate" | sha256sum -c -
-rm -rf "$parry"
-mkdir "$parry"
-tar xzf "$work/parry3d.crate" -C "$parry" --strip-components=1
+tar xzf "$work/parry3d.crate" -C "$work"
 (cd "$parry" && git apply --verbose "$here/patches/parry3d-$PARRY_VERSION-edge-codes.patch") \
     || { echo "patches/parry3d-$PARRY_VERSION-edge-codes.patch does not apply to parry3d $PARRY_VERSION" >&2; exit 1; }
+grep -q 'EDGE-CODES PATCH' "$parry/src/shape/trimesh.rs" \
+    || { echo "git apply reported success but $parry/src/shape/trimesh.rs is not patched" >&2; exit 1; }
 patch_parry="patch.crates-io.parry3d.path='$parry'"
+
 CARGO_TARGET_DIR="$work/edge-codes-test" cargo "+$RUST_TOOLCHAIN" test --release --locked \
     --manifest-path "$here/edge-codes-test/Cargo.toml" --config "$patch_parry" > "$work/test.log" 2>&1 \
     || { tail -60 "$work/test.log"; exit 1; }
-echo "edge-codes-test: $(grep -c '^test .* \.\.\. ok$' "$work/test.log") tests passed"
+# Every test in the file must have run and passed: a run of no tests also exits 0.
+expected=$(grep -c '^#\[test\]' "$here/edge-codes-test/tests/edge_codes.rs")
+passed=$(grep -c '^test .* \.\.\. ok$' "$work/test.log" || true)
+[ "$expected" -gt 0 ] && [ "$passed" -eq "$expected" ] \
+    || { tail -60 "$work/test.log"; echo "edge-codes-test: $passed of $expected tests passed" >&2; exit 1; }
+echo "edge-codes-test: $passed of $expected tests passed"
 
 # $features is unquoted on purpose: nothing for single, two words for mt.
 # shellcheck disable=SC2086
