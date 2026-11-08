@@ -18,6 +18,9 @@ bin/Robust.HG.ini:dreamgrid-ini-mail-or-admin-password:922
 ThirdParty/rapier/source.env:generic-api-key:5
 ThirdParty/rapier/Cargo.lock:generic-api-key:4056
 ThirdParty/rapier/Cargo.lock:generic-api-key:4075
+# The same two lines as first written in c7ab982c, before the edge-codes patch removed two lines above them.
+c7ab982cd8a249dcb92849681a7af074697c4f0a:ThirdParty/rapier/Cargo.lock:generic-api-key:4058
+c7ab982cd8a249dcb92849681a7af074697c4f0a:ThirdParty/rapier/Cargo.lock:generic-api-key:4077
 # Rapier library file names (librapier-x86_64.so, librapier-mt-x86_64.so) in a test, as written in 24f78b16; a later
 # commit replaced those lines, so only that commit carries them.
 24f78b16495518e39dac6707db8a10d8dea96a99:tests/DreamGrid.Physics.Rapier.Tests/LibraryChoiceTests.cs:generic-api-key:68
