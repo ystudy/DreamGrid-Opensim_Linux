@@ -360,6 +360,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS
             SetEngineDefault("LinearDamping", PE.DefaultLinearDamping);
             SetEngineDefault("AngularDamping", PE.DefaultAngularDamping);
             SetEngineDefault("PrimInertiaFromBoundingBox", PE.PrimInertiaFromBoundingBox);
+            SetEngineDefault("MeshWithoutPhysicsMeshIsConvex", PE.MeshesWithoutPhysicsMeshAreConvex);
             SetEngineDefault("AvatarAlwaysRunFactor", PE.AvatarAlwaysRunFactor);
             SetEngineDefault("AvatarRunFactorWhenFlying", PE.AvatarRunFactorWhenFlying);
 

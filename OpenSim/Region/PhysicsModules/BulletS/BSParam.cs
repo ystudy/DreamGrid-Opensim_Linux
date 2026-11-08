@@ -102,6 +102,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         public static bool ShouldUseSingleConvexHullForPrims { get; set; }
         public static bool ShouldUseGImpactShapeForPrims { get; set; }
         public static bool ShouldUseAssetHulls { get; set; }
+        public static bool MeshWithoutPhysicsMeshIsConvex { get; private set; }
 
         public static float TerrainImplementation { get; set; }
         public static int TerrainMeshMagnification { get; private set; }
@@ -467,6 +468,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                 false ),
             new ParameterDefn<bool>("ShouldUseAssetHulls", "If true, use hull if specified in the mesh asset info",
                 true ),
+            new ParameterDefn<bool>("MeshWithoutPhysicsMeshIsConvex", "Whether a static mesh whose asset has no physics mesh collides as the convex hulls in its physics_convex block, as on ubODE, instead of as its display mesh; false, or the engine's own default (Rapier: true) unless set",
+                false ),
 
             new ParameterDefn<int>("CrossingFailuresBeforeOutOfBounds", "How forgiving we are about getting into adjactent regions",
                 5 ),

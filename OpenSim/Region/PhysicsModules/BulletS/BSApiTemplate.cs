@@ -379,6 +379,11 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         // shape's own.
         public virtual bool PrimInertiaFromBoundingBox { get { return false; } }
 
+        // The engine's default for [BulletSim]MeshWithoutPhysicsMeshIsConvex: whether a static mesh prim whose asset has
+        // no physics mesh is built from the convex hulls in its physics_convex block (ubODE's and Second Life's rule)
+        // rather than as a trimesh of its display LOD. The INI value wins. Bullet keeps the display LOD.
+        public virtual bool MeshesWithoutPhysicsMeshAreConvex { get { return false; } }
+
         // Whether BSCharacter.AvatarJump divides its force by Bullet's 1/60 s step (BSScene.BulletFixedTimeStep) rather
         // than by FixedTimeStep. The force is on for every substep of the frame, so dividing by the substep length makes
         // the jump grow with the substep count; an engine whose default step is not 1/60 asks for this so its jumps

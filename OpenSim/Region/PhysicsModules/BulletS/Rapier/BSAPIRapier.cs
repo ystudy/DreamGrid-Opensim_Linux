@@ -451,6 +451,11 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         // and with it the ball rolled 28-31% faster than on ubODE.
         public override bool PrimInertiaFromBoundingBox { get { return true; } }
 
+        // And a mesh with no physics mesh collides as on ubODE: as the hulls in its asset's physics_convex block, not as
+        // its display LOD. On DragonFyre 1,184 mesh/size pairs have no physics mesh; their display LODs made about 1 M
+        // more trimesh triangles than ubODE holds, at about 149 bytes each in Rapier.
+        public override bool MeshesWithoutPhysicsMeshAreConvex { get { return true; } }
+
         // 50 walking avatars step 18% faster as capsules than as boxes (Speed Step 2, standalone).
         public override bool CapsuleAvatars { get { return true; } }
 

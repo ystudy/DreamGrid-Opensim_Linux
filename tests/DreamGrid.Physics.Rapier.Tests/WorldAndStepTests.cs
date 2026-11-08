@@ -213,12 +213,14 @@ public class WorldAndStepTests
         Assert.True(rapier.JumpUsesBulletStepLength);
         Assert.True(rapier.CapsuleAvatars);
         Assert.True(rapier.SkipsUnchangedAvatarYaw);
+        Assert.True(rapier.MeshesWithoutPhysicsMeshAreConvex);
         // BulletXNA is managed, so it can be made here; it keeps the template's defaults, as BSAPIUnman does.
         BSAPITemplate xna = new BSAPIXNA("BulletXNA", new BSScene());
         Assert.False(xna.NativeCylinderPrims);
         Assert.False(xna.JumpUsesBulletStepLength);
         Assert.False(xna.CapsuleAvatars);
         Assert.False(xna.SkipsUnchangedAvatarYaw);
+        Assert.False(xna.MeshesWithoutPhysicsMeshAreConvex);
     }
 
     [Fact]

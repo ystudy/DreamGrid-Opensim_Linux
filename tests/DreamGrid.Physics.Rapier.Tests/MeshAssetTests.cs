@@ -247,4 +247,174 @@ public class MeshAssetTests
         }
     }
 
+    // ---- Fix 2: a mesh with no physics mesh ----
+
+    // The display mesh is a cup, open at the top; the asset's physics_convex block has the bounding hull (the whole
+    // 2 x 2 x 1 box) and no decomposition, as the viewer uploads a mesh with no physics shape. Under Rapier the prim is
+    // that hull: a ray down its middle stops at the top, not at the cup's bottom, and a ball dropped on it rests on top.
+    [Fact]
+    public void MeshWithoutPhysicsMesh_IsItsBoundingHull()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = Scene();
+        try
+        {
+            Assert.True(BSParam.MeshWithoutPhysicsMeshIsConvex);
+            AddMesh(scene, 811, Asset(Cup, ("physics_convex", ConvexBlock(Corners, null))), physical: false);
+            RapierTestScene.Step(scene, 0.3f);
+
+            BSShape shape = ShapeOf(scene, 811);
+            Assert.NotEqual(BSPhysicsShapeType.SHAPE_MESH, shape.ShapeType);
+            Assert.Equal(BSPhysicsShapeType.SHAPE_HULL, shape.ShapeType);
+            Assert.Equal((int)BSPhysicsShapeType.SHAPE_HULL, scene.PE.GetShapeType(shape.physShapeInfo));
+            Assert.False(shape.physShapeInfo.isNativeShape);
+
+            RaycastHit hit = RayDown(scene, 128f, 128f);
+            Assert.True(hit.hasHit());
+            Assert.Equal(MeshTop, hit.Point.Z, 0.01f);
+
+            PhysicsActor ball = scene.AddPrimShape("ball812", PrimitiveBaseShape.CreateSphere(), new Vector3(128f, 128f, 27f),
+                                                    new Vector3(0.5f, 0.5f, 0.5f), Quaternion.Identity, true, 812);
+            RapierTestScene.Step(scene, 3f);
+            Assert.Equal(MeshTop + 0.25f, ball.Position.Z, 0.03f);
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    // When the physics_convex block has the decomposition's hulls (here two 0.4 m wide walls, at either end along X),
+    // those are used, as ubODE uses them: the gap between them is open, though the bounding hull would close it.
+    [Fact]
+    public void MeshWithoutPhysicsMesh_UsesTheDecompositionsHulls()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = Scene();
+        try
+        {
+            Vector3[] Slab(float x0, float x1) => Corners.Select(c => new Vector3(c.X < 0f ? x0 : x1, c.Y, c.Z)).ToArray();
+            OSD convex = ConvexBlock(Corners, new[] { Slab(-0.5f, -0.3f), Slab(0.3f, 0.5f) });
+            AddMesh(scene, 821, Asset(Cup, ("physics_convex", convex)), physical: false);
+            RapierTestScene.Step(scene, 0.3f);
+
+            Assert.Equal(BSPhysicsShapeType.SHAPE_HULL, ShapeOf(scene, 821).ShapeType);
+            RaycastHit gap = RayDown(scene, 128f, 128f);
+            Assert.True(gap.hasHit());
+            Assert.Equal(GroundZ, gap.Point.Z, 0.02f);
+            RaycastHit wall = RayDown(scene, 128.8f, 128f);
+            Assert.True(wall.hasHit());
+            Assert.Equal(MeshTop, wall.Point.Z, 0.01f);
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    // The same kind of asset with a physics mesh (a cup, under a closed-box display mesh) is still a trimesh of the
+    // physics mesh: the ray goes into the cup.
+    [Fact]
+    public void MeshWithPhysicsMesh_IsStillItsPhysicsMesh()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = Scene();
+        try
+        {
+            byte[] asset = Asset(Box, ("physics_mesh", MeshBlock(Cup)), ("physics_convex", ConvexBlock(Corners, null)));
+            AddMesh(scene, 831, asset, physical: false);
+            RapierTestScene.Step(scene, 0.3f);
+
+            Assert.Equal(BSPhysicsShapeType.SHAPE_MESH, ShapeOf(scene, 831).ShapeType);
+            RaycastHit hit = RayDown(scene, 128f, 128f);
+            Assert.True(hit.hasHit());
+            Assert.Equal(MeshBottom, hit.Point.Z, 0.01f);
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    // MeshWithoutPhysicsMeshIsConvex=false in the INI wins over Rapier's default: the display mesh is the trimesh again.
+    [Fact]
+    public void MeshWithoutPhysicsMesh_IniSwitchOff_IsTheDisplayMeshAgain()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = Scene(new Dictionary<string, string> { { "MeshWithoutPhysicsMeshIsConvex", "false" } });
+        try
+        {
+            Assert.False(BSParam.MeshWithoutPhysicsMeshIsConvex);
+            AddMesh(scene, 841, Asset(Cup, ("physics_convex", ConvexBlock(Corners, null))), physical: false);
+            RapierTestScene.Step(scene, 0.3f);
+
+            Assert.Equal(BSPhysicsShapeType.SHAPE_MESH, ShapeOf(scene, 841).ShapeType);
+            RaycastHit hit = RayDown(scene, 128f, 128f);
+            Assert.True(hit.hasHit());
+            Assert.Equal(MeshBottom, hit.Point.Z, 0.01f);
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    // With no physics_convex block, one with no hull in it, or one whose only hull is flat (no volume, as for a floor
+    // mesh), there is nothing convex to use: the display mesh stays.
+    [Theory]
+    [InlineData("no block")]
+    [InlineData("no hull")]
+    [InlineData("flat hull")]
+    public void MeshWithoutPhysicsMesh_NoUsableHull_KeepsTheDisplayMesh(string convex)
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = Scene();
+        try
+        {
+            byte[] asset = convex switch
+            {
+                "no hull" => Asset(Cup, ("physics_convex", ConvexBlock(null, null))),
+                "flat hull" => Asset(Cup, ("physics_convex", ConvexBlock(Corners.Take(4).ToArray(), null))),
+                _ => Asset(Cup),
+            };
+            AddMesh(scene, 851, asset, physical: false);
+            RapierTestScene.Step(scene, 0.3f);
+
+            Assert.Equal(BSPhysicsShapeType.SHAPE_MESH, ShapeOf(scene, 851).ShapeType);
+            RaycastHit hit = RayDown(scene, 128f, 128f);
+            Assert.True(hit.hasHit());
+            Assert.Equal(MeshBottom, hit.Point.Z, 0.01f);
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    // Bullet is unchanged: the display mesh is its trimesh.
+    [Fact]
+    public void MeshWithoutPhysicsMesh_OnBullet_IsTheDisplayMesh()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = Scene(engine: "BulletUnmanaged");
+        try
+        {
+            Assert.False(BSParam.MeshWithoutPhysicsMeshIsConvex);
+            AddMesh(scene, 861, Asset(Cup, ("physics_convex", ConvexBlock(Corners, null))), physical: false);
+            RapierTestScene.Step(scene, 0.3f);
+
+            Assert.IsType<BSShapeMesh>(ShapeOf(scene, 861));
+            Assert.Equal(BSPhysicsShapeType.SHAPE_MESH, ShapeOf(scene, 861).ShapeType);
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
 }

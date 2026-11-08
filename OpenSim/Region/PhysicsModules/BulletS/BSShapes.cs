@@ -552,23 +552,123 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                                 {
                                     shapeInfo.Vertices = vC;
                                     return physicsScene.PE.CreateMeshShape(w, iC, i, vC, v);
-                                });
+                                },
+                                BSParam.MeshWithoutPhysicsMeshIsConvex);
+        }
+
+        // The convex hulls a mesh asset with no physics mesh collides as, from its physics_convex block, scaled to the
+        // prim; null if it has none. As on ubODE (ubOdeMeshing's GenerateCoordsAndFacesFromPrimMeshData, for a prim
+        // that is not asked to be convex): the decomposition's hulls (HullList and Positions) when there are any, else
+        // the one bounding hull (BoundingVerts). A hull with no volume (its points on one plane, as for a flat mesh such as
+        // a floor) is left out, so a flat mesh keeps its display LOD's trimesh.
+        // Call with the mesher locked, right after the uncached CreateMesh that parsed the asset.
+        private static List<List<OMV.Vector3>> AssetConvexHulls(BSScene physicsScene, OMV.Vector3 size)
+        {
+            Meshmerizer realMesher = physicsScene.mesher as Meshmerizer;
+            if (realMesher == null || !realMesher.LastMeshUsedDisplayLod)
+                return null;
+            List<List<OMV.Vector3>> hulls = realMesher.GetConvexHulls(size);
+            if (hulls != null)
+                hulls = hulls.FindAll(HasVolume);
+            if (hulls == null || hulls.Count == 0)
+            {
+                List<OMV.Vector3> bounding = realMesher.GetBoundingHull(size);
+                hulls = (bounding != null && HasVolume(bounding)) ? new List<List<OMV.Vector3>> { bounding } : null;
+            }
+            return hulls;
+        }
+
+        // Whether the points span a volume: some point is more than 0.1 mm off the plane through three others.
+        private static bool HasVolume(List<OMV.Vector3> points)
+        {
+            const float tolerance = 0.0001f;
+            if (points.Count < 4)
+                return false;
+            OMV.Vector3 a = points[0];
+            OMV.Vector3 b = a;
+            float far = 0f;
+            foreach (OMV.Vector3 p in points)
+            {
+                float d = OMV.Vector3.DistanceSquared(a, p);
+                if (d > far)
+                {
+                    far = d;
+                    b = p;
+                }
+            }
+            if (far < tolerance * tolerance)
+                return false;
+            // The point farthest from the line a-b gives the plane's normal.
+            OMV.Vector3 normal = OMV.Vector3.Zero;
+            float area = 0f;
+            foreach (OMV.Vector3 p in points)
+            {
+                OMV.Vector3 c = OMV.Vector3.Cross(b - a, p - a);
+                float l = c.LengthSquared();
+                if (l > area)
+                {
+                    area = l;
+                    normal = c;
+                }
+            }
+            if (area < far * tolerance * tolerance)
+                return false;
+            normal = OMV.Vector3.Normalize(normal);
+            foreach (OMV.Vector3 p in points)
+            {
+                if (Math.Abs(OMV.Vector3.Dot(normal, p - a)) > tolerance)
+                    return true;
+            }
+            return false;
+        }
+
+        // A hull list shape (BSAPITemplate.CreateHullShape's layout: the hull count, then for each hull its vertex count,
+        // a zero centroid and its vertices), as BSShapeHull builds one from asset hulls.
+        private static BulletShape CreateHullListShape(BSScene physicsScene, List<List<OMV.Vector3>> hulls)
+        {
+            int totalVertices = 1;
+            foreach (List<OMV.Vector3> hullVerts in hulls)
+                totalVertices += 4 + hullVerts.Count * 3;
+            float[] convHulls = new float[totalVertices];
+            convHulls[0] = (float)hulls.Count;
+            int jj = 1;
+            foreach (List<OMV.Vector3> hullVerts in hulls)
+            {
+                convHulls[jj] = hullVerts.Count;     // the centroid (jj + 1 to jj + 3) stays zero
+                jj += 4;
+                foreach (OMV.Vector3 oneVert in hullVerts)
+                {
+                    convHulls[jj + 0] = oneVert.X;
+                    convHulls[jj + 1] = oneVert.Y;
+                    convHulls[jj + 2] = oneVert.Z;
+                    jj += 3;
+                }
+            }
+            return physicsScene.PE.CreateHullShape(physicsScene.World, hulls.Count, convHulls);
         }
 
         // Code that uses the mesher to create the index/vertices info for a trimesh shape.
         // This is used by the passed 'makeShape' call to create the Bullet mesh shape.
         // The actual build call is passed so this logic can be used by several of the shapes that use a
         //     simple mesh as their base shape.
+        // With convexIfNoPhysicsMesh, a mesh asset with no physics mesh becomes the convex hulls of its physics_convex
+        //     block (AssetConvexHulls) instead of 'makeShape' of its display LOD, which stays the fallback.
         public static BulletShape CreatePhysicalMeshShape(BSScene physicsScene, BSPhysObject prim, System.UInt64 newMeshKey,
-                                                PrimitiveBaseShape pbs, OMV.Vector3 size, float lod, CreateShapeCall makeShape)
+                                                PrimitiveBaseShape pbs, OMV.Vector3 size, float lod, CreateShapeCall makeShape,
+                                                bool convexIfNoPhysicsMesh = false)
         {
             BulletShape newShape = new BulletShape();
 
             IMesh meshData = null;
+            List<List<OMV.Vector3>> assetHulls = null;
             lock (physicsScene.mesher)
             {
                 // Not physical: a tiny prim (under the mesher's MinSizeForComplexMesh on every axis) gets its bounding box.
                 meshData = CreateMeshNotCached(physicsScene, prim, pbs, size, lod, false /* isPhysical */);
+
+                if (meshData != null && convexIfNoPhysicsMesh
+                        && pbs.SculptEntry && pbs.SculptType == (byte)OMV.SculptType.Mesh)
+                    assetHulls = AssetConvexHulls(physicsScene, size);
             }
 
             if (meshData != null)
@@ -578,6 +678,20 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                     // Release the fetched asset data once it has been used.
                     pbs.SculptData = Array.Empty<byte>();
                     prim.PrimAssetState = BSPhysObject.PrimAssetCondition.Unknown;
+                }
+
+                if (assetHulls != null)
+                {
+                    newShape = CreateHullListShape(physicsScene, assetHulls);
+                    physicsScene.DetailLog("{0},BSShapeMesh.CreatePhysicalMesh,noPhysicsMesh,assetConvex,key={1},hulls={2},shape={3}",
+                                BSScene.DetailLogZero, newMeshKey.ToString("X"), assetHulls.Count, newShape);
+                    if (newShape.HasPhysicalShape)
+                    {
+                        newShape.shapeKey = newMeshKey;
+                        return newShape;
+                    }
+                    // The hulls would not build: the display LOD's trimesh, as before.
+                    newShape = new BulletShape();
                 }
 
                 int[] indices = meshData.getIndexListAsInt();
