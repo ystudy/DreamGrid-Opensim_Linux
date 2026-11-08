@@ -247,6 +247,130 @@ public class MeshAssetTests
         }
     }
 
+    // ---- Static and physical toggles, with the asset fetched as the simulator fetches it ----
+
+    // A mesh prim whose asset is not loaded yet, as at region start: BulletS asks the scene's asset provider, here a
+    // stub that answers at once and counts the requests.
+    private static PhysicsActor AddFetchedMesh(BSScene scene, uint id, byte[] asset, bool physical, Vector3 at, List<UUID> fetches)
+    {
+        PrimitiveBaseShape pbs = PrimitiveBaseShape.CreateBox();
+        pbs.SculptEntry = true;
+        pbs.SculptType = (byte)SculptType.Mesh;
+        pbs.SculptTexture = UUID.Random();
+        pbs.Scale = MeshSize;
+        UUID assetId = pbs.SculptTexture;
+        scene.RequestAssetMethod = (requested, callback) =>
+        {
+            fetches.Add(requested);
+            AssetBase found = new AssetBase(requested, "mesh", (sbyte)AssetType.Mesh, UUID.Zero.ToString());
+            found.Data = asset;
+            callback(requested == assetId ? found : null);
+        };
+        PhysicsActor prim = scene.AddPrimShape("mesh" + id, pbs, at, pbs.Scale, Quaternion.Identity, physical, id);
+        Assert.NotNull(prim);
+        return prim;
+    }
+
+    // The display mesh is a closed box, the physics mesh a cup, and physics_convex has two 0.4 m walls at either end
+    // along X (an uploader's "Analyze"): static, the prim is the cup; physical, it is the two walls.
+    private static byte[] CupWithWallHulls()
+    {
+        Vector3[] Slab(float x0, float x1) => Corners.Select(c => new Vector3(c.X < 0f ? x0 : x1, c.Y, c.Z)).ToArray();
+        return Asset(Box, ("physics_mesh", MeshBlock(Cup)),
+                     ("physics_convex", ConvexBlock(Corners, new[] { Slab(-0.5f, -0.3f), Slab(0.3f, 0.5f) })));
+    }
+
+    // Built physical first (rezzed physical), then made static (parked): the static prim is its physics mesh again.
+    // Before, the hull built from the asset's hulls kept the asset "fetched" though the mesher had used its data, so the
+    // static mesh found no data, was declared failed and became a box for good (and so did every copy at that size).
+    [Theory]
+    [InlineData("Rapier")]
+    [InlineData("BulletUnmanaged")]
+    public void MeshBuiltPhysical_MadeStatic_IsItsPhysicsMesh(string engine)
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = Scene(engine: engine);
+        try
+        {
+            List<UUID> fetches = new List<UUID>();
+            PhysicsActor prim = AddFetchedMesh(scene, 871, CupWithWallHulls(), physical: true,
+                                               new Vector3(128f, 128f, GroundZ + 0.6f), fetches);
+            RapierTestScene.Step(scene, 2f);
+            Assert.IsType<BSShapeHull>(ShapeOf(scene, 871));
+            Assert.Equal(GroundZ + 0.5f, prim.Position.Z, 0.1f);   // Bullet adds its collision margins
+
+            prim.IsPhysical = false;
+            prim.Position = MeshAt;     // lifted off the ground, so the cup's bottom is not on it
+            RapierTestScene.Step(scene, 0.5f);
+
+            BSShape shape = ShapeOf(scene, 871);
+            Assert.False(shape.physShapeInfo.isNativeShape, $"the static prim is a {shape.ShapeType}");
+            Assert.IsType<BSShapeMesh>(shape);
+            Assert.Equal(BSPhysicsShapeType.SHAPE_MESH, shape.ShapeType);
+            Assert.Equal(2, fetches.Count);
+            if (engine == "Rapier")
+            {
+                // The ray down the middle stops on the cup's bottom (24.5), not on the ground through the walls' gap.
+                RaycastHit middle = RayDown(scene, prim.Position.X, prim.Position.Y);
+                Assert.True(middle.hasHit());
+                Assert.Equal(871u, middle.ID);
+                Assert.Equal(MeshBottom, middle.Point.Z, 0.01f);
+            }
+            Assert.DoesNotContain(log.Warnings, w => w.Contains("would not mesh"));
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.RequestAssetMethod = null;
+            scene.Dispose();
+        }
+    }
+
+    // Built static first, then made physical: the hull is not in BulletS's caches and the mesher keeps no copy, so the
+    // asset is fetched again (the prim is a box until it comes), and then the prim is the asset's hulls.
+    [Theory]
+    [InlineData("Rapier")]
+    [InlineData("BulletUnmanaged")]
+    public void MeshBuiltStatic_MadePhysical_RefetchesAndIsItsAssetsHulls(string engine)
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = Scene(engine: engine);
+        try
+        {
+            List<UUID> fetches = new List<UUID>();
+            PhysicsActor prim = AddFetchedMesh(scene, 881, CupWithWallHulls(), physical: false,
+                                               new Vector3(128f, 128f, GroundZ + 0.6f), fetches);
+            RapierTestScene.Step(scene, 0.5f);
+            Assert.IsType<BSShapeMesh>(ShapeOf(scene, 881));
+            Assert.Equal(BSPhysicsShapeType.SHAPE_MESH, ShapeOf(scene, 881).ShapeType);
+            Assert.Single(fetches);
+
+            prim.IsPhysical = true;
+            RapierTestScene.Step(scene, 2f);
+
+            Assert.Equal(2, fetches.Count);
+            BSShape shape = ShapeOf(scene, 881);
+            Assert.IsType<BSShapeHull>(shape);
+            Assert.Equal(BSPhysicsShapeType.SHAPE_HULL, shape.ShapeType);
+            Assert.Equal(GroundZ + 0.5f, prim.Position.Z, 0.1f);   // Bullet adds its collision margins
+            if (engine == "Rapier")
+            {
+                // Through the gap between the two hulls to the ground.
+                RaycastHit middle = RayDown(scene, prim.Position.X, prim.Position.Y);
+                Assert.True(middle.hasHit());
+                Assert.NotEqual(881u, middle.ID);
+                Assert.Equal(GroundZ, middle.Point.Z, 0.02f);
+            }
+            Assert.DoesNotContain(log.Warnings, w => w.Contains("would not mesh"));
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.RequestAssetMethod = null;
+            scene.Dispose();
+        }
+    }
+
     // ---- Fix 2: a mesh with no physics mesh ----
 
     // The display mesh is a cup, open at the top; the asset's physics_convex block has the bounding hull (the whole

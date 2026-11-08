@@ -225,15 +225,13 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         // Asks the mesher for a mesh it does not cache. BulletS keeps each shape it builds in its own cache (Meshes,
         // Hulls, ...), keyed as the mesher would key it, so a copy in the mesher's cache is never used and only costs
         // memory (280 MB on a 13,868-prim region). The generic Meshmerizer's 8-argument CreateMesh drops isPhysical and
-        // shouldCache and caches every mesh; its 6-argument one honours them. Another mesher gets the IMesher call.
+        // shouldCache and caches every mesh; its 6-argument one honours them. BulletS runs only with the Meshmerizer
+        // (BSScene.Initialise refuses any other [Startup]meshing).
         // Call with the mesher locked: the Meshmerizer keeps the asset hulls of the mesh it made last (GetConvexHulls).
         public static IMesh CreateMeshNotCached(BSScene physicsScene, BSPhysObject prim, PrimitiveBaseShape pbs,
                                                 OMV.Vector3 size, float lod, bool isPhysical)
         {
-            Meshmerizer realMesher = physicsScene.mesher as Meshmerizer;
-            if (realMesher != null)
-                return realMesher.CreateMesh(prim.PhysObjectName, pbs, size, lod, isPhysical, false /* shouldCache */);
-            return physicsScene.mesher.CreateMesh(prim.PhysObjectName, pbs, size, lod, isPhysical, false /* shouldCache */, false, false);
+            return ((Meshmerizer)physicsScene.mesher).CreateMesh(prim.PhysObjectName, pbs, size, lod, isPhysical, false /* shouldCache */);
         }
 
         // The creation of a mesh or hull can fail if an underlying asset is not available.
@@ -560,7 +558,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         // prim; null if it has none. As on ubODE (ubOdeMeshing's GenerateCoordsAndFacesFromPrimMeshData, for a prim
         // that is not asked to be convex): the decomposition's hulls (HullList and Positions) when there are any, else
         // the one bounding hull (BoundingVerts). A hull with no volume (its points on one plane, as for a flat mesh such as
-        // a floor) is left out, so a flat mesh keeps its display LOD's trimesh.
+        // a floor) is left out, so a flat mesh keeps its display LOD's trimesh. That differs from ubODE on purpose: ubODE
+        // keeps a 3-point hull as one triangle, and a decomposition of only flat pieces then collides as thin surfaces,
+        // where here it falls back to the bounding hull, or to the display trimesh when that is flat too (a floor stays
+        // walkable rather than becoming a zero-thickness convex).
         // Call with the mesher locked, right after the uncached CreateMesh that parsed the asset.
         private static List<List<OMV.Vector3>> AssetConvexHulls(BSScene physicsScene, OMV.Vector3 size)
         {
@@ -857,6 +858,15 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                 }
             }
 
+            // The mesher has used (and emptied) the fetched asset data, whichever hull is built from it below, so the
+            // asset is no longer 'Fetched': a later shape (the prim made static, say) fetches it again rather than
+            // declaring it failed. This was only done before the decomposition below, which a mesher cache hit hid.
+            if (meshData != null && prim.PrimAssetState == BSPhysObject.PrimAssetCondition.Fetched)
+            {
+                pbs.SculptData = Array.Empty<byte>();
+                prim.PrimAssetState = BSPhysObject.PrimAssetCondition.Unknown;
+            }
+
             // If there is hull data in the mesh asset, build the hull from that
             if (allHulls != null && BSParam.ShouldUseAssetHulls)
             {
@@ -939,13 +949,6 @@ namespace OpenSim.Region.PhysicsModule.BulletS
             // If no other hull specifications, use our HACD hull approximation.
             if (!newShape.HasPhysicalShape && meshData != null)
             {
-                if (prim.PrimAssetState == BSPhysObject.PrimAssetCondition.Fetched)
-                {
-                    // Release the fetched asset data once it has been used.
-                    pbs.SculptData = Array.Empty<byte>();
-                    prim.PrimAssetState = BSPhysObject.PrimAssetCondition.Unknown;
-                }
-
                 int[] indices = meshData.getIndexListAsInt();
                 List<OMV.Vector3> vertices = meshData.getVertexList();
 
