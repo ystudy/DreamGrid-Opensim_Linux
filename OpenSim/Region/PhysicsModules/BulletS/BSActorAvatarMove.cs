@@ -449,6 +449,9 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         private const float StepTopProbeReach = 0.01f;
         private const float StepTopProbeDepth = 0.05f;
         private const float StepTopMinNormalZ = 0.7f;   // about 45 degrees
+        private const uint StepTopRayGroup = (uint)CollisionFilterGroups.BCharacterGroup;
+        private const uint StepTopRayMask = (uint)(CollisionFilterGroups.BAllGroup
+                                    & ~(CollisionFilterGroups.BCharacterGroup | CollisionFilterGroups.BSensorTrigger));
 
         // Whether the object touched has a surface to stand on just past the touch point, no higher than the step range:
         // a ray straight down, StepTopProbeReach beyond the touch (away from the avatar), from the top of the range to
@@ -466,7 +469,9 @@ namespace OpenSim.Region.PhysicsModule.BulletS
             OMV.Vector3 to = new OMV.Vector3(probe.X, probe.Y, touch.Z - StepTopProbeDepth);
             if (from.Z <= to.Z)
                 return false;
-            RaycastHit hit = m_physicsScene.PE.RayTest2(m_physicsScene.World, from, to, 0xffff, 0xffff);
+            // The ray looks as an avatar does (so static prims, which collide only with avatars and solids, are hit) and
+            // sees neither avatars nor volume-detect sensors, which would otherwise be hit first and hide the step's top.
+            RaycastHit hit = m_physicsScene.PE.RayTest2(m_physicsScene.World, from, to, StepTopRayGroup, StepTopRayMask);
             bool walkable = hit.hasHit() && hit.ID == touchedId && hit.Normal.Z >= StepTopMinNormalZ;
             m_physicsScene.DetailLog("{0},BSCharacter.WalkUpStairs.HasWalkableTop,touched={1},from={2},hitID={3},hitNormal={4},walkable={5}",
                             m_controllingPrim.LocalID, touchedId, from, hit.ID, hit.Normal, walkable);

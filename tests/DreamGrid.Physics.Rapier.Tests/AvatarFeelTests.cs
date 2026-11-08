@@ -425,6 +425,32 @@ public class AvatarFeelTests
         Assert.Empty(log.Errors);
     }
 
+    // A volume-detect prim (a sensor: a trigger zone, a door's detector) over the edge of a 0.3 m step does not hide the
+    // step's top from the walkable-top ray: the step is still climbed.
+    [Fact]
+    public void Avatar_ClimbsAStepUnderAVolumeDetectPrim()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = MakeScene("Rapier", null);
+        try
+        {
+            AddBox(scene, StepId, new Vector3(129f, 128f, TerrainHeight + 0.15f), new Vector3(4f, 8f, 0.3f));
+            const uint sensorId = 1004;
+            AddBox(scene, sensorId, new Vector3(127.5f, 128f, TerrainHeight + 0.3f + 0.5f), new Vector3(1f, 4f, 1f));
+            scene.PhysObjects[sensorId].SetVolumeDetect(1);
+            RapierTestScene.Step(scene, 0.2f);
+            (float maxRise, _, float endX) = WalkInto(scene, 124f, 2f);
+            _output.WriteLine($"Rapier: ended at x {endX:F3}, highest {maxRise:F3} m");
+            Assert.True(endX > 127.5f, $"the avatar stopped at x {endX}, before the step");
+            Assert.InRange(maxRise, 0.3f - 0.05f, 0.3f + 0.1f);
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
     // A real 0.3 m step, 4 m deep, with the same wall standing on the ground right behind it: the step is climbed, and
     // the wall above it is not.
     [Fact]
