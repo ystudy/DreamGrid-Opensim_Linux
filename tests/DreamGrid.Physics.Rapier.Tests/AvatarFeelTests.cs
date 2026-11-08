@@ -11,9 +11,23 @@ namespace DreamGrid.Physics.Rapier.Tests;
 /// the avatar as ScenePresence does in-world: TargetVelocity once, and the viewer's body rotation set every frame (a yaw
 /// of float noise, as HandleAgentUpdate passes it while a key is held).
 ///
-/// The ubODE values are constants. They were measured on 2026-11-07 by running the same script on ubODE (ubOdeModule and
-/// its ubODEMeshmerizer, at the simulator's 0.0909 s frame) with a harness kept outside the repository; see
-/// .superpowers/sdd/2026-11-06-rapier-opensim-integration/avatar-feel-report.md. ubODE is not referenced by this project.
+/// The ubODE values are constants. They were measured on 2026-11-07 by running the same script on ubODE with a harness
+/// kept outside the repository (see .superpowers/sdd/2026-11-06-rapier-opensim-integration/avatar-feel-report.md).
+/// ubODE is not referenced by this project. To measure them again:
+/// <list type="number">
+/// <item>Add ProjectReferences to OpenSim/Region/PhysicsModules/ubOde and ubOdeMeshing to this project, and copy
+/// bin/OpenSim.Region.PhysicsModule.ubOde.dll.config beside the test assembly (a None item with CopyToOutputDirectory),
+/// so its dllmap finds lib64/ubode.dll or libubode-x86_64.so.</item>
+/// <item>Build the scene as RapierTestScene does, with [Startup] physics = ubODE and meshing = ubODEMeshmerizer, an empty
+/// [Mesh] section with MeshFileCache = false (ubMeshmerizer enables itself only with one), and an [ODEPhysicsSettings]
+/// section. Initialise, AddRegion and RegionLoaded a ubMeshmerizer, then the internal ubOdeModule (made by reflection,
+/// type OpenSim.Region.PhysicsModule.ubOde.ubOdeModule), and take the scene from
+/// scene.RequestModuleInterface&lt;PhysicsScene&gt;().</item>
+/// <item>ubODE steps by wall-clock time since its last call, not by the time passed to Simulate: before each Simulate,
+/// set the private field ODEScene.m_lastframe to Util.GetTimeStamp() minus the frame time.</item>
+/// <item>Run the scripts below unchanged (flat terrain at 21 m, the same avatar, AddAvatar, SubscribeEvents, rotation
+/// noise every frame while a key is held) and read avatar.Position and avatar.Velocity each frame.</item>
+/// </list>
 /// Bullet (BulletUnmanaged, the shipped BulletSim library, which loads here through the same dllmap) runs the same script
 /// live, to show that its behaviour has not changed.
 /// </summary>
@@ -317,18 +331,67 @@ public class AvatarFeelTests
         Assert.Empty(log.Errors);
     }
 
-    // The INI wins over Rapier's stop defaults: no time constant (so Bullet's linear 0.2 s timescale) and the 0.45 m/s
-    // threshold give back the long slide.
+    // The INI wins over Rapier's motor default on its own: no time constant brings back the linear 0.2 s timescale and
+    // its long slide, while the threshold keeps Rapier's 0.7.
     [Fact]
-    public void Avatar_StopTuningFromTheIni_WinsOverRapiersDefault()
+    public void Avatar_MotorTimeConstantFromTheIni_WinsOverRapiersDefault()
     {
         using ErrorLog log = new ErrorLog();
-        StopRun run = WalkThenStop("Rapier", new Dictionary<string, string>
-                    { { "AvatarMotorTimeConstant", "0" }, { "AvatarStopZeroThreshold", "0.45" } });
-        _output.WriteLine($"Rapier with Bullet's stop tuning: slide {run.Slide:F3} m, at rest after {run.RestSeconds:F3} s");
-        Assert.True(run.Slide > 0.25f, $"slide {run.Slide}");
-        Assert.True(run.RestSeconds > 0.3f, $"rest {run.RestSeconds}");
+        StopRun run = WalkThenStop("Rapier", new Dictionary<string, string> { { "AvatarMotorTimeConstant", "0" } });
+        _output.WriteLine($"Rapier without the time constant: slide {run.Slide:F3} m, at rest after {run.RestSeconds:F3} s; "
+                    + $"threshold {BSParam.AvatarStopZeroThreshold}");
+        Assert.True(run.Slide > 0.2f, $"slide {run.Slide}");
+        Assert.True(run.RestSeconds > 0.15f, $"rest {run.RestSeconds}");
+        Assert.Equal(0.7f, BSParam.AvatarStopZeroThreshold);
         Assert.Empty(log.Errors);
+    }
+
+    // Each Rapier avatar default, set alone in the INI, wins; the others keep Rapier's own. Values read after the scene
+    // is made (BSParam is process-wide, and the scene made last sets it).
+    [Theory]
+    [InlineData("AvatarSpeedFactor", "0.9")]
+    [InlineData("AvatarMotorTimeScale", "0.3")]
+    [InlineData("AvatarMotorTimeConstant", "0.08")]
+    [InlineData("AvatarStopTimeConstant", "0.05")]
+    [InlineData("AvatarStopZeroThreshold", "0.45")]
+    [InlineData("AvatarStepHeight", "0.7")]
+    [InlineData("AvatarAlwaysRunFactor", "1.4")]
+    [InlineData("AvatarRunFactorWhenFlying", "false")]
+    [InlineData("AvatarStepsNeedAWalkableTop", "false")]
+    public void Avatar_EachRapierDefault_LosesToTheIniOnItsOwn(string name, string value)
+    {
+        using ErrorLog log = new ErrorLog();
+        Dictionary<string, string> rapier = new Dictionary<string, string>
+        {
+            { "AvatarSpeedFactor", (1f / 1.3f).ToString("R") },
+            { "AvatarMotorTimeScale", 0.2f.ToString("R") },
+            { "AvatarMotorTimeConstant", 0.0565f.ToString("R") },
+            { "AvatarStopTimeConstant", 0.019f.ToString("R") },
+            { "AvatarStopZeroThreshold", 0.7f.ToString("R") },
+            { "AvatarStepHeight", 0.5f.ToString("R") },
+            { "AvatarAlwaysRunFactor", 1.25f.ToString("R") },
+            { "AvatarRunFactorWhenFlying", true.ToString() },
+            { "AvatarStepsNeedAWalkableTop", true.ToString() },
+        };
+        BSScene scene = RapierTestScene.Create(new Dictionary<string, string> { { name, value } });
+        try
+        {
+            foreach (KeyValuePair<string, string> kvp in rapier)
+            {
+                Assert.True(BSParam.TryGetParameter(kvp.Key, out BSParam.ParameterDefnBase defn), kvp.Key);
+                string expected = kvp.Key == name ? value : kvp.Value;
+                string actual = defn.GetValue(scene);
+                if (bool.TryParse(expected, out bool expectedBool))
+                    Assert.Equal(expectedBool, bool.Parse(actual));
+                else
+                    Assert.Equal(float.Parse(expected), float.Parse(actual), 5);
+            }
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
     }
 
     [Fact]
