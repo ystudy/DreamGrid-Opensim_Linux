@@ -441,8 +441,13 @@ namespace OpenSim.Region.PhysicsModule.BulletS
             return ret;
         }
 
-        // How far past the touch point HasWalkableTop looks for the step's top, and how level that top must be.
-        private const float StepTopProbeReach = 0.05f;
+        // How far past the touch point HasWalkableTop looks for the step's top, how far below the touch the ray goes, and
+        // how level the top must be. The reach only has to get the ray past the face, so it is small: a step as thin as
+        // 2 cm (a sill, a kerb) still has its top under the ray. A short reach cannot make a wall a step: a wall taller
+        // than the step range still has the ray start inside it, and if a wall is thinner than the reach the ray falls
+        // past it onto something else, whose ID is not the touched object's.
+        private const float StepTopProbeReach = 0.01f;
+        private const float StepTopProbeDepth = 0.05f;
         private const float StepTopMinNormalZ = 0.7f;   // about 45 degrees
 
         // Whether the object touched has a surface to stand on just past the touch point, no higher than the step range:
@@ -458,7 +463,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                 return false;
             OMV.Vector3 probe = touch + away * (StepTopProbeReach / length);
             OMV.Vector3 from = new OMV.Vector3(probe.X, probe.Y, rangeTopZ);
-            OMV.Vector3 to = new OMV.Vector3(probe.X, probe.Y, touch.Z - StepTopProbeReach);
+            OMV.Vector3 to = new OMV.Vector3(probe.X, probe.Y, touch.Z - StepTopProbeDepth);
             if (from.Z <= to.Z)
                 return false;
             RaycastHit hit = m_physicsScene.PE.RayTest2(m_physicsScene.World, from, to, 0xffff, 0xffff);

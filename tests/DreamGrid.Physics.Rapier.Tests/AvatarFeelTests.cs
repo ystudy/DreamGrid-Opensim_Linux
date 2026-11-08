@@ -382,7 +382,7 @@ public class AvatarFeelTests
 
     // A 6 m high, 2 m thick wall whose near face is at x = 110, walked into from ten distances (so the touch falls at
     // different points of the frame): it is not a step.
-    private static float WorstWallRise(string engine, int approaches)
+    private static float WorstWallRise(string engine, int approaches, float thickness = 2f)
     {
         float worst = 0f;
         for (int ii = 0; ii < approaches; ii++)
@@ -390,7 +390,7 @@ public class AvatarFeelTests
             BSScene scene = MakeScene(engine, null);
             try
             {
-                AddBox(scene, WallId, new Vector3(111f, 128f, TerrainHeight + 3f), new Vector3(2f, 20f, 6f));
+                AddBox(scene, WallId, new Vector3(110f + thickness / 2f, 128f, TerrainHeight + 3f), new Vector3(thickness, 20f, 6f));
                 (float rise, _, float endX) = WalkInto(scene, 106f + ii * 0.037f, 3f);
                 Assert.True(endX > 109f, $"the avatar stopped at x {endX}, short of the wall");
                 worst = Math.Max(worst, rise);
@@ -401,6 +401,18 @@ public class AvatarFeelTests
             }
         }
         return worst;
+    }
+
+    // A thin wall (3 cm, a glass pane or a partition) is not a step either, for all that the probe looks only 1 cm past
+    // the face.
+    [Fact]
+    public void Avatar_WalkingIntoAThinWall_DoesNotClimbIt()
+    {
+        using ErrorLog log = new ErrorLog();
+        float worst = WorstWallRise("Rapier", 5, 0.03f);
+        _output.WriteLine($"Rapier: worst rise walking into the 3 cm wall {worst:F3} m");
+        Assert.True(worst < 0.05f, $"the avatar rose {worst} m walking into the thin wall");
+        Assert.Empty(log.Errors);
     }
 
     [Fact]
@@ -446,9 +458,12 @@ public class AvatarFeelTests
     [InlineData(0.25f, false, true)]
     [InlineData(0.3f, false, true)]
     [InlineData(0.3f, true, true)]
+    // A board 0.3 m high and only 4 cm or 2 cm deep, as a door sill or a kerb made of a thin prim, is a step too.
+    [InlineData(0.3f, false, true, 0.04f)]
+    [InlineData(0.3f, false, true, 0.02f)]
     [InlineData(0.5f, false, false)]
     [InlineData(0.8f, false, false)]
-    public void Avatar_ClimbsStairsButNotLowBlocks(float height, bool cylinder, bool climbs)
+    public void Avatar_ClimbsStairsButNotLowBlocks(float height, bool cylinder, bool climbs, float depth = 2f)
     {
         using ErrorLog log = new ErrorLog();
         BSScene scene = MakeScene("Rapier", null);
@@ -456,12 +471,12 @@ public class AvatarFeelTests
         {
             PrimitiveBaseShape pbs = cylinder ? PrimitiveBaseShape.CreateCylinder() : PrimitiveBaseShape.CreateBox();
             // The cylinder is 4 m across, so its round face meets the avatar's path at x = 127 too.
-            Vector3 size = cylinder ? new Vector3(4f, 4f, height) : new Vector3(2f, 8f, height);
+            Vector3 size = cylinder ? new Vector3(4f, 4f, height) : new Vector3(depth, 8f, height);
             pbs.Scale = size;
             scene.AddPrimShape("obstacle", pbs, new Vector3(127f + size.X / 2f, 128f, TerrainHeight + height / 2f), size,
                                 Quaternion.Identity, false, StepId);
             (float maxRise, float endRise, float endX) = WalkInto(scene, 124f, 4f);
-            _output.WriteLine($"{(cylinder ? "cylinder" : "box")} {height} m: ended at x {endX:F3}, rise {endRise:F3} m, highest {maxRise:F3} m");
+            _output.WriteLine($"{(cylinder ? "cylinder" : "box")} {height} m ({size.X} m deep): ended at x {endX:F3}, rise {endRise:F3} m, highest {maxRise:F3} m");
             if (climbs)
             {
                 Assert.True(endX > 127.5f, $"the avatar stopped at x {endX}, before the step");
