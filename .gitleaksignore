@@ -16,8 +16,8 @@ bin/Robust.HG.ini:dreamgrid-ini-mail-or-admin-password:922
 2c0fcab617406f2f3436c508f3afc57d5efdc68c:bin/Robust.HG.ini:dreamgrid-ini-mail-or-admin-password:1397
 # The pinned Rapier git commit (a public commit hash) and two dependency names in Cargo.lock's lists.
 ThirdParty/rapier/source.env:generic-api-key:5
-ThirdParty/rapier/Cargo.lock:generic-api-key:4058
-ThirdParty/rapier/Cargo.lock:generic-api-key:4077
+ThirdParty/rapier/Cargo.lock:generic-api-key:4056
+ThirdParty/rapier/Cargo.lock:generic-api-key:4075
 # Rapier library file names (librapier-x86_64.so, librapier-mt-x86_64.so) in a test, as written in 24f78b16; a later
 # commit replaced those lines, so only that commit carries them.
 24f78b16495518e39dac6707db8a10d8dea96a99:tests/DreamGrid.Physics.Rapier.Tests/LibraryChoiceTests.cs:generic-api-key:68
