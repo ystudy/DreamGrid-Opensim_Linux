@@ -348,6 +348,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS
             // The engine's own avatar tuning; the INI still wins. Bullet's values are the parameters' defaults.
             SetEngineDefault("AvatarSpeedFactor", PE.AvatarSpeedFactor);
             SetEngineDefault("AvatarMotorTimeScale", PE.AvatarMotorTimeScale);
+            SetEngineDefault("AvatarMotorTimeConstant", PE.AvatarMotorTimeConstant);
+            SetEngineDefault("AvatarStopTimeConstant", PE.AvatarStopTimeConstant);
             SetEngineDefault("AvatarStopZeroThreshold", PE.AvatarStopZeroThreshold);
 
             // Enable very detailed logging.

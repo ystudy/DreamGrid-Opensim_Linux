@@ -440,10 +440,14 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         // so without this it would cover the full 4.07 and 16.39 m/s.
         public override float AvatarSpeedFactor { get { return 1f / 1.3f; } }
 
-        // And stop and start like ubODE's: at the 0.0909 s frame, a 0.11 s timescale gets 80% of the way in the first
-        // frame (ubODE 79%), and the 0.7 m/s threshold ends the stop in the next one, so a walking avatar slides 0.05 m
-        // and is at rest within one frame (ubODE: 0.06 m, one frame). Bullet's 0.2 s and 0.45 m/s slide 0.3 m in 0.36 s.
-        public override float AvatarMotorTimeScale { get { return 0.11f; } }
+        // And start and stop like ubODE's, at any frame time (the launcher offers 5 to 55 fps). Starting, the motor closes
+        // 1 - exp(-dt/0.0565 s) of the gap a frame: 80% at the default 0.0909 s frame (ubODE 79%). Stopping, the speed
+        // decays with a 0.019 s time constant and each frame moves its average, so a walking avatar slides about
+        // 3.1 m/s x 0.019 s = 0.06 m whatever the frame time; ubODE slides 0.060 m at every rate from 5 to 55 fps. The
+        // 0.7 m/s threshold ends the stop in the next frame. (Bullet's linear 0.2 s timescale and 0.45 m/s slide 0.43 m
+        // in 0.36 s at the default frame.)
+        public override float AvatarMotorTimeConstant { get { return 0.0565f; } }
+        public override float AvatarStopTimeConstant { get { return 0.019f; } }
         public override float AvatarStopZeroThreshold { get { return 0.7f; } }
 
         // A capsule touches a wall near the feet, which WalkUpStairs took for a step: walking into a wall lifted the

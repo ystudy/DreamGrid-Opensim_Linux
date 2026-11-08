@@ -372,6 +372,13 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         public virtual float AvatarMotorTimeScale { get { return 0.2f; } }
         public virtual float AvatarStopZeroThreshold { get { return 0.45f; } }
 
+        // The engine's defaults for [BulletSim]AvatarMotorTimeConstant and AvatarStopTimeConstant. A time constant above
+        // zero replaces the linear timescale with a frame-time independent approach: each frame the motor closes
+        // 1 - exp(-dt/tau) of the gap, and while stopping the frame moves the average of an exp(-t/tau_stop) decay, so
+        // the avatar starts and stops the same at any frame rate. Bullet's 0 keeps the linear timescale.
+        public virtual float AvatarMotorTimeConstant { get { return 0f; } }
+        public virtual float AvatarStopTimeConstant { get { return 0f; } }
+
         // Whether BSActorAvatarMove.WalkUpStairs takes a contact near the feet for a step only when the object has a
         // walkable top within the step height just past it (a ray down, HasWalkableTop). Without it, a wall touched near
         // the feet is a step too and the avatar is popped up it. Bullet keeps its old behaviour.

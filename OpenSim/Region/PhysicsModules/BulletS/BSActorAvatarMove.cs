@@ -185,6 +185,20 @@ namespace OpenSim.Region.PhysicsModule.BulletS
             //   from real pushing.
             // The code below uses whether the collider is static or moving to decide whether to zero motion.
     
+            // With a time constant (BSParam.AvatarMotorTimeConstant, Rapier's default), the motor closes the share
+            // 1 - exp(-dt/tau) of the gap each frame, so it feels the same at any frame time and never goes past the
+            // target. Without one (Bullet), it closes dt / AvatarMotorTimeScale of it, as it always has.
+            float stopTau = 0f;
+            OMV.Vector3 frameStartValue = m_velocityMotor.CurrentValue;
+            if (BSParam.AvatarMotorTimeConstant > 0f && timeStep > 0f)
+            {
+                bool stopping = m_velocityMotor.TargetValue == OMV.Vector3.Zero;
+                if (stopping && BSParam.AvatarStopTimeConstant > 0f)
+                    stopTau = BSParam.AvatarStopTimeConstant;
+                float tau = (stopTau > 0f) ? stopTau : BSParam.AvatarMotorTimeConstant;
+                float share = 1f - MathF.Exp(-timeStep / tau);
+                m_velocityMotor.TimeScale = timeStep / share;
+            }
             m_velocityMotor.Step(timeStep);
             m_controllingPrim.IsStationary = false;
     
@@ -256,6 +270,11 @@ namespace OpenSim.Region.PhysicsModule.BulletS
             {
                 // Supposed to be moving.
                 OMV.Vector3 stepVelocity = m_velocityMotor.CurrentValue;
+                // Braking to a stop (AvatarStopTimeConstant): the velocity decays as exp(-t/tau) through the frame, so
+                // the frame gets its average, tau (1 - exp(-dt/tau)) / dt of the start value. The slide is then about
+                // speed * tau at any frame time, as ubODE's in-step brake gives, and not the end value held for a frame.
+                if (stopTau > 0f)
+                    stepVelocity = frameStartValue * (stopTau * (1f - MathF.Exp(-timeStep / stopTau)) / timeStep);
     
                 if (m_controllingPrim.Friction != BSParam.AvatarFriction)
                 {

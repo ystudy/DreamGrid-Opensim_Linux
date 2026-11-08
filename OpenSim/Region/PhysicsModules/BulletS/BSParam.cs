@@ -143,6 +143,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         public static float AvatarAlwaysRunFactor { get; private set; }
         public static float AvatarSpeedFactor { get; private set; }
         public static float AvatarMotorTimeScale { get; private set; }
+        public static float AvatarMotorTimeConstant { get; private set; }
+        public static float AvatarStopTimeConstant { get; private set; }
         public static float AvatarDensity { get; private set; }
         public static float AvatarRestitution { get; private set; }
         public static int AvatarShape { get; private set; }
@@ -634,8 +636,12 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                 1.3f ),
             new ParameterDefn<float>("AvatarSpeedFactor", "Horizontal speed multiplier when walking or flying (not always-run); 1, or the engine's own default (Rapier: ubODE's 1/1.3) unless set",
                 1.0f ),
-            new ParameterDefn<float>("AvatarMotorTimeScale", "Seconds the avatar's velocity motor takes to close the gap to the target speed, starting and stopping; 0.2, or the engine's own default (Rapier: ubODE-like) unless set",
+            new ParameterDefn<float>("AvatarMotorTimeScale", "Seconds the avatar's velocity motor takes to close the gap to the target speed, linearly per frame; used only when AvatarMotorTimeConstant is 0 (0.2, or the engine's own default)",
                 0.2f ),
+            new ParameterDefn<float>("AvatarMotorTimeConstant", "If above 0, the avatar's velocity motor closes 1 - exp(-frame/this) of the gap each frame, the same at any frame rate, instead of using AvatarMotorTimeScale; 0, or the engine's own default (Rapier: 0.0565 s, ubODE-like) unless set",
+                0f ),
+            new ParameterDefn<float>("AvatarStopTimeConstant", "If above 0 (with AvatarMotorTimeConstant), a stopping avatar's speed decays with this time constant, so it slides about speed x this at any frame rate; 0, or the engine's own default (Rapier: 0.019 s, ubODE-like) unless set",
+                0f ),
                 // For historical reasons, density is reported  * 100
             new ParameterDefn<float>("AvatarDensity", "Density of an avatar. Changed on avatar recreation. Scaled times 100.",
                 350f) ,    // 3.5 * 100
