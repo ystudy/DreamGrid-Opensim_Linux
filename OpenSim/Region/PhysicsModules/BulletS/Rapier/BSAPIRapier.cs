@@ -435,6 +435,11 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         // SetTranslation is a teleport here: 50 walking avatars step 11% faster without the one per frame.
         public override bool SkipsUnchangedAvatarYaw { get { return true; } }
 
+        // Avatars feel like ubODE's (the region's default engine): ubODE divides the horizontal target by its
+        // av_movement_divisor_walk, 1.3, so it walks at 3.15 m/s and flies at 12.6. Rapier reports the body's own pose,
+        // so without this it would cover the full 4.07 and 16.39 m/s.
+        public override float AvatarSpeedFactor { get { return 1f / 1.3f; } }
+
         public BSAPIRapier(string paramName, BSScene physScene)
         {
             PhysicsScene = physScene;

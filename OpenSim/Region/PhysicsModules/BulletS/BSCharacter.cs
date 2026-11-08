@@ -473,6 +473,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                         if (BSParam.AvatarWalkVelocityFactor != 1f)
                             targetVel *= new OMV.Vector3(BSParam.AvatarWalkVelocityFactor, BSParam.AvatarWalkVelocityFactor, 1f);
                 }
+                // The engine's speed for walking and flying (BSAPITemplate.AvatarSpeedFactor). Horizontal only, as
+                // ubODE's divisor is, so going up and down and the jump are as they were.
+                if ((_flying || !_setAlwaysRun) && BSParam.AvatarSpeedFactor != 1f)
+                    targetVel *= new OMV.Vector3(BSParam.AvatarSpeedFactor, BSParam.AvatarSpeedFactor, 1f);
                 base.m_targetVelocity = targetVel;
     
                 if (m_moveActor != null)

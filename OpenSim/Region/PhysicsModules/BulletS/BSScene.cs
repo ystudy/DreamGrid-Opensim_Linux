@@ -101,6 +101,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         private bool m_fixedTimeStepFromIni;
         // Whether [BulletSim] set AvatarShape, so an engine's own default (capsules, PE.CapsuleAvatars) does not replace it.
         private bool m_avatarShapeFromIni;
+        // The [BulletSim] section, so an engine's own parameter defaults (SetEngineDefault) do not replace what it sets.
+        private IConfig m_bulletSimConfig;
 
         // The substep length the Rapier engine uses when the INI does not set FixedTimeStep: ubODE's 0.02 s, not
         // Bullet's 1/60 s, so a frame takes fewer substeps.
@@ -343,6 +345,9 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                 avatarShape.SetValue(this, BSShapeCollection.AvatarShapeCapsule.ToString());
             }
 
+            // The engine's own avatar tuning; the INI still wins. Bullet's values are the parameters' defaults.
+            SetEngineDefault("AvatarSpeedFactor", PE.AvatarSpeedFactor);
+
             // Enable very detailed logging.
             // By creating an empty logger when not logging, the log message invocation code
             //     can be left in and every call doesn't have to check for null.
@@ -407,6 +412,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                     BSParam.SetParameterConfigurationValues(this, pConfig);
                     m_fixedTimeStepFromIni = pConfig.Contains("FixedTimeStep");
                     m_avatarShapeFromIni = pConfig.Contains("AvatarShape");
+                    m_bulletSimConfig = pConfig;
 
                     // There are two Bullet implementations to choose from
                     BulletEngineName = pConfig.GetString("BulletEngine", "BulletUnmanaged");
@@ -457,6 +463,15 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                 }
             }
             return ret;
+        }
+
+        // Give a [BulletSim] parameter the engine's own default (a BSAPITemplate capability), unless the INI set it.
+        private void SetEngineDefault(string parmName, float value)
+        {
+            if (m_bulletSimConfig != null && m_bulletSimConfig.Contains(parmName))
+                return;
+            if (BSParam.TryGetParameter(parmName, out BSParam.ParameterDefnBase defn))
+                defn.SetValue(this, value.ToString("R"));
         }
 
         // Select the connection to the actual Bullet implementation.

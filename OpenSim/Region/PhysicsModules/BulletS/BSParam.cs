@@ -141,6 +141,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         public static float AvatarStandingFriction { get; private set; }
         public static float AvatarWalkVelocityFactor { get; private set; }
         public static float AvatarAlwaysRunFactor { get; private set; }
+        public static float AvatarSpeedFactor { get; private set; }
         public static float AvatarDensity { get; private set; }
         public static float AvatarRestitution { get; private set; }
         public static int AvatarShape { get; private set; }
@@ -630,6 +631,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                 1.0f ),
             new ParameterDefn<float>("AvatarAlwaysRunFactor", "Speed multiplier if avatar is set to always run",
                 1.3f ),
+            new ParameterDefn<float>("AvatarSpeedFactor", "Horizontal speed multiplier when walking or flying (not always-run); 1, or the engine's own default (Rapier: ubODE's 1/1.3) unless set",
+                1.0f ),
                 // For historical reasons, density is reported  * 100
             new ParameterDefn<float>("AvatarDensity", "Density of an avatar. Changed on avatar recreation. Scaled times 100.",
                 350f) ,    // 3.5 * 100

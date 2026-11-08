@@ -135,7 +135,9 @@ public class AvatarTests
             }
             float moved = avatar.Position.X - startX;
             _output.WriteLine($"moved {moved:F3} m in X, {avatar.Position.Y - startY:F3} m in Y; worst feet {worstFeet:F4} m; worst tilt {worstTilt:F4} rad");
-            Assert.InRange(moved, 4.5f - 0.7f, 4.5f + 0.7f);
+            // 1.5 m/s for 3 s, at Rapier's ubODE-like speed (BSAPITemplate.AvatarSpeedFactor, 1/1.3).
+            float expected = 1.5f * 3f * BSParam.AvatarSpeedFactor;
+            Assert.InRange(moved, expected - 0.7f, expected + 0.7f);
             Assert.InRange(worstFeet, -0.1f, 0.1f);
             Assert.InRange(avatar.Position.Y - startY, -0.1f, 0.1f);
             Assert.True(worstTilt < 0.01f, $"the avatar tipped by {worstTilt} rad");

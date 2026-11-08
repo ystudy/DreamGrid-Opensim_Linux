@@ -358,6 +358,12 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         // value it already has; an engine for which setting it is a teleport (Rapier: r3RigidBody_SetPosition) asks
         // for this. Bullet keeps setting it every time.
         public virtual bool SkipsUnchangedAvatarYaw { get { return false; } }
+
+        // The engine's default for [BulletSim]AvatarSpeedFactor, which BSCharacter multiplies the horizontal target
+        // velocity by when walking or flying (not always-run). The INI value wins. Bullet's 1 leaves it as asked: its
+        // avatar already covers about 8.7% less ground than that, because each orientation set (SetTranslation) puts it
+        // back to its interpolated pose, which trails the body.
+        public virtual float AvatarSpeedFactor { get { return 1f; } }
         
         // Initialization and simulation
         public abstract BulletWorld Initialize(Vector3 maxPosition, ConfigurationParameters parms,
