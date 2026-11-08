@@ -403,9 +403,19 @@ public class WorldAndStepTests
             BulletShape shape = api.BuildNativeShape(world, NativeShape(BSPhysicsShapeType.SHAPE_CYLINDER, new Vector3(2f, 2f, 6f)));
 
             Vector3 inertia = api.CalculateLocalInertia(shape, 12f);
-            Assert.Equal(12f * 1f / 2f, inertia.Z, 1e-2f);
-            Assert.Equal(12f * (3f + 36f) / 12f, inertia.X, 1e-2f);
-            Assert.Equal(12f * (3f + 36f) / 12f, inertia.Y, 1e-2f);
+            if (BSParam.PrimInertiaFromBoundingBox)
+            {
+                // Rapier's default gives a prim its bounding box's inertia, as ubODE does: a 2 x 2 x 6 box standing on Z.
+                Assert.Equal(12f * (4f + 4f) / 12f, inertia.Z, 1e-2f);
+                Assert.Equal(12f * (4f + 36f) / 12f, inertia.X, 1e-2f);
+                Assert.Equal(12f * (4f + 36f) / 12f, inertia.Y, 1e-2f);
+            }
+            else
+            {
+                Assert.Equal(12f * 1f / 2f, inertia.Z, 1e-2f);
+                Assert.Equal(12f * (3f + 36f) / 12f, inertia.X, 1e-2f);
+                Assert.Equal(12f * (3f + 36f) / 12f, inertia.Y, 1e-2f);
+            }
         }
         finally
         {

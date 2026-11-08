@@ -167,6 +167,19 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             if (shape.MeshVerts != null
                     && (shape.shapeType == BSPhysicsShapeType.SHAPE_MESH || shape.shapeType == BSPhysicsShapeType.SHAPE_GIMPACT))
                 return BoundingBoxInertia(shape.MeshVerts, mass);
+            // ubODE gives every prim the inertia of its bounding box ([BulletSim]PrimInertiaFromBoundingBox, Rapier's
+            // default): a ball then rolls down at 0.6 g sin(slope), as on ubODE, not a solid sphere's 5/7 g sin(slope).
+            if (BSParam.PrimInertiaFromBoundingBox)
+            {
+                RapierNative.Pose pose = new RapierNative.Pose { translation = ToNative(Vector3.Zero), rotation = ToNative(shape.LocalRot) };
+                RapierNative.Aabb box = RapierNative.r3SharedShape_ComputeAabb(shape.Shape, pose);
+                RapierNative.Check(RapierNative.r3LastStatus());
+                Vector3 size = ToVector3(box.maxs) - ToVector3(box.mins);
+                float k = mass / 12f;
+                return new Vector3(k * (size.Y * size.Y + size.Z * size.Z),
+                                   k * (size.X * size.X + size.Z * size.Z),
+                                   k * (size.X * size.X + size.Y * size.Y));
+            }
 
             RapierNative.MassProperties unit = RapierNative.r3SharedShape_MassProperties(shape.Shape, 1f);
             RapierNative.Check(RapierNative.r3LastStatus());

@@ -442,6 +442,11 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         public override float DefaultLinearDamping { get { return 0.0953f; } }
         public override float DefaultAngularDamping { get { return 0.0247f; } }
 
+        // And roll like ubODE's: ubODE gives every prim the inertia of its bounding box (ODEPrim.UpdatePrimBodyData,
+        // MassSetBoxTotal), so a 0.5 m ball rolls down at 0.6 g sin(slope); a solid sphere's inertia gave 5/7 g sin(slope),
+        // and with it the ball rolled 28-31% faster than on ubODE.
+        public override bool PrimInertiaFromBoundingBox { get { return true; } }
+
         // 50 walking avatars step 18% faster as capsules than as boxes (Speed Step 2, standalone).
         public override bool CapsuleAvatars { get { return true; } }
 

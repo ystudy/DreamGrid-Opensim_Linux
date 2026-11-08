@@ -257,6 +257,94 @@ public class ObjectFeelTests
         Assert.Empty(log.Errors);
     }
 
+    // ---- The rolling ball (symptom 2) ----
+
+    // A wood 0.5 m sphere: released 40 m up a terrain hill (rising along +X), or on flat terrain given 3 m/s along +X.
+    // Returns its speed and the distance it covered 2 s after it starts to move, and the distance and speed after 40 s.
+    private static (float speed2, float distance2, float distance40, float speed40) Ball(string engine, float slope,
+                                    Dictionary<string, string>? ini = null)
+    {
+        Dictionary<string, string> config = new Dictionary<string, string> { { "BulletEngine", engine } };
+        if (ini != null)
+            foreach (KeyValuePair<string, string> kvp in ini)
+                config[kvp.Key] = kvp.Value;
+        BSScene scene = RapierTestScene.Create(config);
+        try
+        {
+            float rad = slope * MathF.PI / 180f;
+            Vector2 dir = new Vector2(1f, 0f);
+            SetHill(scene, slope, 0f);
+            float x = slope > 0f ? 108f : 40f;
+            Vector3 normal = new Vector3(-MathF.Sin(rad), 0f, MathF.Cos(rad));
+            Vector3 start = new Vector3(x, 128.5f, Hill(x, 128.5f, MathF.Tan(rad), dir)) + normal * 0.26f;
+            PhysicsActor ball = AddPrim(scene, BoxId, PrimitiveBaseShape.CreateSphere(), start, new Vector3(0.5f, 0.5f, 0.5f),
+                                        Quaternion.Identity, true);
+            if (slope == 0f)
+            {
+                RapierTestScene.Step(scene, 0.3f);
+                start = ball.Position;
+                ball.Velocity = new Vector3(3f, 0f, 0f);
+            }
+            Watched watched = Watch(scene, ball, start, 40f);
+            int t0 = Math.Max(0, watched.Positions.FindIndex(p => Vector3.Distance(p, start) > 0.005f) - 1);
+            Vector3 from = t0 > 0 ? watched.Positions[t0] : start;
+            int i2 = t0 + (int)Math.Round(2f / RapierTestScene.FrameSeconds);
+            return (watched.Velocities[i2].Length(), Vector3.Distance(watched.Positions[i2], from), watched.Distance,
+                    watched.Velocities[watched.Velocities.Count - 1].Length());
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    // ubODE, measured as above: 2 s after it starts to roll, the ball goes 1.90 m/s on the 10 degree hill and 3.79 m/s on
+    // the 20 degree one; pushed at 3 m/s on flat ground it goes 1.57 m/s after 2 s and 24.5 m in 40 s, slowing to
+    // 0.11 m/s. ubODE gives every prim the inertia of its bounding box (ODEPrim.UpdatePrimBodyData, MassSetBoxTotal), so
+    // a ball rolls down at 0.6 g sin(slope), not a solid sphere's 5/7 g sin(slope), and damps every body by 0.2% of its
+    // linear and 0.05% of its angular speed per 0.02 s step (BodySetDamping(0.002, 0.0005)), about 9.5% and 2.5% a second.
+    private const float UbodeBallSpeed10 = 1.90f;
+    private const float UbodeBallSpeed20 = 3.79f;
+    private const float UbodePushedSpeed2 = 1.57f;
+    private const float UbodePushedDistance40 = 24.46f;
+
+    [Theory]
+    [InlineData(10f)]
+    [InlineData(20f)]
+    public void Ball_RollsDownAHillAsOnUbode(float slope)
+    {
+        using ErrorLog log = new ErrorLog();
+        float ubode = slope == 10f ? UbodeBallSpeed10 : UbodeBallSpeed20;
+        (float speed2, float distance2, _, _) = Ball("Rapier", slope);
+        _output.WriteLine($"Rapier, ball on a {slope} degree hill: {speed2:F2} m/s and {distance2:F2} m 2 s after it starts (ubODE {ubode:F2} m/s, {(speed2 / ubode - 1f) * 100f:F0}%)");
+        Assert.InRange(speed2, ubode * 0.9f, ubode * 1.1f);
+        Assert.Empty(log.Errors);
+    }
+
+    [Fact]
+    public void Ball_PushedOnFlatGround_SlowsAsOnUbode()
+    {
+        using ErrorLog log = new ErrorLog();
+        (float speed2, _, float distance40, float speed40) = Ball("Rapier", 0f);
+        _output.WriteLine($"Rapier, ball pushed at 3 m/s: {speed2:F2} m/s after 2 s, {distance40:F2} m in 40 s, then {speed40:F2} m/s (ubODE {UbodePushedSpeed2:F2}, {UbodePushedDistance40:F2} m, 0.11 m/s)");
+        Assert.InRange(speed2, UbodePushedSpeed2 * 0.9f, UbodePushedSpeed2 * 1.1f);
+        Assert.InRange(distance40, UbodePushedDistance40 * 0.8f, UbodePushedDistance40 * 1.2f);
+        Assert.True(speed40 < 0.3f, $"still rolling at {speed40} m/s after 40 s");
+        Assert.Empty(log.Errors);
+    }
+
+    // Bullet's ball is unchanged: pushed at 3 m/s it goes 2.10 m/s after 2 s and 58.1 m in 40 s (measured at 07881f6c).
+    [Fact]
+    public void Ball_OnBullet_RollsAsBefore()
+    {
+        using ErrorLog log = new ErrorLog();
+        (float speed2, _, float distance40, _) = Ball("BulletUnmanaged", 0f);
+        _output.WriteLine($"Bullet, ball pushed at 3 m/s: {speed2:F3} m/s after 2 s, {distance40:F2} m in 40 s");
+        Assert.InRange(speed2, 2.10f - 0.03f, 2.10f + 0.03f);
+        Assert.InRange(distance40, 58.06f - 1f, 58.06f + 1f);
+        Assert.Empty(log.Errors);
+    }
+
     // A body in free flight keeps ubODE's damping: thrown at 5 m/s, high above the ground, it keeps 0.998^50 = 90.5% of
     // its horizontal speed a second (ubODE's BodySetDamping(0.002, ...) per 0.02 s step). Bullet, with BulletS's
     // LinearDamping of 0, keeps it all.
@@ -287,5 +375,18 @@ public class ObjectFeelTests
         {
             scene.Dispose();
         }
+    }
+
+    // PrimInertiaFromBoundingBox=false in the INI wins over Rapier's default: the ball has a solid sphere's inertia again
+    // and rolls down the 10 degree hill faster (about 2.25 m/s with the damping).
+    [Fact]
+    public void Ball_InertiaRuleFromTheIni_WinsOverRapiersDefault()
+    {
+        using ErrorLog log = new ErrorLog();
+        (float speed2, _, _, _) = Ball("Rapier", 10f, new Dictionary<string, string> { { "PrimInertiaFromBoundingBox", "false" } });
+        _output.WriteLine($"Rapier with the sphere's own inertia: {speed2:F2} m/s 2 s after it starts");
+        Assert.True(speed2 > UbodeBallSpeed10 * 1.1f, $"the ball rolled at {speed2} m/s");
+        Assert.False(BSParam.PrimInertiaFromBoundingBox);
+        Assert.Empty(log.Errors);
     }
 }

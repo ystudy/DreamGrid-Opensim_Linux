@@ -359,6 +359,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS
             SetEngineDefault("FrictionCombineGeometric", PE.FrictionCombineGeometric);
             SetEngineDefault("LinearDamping", PE.DefaultLinearDamping);
             SetEngineDefault("AngularDamping", PE.DefaultAngularDamping);
+            SetEngineDefault("PrimInertiaFromBoundingBox", PE.PrimInertiaFromBoundingBox);
             SetEngineDefault("AvatarAlwaysRunFactor", PE.AvatarAlwaysRunFactor);
             SetEngineDefault("AvatarRunFactorWhenFlying", PE.AvatarRunFactorWhenFlying);
 

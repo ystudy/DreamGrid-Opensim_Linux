@@ -356,6 +356,11 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         public virtual float DefaultLinearDamping { get { return 0f; } }
         public virtual float DefaultAngularDamping { get { return 0f; } }
 
+        // The engine's default for [BulletSim]PrimInertiaFromBoundingBox: whether CalculateLocalInertia gives a single
+        // shape the inertia of its bounding box (ubODE's rule) rather than its own. The INI value wins. Bullet keeps the
+        // shape's own.
+        public virtual bool PrimInertiaFromBoundingBox { get { return false; } }
+
         // Whether BSCharacter.AvatarJump divides its force by Bullet's 1/60 s step (BSScene.BulletFixedTimeStep) rather
         // than by FixedTimeStep. The force is on for every substep of the frame, so dividing by the substep length makes
         // the jump grow with the substep count; an engine whose default step is not 1/60 asks for this so its jumps
