@@ -391,9 +391,16 @@ public class WorldAndStepTests
         }
     }
 
-    [Fact]
-    public void NativeCylinder_RunsAlongZ()
+    // With each inertia rule set first (BSParam is process-wide, so the test sets the rule it checks rather than reading
+    // whatever the last scene left): the cylinder's own inertia, and Rapier's default, its bounding box's.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void NativeCylinder_RunsAlongZ(bool inertiaFromBoundingBox)
     {
+        Assert.True(BSParam.TryGetParameter("PrimInertiaFromBoundingBox", out BSParam.ParameterDefnBase rule));
+        rule.SetValue(new BSScene(), inertiaFromBoundingBox.ToString());
+        Assert.Equal(inertiaFromBoundingBox, BSParam.PrimInertiaFromBoundingBox);
         BSAPIRapier api;
         BSAPIRapier.BulletWorldRapier world = NewWorld(out api);
         try
@@ -403,7 +410,7 @@ public class WorldAndStepTests
             BulletShape shape = api.BuildNativeShape(world, NativeShape(BSPhysicsShapeType.SHAPE_CYLINDER, new Vector3(2f, 2f, 6f)));
 
             Vector3 inertia = api.CalculateLocalInertia(shape, 12f);
-            if (BSParam.PrimInertiaFromBoundingBox)
+            if (inertiaFromBoundingBox)
             {
                 // Rapier's default gives a prim its bounding box's inertia, as ubODE does: a 2 x 2 x 6 box standing on Z.
                 Assert.Equal(12f * (4f + 4f) / 12f, inertia.Z, 1e-2f);

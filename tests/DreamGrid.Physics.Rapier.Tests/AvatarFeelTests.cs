@@ -445,8 +445,12 @@ public class AvatarFeelTests
 
     // Bullet, the same script (approach from x = 106) measured before the wall change (at 1d49bc91, the commit before
     // these): its box avatar climbs the wall by BSActorAvatarMove.WalkUpStairs, as it always has. The dllmap loads a
-    // different BulletSim on each platform (3.26 on Windows, 2.86 on Linux), and they climb by different amounts.
-    private static readonly float BulletWallRise = OperatingSystem.IsWindows() ? 0.4332f : 1.5412f;
+    // different BulletSim on each platform (Bullet 3.26 on Windows, 2.84 on Linux), and they climb by different amounts;
+    // the value is keyed on the loaded library's version (LoadedBullet).
+    private static float BulletWallRise
+    {
+        get { return LoadedBullet.Pick(new Dictionary<string, float> { { "1.3,3.26", 0.4332f }, { "1.0,2.84", 1.5412f } }); }
+    }
 
     private const uint WallId = 1002;
     private const uint StepId = 1003;
