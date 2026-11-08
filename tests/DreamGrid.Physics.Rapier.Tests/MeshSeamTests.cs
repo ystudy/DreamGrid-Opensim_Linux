@@ -14,8 +14,12 @@ namespace DreamGrid.Physics.Rapier.Tests;
 /// the unpatched library alike. The *_WithoutTheFix tests build the same floor without FIX_INTERNAL_EDGES and check that
 /// the thresholds do catch what the fix prevents.
 ///
-/// The scenarios and numbers come from the Rapier-only runs in
-/// .superpowers/sdd/2026-11-06-rapier-opensim-integration/edge-flags-design.md (section 4.2).
+/// On a flat floor every stored edge angle is 0, so those tests see whether the fix is on, not whether the angles are
+/// right. The *_OnACurvedMeshFloor tests run on a wavy floor, where every seam has an angle, and compare with the
+/// unpatched library's results (constants measured on 2026-11-08 with the libraries of b80d2bdf).
+///
+/// The scenarios were first run in Rapier alone (a Rust harness kept outside the repository): a flat tiled floor, a
+/// ball, a sliding box, a box on a vertex, avatars, and a wavy floor.
 /// </summary>
 public class MeshSeamTests
 {
@@ -31,8 +35,8 @@ public class MeshSeamTests
     }
 
     // Tiles of 1 m, each with its own four vertices (as meshers and sculpt maps emit them; the trimesh merges them),
-    // their top at z = 0 in the shape's frame. The body puts it at FloorZ.
-    private static void TiledFloor(out float[] vertices, out int[] indices)
+    // their top at z = 0 in the shape's frame (or at Wave(x, y) when curved). The body puts it at FloorZ.
+    private static void TiledFloor(out float[] vertices, out int[] indices, bool curved = false)
     {
         List<float> v = new List<float>();
         List<int> i = new List<int>();
@@ -43,12 +47,19 @@ public class MeshSeamTests
             {
                 int first = v.Count / 3;
                 float x0 = o + x, y0 = o + y;
-                v.AddRange(new[] { x0, y0, 0f, x0 + 1f, y0, 0f, x0 + 1f, y0 + 1f, 0f, x0, y0 + 1f, 0f });
+                foreach ((float px, float py) in new[] { (x0, y0), (x0 + 1f, y0), (x0 + 1f, y0 + 1f), (x0, y0 + 1f) })
+                    v.AddRange(new[] { px, py, curved ? Wave(px, py) : 0f });
                 i.AddRange(new[] { first, first + 1, first + 2, first, first + 2, first + 3 });
             }
         }
         vertices = v.ToArray();
         indices = i.ToArray();
+    }
+
+    // The wavy floor: about +-0.3 m, so seams bend by a few degrees each, convex and concave.
+    private static float Wave(float x, float y)
+    {
+        return 0.15f * (MathF.Sin(0.7f * x) + MathF.Cos(0.5f * y));
     }
 
     private static BSScene MakeScene()
@@ -63,12 +74,11 @@ public class MeshSeamTests
     }
 
     // The tiled floor as a static body, built with the flags BulletS uses unless withFix is false.
-    private static BulletBody Floor(BSScene scene, float friction, bool withFix = true)
+    private static BulletBody Floor(BSScene scene, float friction, bool withFix = true, bool curved = false)
     {
-        TiledFloor(out float[] vertices, out int[] indices);
-        uint saved = BSAPIRapier.TrimeshFlags;
+        TiledFloor(out float[] vertices, out int[] indices, curved);
         if (!withFix)
-            BSAPIRapier.TrimeshFlags = RapierNative.TrimeshMergeDuplicateVertices;
+            BSAPIRapier.TrimeshFlagsOverrideForTests = RapierNative.TrimeshMergeDuplicateVertices;
         BulletShape mesh;
         try
         {
@@ -76,7 +86,7 @@ public class MeshSeamTests
         }
         finally
         {
-            BSAPIRapier.TrimeshFlags = saved;
+            BSAPIRapier.TrimeshFlagsOverrideForTests = null;
         }
         Assert.True(mesh.HasPhysicalShape);
         BulletBody body = scene.PE.CreateBodyWithDefaultMotionState(mesh, 9000, new Vector3(128f, 128f, FloorZ), Quaternion.Identity);
@@ -132,19 +142,30 @@ public class MeshSeamTests
     private void Report(string what, Run run)
     {
         _output.WriteLine($"{what}: max |vz| {run.MaxVz:F4} m/s, max rise {run.MaxRise:F4} m, max |w| {run.MaxSpin:F4} rad/s, "
-                          + $"moved {Vector3.Distance(run.Start, run.End):F3} m");
+                          + $"moved {Vector3.Distance(run.Start, run.End):F3} m, end ({run.End.X:F4}, {run.End.Y:F4}, {run.End.Z:F4})");
+    }
+
+    // Where the scenarios start: over the floor's south-west part, a little above the curved floor's highest point.
+    private static Vector3 StartAt(float aboveFloor, bool curved)
+    {
+        return new Vector3(117.3f, 120.37f, FloorZ + aboveFloor + (curved ? 0.35f : 0f));
+    }
+
+    private static string Name(string what, bool withFix, bool curved)
+    {
+        return what + (curved ? ", curved floor" : "") + (withFix ? "" : ", without the fix");
     }
 
     // A ball of 0.5 m radius rolling diagonally across the seams at 5 m/s.
-    private Run RollBall(bool withFix)
+    private Run RollBall(bool withFix, bool curved = false)
     {
         BSScene scene = MakeScene();
         try
         {
-            Floor(scene, 0.5f, withFix);
-            BulletBody ball = Dynamic(scene, BSPhysicsShapeType.SHAPE_SPHERE, Vector3.One, new Vector3(117.3f, 120.37f, FloorZ + 0.5f), 0.5f);
+            Floor(scene, 0.5f, withFix, curved);
+            BulletBody ball = Dynamic(scene, BSPhysicsShapeType.SHAPE_SPHERE, Vector3.One, StartAt(0.5f, curved), 0.5f);
             Run run = Follow(scene, ball, new Vector3(5f, 1.7f, 0f), 3f);
-            Report(withFix ? "ball" : "ball, without the fix", run);
+            Report(Name("ball", withFix, curved), run);
             return run;
         }
         finally
@@ -154,15 +175,15 @@ public class MeshSeamTests
     }
 
     // A 1 x 1 x 0.5 m box sliding diagonally across the seams at 6 m/s, friction 0.1.
-    private Run SlideBox(bool withFix)
+    private Run SlideBox(bool withFix, bool curved = false)
     {
         BSScene scene = MakeScene();
         try
         {
-            Floor(scene, 0.1f, withFix);
-            BulletBody box = Dynamic(scene, BSPhysicsShapeType.SHAPE_BOX, new Vector3(1f, 1f, 0.5f), new Vector3(117.3f, 120.37f, FloorZ + 0.25f), 0.1f);
+            Floor(scene, 0.1f, withFix, curved);
+            BulletBody box = Dynamic(scene, BSPhysicsShapeType.SHAPE_BOX, new Vector3(1f, 1f, 0.5f), StartAt(0.25f, curved), 0.1f);
             Run run = Follow(scene, box, new Vector3(6f, 2.1f, 0f), 3f);
-            Report(withFix ? "box" : "box, without the fix", run);
+            Report(Name("box", withFix, curved), run);
             return run;
         }
         finally
@@ -200,14 +221,18 @@ public class MeshSeamTests
         // The same runs on a floor built without FIX_INTERNAL_EDGES fail the thresholds of the other tests: they can see
         // catching. Measured: the ball hops at 0.55 m/s, the box rises 9 cm and spins at 3.9 rad/s, the avatar hops at
         // 0.89 m/s (0.08, 0.0006 and 0 with the fix).
+        using ErrorLog log = new ErrorLog();
         Run ball = RollBall(false);
         Assert.True(ball.MaxVz >= 0.3f || ball.MaxRise >= 0.01f, $"the ball did not hop: max |vz| {ball.MaxVz}, rise {ball.MaxRise}");
         Run box = SlideBox(false);
         Assert.True(box.MaxSpin >= 0.1f || box.MaxRise >= 0.01f, $"the box did not catch: max |w| {box.MaxSpin}, rise {box.MaxRise}");
         (float maxVz, float zRange, _) = Walk(false);
         Assert.True(maxVz >= 0.1f || zRange >= 0.01f, $"the avatar did not hop: max |vz| {maxVz}, height range {zRange}");
+        Assert.Empty(log.Errors);
     }
 
+    // A resting check only: in Rapier alone the box also stays still on a floor without the fix, so this test guards
+    // against a regression (a box creeping or turning at rest) and does not tell the fix's builds apart.
     [Fact]
     public void Box_RestingOnASeamVertex_StaysPut()
     {
@@ -281,6 +306,50 @@ public class MeshSeamTests
         Assert.True(zRange < 0.01f, $"the avatar's height varied by {zRange} m");
         // ubODE's walking speed is 3.149 m/s along a 4.096 m/s target (AvatarFeelTests); this target is a little longer.
         Assert.True(speed > 3f, $"the avatar slowed to {speed} m/s");
+        Assert.Empty(log.Errors);
+    }
+
+    // The unpatched library on the curved floor (b80d2bdf's libraries, Windows and Linux alike): where the ball and the
+    // box end after 3 s, and the box's largest spin. The thresholds below were set by also running a deliberately broken
+    // patch (the edge angle's sign flipped, or doubled) through these tests:
+    //   patched:      ball 3 mm off, box 6.5 cm off, box spin -9 %
+    //   wrong sign:   ball 21 mm off, box 26 cm off, box spin -27 %
+    //   doubled:      ball 25 mm off, box 13 cm off, box spin -28 %
+    // so a wrong angle fails the ball's 1 cm and the spin's 15 %, and the box's 10 cm in both cases tried.
+    private static readonly Vector3 UnpatchedBallEnd = new Vector3(125.1920f, 123.9518f, 50.3012f);
+    private static readonly Vector3 UnpatchedBoxEnd = new Vector3(130.3282f, 124.9736f, 50.4054f);
+    private const float UnpatchedBoxSpin = 1.0967f;
+
+    [Fact]
+    public void Ball_RollsOnACurvedMeshFloor_AsWithParrysOwnPseudoNormals()
+    {
+        using ErrorLog log = new ErrorLog();
+        Run run = RollBall(true, curved: true);
+        float off = Vector3.Distance(run.End, UnpatchedBallEnd);
+        Assert.True(off < 0.01f, $"the ball ended {off} m from where it did before the patch ({run.End} vs {UnpatchedBallEnd})");
+        Assert.Empty(log.Errors);
+    }
+
+    [Fact]
+    public void Box_SlidesOnACurvedMeshFloor_AsWithParrysOwnPseudoNormals()
+    {
+        using ErrorLog log = new ErrorLog();
+        Run run = SlideBox(true, curved: true);
+        float off = Vector3.Distance(run.End, UnpatchedBoxEnd);
+        Assert.True(off < 0.1f, $"the box ended {off} m from where it did before the patch ({run.End} vs {UnpatchedBoxEnd})");
+        Assert.InRange(run.MaxSpin, UnpatchedBoxSpin * 0.85f, UnpatchedBoxSpin * 1.15f);
+        Assert.Empty(log.Errors);
+    }
+
+    [Fact]
+    public void Ball_And_Box_OnACurvedMeshFloor_WithoutTheFix_EndElsewhere()
+    {
+        // The comparison above can see a change: without the fix the same runs end well away from those points.
+        using ErrorLog log = new ErrorLog();
+        Run ball = RollBall(false, curved: true);
+        Assert.True(Vector3.Distance(ball.End, UnpatchedBallEnd) > 0.2f, $"the ball ended at {ball.End}");
+        Run box = SlideBox(false, curved: true);
+        Assert.True(Vector3.Distance(box.End, UnpatchedBoxEnd) > 0.2f, $"the box ended at {box.End}");
         Assert.Empty(log.Errors);
     }
 }
