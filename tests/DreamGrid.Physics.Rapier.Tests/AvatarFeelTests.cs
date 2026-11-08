@@ -255,4 +255,109 @@ public class AvatarFeelTests
         Assert.InRange(run.RestSeconds, BulletRestSeconds - 0.01f, BulletRestSeconds + 0.01f);
         Assert.Empty(log.Errors);
     }
+
+    // ---- Walls and steps (symptom 3) ----
+
+    // ubODE, measured as above: walking into a wall from ten approach distances, the avatar never rose more than 4 mm.
+    private const float UbodeWallRise = 0.004f;
+
+    // Bullet, the same script (approach from x = 106) measured before the wall change (at 1d49bc91, the commit before
+    // these): its box avatar climbs the wall by BSActorAvatarMove.WalkUpStairs, as it always has. The dllmap loads a
+    // different BulletSim on each platform (3.26 on Windows, 2.86 on Linux), and they climb by different amounts.
+    private static readonly float BulletWallRise = OperatingSystem.IsWindows() ? 0.4332f : 1.5412f;
+
+    private const uint WallId = 1002;
+    private const uint StepId = 1003;
+
+    private static void AddBox(BSScene scene, uint id, Vector3 center, Vector3 size)
+    {
+        PrimitiveBaseShape pbs = PrimitiveBaseShape.CreateBox();
+        pbs.Scale = size;
+        scene.AddPrimShape("box" + id, pbs, center, size, Quaternion.Identity, false, id);
+    }
+
+    // Walk along +X from startX for the given time with the key held. Returns the highest rise of the avatar over where
+    // it stood, its rise at the end, and where it ended in X.
+    private static (float maxRise, float endRise, float endX) WalkInto(BSScene scene, float startX, float seconds)
+    {
+        PhysicsActor avatar = AddAvatar(scene, new Vector3(startX, 128f, TerrainHeight + AvatarSize.Z / 2f + 0.05f), false);
+        RapierTestScene.Step(scene, 2f);
+        float startZ = avatar.Position.Z;
+        float maxRise = 0f;
+        avatar.TargetVelocity = new Vector3(WalkSpeed, 0f, 0f);
+        int frames = (int)Math.Round(seconds / RapierTestScene.FrameSeconds);
+        for (int ii = 0; ii < frames; ii++)
+        {
+            Frame(scene, avatar, ii, true);
+            maxRise = Math.Max(maxRise, avatar.Position.Z - startZ);
+        }
+        return (maxRise, avatar.Position.Z - startZ, avatar.Position.X);
+    }
+
+    // A 6 m high, 2 m thick wall whose near face is at x = 110, walked into from ten distances (so the touch falls at
+    // different points of the frame): it is not a step.
+    private static float WorstWallRise(string engine, int approaches)
+    {
+        float worst = 0f;
+        for (int ii = 0; ii < approaches; ii++)
+        {
+            BSScene scene = MakeScene(engine, null);
+            try
+            {
+                AddBox(scene, WallId, new Vector3(111f, 128f, TerrainHeight + 3f), new Vector3(2f, 20f, 6f));
+                (float rise, _, float endX) = WalkInto(scene, 106f + ii * 0.037f, 3f);
+                Assert.True(endX > 109f, $"the avatar stopped at x {endX}, short of the wall");
+                worst = Math.Max(worst, rise);
+            }
+            finally
+            {
+                scene.Dispose();
+            }
+        }
+        return worst;
+    }
+
+    [Fact]
+    public void Avatar_WalkingIntoAWall_DoesNotClimbIt()
+    {
+        using ErrorLog log = new ErrorLog();
+        float worst = WorstWallRise("Rapier", 10);
+        _output.WriteLine($"Rapier: worst rise walking into the wall {worst:F3} m (ubODE {UbodeWallRise:F3})");
+        Assert.True(worst < 0.05f, $"the avatar rose {worst} m walking into the wall");
+        Assert.Empty(log.Errors);
+    }
+
+    // A real 0.3 m step, 4 m deep, with the same wall standing on the ground right behind it: the step is climbed, and
+    // the wall above it is not.
+    [Fact]
+    public void Avatar_ClimbsAStepNextToAWall_ButNotTheWall()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = MakeScene("Rapier", null);
+        try
+        {
+            AddBox(scene, StepId, new Vector3(129f, 128f, TerrainHeight + 0.15f), new Vector3(4f, 8f, 0.3f));
+            AddBox(scene, WallId, new Vector3(132f, 128f, TerrainHeight + 3f), new Vector3(2f, 20f, 6f));
+            (float maxRise, float endRise, float endX) = WalkInto(scene, 124f, 4f);
+            _output.WriteLine($"Rapier: ended at x {endX:F3}, rise {endRise:F3} m, highest {maxRise:F3} m");
+            Assert.True(endX > 128f, $"the avatar stopped at x {endX}, before the step");
+            Assert.InRange(endRise, 0.3f - 0.05f, 0.3f + 0.05f);
+            Assert.True(maxRise < 0.3f + 0.1f, $"the avatar rose {maxRise} m, above the step");
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    [Fact]
+    public void Avatar_OnBullet_MeetsAWallAsBefore()
+    {
+        using ErrorLog log = new ErrorLog();
+        float rise = WorstWallRise("BulletUnmanaged", 1);
+        _output.WriteLine($"Bullet: rise walking into the wall {rise:F4} m");
+        Assert.InRange(rise, BulletWallRise - 0.01f, BulletWallRise + 0.01f);
+        Assert.Empty(log.Errors);
+    }
 }

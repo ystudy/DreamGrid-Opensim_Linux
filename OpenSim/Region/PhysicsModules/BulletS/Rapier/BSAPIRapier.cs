@@ -446,6 +446,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         public override float AvatarMotorTimeScale { get { return 0.11f; } }
         public override float AvatarStopZeroThreshold { get { return 0.7f; } }
 
+        // A capsule touches a wall near the feet, which WalkUpStairs took for a step: walking into a wall lifted the
+        // avatar by up to 0.8 m. ubODE never does. Only a contact with a walkable top is a step here.
+        public override bool StepsNeedAWalkableTop { get { return true; } }
+
         public BSAPIRapier(string paramName, BSScene physScene)
         {
             PhysicsScene = physScene;

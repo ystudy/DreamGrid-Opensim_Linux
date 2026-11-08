@@ -371,6 +371,11 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         // 0.43 m.
         public virtual float AvatarMotorTimeScale { get { return 0.2f; } }
         public virtual float AvatarStopZeroThreshold { get { return 0.45f; } }
+
+        // Whether BSActorAvatarMove.WalkUpStairs takes a contact near the feet for a step only when the object has a
+        // walkable top within the step height just past it (a ray down, HasWalkableTop). Without it, a wall touched near
+        // the feet is a step too and the avatar is popped up it. Bullet keeps its old behaviour.
+        public virtual bool StepsNeedAWalkableTop { get { return false; } }
         
         // Initialization and simulation
         public abstract BulletWorld Initialize(Vector3 maxPosition, ConfigurationParameters parms,

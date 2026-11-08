@@ -381,7 +381,9 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                                         // The normal should be our contact point to the object so it is pointing away
                                         //    thus the difference between our facing orientation and the normal should be small.
                                         float diff = Math.Abs(OMV.Vector3.Distance(directionFacing, touchNormal));
-                                        if (diff < BSParam.AvatarStepApproachFactor)
+                                        if (diff < BSParam.AvatarStepApproachFactor
+                                            && (!m_physicsScene.PE.StepsNeedAWalkableTop
+                                                || HasWalkableTop(kvp.Key, touchPosition, nearFeetHeightMax)))
                                         {
                                             if (highestTouchPosition.Z < touchPosition.Z)
                                                 highestTouchPosition = touchPosition;
@@ -418,6 +420,33 @@ namespace OpenSim.Region.PhysicsModule.BulletS
             }
     
             return ret;
+        }
+
+        // How far past the touch point HasWalkableTop looks for the step's top, and how level that top must be.
+        private const float StepTopProbeReach = 0.05f;
+        private const float StepTopMinNormalZ = 0.7f;   // about 45 degrees
+
+        // Whether the object touched has a surface to stand on just past the touch point, no higher than the step range:
+        // a ray straight down, StepTopProbeReach beyond the touch (away from the avatar), from the top of the range to
+        // just below the touch. On a real step it lands on the step's top. In a wall it starts inside the solid, where
+        // the ray reports no upward face, so a wall is not taken for a step (BSAPITemplate.StepsNeedAWalkableTop).
+        private bool HasWalkableTop(uint touchedId, OMV.Vector3 touch, float rangeTopZ)
+        {
+            OMV.Vector3 away = touch - m_controllingPrim.RawPosition;
+            away.Z = 0f;
+            float length = away.Length();
+            if (length < 1e-4f)
+                return false;
+            OMV.Vector3 probe = touch + away * (StepTopProbeReach / length);
+            OMV.Vector3 from = new OMV.Vector3(probe.X, probe.Y, rangeTopZ);
+            OMV.Vector3 to = new OMV.Vector3(probe.X, probe.Y, touch.Z - StepTopProbeReach);
+            if (from.Z <= to.Z)
+                return false;
+            RaycastHit hit = m_physicsScene.PE.RayTest2(m_physicsScene.World, from, to, 0xffff, 0xffff);
+            bool walkable = hit.hasHit() && hit.ID == touchedId && hit.Normal.Z >= StepTopMinNormalZ;
+            m_physicsScene.DetailLog("{0},BSCharacter.WalkUpStairs.HasWalkableTop,touched={1},from={2},hitID={3},hitNormal={4},walkable={5}",
+                            m_controllingPrim.LocalID, touchedId, from, hit.ID, hit.Normal, walkable);
+            return walkable;
         }
 
         private OMV.Vector3 ComputeStairCorrection(float stepUp)
