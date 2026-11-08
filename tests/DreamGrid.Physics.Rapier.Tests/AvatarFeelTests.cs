@@ -80,7 +80,8 @@ public class AvatarFeelTests
 
     // The ground speed over the last second of a 2 s walk (or flight, 30 m up) along +X, and the highest speed the body
     // reached on the way.
-    private static (float speed, float peak) GroundSpeed(string engine, bool flying, Dictionary<string, string>? ini = null)
+    private static (float speed, float peak) GroundSpeed(string engine, bool flying, Dictionary<string, string>? ini = null,
+                                                          bool alwaysRun = false)
     {
         BSScene scene = MakeScene(engine, ini);
         try
@@ -90,6 +91,7 @@ public class AvatarFeelTests
             PhysicsActor avatar = AddAvatar(scene, start, flying);
             RapierTestScene.Step(scene, flying ? 1f : 2f);
 
+            avatar.SetAlwaysRun = alwaysRun;
             avatar.TargetVelocity = new Vector3(flying ? FlySpeed : WalkSpeed, 0f, 0f);
             const int frames = 22;      // 2 s
             List<float> x = new List<float>();
@@ -121,6 +123,44 @@ public class AvatarFeelTests
         Assert.InRange(rapier, ubode * 0.97f, ubode * 1.03f);
         // It gets there without going past it.
         Assert.True(peak <= ubode * 1.03f, $"peak speed {peak}");
+        Assert.Empty(log.Errors);
+    }
+
+    // ubODE with always-run, measured as above: 5.116 m/s on the ground and 20.465 m/s flying. ubODE multiplies the
+    // horizontal target by 1 / av_movement_divisor_run = 1.25 when running, flying or not (ODECharacter.cs, the
+    // m_alwaysRun branch, which has no flying check).
+    private const float UbodeRunSpeed = 5.116f;
+    private const float UbodeFlyRunSpeed = 20.465f;
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Avatar_RunsAtUbodesSpeed(bool flying)
+    {
+        using ErrorLog log = new ErrorLog();
+        float ubode = flying ? UbodeFlyRunSpeed : UbodeRunSpeed;
+        (float rapier, float peak) = GroundSpeed("Rapier", flying, null, alwaysRun: true);
+        _output.WriteLine($"running{(flying ? ", flying" : "")}: Rapier {rapier:F3} m/s (peak {peak:F3}), ubODE {ubode:F3} ({(rapier / ubode - 1f) * 100f:F1}%)");
+        Assert.InRange(rapier, ubode * 0.97f, ubode * 1.03f);
+        Assert.True(peak <= ubode * 1.03f, $"peak speed {peak}");
+        Assert.Empty(log.Errors);
+    }
+
+    // Bullet, measured before this change (at 0c065d57) with the same script: running is AvatarAlwaysRunFactor 1.3 on
+    // the ground, less what each orientation set takes back; flying ignores always-run.
+    private const float BulletRunSpeed = 4.831f;
+    private const float BulletFlyRunSpeed = 14.968f;
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Avatar_OnBullet_RunsAsBefore(bool flying)
+    {
+        using ErrorLog log = new ErrorLog();
+        float before = flying ? BulletFlyRunSpeed : BulletRunSpeed;
+        (float bullet, _) = GroundSpeed("BulletUnmanaged", flying, null, alwaysRun: true);
+        _output.WriteLine($"Bullet running{(flying ? ", flying" : "")}: {bullet:F3} m/s, before {before:F3}");
+        Assert.InRange(bullet, before * 0.995f, before * 1.005f);
         Assert.Empty(log.Errors);
     }
 

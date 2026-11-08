@@ -352,6 +352,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS
             SetEngineDefault("AvatarStopTimeConstant", PE.AvatarStopTimeConstant);
             SetEngineDefault("AvatarStopZeroThreshold", PE.AvatarStopZeroThreshold);
             SetEngineDefault("AvatarStepHeight", PE.AvatarStepHeight);
+            SetEngineDefault("AvatarAlwaysRunFactor", PE.AvatarAlwaysRunFactor);
+            SetEngineDefault("AvatarRunFactorWhenFlying", PE.AvatarRunFactorWhenFlying);
 
             // Enable very detailed logging.
             // By creating an empty logger when not logging, the log message invocation code
@@ -477,6 +479,14 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                 return;
             if (BSParam.TryGetParameter(parmName, out BSParam.ParameterDefnBase defn))
                 defn.SetValue(this, value.ToString("R"));
+        }
+
+        private void SetEngineDefault(string parmName, bool value)
+        {
+            if (m_bulletSimConfig != null && m_bulletSimConfig.Contains(parmName))
+                return;
+            if (BSParam.TryGetParameter(parmName, out BSParam.ParameterDefnBase defn))
+                defn.SetValue(this, value.ToString());
         }
 
         // Select the connection to the actual Bullet implementation.

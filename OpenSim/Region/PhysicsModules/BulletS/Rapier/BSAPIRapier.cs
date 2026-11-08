@@ -460,6 +460,11 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         // not. ubODE has no step-up at all.
         public override float AvatarStepHeight { get { return 0.5f; } }
 
+        // Running like ubODE's: it multiplies the horizontal target by 1 / av_movement_divisor_run = 1.25, flying or not
+        // (ODECharacter's m_alwaysRun branch has no flying check): 5.12 m/s on the ground, 20.5 m/s flying.
+        public override float AvatarAlwaysRunFactor { get { return 1.25f; } }
+        public override bool AvatarRunFactorWhenFlying { get { return true; } }
+
         public BSAPIRapier(string paramName, BSScene physScene)
         {
             PhysicsScene = physScene;

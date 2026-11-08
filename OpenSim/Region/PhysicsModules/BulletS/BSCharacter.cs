@@ -465,6 +465,9 @@ namespace OpenSim.Region.PhysicsModule.BulletS
             {
                 DetailLog("{0},BSCharacter.setTargetVelocity,call,vel={1}", LocalID, value);
                 OMV.Vector3 targetVel = value;
+                // Running: on the ground always; flying too where the engine asks for it (AvatarRunFactorWhenFlying,
+                // Rapier's default, as ubODE applies its run multiplier flying or not).
+                bool running = _setAlwaysRun && (!_flying || BSParam.AvatarRunFactorWhenFlying);
                 if (!_flying)
                 {
                     if (_setAlwaysRun)
@@ -473,9 +476,13 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                         if (BSParam.AvatarWalkVelocityFactor != 1f)
                             targetVel *= new OMV.Vector3(BSParam.AvatarWalkVelocityFactor, BSParam.AvatarWalkVelocityFactor, 1f);
                 }
-                // The engine's speed for walking and flying (BSAPITemplate.AvatarSpeedFactor). Horizontal only, as
-                // ubODE's divisor is, so going up and down and the jump are as they were.
-                if ((_flying || !_setAlwaysRun) && BSParam.AvatarSpeedFactor != 1f)
+                else if (running)
+                {
+                    targetVel *= new OMV.Vector3(BSParam.AvatarAlwaysRunFactor, BSParam.AvatarAlwaysRunFactor, 1f);
+                }
+                // The engine's speed for walking and flying (BSAPITemplate.AvatarSpeedFactor), not running. Horizontal
+                // only, as ubODE's divisor is, so going up and down and the jump are as they were.
+                if (!running && BSParam.AvatarSpeedFactor != 1f)
                     targetVel *= new OMV.Vector3(BSParam.AvatarSpeedFactor, BSParam.AvatarSpeedFactor, 1f);
                 base.m_targetVelocity = targetVel;
     

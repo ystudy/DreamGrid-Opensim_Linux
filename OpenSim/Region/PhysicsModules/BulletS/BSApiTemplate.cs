@@ -387,6 +387,12 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         // The engine's default for [BulletSim]AvatarStepHeight: the height above the feet (less AvatarStepGroundFudge)
         // up to which WalkUpStairs takes a contact for a step. The INI value wins. Bullet's is the parameter's 0.999 m.
         public virtual float AvatarStepHeight { get { return 0.999f; } }
+
+        // The engine's defaults for [BulletSim]AvatarAlwaysRunFactor and AvatarRunFactorWhenFlying: how much faster
+        // always-run is, and whether it applies when flying too. The INI values win. Bullet's are the parameters' own
+        // (1.3, and not when flying).
+        public virtual float AvatarAlwaysRunFactor { get { return 1.3f; } }
+        public virtual bool AvatarRunFactorWhenFlying { get { return false; } }
         
         // Initialization and simulation
         public abstract BulletWorld Initialize(Vector3 maxPosition, ConfigurationParameters parms,
