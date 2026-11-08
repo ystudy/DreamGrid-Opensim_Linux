@@ -331,6 +331,39 @@ public class AvatarFeelTests
         Assert.Empty(log.Errors);
     }
 
+    // Setting AvatarMotorTimeConstant to 0 while the region runs (physics set) hands the motor back to
+    // AvatarMotorTimeScale at once, not to the timescale the time constant last worked out.
+    [Fact]
+    public void Avatar_MotorTimeConstantSetToZeroAtRunTime_FallsBackToTheTimeScale()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = MakeScene("Rapier", null);
+        try
+        {
+            PhysicsActor avatar = AddAvatar(scene, new Vector3(100f, 128f, TerrainHeight + AvatarSize.Z / 2f + 0.05f), false);
+            RapierTestScene.Step(scene, 2f);
+            avatar.TargetVelocity = new Vector3(WalkSpeed, 0f, 0f);
+            for (int ii = 0; ii < 22; ii++)
+                Frame(scene, avatar, ii, true);
+            Assert.True(BSParam.TryGetParameter("AvatarMotorTimeConstant", out BSParam.ParameterDefnBase defn));
+            defn.SetValue(scene, "0");
+            avatar.TargetVelocity = Vector3.Zero;
+            float x0 = avatar.Position.X;
+            for (int ii = 0; ii < 22; ii++)
+                Frame(scene, avatar, ii, false);
+            float slide = avatar.Position.X - x0;
+            _output.WriteLine($"Rapier, time constant set to 0 at run time: slide {slide:F3} m");
+            // The linear 0.2 s timescale slides about 0.285 m (Avatar_MotorTimeConstantFromTheIni_WinsOverRapiersDefault);
+            // the timescale the time constant last left behind (about 0.114 s) would slide about 0.05 m.
+            Assert.True(slide > 0.2f, $"slide {slide}");
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
     // The INI wins over Rapier's motor default on its own: no time constant brings back the linear 0.2 s timescale and
     // its long slide, while the threshold keeps Rapier's 0.7.
     [Fact]

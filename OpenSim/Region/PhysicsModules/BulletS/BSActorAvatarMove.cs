@@ -187,17 +187,25 @@ namespace OpenSim.Region.PhysicsModule.BulletS
     
             // With a time constant (BSParam.AvatarMotorTimeConstant, Rapier's default), the motor closes the share
             // 1 - exp(-dt/tau) of the gap each frame, so it feels the same at any frame time and never goes past the
-            // target. Without one (Bullet), it closes dt / AvatarMotorTimeScale of it, as it always has.
+            // target. Without one (Bullet, or a time constant set to 0), it closes dt / AvatarMotorTimeScale of it, as it
+            // always has; the timescale is read each frame, so either parameter changed at run time takes effect at once.
             float stopTau = 0f;
             OMV.Vector3 frameStartValue = m_velocityMotor.CurrentValue;
-            if (BSParam.AvatarMotorTimeConstant > 0f && timeStep > 0f)
+            if (BSParam.AvatarMotorTimeConstant > 0f)
             {
-                bool stopping = m_velocityMotor.TargetValue == OMV.Vector3.Zero;
-                if (stopping && BSParam.AvatarStopTimeConstant > 0f)
-                    stopTau = BSParam.AvatarStopTimeConstant;
-                float tau = (stopTau > 0f) ? stopTau : BSParam.AvatarMotorTimeConstant;
-                float share = 1f - MathF.Exp(-timeStep / tau);
-                m_velocityMotor.TimeScale = timeStep / share;
+                if (timeStep > 0f)
+                {
+                    bool stopping = m_velocityMotor.TargetValue == OMV.Vector3.Zero;
+                    if (stopping && BSParam.AvatarStopTimeConstant > 0f)
+                        stopTau = BSParam.AvatarStopTimeConstant;
+                    float tau = (stopTau > 0f) ? stopTau : BSParam.AvatarMotorTimeConstant;
+                    float share = 1f - MathF.Exp(-timeStep / tau);
+                    m_velocityMotor.TimeScale = timeStep / share;
+                }
+            }
+            else
+            {
+                m_velocityMotor.TimeScale = BSParam.AvatarMotorTimeScale;
             }
             m_velocityMotor.Step(timeStep);
             m_controllingPrim.IsStationary = false;

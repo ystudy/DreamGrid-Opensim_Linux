@@ -350,6 +350,9 @@ namespace OpenSim.Region.PhysicsModule.BulletS
             SetEngineDefault("AvatarMotorTimeScale", PE.AvatarMotorTimeScale);
             SetEngineDefault("AvatarMotorTimeConstant", PE.AvatarMotorTimeConstant);
             SetEngineDefault("AvatarStopTimeConstant", PE.AvatarStopTimeConstant);
+            if (BSParam.AvatarMotorTimeConstant > 0f && m_bulletSimConfig != null && m_bulletSimConfig.Contains("AvatarMotorTimeScale"))
+                m_log.InfoFormat("{0} [BulletSim]AvatarMotorTimeScale is not used while AvatarMotorTimeConstant ({1}) is above 0; set AvatarMotorTimeConstant to 0 to use it",
+                            LogHeader, BSParam.AvatarMotorTimeConstant);
             SetEngineDefault("AvatarStopZeroThreshold", PE.AvatarStopZeroThreshold);
             SetEngineDefault("AvatarStepHeight", PE.AvatarStepHeight);
             SetEngineDefault("AvatarStepsNeedAWalkableTop", PE.StepsNeedAWalkableTop);
