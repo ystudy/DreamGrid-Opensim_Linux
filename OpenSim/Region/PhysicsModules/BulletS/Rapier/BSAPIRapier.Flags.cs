@@ -108,6 +108,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                     RapierNative.Check(RapierNative.r3Collider_SetSolverGroups(collider, groups));
             }
 
+            // An avatar's colliders store its friction differently (ColliderFriction).
+            if (((old ^ now) & CollisionFlags.CF_CHARACTER_OBJECT) != 0)
+                ApplyFriction(body);
+
             bool wasWanting = (old & WantsCollisionsFlags) != 0;
             bool isWanting = (now & WantsCollisionsFlags) != 0;
             if (wasWanting != isWanting)

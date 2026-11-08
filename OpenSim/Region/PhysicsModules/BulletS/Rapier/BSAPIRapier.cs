@@ -432,6 +432,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         // CreateTerrainShape puts heightmap sample (i, j) at (i, j), as the simulator and ubODE have it.
         public override float TerrainSampleOffset { get { return 0f; } }
 
+        // Objects slide like ubODE's: ubODE combines two frictions as sqrt(mu1 x mu2), so a wood box gets 0.42 on the
+        // terrain and 0.6 on wood, where the product gave 0.18 and 0.36 and the box slid down a 20 degree hill.
+        public override bool FrictionCombineGeometric { get { return true; } }
+
         // 50 walking avatars step 18% faster as capsules than as boxes (Speed Step 2, standalone).
         public override bool CapsuleAvatars { get { return true; } }
 

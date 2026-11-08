@@ -107,6 +107,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         public static int TerrainMeshMagnification { get; private set; }
         public static float TerrainGroundPlane { get; private set; }
         public static float TerrainFriction { get; private set; }
+        public static bool FrictionCombineGeometric { get; private set; }
         public static float TerrainHitFraction { get; private set; }
         public static float TerrainRestitution { get; private set; }
         public static float TerrainContactProcessingThreshold { get; private set; }
@@ -615,6 +616,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                 2 ),
             new ParameterDefn<float>("TerrainGroundPlane", "Altitude of ground plane used to keep things from falling to infinity" ,
                 -500.0f ),
+            new ParameterDefn<bool>("FrictionCombineGeometric", "Whether two bodies' frictions combine as sqrt(f1 x f2), as ubODE's do, instead of f1 x f2 (avatars keep the product on the terrain); false, or the engine's own default (Rapier: true) unless set",
+                false ),
             new ParameterDefn<float>("TerrainFriction", "Factor to reduce movement against terrain surface" ,
                 0.3f ),
             new ParameterDefn<float>("TerrainHitFraction", "Distance to measure hit collisions" ,

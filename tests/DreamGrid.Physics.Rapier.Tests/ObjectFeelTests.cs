@@ -144,9 +144,14 @@ public class ObjectFeelTests
 
     // A wood 0.5 m cube released at rest, sitting flat on a slope rising towards the azimuth: on the terrain hill 40 m up
     // from its foot, or on a 60 m long static box tilted to the slope (its centre 60 m up, over flat terrain).
-    private static Watched BoxOnSlope(string engine, float slope, float azimuth, bool primSlope, float seconds = 15f)
+    private static Watched BoxOnSlope(string engine, float slope, float azimuth, bool primSlope, float seconds = 15f,
+                                      Dictionary<string, string>? ini = null)
     {
-        BSScene scene = RapierTestScene.Create(new Dictionary<string, string> { { "BulletEngine", engine } });
+        Dictionary<string, string> config = new Dictionary<string, string> { { "BulletEngine", engine } };
+        if (ini != null)
+            foreach (KeyValuePair<string, string> kvp in ini)
+                config[kvp.Key] = kvp.Value;
+        BSScene scene = RapierTestScene.Create(config);
         try
         {
             float rad = slope * MathF.PI / 180f;
@@ -193,6 +198,62 @@ public class ObjectFeelTests
         Assert.True(box.RestSeconds > 0f, "the box never came to rest");
         // The foot of the hill is at x = 188 on this side.
         Assert.True(end.X > 188f, $"the box stopped at x {end.X}, on the hill");
+        Assert.Empty(log.Errors);
+    }
+
+    // ubODE, measured as above with the same script (a wood 0.5 m box released at rest, watched for 15 s): on the
+    // terrain hill it stays put at 10 and 20 degrees (0.00 and 0.04 m) and slides down at 30 and 40 degrees; on a wood
+    // prim slope it stays put up to 30 degrees (0.00, 0.02, 0.21 m) and slides at 40. ubODE combines two frictions as
+    // sqrt(mu1 * mu2) (ODEScene's collision callback): wood on terrain sqrt(0.6 x 0.3) = 0.42, wood on wood 0.6.
+    // BulletS multiplies them (0.18 and 0.36), so on Rapier the box slid at 20 degrees on both.
+    [Theory]
+    [InlineData(10f, false, false)]
+    [InlineData(20f, false, false)]
+    [InlineData(30f, false, true)]
+    [InlineData(40f, false, true)]
+    [InlineData(10f, true, false)]
+    [InlineData(20f, true, false)]
+    [InlineData(30f, true, false)]
+    [InlineData(40f, true, true)]
+    public void Box_OnASlope_StaysOrSlidesAsOnUbode(float slope, bool primSlope, bool slides)
+    {
+        using ErrorLog log = new ErrorLog();
+        Watched box = BoxOnSlope("Rapier", slope, 0f, primSlope);
+        _output.WriteLine($"Rapier, box on a {slope} degree {(primSlope ? "prim" : "terrain")} slope: slid {box.Distance:F2} m, at rest after {box.RestSeconds:F2} s");
+        if (slides)
+        {
+            Assert.True(box.Distance > 10f, $"the box slid only {box.Distance} m");
+        }
+        else
+        {
+            Assert.True(box.Distance < 0.3f, $"the box slid {box.Distance} m");
+            Assert.InRange(box.RestSeconds, 0f, 2f);
+        }
+        Assert.Empty(log.Errors);
+    }
+
+    // Bullet's box is unchanged by the Rapier friction rule: it still slides at 20 degrees on the terrain (55.4 m, measured
+    // on this branch at 07881f6c).
+    [Fact]
+    public void Box_OnBullet_SlidesAsBefore()
+    {
+        using ErrorLog log = new ErrorLog();
+        Watched box = BoxOnSlope("BulletUnmanaged", 20f, 0f, false);
+        _output.WriteLine($"Bullet, box on a 20 degree terrain slope: slid {box.Distance:F2} m");
+        Assert.True(box.Distance > 10f, $"the box slid only {box.Distance} m");
+        Assert.Empty(log.Errors);
+    }
+
+    // FrictionCombineGeometric=false in the INI wins over Rapier's default: the product is back and the box slides at
+    // 20 degrees again.
+    [Fact]
+    public void Box_FrictionRuleFromTheIni_WinsOverRapiersDefault()
+    {
+        using ErrorLog log = new ErrorLog();
+        Watched box = BoxOnSlope("Rapier", 20f, 0f, false, 15f, new Dictionary<string, string> { { "FrictionCombineGeometric", "false" } });
+        _output.WriteLine($"Rapier with the product rule: slid {box.Distance:F2} m");
+        Assert.True(box.Distance > 10f, $"the box slid only {box.Distance} m");
+        Assert.False(BSParam.FrictionCombineGeometric);
         Assert.Empty(log.Errors);
     }
 }

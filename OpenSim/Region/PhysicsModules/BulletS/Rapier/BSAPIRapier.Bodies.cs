@@ -111,7 +111,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             if ((body.Flags & CollisionFlags.CF_NO_CONTACT_RESPONSE) != 0)
                 RapierNative.Check(RapierNative.r3Collider_SetSolverGroups(collider, NoContactResponseGroups));
             if (body.Friction.HasValue)
-                RapierNative.Check(RapierNative.r3Collider_SetFriction(collider, body.Friction.Value));
+                RapierNative.Check(RapierNative.r3Collider_SetFriction(collider, ColliderFriction(body, body.Friction.Value)));
             if (body.Restitution.HasValue)
                 RapierNative.Check(RapierNative.r3Collider_SetRestitution(collider, body.Restitution.Value));
             if ((body.Flags & WantsCollisionsFlags) != 0)
@@ -452,8 +452,32 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         {
             BulletBodyRapier body = (BulletBodyRapier)obj;
             body.Friction = val;
+            ApplyFriction(body);
+        }
+
+        // Give the body's colliders its friction, as ColliderFriction stores it.
+        internal static void ApplyFriction(BulletBodyRapier body)
+        {
+            if (!body.Friction.HasValue)
+                return;
+            float stored = ColliderFriction(body, body.Friction.Value);
             foreach (RapierNative.ColliderHandle collider in body.Colliders)
-                RapierNative.Check(RapierNative.r3Collider_SetFriction(collider, val));
+                RapierNative.Check(RapierNative.r3Collider_SetFriction(collider, stored));
+        }
+
+        // What a collider stores for the body's friction. Rapier multiplies the two colliders' values (CombineMultiply,
+        // as Bullet does). With [BulletSim]FrictionCombineGeometric (Rapier's default, BSAPITemplate), two bodies' frictions
+        // combine as sqrt(f1 x f2) instead, as ubODE's do: each collider stores the square root of its friction. An avatar
+        // keeps the product on the terrain, which its walking was tuned on: it stores f x sqrt(TerrainFriction), so against
+        // the terrain's sqrt(TerrainFriction) the pair gets f x TerrainFriction as before.
+        internal static float ColliderFriction(BulletBodyRapier body, float friction)
+        {
+            if (!BSParam.FrictionCombineGeometric)
+                return friction;
+            friction = Math.Max(friction, 0f);
+            if ((body.Flags & CollisionFlags.CF_CHARACTER_OBJECT) != 0)
+                return friction * MathF.Sqrt(Math.Max(BSParam.TerrainFriction, 0f));
+            return MathF.Sqrt(friction);
         }
 
         public override void SetRestitution(BulletBody obj, float val)
@@ -620,9 +644,12 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         public override float GetFriction(BulletBody obj)
         {
             BulletBodyRapier body = (BulletBodyRapier)obj;
+            // The body's own friction, not what its colliders store for it (ColliderFriction).
+            if (body.Friction.HasValue)
+                return body.Friction.Value;
             if (body.Colliders.Count > 0)
                 return RapierNative.r3Collider_Friction(body.Colliders[0]);
-            return body.Friction ?? RapierNative.r3DefaultColliderDesc().friction;
+            return RapierNative.r3DefaultColliderDesc().friction;
         }
 
         public override Vector3 GetAnisotripicFriction(BulletConstraint constrain)

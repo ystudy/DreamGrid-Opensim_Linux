@@ -347,6 +347,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         // the height it gives is the surface the engine collides with.
         public virtual float TerrainSampleOffset { get { return 0.5f; } }
 
+        // The engine's default for [BulletSim]FrictionCombineGeometric: whether two bodies' frictions combine as
+        // sqrt(f1 x f2) (ubODE's rule) rather than f1 x f2 (Bullet's). The INI value wins. Bullet keeps the product.
+        public virtual bool FrictionCombineGeometric { get { return false; } }
+
         // Whether BSCharacter.AvatarJump divides its force by Bullet's 1/60 s step (BSScene.BulletFixedTimeStep) rather
         // than by FixedTimeStep. The force is on for every substep of the frame, so dividing by the substep length makes
         // the jump grow with the substep count; an engine whose default step is not 1/60 asks for this so its jumps
