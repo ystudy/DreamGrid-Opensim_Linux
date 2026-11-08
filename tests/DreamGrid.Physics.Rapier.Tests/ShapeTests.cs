@@ -625,6 +625,88 @@ public class ShapeTests
         }
     }
 
+    // A unit cube with its own 4 vertices per face (24 in all), as sculpt and Meshmerizer meshes repeat vertices.
+    // Rapier merges them (MERGE_DUPLICATE_VERTICES), so the read-back has 8.
+    private static void FaceCube(out float[] vertices, out int[] indices)
+    {
+        float[] corners = CubeCorners(0.5f, Vector3.Zero);
+        List<float> v = new List<float>();
+        List<int> i = new List<int>();
+        for (int t = 0; t < CubeTriangles.Length; t += 6)
+        {
+            // The face's two triangles use corners a, b, c and a, c, d.
+            int[] quad = { CubeTriangles[t], CubeTriangles[t + 1], CubeTriangles[t + 2], CubeTriangles[t + 5] };
+            int first = v.Count / 3;
+            foreach (int corner in quad)
+                v.AddRange(new[] { corners[corner * 3], corners[corner * 3 + 1], corners[corner * 3 + 2] });
+            i.AddRange(new[] { first, first + 1, first + 2, first, first + 2, first + 3 });
+        }
+        vertices = v.ToArray();
+        indices = i.ToArray();
+    }
+
+    [Fact]
+    public void Trimesh_WithRepeatedVertices_ReadBackIsTheSameCube()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            Floor(scene);
+            FaceCube(out float[] vertices, out int[] indices);
+            Assert.Equal(24 * 3, vertices.Length);
+
+            // A hull of the merged read-back rests like the unit box.
+            BulletShape mesh = scene.PE.CreateMeshShape(scene.World, indices.Length, indices, 24, vertices);
+            BulletShape hull = scene.PE.BuildConvexHullShapeFromMesh(scene.World, mesh);
+            Assert.True(hull.HasPhysicalShape);
+            BulletBody body = DynamicBody(scene, hull, 9101, new Vector3(128f, 128f, 53f));
+            EngineStep(scene, 3f);
+            Assert.InRange(scene.PE.GetPosition(body).Z, 50.5f - 0.03f, 50.5f + 0.03f);
+
+            // Rescaled from the merged read-back, it still has every face where the scale puts it.
+            BulletShape scaled = scene.PE.CreateMeshShape(scene.World, indices.Length, indices, 24, vertices);
+            StaticBody(scene, scaled, 9102, new Vector3(100f, 100f, 60f));
+            scene.PE.SetLocalScaling(scaled, new Vector3(2f, 3f, 4f));
+            Assert.Equal(62f, Ray(scene, new Vector3(100f, 100f, 70f), new Vector3(100f, 100f, 55f)).Point.Z, 0.01f);
+            Assert.Equal(58f, Ray(scene, new Vector3(100f, 100f, 55f), new Vector3(100f, 100f, 70f)).Point.Z, 0.01f);
+            Assert.Equal(101f, Ray(scene, new Vector3(110f, 100f, 60f), new Vector3(90f, 100f, 60f)).Point.X, 0.01f);
+            Assert.Equal(98.5f, Ray(scene, new Vector3(100f, 90f, 60f), new Vector3(100f, 110f, 60f)).Point.Y, 0.01f);
+            // Its bounds for the inertia are the scaled box's: 2 x 3 x 4 with mass 12 gives (25, 20, 13).
+            BulletShape gimpact = scene.PE.CreateGImpactShape(scene.World, indices.Length, indices, 24, vertices);
+            scene.PE.SetLocalScaling(gimpact, new Vector3(2f, 3f, 4f));
+            Vector3 inertia = scene.PE.CalculateLocalInertia(gimpact, 12f);
+            Assert.Equal(25f, inertia.X, 2);
+            Assert.Equal(20f, inertia.Y, 2);
+            Assert.Equal(13f, inertia.Z, 2);
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    // A hull is not a trimesh, so there is nothing to read back: the warning says so, not some other reason.
+    [Fact]
+    public void ConvexHullFromMesh_OfAHull_SaysTheSourceIsNotATrimesh()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            BulletShape hull = scene.PE.CreateConvexHullShape(scene.World, 0, new int[0], 8, CubeCorners(0.5f, Vector3.Zero));
+            BulletShape fromHull = scene.PE.BuildConvexHullShapeFromMesh(scene.World, hull);
+            Assert.False(fromHull.HasPhysicalShape);
+            Assert.Contains(log.Warnings, w => w.Contains("not a trimesh"));
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
     // HACD (ShouldUseBulletHACD) decomposes a mesh shape: the mesh's geometry is read back from Rapier for it.
     [Fact]
     public void HullFromMesh_OfCubeMesh_RestsLikeBox()

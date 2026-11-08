@@ -412,28 +412,50 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             return shape;
         }
 
-        // A trimesh's vertices (x, y, z each) and triangles, read back from Rapier's own trimesh. Rapier built it with
-        // MERGE_DUPLICATE_VERTICES, so the vertices are the distinct ones BulletS gave, and the triangles index them.
-        private static bool ReadTrimesh(BulletShapeRapier shape, out float[] vertices, out int[] indices)
+        // A trimesh's vertices (x, y, z each) and triangles, read back from Rapier's own trimesh; false and the reason
+        // in 'why' if they cannot be. They are at the shape's current size (Scale), as the trimesh was built. Rapier
+        // built it with MERGE_DUPLICATE_VERTICES, so the vertices are the distinct ones its triangles use, and the
+        // triangles index them: repeated vertices come back once, and a vertex no triangle uses (one left by a
+        // degenerate triangle BulletS removed) does not come back at all.
+        private static bool ReadTrimesh(BulletShapeRapier shape, out float[] vertices, out int[] indices, out string why)
         {
             vertices = null;
             indices = null;
-            if (!shape.IsTrimesh || shape.Shape == IntPtr.Zero)
+            why = null;
+            if (shape.Shape == IntPtr.Zero)
+            {
+                why = "the source shape has been deleted";
                 return false;
+            }
+            if (!shape.IsTrimesh)
+            {
+                why = "the source shape is a " + shape.shapeType + ", not a trimesh";
+                return false;
+            }
             IntPtr data = RapierNative.r3SharedShape_ToTrimesh(shape.Shape, 3, 2);
             if (data == IntPtr.Zero)
+            {
+                why = "Rapier could not read the trimesh back: " + RapierNative.LastError();
                 return false;
+            }
             try
             {
                 int vertexCount = (int)RapierNative.r3TriMeshData_Vertices(data, null, UIntPtr.Zero);
                 int indexCount = (int)RapierNative.r3TriMeshData_Indices(data, null, UIntPtr.Zero);
                 if (vertexCount < 3 || indexCount < 3)
+                {
+                    why = "the trimesh read back has " + vertexCount + " vertices and " + indexCount + " indices";
                     return false;
+                }
                 float[] v = new float[vertexCount * 3];
                 int[] i = new int[indexCount];
                 if ((int)RapierNative.r3TriMeshData_Vertices(data, v, (UIntPtr)vertexCount) != vertexCount
                         || (int)RapierNative.r3TriMeshData_Indices(data, i, (UIntPtr)indexCount) != indexCount)
+                {
+                    // Taken now: freeing the data below sets the diagnostic again.
+                    why = "the trimesh could not be copied out: " + RapierNative.LastError();
                     return false;
+                }
                 vertices = v;
                 indices = i;
                 return true;
@@ -485,8 +507,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         public override BulletShape BuildConvexHullShapeFromMesh(BulletWorld pWorld, BulletShape pMesh)
         {
             BulletShapeRapier mesh = (BulletShapeRapier)pMesh;
-            if (!ReadTrimesh(mesh, out float[] meshVerts, out int[] _))
-                return FailedShape(BSPhysicsShapeType.SHAPE_CONVEXHULL, "the source shape is not a mesh");
+            // BulletS keeps what this returns for the prim's shape and size, a failure too (BSShapeConvexHull), so the
+            // warning gives the real reason.
+            if (!ReadTrimesh(mesh, out float[] meshVerts, out int[] _, out string why))
+                return FailedShape(BSPhysicsShapeType.SHAPE_CONVEXHULL, why);
             BulletShapeRapier hull = (BulletShapeRapier)CreateConvexHullShape(pWorld, 0, null, meshVerts.Length / 3, meshVerts);
             hull.Scale = mesh.Scale;
             return hull;
@@ -498,8 +522,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         {
             BulletWorldRapier world = (BulletWorldRapier)pWorld;
             BulletShapeRapier mesh = (BulletShapeRapier)pMesh;
-            if (!ReadTrimesh(mesh, out float[] meshVerts, out int[] triangles))
-                return FailedShape(BSPhysicsShapeType.SHAPE_HULL, "the source shape is not a mesh");
+            if (!ReadTrimesh(mesh, out float[] meshVerts, out int[] triangles, out string why))
+                return FailedShape(BSPhysicsShapeType.SHAPE_HULL, why);
             LogOnce(world, false, "hacd", "Rapier's convex decomposition takes no parameters: HACDParams are ignored.");
             // The decomposition keeps the mesh it was made from, to make it again at another size.
             BulletShapeRapier hulls = GeometryShape(world, BuildDecompositionNative(meshVerts, triangles), BSPhysicsShapeType.SHAPE_HULL,
@@ -861,10 +885,9 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                     LogOnce(world, true, "scale-from-zero", "A mesh scaled to zero cannot be scaled again; the shape is left as it is.");
                     return;
                 }
-                if (!ReadTrimesh(shape, out float[] meshVerts, out int[] triangles))
+                if (!ReadTrimesh(shape, out float[] meshVerts, out int[] triangles, out string why))
                 {
-                    PhysicsScene.Logger.WarnFormat("{0} Could not read back a {1} shape to rescale it: {2}", LogHeader, shape.shapeType,
-                                RapierNative.LastError());
+                    PhysicsScene.Logger.WarnFormat("{0} Could not read back a {1} shape to rescale it: {2}", LogHeader, shape.shapeType, why);
                     return;
                 }
                 Vector3 factor = new Vector3(scale.X / was.X, scale.Y / was.Y, scale.Z / was.Z);
