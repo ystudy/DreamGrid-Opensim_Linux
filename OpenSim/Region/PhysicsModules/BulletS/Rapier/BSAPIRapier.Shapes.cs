@@ -340,9 +340,13 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             };
         }
 
-        // r3TrimeshSharedShapeWithFlags over the geometry. FIX_INTERNAL_EDGES makes a ball roll across the seams between
-        // triangles without catching on them (it includes MERGE_DUPLICATE_VERTICES, which BulletS's meshes need: sculpt
-        // meshes repeat vertices).
+        // The flags every trimesh is built with. FIX_INTERNAL_EDGES makes a ball roll across the seams between triangles
+        // without catching on them (it includes MERGE_DUPLICATE_VERTICES, which BulletS's meshes need: sculpt meshes
+        // repeat vertices). DreamGrid's Parry patch (ThirdParty/rapier/patches) keeps the data for it in 4 bytes per
+        // triangle. Only MeshSeamTests changes this, to build a floor without the fix.
+        internal static uint TrimeshFlags = RapierNative.TrimeshFixInternalEdges | RapierNative.TrimeshMergeDuplicateVertices;
+
+        // r3TrimeshSharedShapeWithFlags over the geometry, with TrimeshFlags.
         private static IntPtr BuildTrimeshNative(float[] vertices, int[] indices)
         {
             GCHandle v = GCHandle.Alloc(vertices, GCHandleType.Pinned);
@@ -350,7 +354,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             try
             {
                 return RapierNative.r3TrimeshSharedShapeWithFlags(PinnedView(v, vertices.Length / 3), PinnedView(i, indices.Length / 3),
-                            RapierNative.TrimeshFixInternalEdges | RapierNative.TrimeshMergeDuplicateVertices);
+                            TrimeshFlags);
             }
             finally
             {
