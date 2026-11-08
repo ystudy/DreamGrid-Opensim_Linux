@@ -383,6 +383,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         // walkable top within the step height just past it (a ray down, HasWalkableTop). Without it, a wall touched near
         // the feet is a step too and the avatar is popped up it. Bullet keeps its old behaviour.
         public virtual bool StepsNeedAWalkableTop { get { return false; } }
+
+        // The engine's default for [BulletSim]AvatarStepHeight: the height above the feet (less AvatarStepGroundFudge)
+        // up to which WalkUpStairs takes a contact for a step. The INI value wins. Bullet's is the parameter's 0.999 m.
+        public virtual float AvatarStepHeight { get { return 0.999f; } }
         
         // Initialization and simulation
         public abstract BulletWorld Initialize(Vector3 maxPosition, ConfigurationParameters parms,

@@ -683,7 +683,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                 1.0f ),
             new ParameterDefn<int>("AvatarJumpFrames", "Number of frames to allow jump forces. Changes jump height.",
                 4 ),
-            new ParameterDefn<float>("AvatarStepHeight", "Height of a step obstacle to consider step correction",
+            new ParameterDefn<float>("AvatarStepHeight", "Height of a step obstacle to consider step correction; 0.999, or the engine's own default (Rapier: 0.5) unless set",
                 0.999f ) ,
             new ParameterDefn<float>("AvatarStepAngle", "The angle (in radians) for a vertical surface to be considered a step",
                 0.3f ) ,

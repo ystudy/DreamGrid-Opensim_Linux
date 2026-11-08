@@ -397,6 +397,50 @@ public class AvatarFeelTests
         }
     }
 
+    // Low obstacles, 2 m deep, whose near face is at x = 127, walked into from x = 124 for 4 s. Stairs (0.15 to 0.3 m, as
+    // a box or as a cylinder, the round meshed step) are climbed to their top. A 0.5 m block (a low wall, a bench) and a
+    // 0.8 m one (a table, a counter) are not: the avatar stays in front of them on the ground.
+    [Theory]
+    [InlineData(0.15f, false, true)]
+    [InlineData(0.2f, false, true)]
+    [InlineData(0.25f, false, true)]
+    [InlineData(0.3f, false, true)]
+    [InlineData(0.3f, true, true)]
+    [InlineData(0.5f, false, false)]
+    [InlineData(0.8f, false, false)]
+    public void Avatar_ClimbsStairsButNotLowBlocks(float height, bool cylinder, bool climbs)
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = MakeScene("Rapier", null);
+        try
+        {
+            PrimitiveBaseShape pbs = cylinder ? PrimitiveBaseShape.CreateCylinder() : PrimitiveBaseShape.CreateBox();
+            // The cylinder is 4 m across, so its round face meets the avatar's path at x = 127 too.
+            Vector3 size = cylinder ? new Vector3(4f, 4f, height) : new Vector3(2f, 8f, height);
+            pbs.Scale = size;
+            scene.AddPrimShape("obstacle", pbs, new Vector3(127f + size.X / 2f, 128f, TerrainHeight + height / 2f), size,
+                                Quaternion.Identity, false, StepId);
+            (float maxRise, float endRise, float endX) = WalkInto(scene, 124f, 4f);
+            _output.WriteLine($"{(cylinder ? "cylinder" : "box")} {height} m: ended at x {endX:F3}, rise {endRise:F3} m, highest {maxRise:F3} m");
+            if (climbs)
+            {
+                Assert.True(endX > 127.5f, $"the avatar stopped at x {endX}, before the step");
+                // On top, and no higher than a little over it (it walks off the far side later, so the end height is 0).
+                Assert.InRange(maxRise, height - 0.05f, height + 0.1f);
+            }
+            else
+            {
+                Assert.True(endX < 127f, $"the avatar went on to x {endX}, onto or over the block");
+                Assert.True(maxRise < 0.05f, $"the avatar rose {maxRise} m at the block");
+            }
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
     [Fact]
     public void Avatar_OnBullet_MeetsAWallAsBefore()
     {

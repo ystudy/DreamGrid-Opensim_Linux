@@ -351,6 +351,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS
             SetEngineDefault("AvatarMotorTimeConstant", PE.AvatarMotorTimeConstant);
             SetEngineDefault("AvatarStopTimeConstant", PE.AvatarStopTimeConstant);
             SetEngineDefault("AvatarStopZeroThreshold", PE.AvatarStopZeroThreshold);
+            SetEngineDefault("AvatarStepHeight", PE.AvatarStepHeight);
 
             // Enable very detailed logging.
             // By creating an empty logger when not logging, the log message invocation code

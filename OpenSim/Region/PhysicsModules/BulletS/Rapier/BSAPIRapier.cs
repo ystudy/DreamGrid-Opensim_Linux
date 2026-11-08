@@ -454,6 +454,12 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         // avatar by up to 0.8 m. ubODE never does. Only a contact with a walkable top is a step here.
         public override bool StepsNeedAWalkableTop { get { return true; } }
 
+        // With a walkable top required, the 0.999 m step height made every flat top up to 0.9 m above the feet a step: a
+        // low wall, a bench, a table or a counter was climbed. Stairs are 0.15 to 0.3 m. 0.5 m puts the top of the range
+        // 0.4 m above the feet (less AvatarStepGroundFudge, 0.1 m), so a 0.3 m stair is still climbed and a 0.5 m block is
+        // not. ubODE has no step-up at all.
+        public override float AvatarStepHeight { get { return 0.5f; } }
+
         public BSAPIRapier(string paramName, BSScene physScene)
         {
             PhysicsScene = physScene;
