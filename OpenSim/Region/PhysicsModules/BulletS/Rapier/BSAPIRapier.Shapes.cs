@@ -163,10 +163,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             if (shape.Shape == IntPtr.Zero)
                 return Vector3.Zero;
             // A trimesh has no volume, so Rapier gives it no mass properties. A mesh that ends up on a dynamic body
-            // (BulletS's GImpact shape) gets the inertia of its bounding box instead.
-            if (shape.MeshVerts != null
+            // (BulletS's GImpact shape) gets the inertia of its bounding box instead, kept when the trimesh was built.
+            if (shape.IsTrimesh
                     && (shape.shapeType == BSPhysicsShapeType.SHAPE_MESH || shape.shapeType == BSPhysicsShapeType.SHAPE_GIMPACT))
-                return BoundingBoxInertia(shape.MeshVerts, mass);
+                return BoxInertia(shape.BoundsMax - shape.BoundsMin, mass);
             // ubODE gives every prim the inertia of its bounding box ([BulletSim]PrimInertiaFromBoundingBox, Rapier's
             // default): a ball then rolls down at 0.6 g sin(slope), as on ubODE, not a solid sphere's 5/7 g sin(slope).
             if (BSParam.PrimInertiaFromBoundingBox)
@@ -233,17 +233,21 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                                k * (size.X * size.X + size.Y * size.Y));
         }
 
-        // The inertia of a solid box of this mass that fits the vertices (x, y, z triples), about its own axes.
-        private static Vector3 BoundingBoxInertia(float[] verts, float mass)
+        // The bounds of the vertices (x, y, z triples).
+        private static void VertexBounds(float[] verts, out Vector3 min, out Vector3 max)
         {
-            Vector3 min = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
-            Vector3 max = new Vector3(float.MinValue, float.MinValue, float.MinValue);
+            min = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
+            max = new Vector3(float.MinValue, float.MinValue, float.MinValue);
             for (int ii = 0; ii + 2 < verts.Length; ii += 3)
             {
                 min = new Vector3(Math.Min(min.X, verts[ii]), Math.Min(min.Y, verts[ii + 1]), Math.Min(min.Z, verts[ii + 2]));
                 max = new Vector3(Math.Max(max.X, verts[ii]), Math.Max(max.Y, verts[ii + 1]), Math.Max(max.Z, verts[ii + 2]));
             }
-            Vector3 size = max - min;
+        }
+
+        // The inertia of a solid box of this mass and size, about its own axes.
+        private static Vector3 BoxInertia(Vector3 size, float mass)
+        {
             float k = mass / 12f;
             return new Vector3(k * (size.Y * size.Y + size.Z * size.Z),
                                k * (size.X * size.X + size.Z * size.Z),
@@ -264,8 +268,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         // What BulletS passes (BSShapes.CreatePhysicalMeshShape, BSTerrainMesh): indicesCount is the number of ints in
         // 'indices' to use (a multiple of 3; the array can be longer, since degenerate triangles are removed in place),
         // verticesCount is the number of vertices (not floats) and 'vertices' holds x, y, z for each. Rapier reads the
-        // arrays only during the call, but the wrapper keeps its own copies for rebuilds (SetLocalScaling), which also
-        // protects it from BulletS reusing its arrays.
+        // arrays only during the call. A hull keeps its own copy of its points for rebuilds (SetLocalScaling), which
+        // also protects it from BulletS reusing its arrays. A trimesh keeps none (memory fix 4): BulletS's meshes are
+        // most of a region's geometry, and the uses of their vertices after they are built (a hull of a mesh, a
+        // rescale) are rare, so the vertices and triangles are read back from Rapier's own trimesh then (ReadTrimesh).
 
         // A shape that has no native shape: BulletS sees HasPhysicalShape false and falls back, as it does when
         // Bullet cannot build a mesh.
@@ -381,17 +387,61 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             }
         }
 
-        // A shape made from geometry: registered, with the arrays and the way to build it again kept.
+        // A hull made from points: registered, with the points and the way to build it again kept.
         private BulletShapeRapier GeometryShape(BulletWorldRapier world, IntPtr native, BSPhysicsShapeType type,
-                                    float[] vertices, int[] indices, Func<float[], IntPtr> build)
+                                    float[] vertices, Func<float[], IntPtr> build)
         {
             if (native == IntPtr.Zero)
                 return FailedShape(type, RapierNative.LastError());
             BulletShapeRapier shape = RegisterShape(world, native, type, Vector3.One);
             shape.MeshVerts = vertices;
-            shape.MeshIndices = indices;
             shape.BuildFromVerts = build;
             return shape;
+        }
+
+        // A trimesh: registered with its bounds only. The arrays are dropped once Rapier has its own copy.
+        private BulletShapeRapier TrimeshShape(BulletWorldRapier world, BSPhysicsShapeType type, float[] points, int[] triangles)
+        {
+            IntPtr native = BuildTrimeshNative(points, triangles);
+            if (native == IntPtr.Zero)
+                return FailedShape(type, RapierNative.LastError());
+            BulletShapeRapier shape = RegisterShape(world, native, type, Vector3.One);
+            shape.IsTrimesh = true;
+            VertexBounds(points, out shape.BoundsMin, out shape.BoundsMax);
+            world.State.MeshCopyBytesNotKept += ((long)points.Length + triangles.Length) * 4;
+            return shape;
+        }
+
+        // A trimesh's vertices (x, y, z each) and triangles, read back from Rapier's own trimesh. Rapier built it with
+        // MERGE_DUPLICATE_VERTICES, so the vertices are the distinct ones BulletS gave, and the triangles index them.
+        private static bool ReadTrimesh(BulletShapeRapier shape, out float[] vertices, out int[] indices)
+        {
+            vertices = null;
+            indices = null;
+            if (!shape.IsTrimesh || shape.Shape == IntPtr.Zero)
+                return false;
+            IntPtr data = RapierNative.r3SharedShape_ToTrimesh(shape.Shape, 3, 2);
+            if (data == IntPtr.Zero)
+                return false;
+            try
+            {
+                int vertexCount = (int)RapierNative.r3TriMeshData_Vertices(data, null, UIntPtr.Zero);
+                int indexCount = (int)RapierNative.r3TriMeshData_Indices(data, null, UIntPtr.Zero);
+                if (vertexCount < 3 || indexCount < 3)
+                    return false;
+                float[] v = new float[vertexCount * 3];
+                int[] i = new int[indexCount];
+                if ((int)RapierNative.r3TriMeshData_Vertices(data, v, (UIntPtr)vertexCount) != vertexCount
+                        || (int)RapierNative.r3TriMeshData_Indices(data, i, (UIntPtr)indexCount) != indexCount)
+                    return false;
+                vertices = v;
+                indices = i;
+                return true;
+            }
+            finally
+            {
+                RapierNative.r3FreeTriMeshData(data);
+            }
         }
 
         public override BulletShape CreateMeshShape(BulletWorld pWorld, int indicesCount, int[] indices, int verticesCount, float[] vertices)
@@ -399,8 +449,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             BulletWorldRapier world = (BulletWorldRapier)pWorld;
             if (!TryCopyMesh(indicesCount, indices, verticesCount, vertices, out int[] triangles, out float[] points, out string why))
                 return FailedShape(BSPhysicsShapeType.SHAPE_MESH, why);
-            return GeometryShape(world, BuildTrimeshNative(points, triangles), BSPhysicsShapeType.SHAPE_MESH, points, triangles,
-                                    scaled => BuildTrimeshNative(scaled, triangles));
+            return TrimeshShape(world, BSPhysicsShapeType.SHAPE_MESH, points, triangles);
         }
 
         // BulletS asks for this only when ShouldUseGImpactShapeForPrims is set (default false): a trimesh on a dynamic
@@ -413,8 +462,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                         + "it is a trimesh on a dynamic body, with the inertia of its bounding box.");
             if (!TryCopyMesh(indicesCount, indices, verticesCount, vertices, out int[] triangles, out float[] points, out string why))
                 return FailedShape(BSPhysicsShapeType.SHAPE_GIMPACT, why);
-            return GeometryShape(world, BuildTrimeshNative(points, triangles), BSPhysicsShapeType.SHAPE_GIMPACT, points, triangles,
-                                    scaled => BuildTrimeshNative(scaled, triangles));
+            return TrimeshShape(world, BSPhysicsShapeType.SHAPE_GIMPACT, points, triangles);
         }
 
         // One convex hull of the vertices (the triangle indices are not needed).
@@ -428,17 +476,18 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             Array.Copy(vertices, points, points.Length);
             if (!AllFinite(points, points.Length))
                 return FailedShape(BSPhysicsShapeType.SHAPE_CONVEXHULL, "a vertex is not a finite number");
-            return GeometryShape(world, BuildConvexHullNative(points), BSPhysicsShapeType.SHAPE_CONVEXHULL, points, null, BuildConvexHullNative);
+            return GeometryShape(world, BuildConvexHullNative(points), BSPhysicsShapeType.SHAPE_CONVEXHULL, points, BuildConvexHullNative);
         }
 
-        // BulletS's default for physical prims (ShouldUseSingleConvexHullForPrims): the hull of the mesh's vertices, which
-        // the mesh shape keeps for the purpose.
+        // BulletS's default for physical prims (ShouldUseSingleConvexHullForPrims): the hull of the mesh's vertices, read
+        // back from the trimesh. BulletS caches the hull it gets (BSShapeConvexHull), so this runs once per prim shape
+        // and size.
         public override BulletShape BuildConvexHullShapeFromMesh(BulletWorld pWorld, BulletShape pMesh)
         {
             BulletShapeRapier mesh = (BulletShapeRapier)pMesh;
-            if (mesh.MeshVerts == null)
+            if (!ReadTrimesh(mesh, out float[] meshVerts, out int[] _))
                 return FailedShape(BSPhysicsShapeType.SHAPE_CONVEXHULL, "the source shape is not a mesh");
-            BulletShapeRapier hull = (BulletShapeRapier)CreateConvexHullShape(pWorld, 0, null, mesh.MeshVerts.Length / 3, mesh.MeshVerts);
+            BulletShapeRapier hull = (BulletShapeRapier)CreateConvexHullShape(pWorld, 0, null, meshVerts.Length / 3, meshVerts);
             hull.Scale = mesh.Scale;
             return hull;
         }
@@ -449,12 +498,12 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         {
             BulletWorldRapier world = (BulletWorldRapier)pWorld;
             BulletShapeRapier mesh = (BulletShapeRapier)pMesh;
-            if (mesh.MeshVerts == null || mesh.MeshIndices == null)
+            if (!ReadTrimesh(mesh, out float[] meshVerts, out int[] triangles))
                 return FailedShape(BSPhysicsShapeType.SHAPE_HULL, "the source shape is not a mesh");
             LogOnce(world, false, "hacd", "Rapier's convex decomposition takes no parameters: HACDParams are ignored.");
-            int[] triangles = mesh.MeshIndices;
-            BulletShapeRapier hulls = GeometryShape(world, BuildDecompositionNative(mesh.MeshVerts, triangles), BSPhysicsShapeType.SHAPE_HULL,
-                                    mesh.MeshVerts, triangles, scaled => BuildDecompositionNative(scaled, triangles));
+            // The decomposition keeps the mesh it was made from, to make it again at another size.
+            BulletShapeRapier hulls = GeometryShape(world, BuildDecompositionNative(meshVerts, triangles), BSPhysicsShapeType.SHAPE_HULL,
+                                    meshVerts, scaled => BuildDecompositionNative(scaled, triangles));
             hulls.Scale = mesh.Scale;
             return hulls;
         }
@@ -569,7 +618,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             BulletWorldRapier world = (BulletWorldRapier)pWorld;
             if (!TryCopyHullList(hullCount, hulls, out float[] list, out string why))
                 return FailedShape(BSPhysicsShapeType.SHAPE_HULL, why);
-            BulletShapeRapier shape = GeometryShape(world, BuildHullListNative(list), BSPhysicsShapeType.SHAPE_HULL, list, null, BuildHullListNative);
+            BulletShapeRapier shape = GeometryShape(world, BuildHullListNative(list), BSPhysicsShapeType.SHAPE_HULL, list, BuildHullListNative);
             shape.VertsAreHullList = true;
             return shape;
         }
@@ -788,8 +837,9 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         // Rapier's shapes cannot be scaled, so the shape is built again at the new size and every collider made from the
         // old one is given the new one (r3Collider_SetShape). The old native shape is freed once they all have it: a
         // collider holds its own reference, so nothing uses it after that. A native shape is built at the new scale; a
-        // mesh or hull has its stored vertices multiplied by new scale / stored scale (a hull list leaves its counts
-        // alone). A shape that cannot be rebuilt (terrain, ground plane, deleted) is left as it is.
+        // hull has its stored vertices multiplied by new scale / stored scale (a hull list leaves its counts alone), and
+        // a trimesh the same with the vertices read back from Rapier. In BulletS only BSCharacter calls this, on the
+        // avatar's native shape. A shape that cannot be rebuilt (terrain, ground plane, deleted) is left as it is.
         public override void SetLocalScaling(BulletShape pShape, Vector3 scale)
         {
             BulletShapeRapier shape = (BulletShapeRapier)pShape;
@@ -799,13 +849,32 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
 
             float[] scaledVerts = null;
             IntPtr fresh;
+            Vector3 was = shape.Scale;
             if (shape.BuildNativeAt != null)
             {
                 fresh = shape.BuildNativeAt(scale);
             }
+            else if (shape.IsTrimesh)
+            {
+                if (was.X == 0f || was.Y == 0f || was.Z == 0f)
+                {
+                    LogOnce(world, true, "scale-from-zero", "A mesh scaled to zero cannot be scaled again; the shape is left as it is.");
+                    return;
+                }
+                if (!ReadTrimesh(shape, out float[] meshVerts, out int[] triangles))
+                {
+                    PhysicsScene.Logger.WarnFormat("{0} Could not read back a {1} shape to rescale it: {2}", LogHeader, shape.shapeType,
+                                RapierNative.LastError());
+                    return;
+                }
+                Vector3 factor = new Vector3(scale.X / was.X, scale.Y / was.Y, scale.Z / was.Z);
+                ScaleTriples(meshVerts, 0, meshVerts.Length, factor);
+                fresh = BuildTrimeshNative(meshVerts, triangles);
+                if (fresh != IntPtr.Zero)
+                    VertexBounds(meshVerts, out shape.BoundsMin, out shape.BoundsMax);
+            }
             else if (shape.BuildFromVerts != null && shape.MeshVerts != null)
             {
-                Vector3 was = shape.Scale;
                 if (was.X == 0f || was.Y == 0f || was.Z == 0f)
                 {
                     LogOnce(world, true, "scale-from-zero", "A mesh scaled to zero cannot be scaled again; the shape is left as it is.");

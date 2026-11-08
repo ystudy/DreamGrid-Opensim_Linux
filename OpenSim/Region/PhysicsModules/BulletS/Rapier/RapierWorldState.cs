@@ -261,6 +261,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         // a shape is never freed twice.
         public readonly HashSet<IntPtr> Shapes = new HashSet<IntPtr>();
 
+        // The bytes of vertices and indices of every trimesh built in this world that the wrapper did not keep a managed
+        // copy of (memory fix 4). A counter for the tests; nothing reads it otherwise.
+        public long MeshCopyBytesNotKept;
+
         // The flag SetForceUpdateAllAabbs last set (map rows 10 and 11); Rapier has nothing to set.
         public bool ForceUpdateAllAabbs;
 

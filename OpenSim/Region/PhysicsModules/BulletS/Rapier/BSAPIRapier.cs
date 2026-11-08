@@ -220,15 +220,21 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
             {
                 get { return Compound?.Children; }
             }
-            // The mesh a hull was built from, kept so a hull can be rebuilt (H9).
+            // The points a hull or hull list was built from, kept so it can be rebuilt at another size (H9). A trimesh
+            // (SHAPE_MESH, SHAPE_GIMPACT) keeps none (memory fix 4): its vertices and triangles are read back from the
+            // native trimesh when they are needed (ReadTrimesh).
             public float[] MeshVerts;
-            public int[] MeshIndices;
             // How SetLocalScaling rebuilds the shape (H9). A native shape (box, sphere...) is built again at the new size;
             // one made from geometry is built again from MeshVerts after they are scaled; a hull list keeps its
-            // BulletSim layout in MeshVerts, so scaling must leave the counts alone.
+            // BulletSim layout in MeshVerts, so scaling must leave the counts alone. A trimesh is built again from the
+            // geometry read back from Rapier.
             public Func<Vector3, IntPtr> BuildNativeAt;
             public Func<float[], IntPtr> BuildFromVerts;
             public bool VertsAreHullList;
+            public bool IsTrimesh;
+            // A trimesh's bounds in its own frame, for the bounding-box inertia of one on a dynamic body.
+            public Vector3 BoundsMin;
+            public Vector3 BoundsMax;
             // Bullet's collision margin, kept for GetMargin only: Rapier shapes have none (map rows 24, 40 and 41).
             public float Margin;
 
@@ -261,10 +267,12 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
                 // The same compound: a clone is another handle on it, as a copied btCompoundShape pointer would be.
                 ret.Compound = Compound;
                 ret.MeshVerts = MeshVerts;
-                ret.MeshIndices = MeshIndices;
                 ret.BuildNativeAt = BuildNativeAt;
                 ret.BuildFromVerts = BuildFromVerts;
                 ret.VertsAreHullList = VertsAreHullList;
+                ret.IsTrimesh = IsTrimesh;
+                ret.BoundsMin = BoundsMin;
+                ret.BoundsMax = BoundsMax;
                 return ret;
             }
 

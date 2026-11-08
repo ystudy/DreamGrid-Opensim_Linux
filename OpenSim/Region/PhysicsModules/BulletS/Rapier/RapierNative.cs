@@ -789,6 +789,22 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
         [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         public static extern Aabb r3SharedShape_ComputeAabb(IntPtr shape, Pose pose);
 
+        // An owned copy of the shape as an indexed triangle mesh (for a trimesh, its own vertices and triangles); free
+        // it with r3FreeTriMeshData. ntheta (3 to 4096) and nphi (2 to 4096) are read by round shapes only.
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern IntPtr r3SharedShape_ToTrimesh(IntPtr shape, uint ntheta, uint nphi);
+
+        // As the pair calls: the return value is the count in all (vertices; u32 indices), and more than capacity
+        // means nothing useful was written. The vertices are x, y, z floats each.
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern UIntPtr r3TriMeshData_Vertices(IntPtr mesh, [Out] float[] buffer, UIntPtr capacity);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern UIntPtr r3TriMeshData_Indices(IntPtr mesh, [Out] int[] buffer, UIntPtr capacity);
+
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        public static extern uint r3FreeTriMeshData(IntPtr mesh);
+
         // ---- Remaining members: getters, shape casts and counters ----
 
         [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]

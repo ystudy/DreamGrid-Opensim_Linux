@@ -508,6 +508,148 @@ public class ShapeTests
             scene.Dispose();
         }
     }
+    // ---- Trimeshes keep no managed copy of their geometry (memory fix 4) ----
+
+    // The unit cube as a closed trimesh: corners numbered by their (x, y, z) bits, two triangles per face.
+    private static readonly int[] CubeTriangles =
+    {
+        0, 1, 3, 0, 3, 2,  4, 6, 7, 4, 7, 5,  0, 4, 5, 0, 5, 1,
+        2, 3, 7, 2, 7, 6,  0, 2, 6, 0, 6, 4,  1, 5, 7, 1, 7, 3
+    };
+
+    // The cube's 8 vertices (3 floats each) and 36 indices, as 4-byte values.
+    private const long CubeMeshBytes = (8 * 3 + 36) * 4;
+
+    [Fact]
+    public void Trimesh_KeepsNoManagedCopyOfItsGeometry()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            RapierWorldState state = WorldOf(scene).State;
+            long before = state.MeshCopyBytesNotKept;
+            BulletShape mesh = scene.PE.CreateMeshShape(scene.World, CubeTriangles.Length, CubeTriangles, 8, CubeCorners(0.5f, Vector3.Zero));
+            BulletShape gimpact = scene.PE.CreateGImpactShape(scene.World, CubeTriangles.Length, CubeTriangles, 8, CubeCorners(0.5f, Vector3.Zero));
+            Assert.True(mesh.HasPhysicalShape);
+            Assert.True(gimpact.HasPhysicalShape);
+
+            Assert.Null(((BSAPIRapier.BulletShapeRapier)mesh).MeshVerts);
+            Assert.Null(((BSAPIRapier.BulletShapeRapier)gimpact).MeshVerts);
+            Assert.Equal(before + 2 * CubeMeshBytes, state.MeshCopyBytesNotKept);
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    // A static prim that is not a native shape (a hollow box) is a BulletS mesh: its shape holds no copy either.
+    [Fact]
+    public void StaticMeshPrim_ShapeKeepsNoManagedCopy()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = GroundScene();
+        try
+        {
+            long before = WorldOf(scene).State.MeshCopyBytesNotKept;
+            PrimitiveBaseShape pbs = PrimitiveBaseShape.CreateBox();
+            pbs.ProfileHollow = 20000;
+            Vector3 size = new Vector3(1f, 1f, 1f);
+            pbs.Scale = size;
+            scene.AddPrimShape("hollow", pbs, new Vector3(128f, 128f, GroundZ + 0.5f), size, Quaternion.Identity, false, 510);
+            RapierTestScene.Step(scene, 0.3f);
+
+            BSShape shape = scene.PhysObjects[510].PhysShape;
+            Assert.Equal(BSPhysicsShapeType.SHAPE_MESH, shape.ShapeType);
+            Assert.Null(((BSAPIRapier.BulletShapeRapier)shape.physShapeInfo).MeshVerts);
+            Assert.True(WorldOf(scene).State.MeshCopyBytesNotKept > before);
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    // SetLocalScaling reads a trimesh's vertices back from Rapier and builds it again at the new size.
+    [Fact]
+    public void SetLocalScaling_Trimesh_RebuildsFromTheNativeMesh()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            BulletShape mesh = scene.PE.CreateMeshShape(scene.World, CubeTriangles.Length, CubeTriangles, 8, CubeCorners(0.5f, Vector3.Zero));
+            StaticBody(scene, mesh, 9100, new Vector3(128f, 128f, 50f));
+            Assert.Equal(50.5f, Ray(scene, new Vector3(128f, 128f, 60f), new Vector3(128f, 128f, 40f)).Point.Z, 0.01f);
+
+            scene.PE.SetLocalScaling(mesh, new Vector3(1f, 1f, 4f));
+            Assert.Equal(new Vector3(1f, 1f, 4f), scene.PE.GetLocalScaling(mesh));
+            Assert.Equal(52f, Ray(scene, new Vector3(128f, 128f, 60f), new Vector3(128f, 128f, 40f)).Point.Z, 0.01f);
+            Assert.Equal(128.5f, Ray(scene, new Vector3(140f, 128f, 50f), new Vector3(120f, 128f, 50f)).Point.X, 0.01f);
+
+            // Scaled again: from the rebuilt mesh, not from the first size.
+            scene.PE.SetLocalScaling(mesh, new Vector3(2f, 1f, 2f));
+            Assert.Equal(51f, Ray(scene, new Vector3(128f, 128f, 60f), new Vector3(128f, 128f, 40f)).Point.Z, 0.01f);
+            Assert.Equal(129f, Ray(scene, new Vector3(140f, 128f, 50f), new Vector3(120f, 128f, 50f)).Point.X, 0.01f);
+            Assert.Null(((BSAPIRapier.BulletShapeRapier)mesh).MeshVerts);
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    // The bounding box kept for the inertia follows a rescale: a cube of edge 2 and mass 6 has an inertia of 4.
+    [Fact]
+    public void GImpact_Rescaled_InertiaFollowsTheNewSize()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            BulletShape mesh = scene.PE.CreateGImpactShape(scene.World, CubeTriangles.Length, CubeTriangles, 8, CubeCorners(0.5f, Vector3.Zero));
+            scene.PE.SetLocalScaling(mesh, new Vector3(2f, 2f, 2f));
+            Vector3 inertia = scene.PE.CalculateLocalInertia(mesh, 6f);
+            Assert.Equal(4f, inertia.X, 2);
+            Assert.Equal(4f, inertia.Y, 2);
+            Assert.Equal(4f, inertia.Z, 2);
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
+    // HACD (ShouldUseBulletHACD) decomposes a mesh shape: the mesh's geometry is read back from Rapier for it.
+    [Fact]
+    public void HullFromMesh_OfCubeMesh_RestsLikeBox()
+    {
+        using ErrorLog log = new ErrorLog();
+        BSScene scene = RapierTestScene.Create();
+        try
+        {
+            Floor(scene);
+            BulletShape mesh = scene.PE.CreateMeshShape(scene.World, CubeTriangles.Length, CubeTriangles, 8, CubeCorners(0.5f, Vector3.Zero));
+            BulletShape hulls = scene.PE.BuildHullShapeFromMesh(scene.World, mesh, new HACDParams());
+            Assert.True(hulls.HasPhysicalShape);
+            Assert.Equal((int)BSPhysicsShapeType.SHAPE_HULL, scene.PE.GetShapeType(hulls));
+            BulletBody body = DynamicBody(scene, hulls, 9101, new Vector3(128f, 128f, 53f));
+            EngineStep(scene, 3f);
+
+            Assert.InRange(scene.PE.GetPosition(body).Z, 50.5f - 0.03f, 50.5f + 0.03f);
+            Assert.Empty(log.Errors);
+        }
+        finally
+        {
+            scene.Dispose();
+        }
+    }
+
     // ---- Prim cylinders (the Rapier engine's native cylinder) ----
 
     private const float GroundZ = 21f;
