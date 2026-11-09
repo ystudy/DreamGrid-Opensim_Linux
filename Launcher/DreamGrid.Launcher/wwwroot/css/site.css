@@ -115,6 +115,15 @@ body.page-full > header > .container, body.page-full > main.container { max-widt
 /* Near the left or right edge the words open away from it. */
 .help-tip.help-start:hover .help-text, .help-tip.help-start:focus .help-text { left: -.5rem; transform: none; }
 .help-tip.help-end:hover .help-text, .help-tip.help-end:focus .help-text { left: auto; right: -.5rem; transform: none; }
+/* On a narrow screen the words could run off either edge: they open as a strip along the bottom of the window. */
+@media (max-width: 991.98px) {
+    .help-tip:hover .help-text, .help-tip:focus .help-text,
+    .help-tip.help-start:hover .help-text, .help-tip.help-start:focus .help-text,
+    .help-tip.help-end:hover .help-text, .help-tip.help-end:focus .help-text,
+    #splash-settings .help-tip:hover .help-text, #splash-settings .help-tip:focus .help-text {
+        position: fixed; top: auto; bottom: 1rem; left: 1rem; right: 1rem; width: auto; max-width: none; transform: none;
+    }
+}
 
 /* Button icons (ButtonIconTagHelper, wwwroot/img/icons.svg): drawn in the button's text colour, before its words. */
 .btn-icon { width: 1.1em; height: 1.1em; margin-right: .45em; vertical-align: -.2em; flex-shrink: 0; }

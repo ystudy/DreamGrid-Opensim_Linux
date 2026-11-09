@@ -26,7 +26,9 @@
 #splash-settings .settings-group:first-child { border-top: 0; margin-top: 0; padding-top: 0; }
 #splash-settings .settings-group > h3 { display: flex; align-items: center; }
 /* Settings sit at the right edge, so their help opens towards the canvas. */
-#splash-settings .help-tip:hover .help-text, #splash-settings .help-tip:focus .help-text { left: auto; right: -.5rem; transform: none; }
+@media (min-width: 992px) {
+    #splash-settings .help-tip:hover .help-text, #splash-settings .help-tip:focus .help-text { left: auto; right: -.5rem; transform: none; }
+}
 
 /* Pictures: the upload and list, then the grid's logo. */
 .splash-pictures-columns { display: grid; gap: 1.5rem; grid-template-columns: 1fr; }
