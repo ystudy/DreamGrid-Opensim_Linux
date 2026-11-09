@@ -6,10 +6,12 @@ main { flex: 1 0 auto; overflow-wrap: anywhere; }
 /* One centred column on a wide screen: the header, the page and the footer line up in the middle, rather than short
    pages sitting at the left of a 1320px row. A page that needs the room (the region map, the logs) sets ViewData["Wide"]. */
 @media (min-width: 1200px) {
-    body:not(.page-wide) > header > .container,
-    body:not(.page-wide) > main.container,
-    body:not(.page-wide) > footer.container { max-width: 960px; }
+    body:not(.page-wide):not(.page-full) > header > .container,
+    body:not(.page-wide):not(.page-full) > main.container,
+    body:not(.page-wide):not(.page-full) > footer.container { max-width: 960px; }
 }
+/* An editor that uses the whole window (ViewData["Wide"] = "full"): the splash page editor's canvas. */
+body.page-full > header > .container, body.page-full > main.container { max-width: none; padding-left: 1.5rem; padding-right: 1.5rem; }
 
 /* Bright text: Bootstrap's greys are hard to read on its grey backgrounds, so the secondary text is close to the main
    text in both themes, and borders are easier to see. */
@@ -62,17 +64,57 @@ main { flex: 1 0 auto; overflow-wrap: anywhere; }
     --bs-btn-disabled-color: #fff;
     --bs-btn-disabled-border-color: #fff;
 }
-/* Danger keeps its red outline, so a delete still looks different, but its words are bright too. */
-[data-bs-theme=dark] .btn-outline-danger {
-    --bs-btn-color: #fff;
-    --bs-btn-border-color: #ff6b6b;
+/* Danger looks like the others (its bin or cross icon says what it does) and turns red only under the pointer. */
+.btn-outline-danger {
+    --bs-btn-color: var(--bs-body-color);
+    --bs-btn-border-color: var(--bs-body-color);
     --bs-btn-hover-color: #fff;
     --bs-btn-hover-bg: #dc3545;
     --bs-btn-hover-border-color: #dc3545;
     --bs-btn-active-color: #fff;
     --bs-btn-active-bg: #b02a37;
     --bs-btn-active-border-color: #b02a37;
+    --bs-btn-disabled-color: var(--bs-body-color);
+    --bs-btn-disabled-border-color: var(--bs-body-color);
 }
+[data-bs-theme=dark] .btn-outline-danger {
+    --bs-btn-color: #fff;
+    --bs-btn-border-color: #fff;
+    --bs-btn-disabled-color: #fff;
+    --bs-btn-disabled-border-color: #fff;
+}
+/* A button that can't be used yet stays white, just a little dimmer, rather than turning grey. */
+.btn { --bs-btn-disabled-opacity: .7; }
+
+/* Help behind a "?" icon (HelpTipTagHelper; splash-editor.js help()): the words show while the pointer is over it or it
+   has the keyboard focus. Closed, the words are clipped out of sight but stay in the page for screen readers. */
+.help-tip { position: relative; display: inline-flex; align-items: center; margin-left: .4rem; vertical-align: middle; color: var(--bs-link-color); cursor: help; border-radius: 50%; font-size: 1rem; font-weight: 400; }
+.help-tip:focus-visible { outline: 2px solid var(--bs-link-color); outline-offset: 2px; }
+.help-icon { width: 1.05rem; height: 1.05rem; }
+.help-tip .help-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.help-tip:hover .help-text, .help-tip:focus .help-text {
+    top: calc(100% + .45rem);
+    left: 50%;
+    z-index: 1080;
+    width: max-content;
+    max-width: min(22rem, 80vw);
+    height: auto;
+    padding: .55rem .75rem;
+    overflow: visible;
+    clip-path: none;
+    transform: translateX(-50%);
+    white-space: normal;
+    text-align: left;
+    font-size: .85rem;
+    line-height: 1.45;
+    color: var(--bs-body-bg);
+    background: var(--bs-body-color);
+    border-radius: var(--bs-border-radius);
+    box-shadow: 0 .4rem 1rem rgba(0, 0, 0, .35);
+}
+/* Near the left or right edge the words open away from it. */
+.help-tip.help-start:hover .help-text, .help-tip.help-start:focus .help-text { left: -.5rem; transform: none; }
+.help-tip.help-end:hover .help-text, .help-tip.help-end:focus .help-text { left: auto; right: -.5rem; transform: none; }
 
 /* Button icons (ButtonIconTagHelper, wwwroot/img/icons.svg): drawn in the button's text colour, before its words. */
 .btn-icon { width: 1.1em; height: 1.1em; margin-right: .45em; vertical-align: -.2em; flex-shrink: 0; }

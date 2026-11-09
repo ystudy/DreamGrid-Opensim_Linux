@@ -645,16 +645,48 @@
         return input;
     }
 
+    // An icon from the site's sprite, as the server draws them (ButtonIconTagHelper, HelpTipTagHelper).
+    function icon(name, className) {
+        var ns = "http://www.w3.org/2000/svg";
+        var svg = document.createElementNS(ns, "svg");
+        svg.setAttribute("class", className);
+        svg.setAttribute("aria-hidden", "true");
+        svg.setAttribute("focusable", "false");
+        var use = document.createElementNS(ns, "use");
+        use.setAttribute("href", "/img/icons.svg#" + name);
+        svg.appendChild(use);
+        return svg;
+    }
+
+    var BUTTON_ICONS = {
+        "Change…": "edit", "Choose…": "image", "Remove": "trash", "Delete": "trash", "Up": "arrow-up", "Down": "arrow-down",
+        "Add news": "plus", "Refresh from the map": "map-pin", "Use the map tile": "map-pin"
+    };
+
     function button(parent, text, className, onClick) {
         var b = make("button", "btn btn-sm " + (className || "btn-outline-secondary"), text);
         b.type = "button";
+        if (BUTTON_ICONS[text]) b.insertBefore(icon(BUTTON_ICONS[text], "btn-icon"), b.firstChild);
         b.addEventListener("click", onClick);
         parent.appendChild(b);
         return b;
     }
 
+    // A line that says what is going on right now (not help): it stays in view.
     function hint(parent, text) {
         parent.appendChild(make("p", "hint form-text small mb-2", text));
+    }
+
+    // Help: a "?" beside the heading of parent whose words show while the pointer is over it or it has the focus.
+    function help(parent, text) {
+        var heading = parent.querySelector(":scope > h2, :scope > h3");
+        var tip = make("span", "help-tip");
+        tip.tabIndex = 0;
+        tip.appendChild(icon("help", "help-icon"));
+        var words = make("span", "help-text", text);
+        words.setAttribute("role", "tooltip");
+        tip.appendChild(words);
+        (heading || parent).appendChild(tip);
     }
 
     // The block being edited, changed at one path, as an edit from the panel.
@@ -721,7 +753,7 @@
     function pageSettings() {
         var d = state.design, bg = d.background, lim = state.limits;
         var g = group(settings, "The page");
-        hint(g, "Click a block to change it, or change the whole page here.");
+        help(g, "Click a block to change it, or change the whole page here.");
         colourField(g, "Background colour", bg.colour, function (v) { setPage("background.colour", v); });
         pictureField(g, "Background picture", bg.picture && bg.picture.name, true, function (name) {
             var was = state.design.background.picture;
@@ -734,7 +766,7 @@
         rangeField(g, "Darken the picture", bg.darken, lim.maxDarken || 80, function (v) { setPage("background.darken", v); });
 
         var size = group(settings, "Design size");
-        hint(size, "The size you design at, in pixels. Viewers' windows shrink or grow it (see the preview).");
+        help(size, "The size you design at, in pixels. Viewers' windows shrink or grow it (see the preview).");
         numberField(size, "Width", d.width, lim.minWidth || 640, lim.maxWidth || 3840, function (v) {
             change(Core.fitBlocks(Core.setPath(state.design, "width", v)));
         });
@@ -779,7 +811,7 @@
         var lim = state.limits;
         var head = make("h2", "h6", (KIND_NAMES[b.kind] || b.kind) + " block");
         settings.appendChild(head);
-        hint(settings, "Drag the block to move it, or its corners and edges to resize it. Arrow keys move it by 1 px (10 px with Shift).");
+        help(settings, "Drag the block to move it, or its corners and edges to resize it. Arrow keys move it by 1 px (10 px with Shift).");
 
         kindSettings(b, lim);
 
@@ -815,7 +847,7 @@
         numberField(where, "Rotation (degrees, clockwise)", b.rotate || 0, -(lim.maxRotate || 180), lim.maxRotate || 180, function (v) {
             change(replaceBlock(Core.setPath(blockById(b.id), "rotate", Core.angle(v, false))), true);
         });
-        hint(where, "Or drag the round handle above the block. Hold Shift for 15° steps. 0 is upright.");
+        help(where, "Or drag the round handle above the block. Hold Shift for 15° steps. 0 is upright.");
     }
 
     function kindSettings(b, lim) {
@@ -824,7 +856,7 @@
             case "Text":
                 g = group(settings, "Text");
                 textField(g, "Text", c.text.en, lim.maxText || 4000, function (v) { setBlock("content.text", { en: v }); }, 8);
-                hint(g, "Markdown: **bold**, *italic*, [link](https://…). A blank line starts a new paragraph.");
+                help(g, "Markdown: **bold**, *italic*, [link](https://…). A blank line starts a new paragraph.");
                 break;
             case "Picture":
                 g = group(settings, "Picture");
@@ -842,14 +874,14 @@
                 g = group(settings, "Grid name and logo");
                 checkField(g, "Show the grid's name", c.showName, function (v) { setBlock("content.showName", v); });
                 checkField(g, "Show the grid's logo", c.showLogo, function (v) { setBlock("content.showLogo", v); });
-                hint(g, "The logo is the grid's one logo; set it under Pictures.");
+                help(g, "The logo is the grid's one logo; set it under Pictures.");
                 break;
             case "Status":
                 g = group(settings, "Live status");
                 checkField(g, "Grid online or offline", c.status.online, function (v) { setBlock("content.status.online", v); });
                 checkField(g, "People online now", c.status.people, function (v) { setBlock("content.status.people", v); });
                 checkField(g, "Regions running", c.status.regions, function (v) { setBlock("content.status.regions", v); });
-                hint(g, "Counts only, never names. They are at most about a minute old.");
+                help(g, "Counts only, never names. They are at most about a minute old.");
                 break;
             case "News":
                 newsSettings(b, lim);
@@ -864,7 +896,7 @@
                 checkField(g, "Terms", c.links.terms, function (v) { setBlock("content.links.terms", v); });
                 checkField(g, "Privacy", c.links.privacy, function (v) { setBlock("content.links.privacy", v); });
                 checkField(g, "The grid's front page", c.links.frontPage, function (v) { setBlock("content.links.frontPage", v); });
-                hint(g, "Sign up and forgot password show only while those pages are open; Terms and privacy only once they are written.");
+                help(g, "Sign up and forgot password show only while those pages are open; Terms and privacy only once they are written.");
                 break;
         }
     }
@@ -899,7 +931,7 @@
         var c = b.content, news = c.news;
         var g = group(settings, "News");
         textField(g, "Heading", c.heading && c.heading.en, lim.maxHeading || 120, function (v) { setBlock("content.heading", { en: v }); });
-        hint(g, "Residents see the newest items first. Hidden items stay here but don't show.");
+        help(g, "Residents see the newest items first. Hidden items stay here but don't show.");
         var add = button(g, "Add news", "btn-outline-primary mb-2", function () {
             setBlock("content.news", [{ date: today(), text: { en: "" }, hidden: false }].concat(listNow("content.news")), true);
         });
@@ -921,7 +953,7 @@
     function placesSettings(b, lim) {
         var places = b.content.places;
         var g = group(settings, "Places to go");
-        hint(g, "Up to " + (lim.maxPlaces || 8) + " regions from the whole grid. Cards show the name, a picture and a line of text.");
+        help(g, "Up to " + (lim.maxPlaces || 8) + " regions from the whole grid. Cards show the name, a picture and a line of text.");
         var chosen = {};
         places.forEach(function (p) { chosen[p.regionId] = true; });
         var free = state.regions.filter(function (r) { return !chosen[r.id]; });

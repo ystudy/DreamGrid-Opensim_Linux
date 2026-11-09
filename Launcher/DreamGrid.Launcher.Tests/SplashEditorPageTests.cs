@@ -55,6 +55,30 @@ public sealed class SplashEditorPageTests
         Assert.Equal(["8", "16", "32", "64"], page.QuerySelectorAll("#snap-size option").Select(o => o.GetAttribute("value")));
     }
 
+    [Fact]
+    public async Task Editor_uses_the_whole_window_with_icons_and_hover_help()
+    {
+        await using var f = Factory();
+        var client = await StaffAsync(f, "owner");
+
+        var page = Parser.ParseDocument(await client.GetStringAsync("/splash", Ct));
+
+        Assert.Equal("page-full", page.Body!.GetAttribute("class"));
+        var h1 = page.QuerySelector("main h1")!;
+        Assert.StartsWith("Splash Page Editor", h1.TextContent.Trim());
+        // The introduction is behind the "?" beside the title, still in the page for screen readers.
+        var tip = h1.QuerySelector(".help-tip[tabindex='0']")!;
+        Assert.Equal("/img/icons.svg#help", tip.QuerySelector("svg.help-icon use")!.GetAttribute("href"));
+        Assert.Contains("behind their login boxes", tip.QuerySelector(".help-text[role=tooltip]")!.TextContent);
+        Assert.Empty(page.QuerySelectorAll("main p.hint"));
+        // Each block on the shelf shows its own icon; the layer buttons have theirs.
+        Assert.Equal(["text", "image", "id-card", "activity", "news", "map-pin", "link"],
+            page.QuerySelectorAll("#splash-shelf .shelf-item svg use").Select(u => u.GetAttribute("href")!.Split('#')[1]));
+        Assert.EndsWith("#bring-forward", page.QuerySelector("#forward svg use")!.GetAttribute("href"));
+        Assert.EndsWith("#send-back", page.QuerySelector("#back svg use")!.GetAttribute("href"));
+        Assert.Null(page.QuerySelector("[icon]")); // the icon attribute is the server's, never sent
+    }
+
     [Theory]
     [InlineData("supervisor")]
     [InlineData(null)]

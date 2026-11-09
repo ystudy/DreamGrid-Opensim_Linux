@@ -13,16 +13,16 @@ namespace DreamGrid.Launcher.Pages.Splash;
 /// </summary>
 public sealed class IndexModel(SplashSnapshot snapshot, Func<LauncherSettings> settings) : PageModel
 {
-    /// <summary>The block shelf, in the order of <see cref="SplashBlockKind"/>.</summary>
-    public static readonly IReadOnlyList<(SplashBlockKind Kind, string Label)> Shelf =
+    /// <summary>The block shelf, in the order of <see cref="SplashBlockKind"/>, with each block's icon in img/icons.svg.</summary>
+    public static readonly IReadOnlyList<(SplashBlockKind Kind, string Label, string Icon)> Shelf =
     [
-        (SplashBlockKind.Text, "Text"),
-        (SplashBlockKind.Picture, "Picture"),
-        (SplashBlockKind.GridName, "Grid name and logo"),
-        (SplashBlockKind.Status, "Live status"),
-        (SplashBlockKind.News, "News"),
-        (SplashBlockKind.Places, "Places to go"),
-        (SplashBlockKind.Links, "Links"),
+        (SplashBlockKind.Text, "Text", "text"),
+        (SplashBlockKind.Picture, "Picture", "image"),
+        (SplashBlockKind.GridName, "Grid name and logo", "id-card"),
+        (SplashBlockKind.Status, "Live status", "activity"),
+        (SplashBlockKind.News, "News", "news"),
+        (SplashBlockKind.Places, "Places to go", "map-pin"),
+        (SplashBlockKind.Links, "Links", "link"),
     ];
 
     public SplashView View { get; private set; } = null!;

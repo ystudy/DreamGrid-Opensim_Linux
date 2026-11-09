@@ -24,7 +24,7 @@
     <link rel="stylesheet" href="/css/site.css">
     @await RenderSectionAsync("Head", required: false)
 </head>
-<body class="@(ViewData["Wide"] is true ? "page-wide" : null)">
+<body class="@(ViewData["Wide"] switch { true => "page-wide", "full" => "page-full", _ => null })">
 <header class="navbar navbar-expand bg-body border-bottom shadow-sm">
     <div class="container flex-wrap gap-2">
         <strong class="navbar-brand grid-name me-auto">@gridName</strong>

@@ -122,3 +122,23 @@ public sealed class ButtonIconTagHelper : TagHelper
         }
     }
 }
+
+/// <summary>
+/// <c>&lt;help-tip&gt;Words&lt;/help-tip&gt;</c>: a small "?" icon whose words show while the pointer is over it or it has
+/// the keyboard focus (CSS only, site.css <c>.help-tip</c>). The words stay in the page for screen readers.
+/// </summary>
+[HtmlTargetElement("help-tip")]
+public sealed class HelpTipTagHelper : TagHelper
+{
+    public override void Process(TagHelperContext context, TagHelperOutput output)
+    {
+        output.TagName = "span";
+        output.TagMode = TagMode.StartTagAndEndTag;
+        var classes = output.Attributes.TryGetAttribute("class", out var c) ? "help-tip " + c.Value : "help-tip";
+        output.Attributes.SetAttribute("class", classes);
+        output.Attributes.SetAttribute("tabindex", "0");
+        output.PreContent.AppendHtml(
+            $"<svg class=\"help-icon\" aria-hidden=\"true\" focusable=\"false\"><use href=\"{ButtonIcons.Sprite}#help\"></use></svg><span class=\"help-text\" role=\"tooltip\">");
+        output.PostContent.AppendHtml("</span>");
+    }
+}
