@@ -239,7 +239,7 @@ public sealed class LegalPagesTests
 
         var page = new HtmlParser().ParseDocument(await r.Content.ReadAsStringAsync(Ct));
         Assert.Equal(["/terms", "/privacy", "/cookies", "/contact"], page.QuerySelectorAll("footer nav a").Select(a => a.GetAttribute("href")));
-        Assert.Equal("Staff sign in", page.QuerySelector("footer a[href='/login']")!.TextContent.Trim());
+        Assert.Equal("Staff sign in", page.QuerySelector("header a[href='/login']")!.TextContent.Trim());
     }
 
     [Fact]

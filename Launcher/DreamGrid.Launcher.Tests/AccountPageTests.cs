@@ -241,4 +241,24 @@ public sealed class AccountPageTests
         var page = await PageAsync(await SignedInAsync(f), "/guest");
         Assert.NotNull(page.QuerySelector("a[href='/guest/account']"));
     }
+
+    [Fact]
+    public async Task The_front_page_card_signs_a_resident_in()
+    {
+        await using var f = Factory();
+        var client = Client(f);
+        var front = await PageAsync(client, "/home");
+        var form = front.QuerySelector("main form#front-sign-in")!;
+        Assert.Equal("/guest/sign-in", form.GetAttribute("action"));
+        Assert.NotNull(form.QuerySelector("input[name=Name][autocomplete=username]"));
+        Assert.NotNull(form.QuerySelector("input[name=Password][type=password]"));
+        Assert.NotNull(front.QuerySelector("main a.btn[href='/signup']"));
+
+        using var r = await client.PostAsync(form.GetAttribute("action"), new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["Name"] = "Ann Smith", ["Password"] = Old, ["__RequestVerificationToken"] = Token(front, "form#front-sign-in"),
+        }), Ct);
+        Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/guest/account", Ct)).StatusCode);
+    }
 }

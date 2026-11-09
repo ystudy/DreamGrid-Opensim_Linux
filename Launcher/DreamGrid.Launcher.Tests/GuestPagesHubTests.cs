@@ -110,4 +110,42 @@ public sealed class GuestPagesHubTests
         Assert.Equal(["/people/sign-ups", "/people/tickets", "/groups", "/people/takedowns", "/staff"],
             (await PageAsync(owner, "/people")).QuerySelectorAll("#hub-links a").Select(a => a.GetAttribute("href")));
     }
+
+    [Theory]
+    [InlineData("owner")]
+    [InlineData("admin")]
+    [InlineData("supervisor")]
+    public async Task Staff_can_open_the_guest_side_and_come_back(string role)
+    {
+        await using var f = Factory();
+        var client = await StaffAsync(f, role);
+
+        var staffPage = await PageAsync(client, "/profile/sessions");
+        var link = staffPage.QuerySelector("header a#guest-side-link")!;
+        Assert.Equal("/home", link.GetAttribute("href"));
+        Assert.Equal("Guest view", link.TextContent.Trim());
+        Assert.Null(staffPage.QuerySelector("header nav a#guest-side-link")); // not a menu group
+
+        var front = await PageAsync(client, "/home");
+        Assert.NotNull(front.QuerySelector("main form#front-sign-in"));
+        Assert.Equal("/", front.QuerySelector("header a#staff-side-link")!.GetAttribute("href"));
+        Assert.Null(front.QuerySelector("a#staff-link")); // no "Staff sign in" for someone already signed in
+    }
+
+    [Fact]
+    public async Task Visitors_get_staff_sign_in_not_the_way_back()
+    {
+        await using var f = Factory();
+        var front = await PageAsync(f.CreateClient(new() { AllowAutoRedirect = false }), "/home");
+        Assert.NotNull(front.QuerySelector("header a#staff-link"));
+        Assert.Null(front.QuerySelector("#staff-side-link"));
+    }
+
+    [Fact]
+    public async Task The_hub_links_to_the_guest_side()
+    {
+        await using var f = Factory();
+        var page = await PageAsync(await StaffAsync(f, "admin"), "/guest-pages");
+        Assert.Equal("/home", page.QuerySelector("main a#guest-side-hub-link")!.GetAttribute("href"));
+    }
 }

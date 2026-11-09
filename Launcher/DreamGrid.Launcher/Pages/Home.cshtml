@@ -6,10 +6,31 @@
 }
 <h1>@Model.GridName</h1>
 <p>Welcome. Sign in with your avatar to see how to connect, or create an account to join.</p>
-<p>
-    <a class="btn btn-primary" href="/guest/sign-in">Sign in</a>
-    <a class="btn btn-outline-primary" href="/signup">Create an account</a>
-</p>
-@section Footer {
-    <small><a href="/login">Staff sign in</a></small>
+
+@* Two ways in, side by side (one above the other on phones). The sign-in form posts to the sign-in page, which shows any error, the two-factor step and the resend link. *@
+<div class="front-cards">
+    <section class="card card-body shadow-sm" aria-labelledby="front-sign-in-title">
+        <h2 id="front-sign-in-title" class="h4">Sign in</h2>
+        <p>Already have an avatar here? Use its name and password.</p>
+        @* The cards share rows (title, words, fields, button, link), so the two buttons line up. *@
+        <form id="front-sign-in" method="post" action="/guest/sign-in" asp-antiforgery="true">
+            <div class="front-fields">
+                <label class="form-label" for="front-name">Avatar name</label>
+                <input class="form-control" id="front-name" name="Name" maxlength="64" autocomplete="username" placeholder="First Last" required>
+                <label class="form-label mt-3" for="front-password">Password</label>
+                <input class="form-control" id="front-password" name="Password" type="password" autocomplete="current-password" required>
+            </div>
+            <button type="submit" class="btn btn-primary w-100">Sign in</button>
+        </form>
+        <p class="small"><a href="/guest/forgot-password">Forgot password?</a></p>
+    </section>
+    <section class="card card-body shadow-sm" aria-labelledby="front-sign-up-title">
+        <h2 id="front-sign-up-title" class="h4">Create an account</h2>
+        <p>New here? Make an avatar to join @Model.GridName. You choose its name and password, then you can sign in here and in your viewer.</p>
+        <div class="front-fields"></div>
+        <a class="btn btn-outline-primary w-100" href="/signup">Create an account</a>
+    </section>
+</div>
+@section HeaderActions {
+    <a id="staff-link" class="btn btn-sm btn-outline-secondary" href="/login" icon="shield">Staff sign in</a>
 }

@@ -252,10 +252,10 @@ public sealed partial class SupportPagesTests
     }
 
     [Fact]
-    public async Task The_guest_footer_links_to_help()
+    public async Task The_guest_header_links_to_help()
     {
         await using var r = Make();
-        Assert.Equal("/support", (await PageAsync(Client(r), "/support")).QuerySelector("#help-link")!.GetAttribute("href"));
+        Assert.Equal("/support", (await PageAsync(Client(r), "/support")).QuerySelector("header #help-link")!.GetAttribute("href"));
     }
 
     private static Ticket Ticket(Guid id, string number, string subject) =>

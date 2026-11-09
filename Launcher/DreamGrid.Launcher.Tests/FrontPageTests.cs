@@ -55,9 +55,9 @@ public sealed class FrontPageTests
         Assert.Equal(HttpStatusCode.OK, r.StatusCode); // answered at "/", not redirected
         var page = new HtmlParser().ParseDocument(await r.Content.ReadAsStringAsync(Ct));
         Assert.Contains("Avalon", page.QuerySelector("main")!.TextContent);
-        Assert.Equal("/guest/sign-in", page.QuerySelector("main a[href='/guest/sign-in']")!.GetAttribute("href"));
+        Assert.Equal("/guest/sign-in", page.QuerySelector("main form#front-sign-in")!.GetAttribute("action"));
         Assert.Equal("Create an account", page.QuerySelector("main a[href='/signup']")!.TextContent.Trim());
-        var staff = page.QuerySelector("a[href='/login']")!;
+        var staff = page.QuerySelector("header .guest-actions a#staff-link[href='/login']")!;
         Assert.Equal("Staff sign in", staff.TextContent.Trim());
         Assert.Empty(page.QuerySelectorAll("header nav a")); // no staff navigation
         Assert.DoesNotContain("Your world", page.Body!.TextContent);

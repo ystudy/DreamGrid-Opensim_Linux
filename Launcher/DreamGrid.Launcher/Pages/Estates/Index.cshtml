@@ -1,11 +1,16 @@
 @page "/estates"
 @model DreamGrid.Launcher.Pages.Estates.IndexModel
+@using DreamGrid.Launcher.Navigation
 @{
     ViewData["Title"] = "Estates";
+    ViewData["Wide"] = true;
+    var sortKey = DreamGrid.Launcher.Pages.Estates.IndexModel.SortKey(Model.Sort);
+    var sortDown = DreamGrid.Launcher.Pages.Estates.IndexModel.Descending(Model.Sort);
+    var searching = !string.IsNullOrWhiteSpace(Model.Q);
 }
-<h1>Estates</h1>
-<p>Every region is in an estate. The estate's owner and managers can change its regions' rules in the viewer's Region/Estate window.
-    Open an estate to rename it, change its owner or managers, or move regions into it.</p>
+<div class="page-head">
+    <h1>Estates<help-tip class="help-start">Every region is in an estate. The estate's owner and managers can change its regions' rules in the viewer's Region/Estate window. Open an estate to rename it, change its owner or managers, or move regions into it.</help-tip></h1>
+</div>
 @if (Model.Error is not null)
 {
     <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
@@ -14,40 +19,82 @@
 {
     <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
 }
-@if (Model.Unavailable)
-{
-    <p id="estates-unavailable">@DreamGrid.Launcher.Estates.EstatesAdmin.DatabaseDown</p>
-}
-else if (Model.Rows.Count == 0)
-{
-    <p id="estates-none">No estates yet. The first one is made when your first region starts.</p>
-}
-else
-{
-    <div class="table-responsive">
-        <table id="estates-list" class="table align-middle">
-            <thead><tr><th>Name</th><th>Owner</th><th>Regions</th><th>Managers</th></tr></thead>
-            <tbody>
-            @foreach (var e in Model.Rows)
-            {
-                <tr>
-                    <td><a href="/estates/estate?id=@e.Id">@e.Name</a></td>
-                    <td>@e.OwnerName</td>
-                    <td class="regions">@e.Regions</td>
-                    <td class="managers">@e.Managers</td>
-                </tr>
-            }
-            </tbody>
-        </table>
-    </div>
-}
 
-<h2 class="mt-4">New estate</h2>
-<form id="estate-create" method="post" action="/estates?handler=Create" asp-antiforgery="true">
-    <label class="form-label" for="name">Name</label>
-    <input class="form-control" id="name" name="name" value="@Model.TypedName" maxlength="@DreamGrid.Launcher.Estates.EstatesAdmin.MaxName" autocomplete="off">
-    <label class="form-label mt-2" for="owner">Owner</label>
-    <input class="form-control" id="owner" name="owner" value="@Model.TypedOwner" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="First Last">
-    <p class="hint form-text">A resident of your grid. A region needs to be running to make an estate; the new estate has no regions until you move one in.</p>
-    <button type="submit" class="btn btn-primary">Make estate</button>
-</form>
+@* The list gets the wide column; making a new one sits beside it (under it on narrow screens). *@
+<div class="estates-columns">
+    <section class="work-panel" aria-labelledby="estates-title">
+        <div class="panel-tools">
+            <h2 id="estates-title" class="panel-title mb-0"><span>Estates</span>@if (!Model.Unavailable && Model.Total > 0) { <span class="badge text-bg-secondary ms-2">@(searching ? $"{Model.Rows.Count} of {Model.Total}" : Model.Total.ToString())</span> }</h2>
+            @if (!Model.Unavailable && Model.Total > 0)
+            {
+                <form id="estates-search" class="estates-search ms-auto" method="get" action="/estates" role="search">
+                    @if (sortKey != "name" || sortDown)
+                    {
+                        <input type="hidden" name="sort" value="@Model.Sort">
+                    }
+                    <div class="input-group input-group-sm">
+                        <label class="visually-hidden" for="q">Search estates</label>
+                        <input class="form-control" type="search" id="q" name="q" value="@Model.Q" placeholder="Estate or owner name" autocomplete="off" spellcheck="false">
+                        <button type="submit" class="btn btn-outline-secondary" icon="search">Search</button>
+                        @if (searching)
+                        {
+                            <a class="btn btn-outline-secondary" href="@(sortKey != "name" || sortDown ? "/estates?sort=" + Model.Sort : "/estates")" icon="x">Clear</a>
+                        }
+                    </div>
+                </form>
+            }
+        </div>
+        @if (Model.Unavailable)
+        {
+            <p id="estates-unavailable" class="mb-0">@DreamGrid.Launcher.Estates.EstatesAdmin.DatabaseDown</p>
+        }
+        else if (Model.Total == 0)
+        {
+            <p id="estates-none" class="mb-0">No estates yet. The first one is made when your first region starts.</p>
+        }
+        else if (Model.Rows.Count == 0)
+        {
+            <p id="estates-no-match" class="mb-0">No estate or owner name has “@Model.Q?.Trim()” in it.</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table id="estates-list" class="table align-middle mb-0">
+                    <thead>
+                        <tr>
+                            @foreach (var (key, label, end) in new[] { ("name", "Name", false), ("owner", "Owner", false), ("regions", "Regions", true), ("managers", "Managers", true) })
+                            {
+                                <th aria-sort="@Model.AriaSort(key)" class="@(end ? "text-end" : null)">
+                                    <a class="sort-link@(sortKey == key ? " sorted" : "")" href="@Model.SortLink(key)">@label@if (sortKey == key) { @Html.Raw(ButtonIcons.Svg(sortDown ? "arrow-down" : "arrow-up")) }</a>
+                                </th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var e in Model.Rows)
+                    {
+                        <tr>
+                            <td><a class="fw-semibold" href="/estates/estate?id=@e.Id">@e.Name</a></td>
+                            <td>@e.OwnerName</td>
+                            <td class="regions text-end">@e.Regions</td>
+                            <td class="managers text-end">@e.Managers</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+
+    <section class="work-panel" aria-labelledby="estate-create-title">
+        <h2 id="estate-create-title" class="panel-title">New estate<help-tip class="help-start">A region needs to be running to make an estate. The new estate has no regions until you move one in.</help-tip></h2>
+        <form id="estate-create" method="post" action="/estates?handler=Create" asp-antiforgery="true">
+            <label class="form-label" for="name">Name</label>
+            <input class="form-control" id="name" name="name" value="@Model.TypedName" maxlength="@DreamGrid.Launcher.Estates.EstatesAdmin.MaxName" autocomplete="off">
+            <label class="form-label mt-2" for="owner">Owner</label>
+            <input class="form-control" id="owner" name="owner" value="@Model.TypedOwner" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="First Last">
+            <p class="hint form-text">A resident of your grid.</p>
+            <button type="submit" class="btn btn-primary" icon="plus">Make estate</button>
+        </form>
+    </section>
+</div>

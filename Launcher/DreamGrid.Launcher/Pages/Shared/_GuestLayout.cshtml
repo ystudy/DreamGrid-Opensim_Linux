@@ -19,6 +19,20 @@
 <header class="navbar navbar-expand bg-body border-bottom shadow-sm">
     <div class="container">
         <strong class="navbar-brand grid-name me-auto">@gridName</strong>
+        @* Help on every guest page, plus whatever a page adds (the front page: staff sign in). Not a <nav>: the guest side has no site navigation. *@
+        <div class="guest-actions">
+            @if (DreamGrid.Launcher.Security.StaffSignIn.RoleOf(User) != DreamGrid.Launcher.Core.Security.StaffRole.None)
+            {
+                @* A staff member looking at the guest side (the staff menu's Guest view): the way back. *@
+                <a id="staff-side-link" class="btn btn-sm btn-primary" href="/" icon="arrow-left">Back to staff pages</a>
+                IgnoreSection("HeaderActions");
+            }
+            else
+            {
+                @await RenderSectionAsync("HeaderActions", required: false)
+            }
+            <a id="help-link" class="btn btn-sm btn-outline-secondary" href="/support" icon="help">Ask for help</a>
+        </div>
     </div>
 </header>
 <main class="container py-4">
@@ -27,7 +41,6 @@
 @* The legal pages the operator has written, then anything a page puts in a "Footer" section. *@
 <footer class="container pb-4">
     <partial name="_LegalLinks" />
-    <p class="small mb-0"><a id="help-link" href="/support">Ask for help</a></p>
     @await RenderSectionAsync("Footer", required: false)
 </footer>
 <script src="/js/copy.js"></script>

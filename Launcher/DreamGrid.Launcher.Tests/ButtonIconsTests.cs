@@ -86,12 +86,13 @@ public sealed class ButtonIconsTests
 
         Assert.Equal(HttpStatusCode.OK, r.StatusCode);
         var page = new HtmlParser().ParseDocument(await r.Content.ReadAsStringAsync(Ct));
-        var signIn = page.QuerySelector("main a[href='/guest/sign-in']")!;
+        var signIn = page.QuerySelector("main form#front-sign-in button[type=submit]")!;
         Assert.Equal("/img/icons.svg#sign-in", signIn.QuerySelector("svg.btn-icon use")!.GetAttribute("href"));
         Assert.Equal("true", signIn.QuerySelector("svg")!.GetAttribute("aria-hidden"));
         Assert.Equal("Sign in", signIn.TextContent.Trim());
         Assert.Equal("/img/icons.svg#plus", page.QuerySelector("main a[href='/signup'] svg use")!.GetAttribute("href"));
-        Assert.Null(page.QuerySelector("a[href='/login'] svg")); // a plain link, not a button
+        Assert.Equal("/img/icons.svg#shield", page.QuerySelector("header a#staff-link svg use")!.GetAttribute("href"));
+        Assert.Equal("/img/icons.svg#help", page.QuerySelector("header a#help-link svg use")!.GetAttribute("href"));
         Assert.Null(page.Body!.GetAttribute("class")); // the narrow, centred column
     }
 }
