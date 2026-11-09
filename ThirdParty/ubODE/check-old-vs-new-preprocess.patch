@@ -1,0 +1,125 @@
+From 7add895e4dae6924ced14ef85c6bcb89dd929d7b Mon Sep 17 00:00:00 2001
+From: Ystudy <ystudy@gmail.com>
+Date: Fri, 6 Nov 2026 07:54:48 -0800
+Subject: [PATCH] ubode: test build that runs the old and new preprocess loops
+ and compares them
+
+Not for release. Applies instead of the fix patch. Every trimesh runs the new
+one-pass loop, then the original nested loop on a copy of UseFlags, and
+prints a running count of meshes and triangles whose flags differ to stderr
+("[UBODE VERIFY] ...", every 500 meshes and on any difference).
+---
+ .../ode/src/collision_trimesh_opcode.cpp      | 83 ++++++++++++++++---
+ 1 file changed, 72 insertions(+), 11 deletions(-)
+
+diff --git a/trunk/unmanaged/ubODE-OpenSim/ode/src/collision_trimesh_opcode.cpp b/trunk/unmanaged/ubODE-OpenSim/ode/src/collision_trimesh_opcode.cpp
+index 52dd1a0..4bf4d09 100644
+--- a/trunk/unmanaged/ubODE-OpenSim/ode/src/collision_trimesh_opcode.cpp
++++ b/trunk/unmanaged/ubODE-OpenSim/ode/src/collision_trimesh_opcode.cpp
+@@ -1,3 +1,5 @@
++#define UBODE_PREPROCESS_VERIFY 1
++#include <stdio.h>
+ /*************************************************************************
+  *                                                                       *
+  * Open Dynamics Engine, Copyright (C) 2001-2003 Russell L. Smith.       *
+@@ -339,27 +341,86 @@ void dxTriMeshData::Preprocess()
+         }
+     }
+ 
+-    // Go through the list once more, and take any edge we marked as concave and
+-    // clear it's vertices flags in any triangles they're used in
+-    for (unsigned int i = 0; i < numEdges; i++)
++    // Take every vertex that belongs to an edge we marked as concave and clear its
++    // flags in every triangle it is used in. Same result as the old nested loop
++    // (for each concave edge, scan every edge), in one pass instead of
++    // O(concave edges x edges).
+     {
+-        EdgeRecord& er = records[i];
++#ifdef UBODE_PREPROCESS_VERIFY
++        uint8* verifyFlags = new uint8[numTris];
++        memcpy(verifyFlags, UseFlags, sizeof(uint8) * numTris);
++#endif
++        int maxVert = -1;
++        bool anyConcave = false;
++        for (unsigned int i = 0; i < numEdges; i++)
++        {
++            if (records[i].VertIdx2 > maxVert)
++                maxVert = records[i].VertIdx2;
++            if (records[i].VertIdx1 > maxVert)
++                maxVert = records[i].VertIdx1;
++            if (records[i].Concave)
++                anyConcave = true;
++        }
+ 
+-        if (er.Concave)
++        if (anyConcave && maxVert >= 0)
+         {
++            uint8* concaveVert = new uint8[maxVert + 1];
++            memset(concaveVert, 0, maxVert + 1);
++
++            for (unsigned int i = 0; i < numEdges; i++)
++            {
++                if (records[i].Concave)
++                {
++                    concaveVert[records[i].VertIdx1] = 1;
++                    concaveVert[records[i].VertIdx2] = 1;
++                }
++            }
++
+             for (unsigned int j = 0; j < numEdges; j++)
+             {
+                 EdgeRecord& curER = records[j];
+-
+-                if (curER.VertIdx1 == er.VertIdx1 ||
+-                    curER.VertIdx1 == er.VertIdx2)
++                if (concaveVert[curER.VertIdx1])
+                     UseFlags[curER.TriIdx] &= ~curER.Vert1Flags;
+-
+-                if (curER.VertIdx2 == er.VertIdx1 ||
+-                    curER.VertIdx2 == er.VertIdx2)
++                if (concaveVert[curER.VertIdx2])
+                     UseFlags[curER.TriIdx] &= ~curER.Vert2Flags;
+             }
++
++            delete [] concaveVert;
+         }
++
++#ifdef UBODE_PREPROCESS_VERIFY
++        for (unsigned int i = 0; i < numEdges; i++)
++        {
++            EdgeRecord& er = records[i];
++            if (er.Concave)
++            {
++                for (unsigned int j = 0; j < numEdges; j++)
++                {
++                    EdgeRecord& curER = records[j];
++                    if (curER.VertIdx1 == er.VertIdx1 || curER.VertIdx1 == er.VertIdx2)
++                        verifyFlags[curER.TriIdx] &= ~curER.Vert1Flags;
++                    if (curER.VertIdx2 == er.VertIdx1 || curER.VertIdx2 == er.VertIdx2)
++                        verifyFlags[curER.TriIdx] &= ~curER.Vert2Flags;
++                }
++            }
++        }
++        static unsigned long vMeshes = 0, vTris = 0, vBadMeshes = 0, vBadTris = 0;
++        unsigned long bad = 0;
++        for (unsigned int t = 0; t < numTris; t++)
++            if (verifyFlags[t] != UseFlags[t])
++                bad++;
++        vMeshes++;
++        vTris += numTris;
++        if (bad)
++        {
++            vBadMeshes++;
++            vBadTris += bad;
++        }
++        if (bad || (vMeshes % 500) == 0)
++            fprintf(stderr, "[UBODE VERIFY] meshes %lu, triangles %lu, meshes differing %lu, triangles differing %lu\n",
++                vMeshes, vTris, vBadMeshes, vBadTris);
++        delete [] verifyFlags;
++#endif
+     }
+ 
+     delete [] records;
+-- 
+2.53.0.windows.2
+

@@ -1,0 +1,85 @@
+From f48d1a33eb0cbf0634616b6e33fbb02b39fa3b01 Mon Sep 17 00:00:00 2001
+From: Ystudy <ystudy@gmail.com>
+Date: Fri, 6 Nov 2026 07:54:37 -0800
+Subject: [PATCH] ubode: make trimesh preprocess concave-vertex pass linear
+
+dxTriMeshData::Preprocess cleared the vertex use flags of concave edges
+with a nested loop: for every concave edge it scanned every edge of the
+mesh, O(concave edges x edges). On large meshes this dominates region
+start-up (a 13.5k-prim region with 4,498 physics meshes and 2.85 M
+triangles spent 14 of its 15 s of physics start-up here).
+
+Mark the vertices of concave edges in a per-vertex array, then clear the
+flags in one pass over the edges. The resulting UseFlags are identical:
+a side-by-side build running both loops found 0 differing triangles in
+2.4 M+. Upstream ODE made the same kind of change in Nov 2016.
+---
+ .../ode/src/collision_trimesh_opcode.cpp      | 43 ++++++++++++++-----
+ 1 file changed, 32 insertions(+), 11 deletions(-)
+
+diff --git a/trunk/unmanaged/ubODE-OpenSim/ode/src/collision_trimesh_opcode.cpp b/trunk/unmanaged/ubODE-OpenSim/ode/src/collision_trimesh_opcode.cpp
+index 52dd1a0..97fec41 100644
+--- a/trunk/unmanaged/ubODE-OpenSim/ode/src/collision_trimesh_opcode.cpp
++++ b/trunk/unmanaged/ubODE-OpenSim/ode/src/collision_trimesh_opcode.cpp
+@@ -339,26 +339,47 @@ void dxTriMeshData::Preprocess()
+         }
+     }
+ 
+-    // Go through the list once more, and take any edge we marked as concave and
+-    // clear it's vertices flags in any triangles they're used in
+-    for (unsigned int i = 0; i < numEdges; i++)
++    // Take every vertex that belongs to an edge we marked as concave and clear its
++    // flags in every triangle it is used in. Same result as the old nested loop
++    // (for each concave edge, scan every edge), in one pass instead of
++    // O(concave edges x edges).
+     {
+-        EdgeRecord& er = records[i];
++        int maxVert = -1;
++        bool anyConcave = false;
++        for (unsigned int i = 0; i < numEdges; i++)
++        {
++            if (records[i].VertIdx2 > maxVert)
++                maxVert = records[i].VertIdx2;
++            if (records[i].VertIdx1 > maxVert)
++                maxVert = records[i].VertIdx1;
++            if (records[i].Concave)
++                anyConcave = true;
++        }
+ 
+-        if (er.Concave)
++        if (anyConcave && maxVert >= 0)
+         {
++            uint8* concaveVert = new uint8[maxVert + 1];
++            memset(concaveVert, 0, maxVert + 1);
++
++            for (unsigned int i = 0; i < numEdges; i++)
++            {
++                if (records[i].Concave)
++                {
++                    concaveVert[records[i].VertIdx1] = 1;
++                    concaveVert[records[i].VertIdx2] = 1;
++                }
++            }
++
+             for (unsigned int j = 0; j < numEdges; j++)
+             {
+                 EdgeRecord& curER = records[j];
+-
+-                if (curER.VertIdx1 == er.VertIdx1 ||
+-                    curER.VertIdx1 == er.VertIdx2)
++                if (concaveVert[curER.VertIdx1])
+                     UseFlags[curER.TriIdx] &= ~curER.Vert1Flags;
+-
+-                if (curER.VertIdx2 == er.VertIdx1 ||
+-                    curER.VertIdx2 == er.VertIdx2)
++                if (concaveVert[curER.VertIdx2])
+                     UseFlags[curER.TriIdx] &= ~curER.Vert2Flags;
+             }
++
++            delete [] concaveVert;
+         }
+     }
+ 
+-- 
+2.53.0.windows.2
+

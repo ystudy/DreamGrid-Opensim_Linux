@@ -1,0 +1,3 @@
+# The patches apply to opensim-libs files with LF line endings; keep every file here LF on every checkout.
+* text eol=lf
+*.ps1 text eol=crlf
