@@ -21,7 +21,11 @@
 <form id="regions" method="post" asp-antiforgery="true">
     <fieldset class="mt-3">
         <legend class="fs-6 fw-semibold">Physics engine</legend>
-        @foreach (var (value, text) in RegionsModel.PhysicsChoices)
+        @if (Model.PhysicsNotice is { } notice)
+        {
+            <div class="alert alert-warning physics-notice" role="alert">@notice</div>
+        }
+        @foreach (var (value, text) in Model.PhysicsChoices)
         {
             <div class="form-check">
                 <input class="form-check-input" type="radio" name="DefaultPhysics" id="DefaultPhysics-@value" value="@value" checked="@(Model.DefaultPhysics == value)">

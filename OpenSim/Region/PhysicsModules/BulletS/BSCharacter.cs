@@ -465,6 +465,9 @@ namespace OpenSim.Region.PhysicsModule.BulletS
             {
                 DetailLog("{0},BSCharacter.setTargetVelocity,call,vel={1}", LocalID, value);
                 OMV.Vector3 targetVel = value;
+                // Running: on the ground always; flying too where the engine asks for it (AvatarRunFactorWhenFlying,
+                // Rapier's default, as ubODE applies its run multiplier flying or not).
+                bool running = _setAlwaysRun && (!_flying || BSParam.AvatarRunFactorWhenFlying);
                 if (!_flying)
                 {
                     if (_setAlwaysRun)
@@ -473,6 +476,14 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                         if (BSParam.AvatarWalkVelocityFactor != 1f)
                             targetVel *= new OMV.Vector3(BSParam.AvatarWalkVelocityFactor, BSParam.AvatarWalkVelocityFactor, 1f);
                 }
+                else if (running)
+                {
+                    targetVel *= new OMV.Vector3(BSParam.AvatarAlwaysRunFactor, BSParam.AvatarAlwaysRunFactor, 1f);
+                }
+                // The engine's speed for walking and flying (BSAPITemplate.AvatarSpeedFactor), not running. Horizontal
+                // only, as ubODE's divisor is, so going up and down and the jump are as they were.
+                if (!running && BSParam.AvatarSpeedFactor != 1f)
+                    targetVel *= new OMV.Vector3(BSParam.AvatarSpeedFactor, BSParam.AvatarSpeedFactor, 1f);
                 base.m_targetVelocity = targetVel;
     
                 if (m_moveActor != null)
@@ -540,6 +551,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                 if (RawOrientation != value)
                 {
                     RawOrientation = value;
+                    // The value this taint was queued for: the setter may store a newer one before the taint runs.
+                    OMV.Quaternion queued = value;
                     PhysScene.TaintedObject(LocalID, "BSCharacter.setOrientation", delegate()
                     {
                         // Bullet assumes we know what we are doing when forcing orientation
@@ -548,6 +561,23 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                         // This keeps us from flipping the capsule over which the veiwer does not understand.
                         float oRoll, oPitch, oYaw;
                         RawOrientation.GetEulerAngles(out oRoll, out oPitch, out oYaw);
+                        // The body already faces this way (to within float noise): nothing to set. RawOrientation
+                        // still holds the value as given, tilt included; it takes the body's yaw-only one, as the set
+                        // below would have, so a later SetTranslation (ForcePosition) cannot tilt the body. Only if it
+                        // is still the value this taint was queued for: a newer one belongs to the taint the setter
+                        // queued with it, which reads RawOrientation and would otherwise find the old yaw there and
+                        // drop that turn. (The check and the
+                        // write are not atomic against the setter's thread; the window left is nanoseconds wide.)
+                        if (PhysScene.PE.SkipsUnchangedAvatarYaw && PhysBody.HasPhysicalBody)
+                        {
+                            OMV.Quaternion bodyOrientation = PhysScene.PE.GetOrientation(PhysBody);
+                            if (YawWithinTolerance(bodyOrientation, oYaw))
+                            {
+                                if (RawOrientation == queued)
+                                    RawOrientation = bodyOrientation;
+                                return;
+                            }
+                        }
                         OMV.Quaternion trimmedOrientation = OMV.Quaternion.CreateFromEulers(0f, 0f, oYaw);
                         // DetailLog("{0},BSCharacter.setOrientation,taint,val={1},valDir={2},conv={3},convDir={4}",
                         //                 LocalID, RawOrientation, OMV.Vector3.UnitX * RawOrientation,
@@ -556,6 +586,25 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                     });
                 }
             }
+        }
+
+        // How far, in radians, the yaw the simulator gives the avatar may be from its body's before the body is turned
+        // (BSAPITemplate.SkipsUnchangedAvatarYaw). The value the simulator sets every frame comes back from the engine
+        // through quaternion and Euler conversions, so it differs from the body's by float noise, about 1e-6 rad. A
+        // turn anyone can see is a degree or more (0.017 rad); 0.001 rad (0.06 degrees) moves the edge of a 0.6 m wide
+        // avatar by 0.3 mm. The test is against the body's own yaw, not the last value asked for, so slow turns in
+        // steps smaller than this still add up and the body is never more than this far behind.
+        internal const float AvatarYawTolerance = 0.001f;
+
+        // Whether the yaw of this (upright) orientation is within AvatarYawTolerance of yaw. The body's yaw is worked out
+        // here in double: Quaternion.GetEulerAngles snaps components under about 0.001 to zero, so it reads every yaw
+        // within 0.002 rad of 0 as 0.
+        internal static bool YawWithinTolerance(OMV.Quaternion current, float yaw)
+        {
+            double x = current.X, y = current.Y, z = current.Z, w = current.W;
+            double currentYaw = Math.Atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z));
+            double difference = Math.IEEERemainder(yaw - currentYaw, 2.0 * Math.PI);
+            return Math.Abs(difference) < AvatarYawTolerance;
         }
 
         // Go directly to Bullet to get/set the value.
@@ -687,7 +736,11 @@ namespace OpenSim.Region.PhysicsModule.BulletS
 
         public override void AvatarJump(float impulseZ)
         {
-            AddForce(false, new OMV.Vector3(0, 0, 0.22f * Mass * impulseZ / PhysScene.m_fixedTimeStep));
+            // BulletS's jump was tuned at Bullet's 1/60 s substeps: the force is on for every substep, so dividing by the
+            // substep length makes the impulse grow with the substep count. An engine that asks for it (Rapier) divides
+            // by 1/60 instead, so its jump depends on the frame time only and matches Bullet's at any FixedTimeStep.
+            float jumpStep = PhysScene.PE.JumpUsesBulletStepLength ? BSScene.BulletFixedTimeStep : PhysScene.m_fixedTimeStep;
+            AddForce(false, new OMV.Vector3(0, 0, 0.22f * Mass * impulseZ / jumpStep));
         }
 
         public override void AddForce(OMV.Vector3 force, bool pushforce)
@@ -781,7 +834,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                         heightAdjust += ((midHeightOffset) / (AVATAR_HI - AVATAR_MID)) * BSParam.AvatarHeightHighFudge;
                     }
                 }
-                if (BSParam.AvatarShape == BSShapeCollection.AvatarShapeCapsule)
+                // An engine with CapsuleAvatars fits its capsule in the cube's box, so it gets the cube's scale.
+                if (BSParam.AvatarShape == BSShapeCollection.AvatarShapeCapsule && !PhysScene.PE.CapsuleAvatars)
                 {
                     newScale.X = size.X / 2f;
                     newScale.Y = size.Y / 2f;
@@ -813,7 +867,9 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         // set _avatarVolume and _mass based on capsule size, _density and Scale
         private void ComputeAvatarVolumeAndMass()
         {
-            if (BSParam.AvatarShape == BSShapeCollection.AvatarShapeCapsule)
+            // An engine with CapsuleAvatars keeps the cube's mass, so forces tuned on the cube (the jump, pushes) and
+            // collisions with objects are unchanged.
+            if (BSParam.AvatarShape == BSShapeCollection.AvatarShapeCapsule && !PhysScene.PE.CapsuleAvatars)
             {
                 _avatarVolume = (float)(
                                 Math.PI

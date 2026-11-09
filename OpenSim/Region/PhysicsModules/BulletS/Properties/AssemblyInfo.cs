@@ -32,5 +32,7 @@ using Mono.Addins;
 //
 [assembly: AssemblyVersion(OpenSim.VersionInfo.AssemblyVersionNumber)]
 
+[assembly: InternalsVisibleTo("DreamGrid.Physics.Rapier.Tests")]
+
 [assembly: Addin("OpenSim.Region.PhysicsModule.BulletS", OpenSim.VersionInfo.VersionNumber)]
 [assembly: AddinDependency("OpenSim.Region.Framework", OpenSim.VersionInfo.VersionNumber)]

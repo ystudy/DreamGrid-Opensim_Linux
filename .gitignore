@@ -122,6 +122,9 @@ doc/doxygen.error.log
 bin/OpenSim.ini
 
 *.patch
+!ThirdParty/rapier/patches/*.patch
+# edge-codes-test run by hand (the build scripts put its build directory elsewhere).
+ThirdParty/rapier/edge-codes-test/target/
 
 # Build outputs (see MERGING.md): only third-party binaries are tracked in bin/
 bin/*.runtimeconfig.json

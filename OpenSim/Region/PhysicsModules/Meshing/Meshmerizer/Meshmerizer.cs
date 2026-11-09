@@ -73,6 +73,13 @@ namespace OpenSim.Region.PhysicsModule.Meshing
         private List<List<Vector3>> mConvexHulls = null;
         private List<Vector3> mBoundingHull = null;
 
+        /// <summary>
+        /// Whether the mesh asset parsed last had no physics mesh (no physics_shape or physics_mesh block), so its
+        /// display LOD was meshed instead. Like GetConvexHulls, it describes the last mesh asset this instance read: read
+        /// it right after a CreateMesh that did not come from the cache, with the mesher locked.
+        /// </summary>
+        public bool LastMeshUsedDisplayLod { get; private set; }
+
         // Mesh cache. Static so it can be shared across instances of this class
         private static Dictionary<ulong, Mesh> m_uniqueMeshes = new Dictionary<ulong, Mesh>();
 
@@ -368,6 +375,7 @@ namespace OpenSim.Region.PhysicsModule.Meshing
 
             mConvexHulls = null;
             mBoundingHull = null;
+            LastMeshUsedDisplayLod = false;
 
             if (primShape.SculptData.Length <= 0)
             {
@@ -417,11 +425,13 @@ namespace OpenSim.Region.PhysicsModule.Meshing
                 else if (map.ContainsKey("medium_lod"))
                 {
                     physicsParms = (OSDMap)map["medium_lod"]; // if no physics mesh, try to fall back to medium LOD display mesh
+                    LastMeshUsedDisplayLod = true;
                     if (debugDetail) m_log.DebugFormat("{0} prim='{1}':using 'medium_lod' mesh data", LogHeader, primName);
                 }
                 else if (map.ContainsKey("high_lod"))
                 {
                     physicsParms = (OSDMap)map["high_lod"]; // if all else fails, use highest LOD display mesh and hope it works :)
+                    LastMeshUsedDisplayLod = true;
                     if (debugDetail) m_log.DebugFormat("{0} prim='{1}':using 'high_lod' mesh data", LogHeader, primName);
                 }
 

@@ -329,11 +329,114 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         AXIS_ALL
     };
     
+    // How an engine's terrain heightfield splits each cell of samples into two triangles, for
+    // BSTerrainHeightmap.GetTerrainHeightAtXYZ. "Up" is the diagonal from sample (i, j) to (i + 1, j + 1), "down" the one
+    // from (i + 1, j) to (i, j + 1). A diamond alternates them like a checkerboard, by the parity of i + j. Bilinear is a
+    // blend for an engine whose split is not known.
+    public enum TerrainTriangles
+    {
+        Bilinear,
+        DiagonalUp,
+        DiagonalDown,
+        DiamondEvenUp,
+        DiamondEvenDown,
+    }
+
     public abstract class BSAPITemplate
     {
         // Returns the name of the underlying Bullet engine
         public abstract string BulletEngineName { get; }
         public abstract string BulletEngineVersion { get; protected set;}
+
+        // What the engine can do that shared BulletS code asks about. The defaults are what the Bullet engines do.
+
+        // Whether a plain prim cylinder (circle profile, straight path, no cuts, round cross section) should get the
+        // engine's native SHAPE_CYLINDER rather than a convex hull of its mesh. Bullet's cylinder is not used for prims.
+        public virtual bool NativeCylinderPrims { get { return false; } }
+
+        // How far, in metres along X and Y, the engine's terrain heightfield puts heightmap sample (i, j) from (i, j).
+        // BSTerrainHeightmap centres the field (sizeX samples, sizeX - 1 metres wide) on the region's centre, so Bullet's
+        // samples sit at (i + 0.5, j + 0.5). BSTerrainHeightmap.GetTerrainHeightAtXYZ looks the map up this far back, so
+        // the height it gives is the surface the engine collides with.
+        public virtual float TerrainSampleOffset { get { return 0.5f; } }
+
+        // How the engine's terrain heightfield splits each cell into triangles, so the looked-up height is on the surface
+        // the engine collides with even on rough terrain (a bilinear blend is up to 0.1 m off on 0.3 m roughness, enough
+        // for PositionSanityCheck to lift small prims). An engine that does not say gets the blend.
+        public virtual TerrainTriangles TerrainTriangleRule { get { return TerrainTriangles.Bilinear; } }
+
+        // The engine's default for [BulletSim]FrictionCombineGeometric: whether two bodies' frictions combine as
+        // sqrt(f1 x f2) (ubODE's rule) rather than f1 x f2 (Bullet's). The INI value wins. Bullet keeps the product.
+        public virtual bool FrictionCombineGeometric { get { return false; } }
+
+        // The engine's defaults for [BulletSim]LinearDamping and AngularDamping (the share of a physical prim's speed lost
+        // per second). The INI values win. Bullet's are the parameters' own 0.
+        public virtual float DefaultLinearDamping { get { return 0f; } }
+        public virtual float DefaultAngularDamping { get { return 0f; } }
+
+        // The engine's default for [BulletSim]PrimInertiaFromBoundingBox: whether CalculateLocalInertia gives a single
+        // shape the inertia of its bounding box (ubODE's rule) rather than its own. The INI value wins. Bullet keeps the
+        // shape's own.
+        public virtual bool PrimInertiaFromBoundingBox { get { return false; } }
+
+        // The engine's default for [BulletSim]MeshWithoutPhysicsMeshIsConvex: whether a static mesh prim whose asset has
+        // no physics mesh is built from the convex hulls in its physics_convex block (ubODE's and Second Life's rule)
+        // rather than as a trimesh of its display LOD. The INI value wins. Bullet keeps the display LOD.
+        public virtual bool MeshesWithoutPhysicsMeshAreConvex { get { return false; } }
+
+        // Whether BSCharacter.AvatarJump divides its force by Bullet's 1/60 s step (BSScene.BulletFixedTimeStep) rather
+        // than by FixedTimeStep. The force is on for every substep of the frame, so dividing by the substep length makes
+        // the jump grow with the substep count; an engine whose default step is not 1/60 asks for this so its jumps
+        // match Bullet's at any FixedTimeStep.
+        public virtual bool JumpUsesBulletStepLength { get { return false; } }
+
+        // Whether avatars are capsules unless the INI sets [BulletSim]AvatarShape, with the capsule filling the box a cube
+        // avatar would have: BSCharacter gives it the cube's scale (and mass), and the engine's BuildCapsuleShape fits a
+        // capsule in that box, so the avatar is as tall as the cube and stands at the same height. For an engine whose
+        // contacts are cheaper on a capsule than on a box.
+        public virtual bool CapsuleAvatars { get { return false; } }
+
+        // Whether BSCharacter leaves the avatar's orientation alone when the yaw it is given is within
+        // BSCharacter.AvatarYawTolerance of the body's. The simulator sets the orientation every frame, mostly to the
+        // value it already has; an engine for which setting it is a teleport (Rapier: r3RigidBody_SetPosition) asks
+        // for this. Bullet keeps setting it every time.
+        public virtual bool SkipsUnchangedAvatarYaw { get { return false; } }
+
+        // The engine's default for [BulletSim]AvatarSpeedFactor, which BSCharacter multiplies the horizontal target
+        // velocity by when walking or flying (not always-run). The INI value wins. Bullet's 1 leaves it as asked: its
+        // avatar already covers about 8.7% less ground than that, because each orientation set (SetTranslation) puts it
+        // back to its interpolated pose, which trails the body.
+        public virtual float AvatarSpeedFactor { get { return 1f; } }
+
+        // The engine's defaults for [BulletSim]AvatarMotorTimeScale and AvatarStopZeroThreshold: how fast the avatar's
+        // velocity motor (BSActorAvatarMove) closes the gap to the target speed, and below what error it stops. The INI
+        // values win. Bullet's are the parameters' own (0.2 s and 0.45 m/s), which stop a walking avatar in 0.36 s and
+        // 0.43 m.
+        public virtual float AvatarMotorTimeScale { get { return 0.2f; } }
+        public virtual float AvatarStopZeroThreshold { get { return 0.45f; } }
+
+        // The engine's defaults for [BulletSim]AvatarMotorTimeConstant and AvatarStopTimeConstant. A time constant above
+        // zero replaces the linear timescale with a frame-time independent approach: each frame the motor closes
+        // 1 - exp(-dt/tau) of the gap, and while stopping the frame moves the average of an exp(-t/tau_stop) decay, so
+        // the avatar starts and stops the same at any frame rate. Bullet's 0 keeps the linear timescale.
+        public virtual float AvatarMotorTimeConstant { get { return 0f; } }
+        public virtual float AvatarStopTimeConstant { get { return 0f; } }
+
+        // Whether BSActorAvatarMove.WalkUpStairs takes a contact near the feet for a step only when the object has a
+        // walkable top within the step height just past it (a ray down, HasWalkableTop). Without it, a wall touched near
+        // the feet is a step too and the avatar is popped up it. It is the default of [BulletSim]AvatarStepsNeedAWalkableTop,
+        // which the INI wins over. Bullet keeps its old behaviour.
+        public virtual bool StepsNeedAWalkableTop { get { return false; } }
+
+        // The engine's default for [BulletSim]AvatarStepHeight: the height above the feet (less AvatarStepGroundFudge)
+        // up to which WalkUpStairs takes a contact for a step. The INI value wins. Bullet's is the parameter's 0.999 m.
+        public virtual float AvatarStepHeight { get { return 0.999f; } }
+
+        // The engine's defaults for [BulletSim]AvatarAlwaysRunFactor and AvatarRunFactorWhenFlying: how much faster
+        // always-run is, and whether it applies when flying too. The INI values win. Bullet's are the parameters' own
+        // (1.3, and not when flying).
+        public virtual float AvatarAlwaysRunFactor { get { return 1.3f; } }
+        public virtual bool AvatarRunFactorWhenFlying { get { return false; } }
         
         // Initialization and simulation
         public abstract BulletWorld Initialize(Vector3 maxPosition, ConfigurationParameters parms,

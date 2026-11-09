@@ -177,7 +177,9 @@ public sealed class RegionSettingsPageTests : IAsyncLifetime
         var doc = await GetAsync(client, SunsetId, "physics");
 
         var labels = doc.QuerySelectorAll("label.form-check-label").Select(l => l.TextContent.Trim()).ToList();
-        Assert.Equal(["Grid default (ubODE)", "ubODE", "BulletSim", "BulletSim in its own thread"], labels);
+        Assert.Equal(["Grid default (ubODE)", .. RegionSettingsRules.AvailablePhysicsEngines().Select(SettingLabels.Physics)], labels);
+        Assert.Contains("BulletSim in its own thread", labels);
+        Assert.Equal(RegionSettingsRules.RapierSupportedHere(), labels.Contains("Rapier (experimental)"));
         Assert.DoesNotContain("hybrid", doc.Body!.TextContent, StringComparison.OrdinalIgnoreCase);
         Assert.Equal("", doc.QuerySelector("input[name=Physics][checked]")!.GetAttribute("value")); // Sunset follows the grid default
 

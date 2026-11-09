@@ -59,6 +59,8 @@ public sealed class SmokeRun
 
         string fileLog = File.Exists(LogFile) ? File.ReadAllText(LogFile) : "";
         results.Insert(1, SmokeChecks.NoForbiddenExceptions(first.Output + second.Output + fileLog));
+        if (IsRapier(_opt.Physics))
+            results.Add(SmokeChecks.RapierSelected(first.Output + fileLog));
 
         File.WriteAllText(Path.Combine(_sandboxBin, "smoke.log"), "=== boot 1 ===\n" + first.Output + "\n=== boot 2 ===\n" + second.Output);
         return results;
@@ -104,10 +106,10 @@ public sealed class SmokeRun
                 PrivatePort = "8003"
 
             [Startup]
-                physics = {{_opt.Physics}}
+                physics = {{PhysicsModuleFor(_opt.Physics)}}
                 meshing = {{MesherFor(_opt.Physics)}}
                 startup_console_commands_file = smoke-commands.txt
-
+            {{BulletSimSection}}
             [Network]
                 http_listener_port = {{_httpPort}}
 
@@ -134,9 +136,16 @@ public sealed class SmokeRun
             """);
     }
 
+    // Rapier is an engine under the BulletSim module, selected by [BulletSim] BulletEngine.
+    static bool IsRapier(string physics) => physics.Equals("Rapier", StringComparison.OrdinalIgnoreCase);
+
+    static string PhysicsModuleFor(string physics) => IsRapier(physics) ? "BulletSim" : physics;
+
+    string BulletSimSection => IsRapier(_opt.Physics) ? "\n[BulletSim]\n    BulletEngine = Rapier\n" : "";
+
     // BulletSim refuses to start unless meshing is "Meshmerizer" (BSScene.Initialise); ubODE uses its own mesher.
     static string MesherFor(string physics) =>
-        physics.Equals("BulletSim", StringComparison.OrdinalIgnoreCase) ? "Meshmerizer" : "ubODEMeshmerizer";
+        physics.Equals("BulletSim", StringComparison.OrdinalIgnoreCase) || IsRapier(physics) ? "Meshmerizer" : "ubODEMeshmerizer";
 
     sealed record Boot(string Output, CheckResult SimStatus);
 

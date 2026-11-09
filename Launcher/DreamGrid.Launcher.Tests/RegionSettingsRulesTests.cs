@@ -91,7 +91,7 @@ public class RegionSettingsRulesTests
     [Fact]
     public void Labels_are_the_words_the_tabs_show()
     {
-        Assert.Equal(["ubODE", "BulletSim", "BulletSim in its own thread"], RegionSettingsRules.PhysicsEngines.Select(SettingLabels.Physics));
+        Assert.Equal(["ubODE", "BulletSim", "BulletSim in its own thread", "Rapier (experimental)"], RegionSettingsRules.PhysicsEngines.Select(SettingLabels.Physics));
         Assert.Equal(["No map", "Simple", "Good", "Better", "Best"], Enum.GetValues<MapQuality>().Select(SettingLabels.Map));
         Assert.Equal(["Below normal", "Normal", "Above normal", "High", "Real time"], Enum.GetValues<CpuPriority>().Select(SettingLabels.Priority));
     }

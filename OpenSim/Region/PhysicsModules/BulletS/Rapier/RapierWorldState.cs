@@ -1,0 +1,312 @@
+/*
+ * Copyright (c) Contributors, http://opensimulator.org/
+ * See CONTRIBUTORS.TXT for a full list of copyright holders.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above copyright
+ *       notice, this list of conditions and the following disclaimer in the
+ *       documentation and/or other materials provided with the distribution.
+ *     * Neither the name of the OpenSimulator Project nor the
+ *       names of its contributors may be used to endorse or promote products
+ *       derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE DEVELOPERS ``AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE CONTRIBUTORS BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+using System;
+using System.Collections.Generic;
+
+using OpenMetaverse;
+
+namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
+{
+    /// <summary>
+    /// The C#-side state of one Rapier world: everything the BSAPITemplate emulation needs that Rapier itself does not
+    /// keep. One owner, shared by the partial files of BSAPIRapier. Used only from the thread that runs BSScene's
+    /// taints and step.
+    /// </summary>
+    internal sealed class RapierWorldState
+    {
+        // The world's gravity, as given when it was created. Per-body gravity is a scale of this vector's Z (H6).
+        public Vector3 Gravity;
+
+        // The step length last given to r3SetTimeStep, so it is only set again when BSScene changes it.
+        public float TimeStep;
+
+        // BSScene's FixedTimeStep when the world was made: the step length to assume before the first step has set
+        // TimeStep (constraint softness, say).
+        public float ConfiguredTimeStep;
+
+        // Simulated time BSScene handed over but PhysicsStep has not stepped yet (Bullet's m_localTime).
+        public float Accumulator;
+
+        // The Z offset (world units) the terrain collider has from its body: BSTerrainHeightmap puts the body at
+        // (minZ + maxZ) / 2 because Bullet centres its heightfield between min and max, while Rapier's heights are
+        // absolute, so the collider sits this far below (the negative of that centre).
+        public float TerrainZOffset;
+
+        // The arrays BSScene gave Initialize. PhysicsStep fills them and reports how many entries it used.
+        public EntityProperties[] UpdateArray;
+        public CollisionDesc[] CollisionArray;
+        public int LastUpdateCount;
+        // How many entries of CollisionArray the last PhysicsStep filled (also what it returned in collidersCount).
+        public int LastCollisionCount;
+
+        // Scratch buffers for r3ActiveRigidBodies and r3RigidBodyReadStates, grown as needed and reused.
+        public RapierNative.RigidBodyHandle[] ActiveBodies = new RapierNative.RigidBodyHandle[256];
+        public RapierNative.RigidBodyState[] ActiveStates = new RapierNative.RigidBodyState[256];
+
+        // Every body that has been created and not destroyed, by localID, so an update can find the body's flags.
+        public readonly Dictionary<uint, BSAPIRapier.BulletBodyRapier> Bodies = new Dictionary<uint, BSAPIRapier.BulletBodyRapier>();
+
+        // ---- Update reporting (H1) ----
+
+        // BulletSim's tolerances, from SimMotionState::setWorldTransform in BulletSim.h (Misterblue/BulletSim): a body is
+        // reported when a component of its position, rotation, velocity or angular velocity is not strictly within
+        // +-tolerance of what was last sent (Vector3::AlmostEqual and Quaternion::AlmostEqual in APIData.h).
+        public const float PositionTolerance = 0.05f;
+        public const float VelocityTolerance = 0.001f;
+        public const float RotationTolerance = 0.01f;
+        public const float AngularVelocityTolerance = 0.01f;
+
+        // What was last reported for each body, by localID.
+        public readonly Dictionary<uint, EntityProperties> LastSent = new Dictionary<uint, EntityProperties>();
+
+        // Bodies whose last report had a non-zero velocity or angular velocity. One that is no longer awake gets a final
+        // report with both zero (BulletSim gets that from its patch to Bullet).
+        public readonly HashSet<uint> MovingSent = new HashSet<uint>();
+
+        // Bodies to report on the next step whatever their state (PushUpdate).
+        public readonly HashSet<uint> ForcedUpdates = new HashSet<uint>();
+
+        // Updates that did not fit in the array, reported first on the next step. The set says which queue entries are
+        // still wanted; an entry whose id is not in it (the body was removed, or the id is queued twice) is skipped.
+        public readonly Queue<uint> PendingUpdates = new Queue<uint>();
+        public readonly HashSet<uint> PendingSet = new HashSet<uint>();
+
+        // Per-step scratch, kept to avoid allocating every frame.
+        public readonly Dictionary<uint, EntityProperties> CurrentUpdates = new Dictionary<uint, EntityProperties>();
+        public readonly List<uint> CandidateUpdates = new List<uint>();
+        public readonly HashSet<uint> ReportedUpdates = new HashSet<uint>();
+        public readonly RapierNative.RigidBodyHandle[] OneBody = new RapierNative.RigidBodyHandle[1];
+        public readonly RapierNative.RigidBodyState[] OneState = new RapierNative.RigidBodyState[1];
+
+        /// <summary>Forget everything about reporting this body: it has left the world or been destroyed.</summary>
+        public void ForgetUpdates(uint id)
+        {
+            LastSent.Remove(id);
+            MovingSent.Remove(id);
+            ForcedUpdates.Remove(id);
+            PendingSet.Remove(id);
+        }
+
+        public void ForgetBody(BSAPIRapier.BulletBodyRapier body)
+        {
+            ForgetUpdates(body.ID);
+            NeverSleep.Remove(body);
+            ForcedBodies.Remove(body);
+            // Before the colliders are removed natively, so no later step asks Rapier about a collider that is gone.
+            foreach (RapierNative.ColliderHandle collider in body.Colliders)
+                ForgetCollider(collider);
+            if (Bodies.TryGetValue(body.ID, out BSAPIRapier.BulletBodyRapier known) && ReferenceEquals(known, body))
+                Bodies.Remove(body.ID);
+        }
+
+        /// <summary>BulletSim's test for whether a body has changed enough to report (SimMotionState::setWorldTransform).</summary>
+        public bool NeedsReport(EntityProperties now)
+        {
+            if (!LastSent.TryGetValue(now.ID, out EntityProperties last))
+                return true;
+            return !AlmostEqual(now.Position, last.Position, PositionTolerance)
+                || !AlmostEqual(now.Rotation, last.Rotation, RotationTolerance)
+                // Both velocities have just become zero: make sure the zeros reach the viewer.
+                || ((now.Velocity == Vector3.Zero && now.RotationalVelocity == Vector3.Zero)
+                    && (now.Velocity != last.Velocity || now.RotationalVelocity != last.RotationalVelocity))
+                || !AlmostEqual(now.Velocity, last.Velocity, VelocityTolerance)
+                || !AlmostEqual(now.RotationalVelocity, last.RotationalVelocity, AngularVelocityTolerance);
+        }
+
+        private static bool AlmostEqual(Vector3 a, Vector3 b, float eps)
+        {
+            return (b.X - eps < a.X && a.X < b.X + eps)
+                && (b.Y - eps < a.Y && a.Y < b.Y + eps)
+                && (b.Z - eps < a.Z && a.Z < b.Z + eps);
+        }
+
+        private static bool AlmostEqual(Quaternion a, Quaternion b, float eps)
+        {
+            return (b.X - eps < a.X && a.X < b.X + eps)
+                && (b.Y - eps < a.Y && a.Y < b.Y + eps)
+                && (b.Z - eps < a.Z && a.Z < b.Z + eps)
+                && (b.W - eps < a.W && a.W < b.W + eps);
+        }
+
+        // ---- Collision reporting (H2, H4) ----
+
+        // The colliders of bodies that have BS_SUBSCRIBE_COLLISION_EVENTS or BS_VEHICLE_COLLISIONS (BulletSim's
+        // BS_WANTS_COLLISIONS). Only pairs with one of them are reported, and they are the colliders that make Rapier
+        // collision events (R3_COLLISION_EVENTS).
+        public readonly HashSet<RapierNative.ColliderHandle> WantsCollisions = new HashSet<RapierNative.ColliderHandle>();
+
+        // The world's event collector, given to every r3Step and emptied after each one.
+        public IntPtr Events;
+
+        // Sensor colliders (volume detect), whose overlaps are read from the world's intersection pairs.
+        public readonly HashSet<RapierNative.ColliderHandle> Sensors = new HashSet<RapierNative.ColliderHandle>();
+
+        // The body each collider belongs to, to turn the colliders of a contact pair into localIDs and flags.
+        public readonly Dictionary<RapierNative.ColliderHandle, BSAPIRapier.BulletBodyRapier> ColliderOwners =
+                    new Dictionary<RapierNative.ColliderHandle, BSAPIRapier.BulletBodyRapier>();
+
+        // The pairs (low localID << 32 | high localID) already written since the step began, with what was written: one
+        // entry per pair per BSScene.Simulate call, however many substeps it took. PairsLastFrame is what the last call
+        // that stepped wrote, for a pair that stops touching during this call's substeps.
+        public Dictionary<ulong, CollisionDesc> PairsThisFrame = new Dictionary<ulong, CollisionDesc>();
+        public Dictionary<ulong, CollisionDesc> PairsLastFrame = new Dictionary<ulong, CollisionDesc>();
+
+        /// <summary>A call that steps begins: this call's pairs become the last call's, and this call has none yet.</summary>
+        public void StartCollisionFrame()
+        {
+            Dictionary<ulong, CollisionDesc> last = PairsLastFrame;
+            PairsLastFrame = PairsThisFrame;
+            PairsThisFrame = last;
+            PairsThisFrame.Clear();
+        }
+
+        // Scratch buffers for the contact queries, grown as needed and reused.
+        public RapierNative.ContactPair[] PairBuffer = new RapierNative.ContactPair[64];
+        public RapierNative.ContactPoint[] PointBuffer = new RapierNative.ContactPoint[32];
+        public RapierNative.IntersectionPair[] SensorBuffer = new RapierNative.IntersectionPair[64];
+        public RapierNative.CollisionEvent[] EventBuffer = new RapierNative.CollisionEvent[64];
+
+        public void ForgetCollider(RapierNative.ColliderHandle collider)
+        {
+            WantsCollisions.Remove(collider);
+            Sensors.Remove(collider);
+            ColliderOwners.Remove(collider);
+            if (ColliderShapes.TryGetValue(collider, out IntPtr shape))
+            {
+                ColliderShapes.Remove(collider);
+                if (ShapeUsers.TryGetValue(shape, out List<RapierNative.ColliderHandle> users))
+                {
+                    users.Remove(collider);
+                    if (users.Count == 0)
+                        ShapeUsers.Remove(shape);
+                }
+            }
+        }
+
+        // The colliders made from each native shape, so SetLocalScaling can give them the rebuilt shape. A collider holds
+        // its own reference to its geometry, so an entry is only about who follows the shape wrapper; DeleteCollisionShape
+        // drops the entry (the colliders go on with the geometry they have), and a new shape that happens to get the freed
+        // pointer starts with none.
+        public readonly Dictionary<IntPtr, List<RapierNative.ColliderHandle>> ShapeUsers =
+                    new Dictionary<IntPtr, List<RapierNative.ColliderHandle>>();
+        public readonly Dictionary<RapierNative.ColliderHandle, IntPtr> ColliderShapes =
+                    new Dictionary<RapierNative.ColliderHandle, IntPtr>();
+
+        public void NoteShapeUse(IntPtr shape, RapierNative.ColliderHandle collider)
+        {
+            if (!ShapeUsers.TryGetValue(shape, out List<RapierNative.ColliderHandle> users))
+                ShapeUsers[shape] = users = new List<RapierNative.ColliderHandle>();
+            users.Add(collider);
+            ColliderShapes[collider] = shape;
+        }
+
+        /// <summary>The shape is gone: nothing follows it any more. The colliders keep their own copy of the geometry.</summary>
+        public void ForgetShape(IntPtr shape)
+        {
+            if (ShapeUsers.TryGetValue(shape, out List<RapierNative.ColliderHandle> users))
+            {
+                foreach (RapierNative.ColliderHandle collider in users)
+                    ColliderShapes.Remove(collider);
+                ShapeUsers.Remove(shape);
+            }
+        }
+
+        // Bodies forced to DISABLE_DEACTIVATION, woken before each step (H3).
+        public readonly HashSet<BSAPIRapier.BulletBodyRapier> NeverSleep = new HashSet<BSAPIRapier.BulletBodyRapier>();
+
+        // Bodies given a force or torque since the last step, whose forces PhysicsStep resets afterwards (H11).
+        public readonly HashSet<BSAPIRapier.BulletBodyRapier> ForcedBodies = new HashSet<BSAPIRapier.BulletBodyRapier>();
+
+        // ---- Constraints (H5b) ----
+
+        // Every constraint that is alive, so Shutdown can mark them dead before the world goes.
+        public readonly HashSet<BSAPIRapier.BulletConstraintRapier> Joints = new HashSet<BSAPIRapier.BulletConstraintRapier>();
+
+        // The constraints with a finite breaking threshold that are enabled and not broken: the only ones PhysicsStep reads
+        // impulses of.
+        public readonly HashSet<BSAPIRapier.BulletConstraintRapier> Breakable = new HashSet<BSAPIRapier.BulletConstraintRapier>();
+
+        // The fixed body a constraint 'to the world' joins the body to, made when first needed. It has no colliders, so it
+        // makes no contacts and is never awake, and it has no localID, so it is never reported. It sits at the origin with
+        // no rotation: the frame given for it is a world frame.
+        public RapierNative.RigidBodyHandle WorldAnchor;
+        public bool HasWorldAnchor;
+
+        // Every native shape that has been built and not freed, so Shutdown frees the ones BulletS never released and
+        // a shape is never freed twice.
+        public readonly HashSet<IntPtr> Shapes = new HashSet<IntPtr>();
+
+        // The bytes of vertices and indices of every trimesh built in this world that the wrapper did not keep a managed
+        // copy of (memory fix 4). A counter for the tests; nothing reads it otherwise.
+        public long MeshCopyBytesNotKept;
+
+        // The flag SetForceUpdateAllAabbs last set (map rows 10 and 11); Rapier has nothing to set.
+        public bool ForceUpdateAllAabbs;
+
+        // Whether C# has changed a pose or a collider since the last r3Step or propagate, so a query must first pass the
+        // bodies' poses on to their colliders (r3RigidBodyPropagateModifiedBodyPositionsToColliders). r3Step does that
+        // itself, so the flag is cleared after each step.
+        public bool CollidersStale = true;
+
+        // Set when r3Step reported R3_PANIC: the world may be corrupt, so PhysicsStep steps it no more.
+        public bool Poisoned;
+
+        // Messages already logged once for this world (ignored flags and the like), so a repeated call logs nothing.
+        public readonly HashSet<string> LoggedOnce = new HashSet<string>();
+
+        /// <summary>
+        /// Bullet's fixed-step accumulation (btDiscreteDynamicsWorld::stepSimulation): add timeStep to the time not yet
+        /// simulated, take as many whole fixedTimeStep steps as fit, and do at most maxSubSteps of them. Time beyond
+        /// maxSubSteps is dropped, as Bullet drops it. With maxSubSteps of 0 the step is one variable-length step of
+        /// timeStep. Returns how many steps to take; stepSeconds is how long each one is.
+        /// </summary>
+        public int PlanSteps(float timeStep, int maxSubSteps, float fixedTimeStep, out float stepSeconds)
+        {
+            int steps = 0;
+            stepSeconds = fixedTimeStep;
+            if (maxSubSteps > 0 && fixedTimeStep > 0f)
+            {
+                Accumulator += timeStep;
+                if (Accumulator >= fixedTimeStep)
+                {
+                    steps = (int)(Accumulator / fixedTimeStep);
+                    Accumulator -= steps * fixedTimeStep;
+                }
+                if (steps > maxSubSteps)
+                    steps = maxSubSteps;
+            }
+            else if (timeStep > 0f)
+            {
+                stepSeconds = timeStep;
+                Accumulator = 0f;
+                steps = 1;
+            }
+            return steps;
+        }
+    }
+}

@@ -24,3 +24,5 @@
 
 # Shell scripts, the unit and the smoke image run on Linux: keep LF in every checkout.
 setup/debian/** text eol=lf
+# The Parry patch is applied with git apply to an extracted crate: keep its LF line endings.
+ThirdParty/rapier/patches/*.patch text eol=lf

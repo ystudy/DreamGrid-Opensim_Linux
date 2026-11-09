@@ -102,11 +102,14 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         public static bool ShouldUseSingleConvexHullForPrims { get; set; }
         public static bool ShouldUseGImpactShapeForPrims { get; set; }
         public static bool ShouldUseAssetHulls { get; set; }
+        public static bool MeshWithoutPhysicsMeshIsConvex { get; private set; }
 
         public static float TerrainImplementation { get; set; }
         public static int TerrainMeshMagnification { get; private set; }
         public static float TerrainGroundPlane { get; private set; }
         public static float TerrainFriction { get; private set; }
+        public static bool FrictionCombineGeometric { get; private set; }
+        public static bool PrimInertiaFromBoundingBox { get; private set; }
         public static float TerrainHitFraction { get; private set; }
         public static float TerrainRestitution { get; private set; }
         public static float TerrainContactProcessingThreshold { get; private set; }
@@ -131,12 +134,21 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         public static float GlobalContactBreakingThreshold { get; private set; }
         public static float PhysicsUnmanLoggingFrames { get; private set; }
 
+        // Rapier backend parameters (ignored by the Bullet engines)
+        public static float RapierNumThreads { get; private set; }
+        public static float RapierSolverIterations { get; private set; }
+
         // Avatar parameters
         public static bool AvatarToAvatarCollisionsByDefault { get; private set; }
         public static float AvatarFriction { get; private set; }
         public static float AvatarStandingFriction { get; private set; }
         public static float AvatarWalkVelocityFactor { get; private set; }
         public static float AvatarAlwaysRunFactor { get; private set; }
+        public static bool AvatarRunFactorWhenFlying { get; private set; }
+        public static float AvatarSpeedFactor { get; private set; }
+        public static float AvatarMotorTimeScale { get; private set; }
+        public static float AvatarMotorTimeConstant { get; private set; }
+        public static float AvatarStopTimeConstant { get; private set; }
         public static float AvatarDensity { get; private set; }
         public static float AvatarRestitution { get; private set; }
         public static int AvatarShape { get; private set; }
@@ -158,6 +170,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         public static int AvatarJumpFrames { get; private set; }
         public static float AvatarBelowGroundUpCorrectionMeters { get; private set; }
         public static float AvatarStepHeight { get; private set; }
+        public static bool AvatarStepsNeedAWalkableTop { get; private set; }
         public static float AvatarStepAngle { get; private set; }
         public static float AvatarStepGroundFudge { get; private set; }
         public static float AvatarStepApproachFactor { get; private set; }
@@ -455,6 +468,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                 false ),
             new ParameterDefn<bool>("ShouldUseAssetHulls", "If true, use hull if specified in the mesh asset info",
                 true ),
+            new ParameterDefn<bool>("MeshWithoutPhysicsMeshIsConvex", "Whether a static mesh whose asset has no physics mesh collides as the convex hulls in its physics_convex block, as on ubODE, instead of as its display mesh; false, or the engine's own default (Rapier: true) unless set",
+                false ),
 
             new ParameterDefn<int>("CrossingFailuresBeforeOutOfBounds", "How forgiving we are about getting into adjactent regions",
                 5 ),
@@ -486,7 +501,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                 10,
                 (s) => { return s.m_maxSubSteps; },
                 (s,v) => { s.m_maxSubSteps = (int)v; } ),
-            new ParameterDefn<float>("FixedTimeStep", "In simulation step, seconds of one substep (1/60)",
+            new ParameterDefn<float>("FixedTimeStep", "In simulation step, seconds of one substep (1/60; 0.02 for the Rapier engine unless set)",
                 1f / 60f,
                 (s) => { return s.m_fixedTimeStep; },
                 (s,v) => { s.m_fixedTimeStep = v; } ),
@@ -558,12 +573,12 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                 (s,o) => { s.PE.SetGravity(o.PhysBody, new Vector3(0f,0f,Gravity)); } ),
 
 
-            new ParameterDefn<float>("LinearDamping", "Factor to damp linear movement per second (0.0 - 1.0)",
+            new ParameterDefn<float>("LinearDamping", "Factor to damp linear movement per second (0.0 - 1.0); 0, or the engine's own default (Rapier: 0.0953, ubODE's) unless set",
                 0f,
                 (s) => { return LinearDamping; },
                 (s,v) => { LinearDamping = v; },
                 (s,o) => { s.PE.SetDamping(o.PhysBody, LinearDamping, AngularDamping); } ),
-            new ParameterDefn<float>("AngularDamping", "Factor to damp angular movement per second (0.0 - 1.0)",
+            new ParameterDefn<float>("AngularDamping", "Factor to damp angular movement per second (0.0 - 1.0); 0, or the engine's own default (Rapier: 0.0247, ubODE's) unless set",
                 0f,
                 (s) => { return AngularDamping; },
                 (s,v) => { AngularDamping = v; },
@@ -605,6 +620,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                 2 ),
             new ParameterDefn<float>("TerrainGroundPlane", "Altitude of ground plane used to keep things from falling to infinity" ,
                 -500.0f ),
+            new ParameterDefn<bool>("PrimInertiaFromBoundingBox", "Whether a physical prim gets the inertia of its bounding box, as on ubODE (so a ball rolls as on ubODE), instead of its shape's own; false, or the engine's own default (Rapier: true) unless set",
+                false ),
+            new ParameterDefn<bool>("FrictionCombineGeometric", "Whether two bodies' frictions combine as sqrt(f1 x f2), as ubODE's do, instead of f1 x f2 (avatars keep the product on the terrain); false, or the engine's own default (Rapier: true) unless set",
+                false ),
             new ParameterDefn<float>("TerrainFriction", "Factor to reduce movement against terrain surface" ,
                 0.3f ),
             new ParameterDefn<float>("TerrainHitFraction", "Distance to measure hit collisions" ,
@@ -624,8 +643,18 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                 0.95f ),
             new ParameterDefn<float>("AvatarWalkVelocityFactor", "Speed multiplier if avatar is walking",
                 1.0f ),
-            new ParameterDefn<float>("AvatarAlwaysRunFactor", "Speed multiplier if avatar is set to always run",
+            new ParameterDefn<float>("AvatarAlwaysRunFactor", "Speed multiplier if avatar is set to always run; 1.3, or the engine's own default (Rapier: ubODE's 1.25) unless set",
                 1.3f ),
+            new ParameterDefn<bool>("AvatarRunFactorWhenFlying", "Whether always-run also multiplies the flying speed by AvatarAlwaysRunFactor (as ubODE does); false, or the engine's own default (Rapier: true) unless set",
+                false ),
+            new ParameterDefn<float>("AvatarSpeedFactor", "Horizontal speed multiplier when walking or flying (not always-run); 1, or the engine's own default (Rapier: ubODE's 1/1.3) unless set",
+                1.0f ),
+            new ParameterDefn<float>("AvatarMotorTimeScale", "Seconds the avatar's velocity motor takes to close the gap to the target speed, linearly per frame. Ignored while AvatarMotorTimeConstant is above 0, which wins (Rapier's default is 0.0565, so set AvatarMotorTimeConstant to 0 to use this on Rapier); 0.2 unless set",
+                0.2f ),
+            new ParameterDefn<float>("AvatarMotorTimeConstant", "If above 0, the avatar's velocity motor closes 1 - exp(-frame/this) of the gap each frame, the same at any frame rate, and this wins over AvatarMotorTimeScale; 0 hands the motor back to AvatarMotorTimeScale (also when set at run time); 0, or the engine's own default (Rapier: 0.0565 s, ubODE-like) unless set",
+                0f ),
+            new ParameterDefn<float>("AvatarStopTimeConstant", "If above 0 (with AvatarMotorTimeConstant), a stopping avatar's speed decays with this time constant, so it slides about speed x this at any frame rate; 0, or the engine's own default (Rapier: 0.019 s, ubODE-like) unless set",
+                0f ),
                 // For historical reasons, density is reported  * 100
             new ParameterDefn<float>("AvatarDensity", "Density of an avatar. Changed on avatar recreation. Scaled times 100.",
                 350f) ,    // 3.5 * 100
@@ -659,7 +688,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                 0.1f ),
             new ParameterDefn<float>("AvatarAddForcePushFactor", "BSCharacter.AddForce is multiplied by this and mass to be like other physics engines",
                 0.315f ),
-            new ParameterDefn<float>("AvatarStopZeroThreshold", "Movement velocity below which avatar is assumed to be stopped",
+            new ParameterDefn<float>("AvatarStopZeroThreshold", "Movement velocity below which avatar is assumed to be stopped; 0.45, or the engine's own default (Rapier: 0.7) unless set",
                 0.45f,
                 (s) => { return (float)AvatarStopZeroThreshold; },
                 (s,v) => { AvatarStopZeroThreshold = v; AvatarStopZeroThresholdSquared = v * v; } ),
@@ -667,8 +696,10 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                 1.0f ),
             new ParameterDefn<int>("AvatarJumpFrames", "Number of frames to allow jump forces. Changes jump height.",
                 4 ),
-            new ParameterDefn<float>("AvatarStepHeight", "Height of a step obstacle to consider step correction",
+            new ParameterDefn<float>("AvatarStepHeight", "Height of a step obstacle to consider step correction; 0.999, or the engine's own default (Rapier: 0.5) unless set",
                 0.999f ) ,
+            new ParameterDefn<bool>("AvatarStepsNeedAWalkableTop", "Whether a contact near the feet is a step only if the object has a walkable top within AvatarStepHeight just past it, so walls are not climbed; false, or the engine's own default (Rapier: true) unless set",
+                false ),
             new ParameterDefn<float>("AvatarStepAngle", "The angle (in radians) for a vertical surface to be considered a step",
                 0.3f ) ,
             new ParameterDefn<float>("AvatarStepGroundFudge", "Fudge factor subtracted from avatar base when comparing collision height",
@@ -846,6 +877,11 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                 0.1f ),
             new ParameterDefn<float>("LinkConstraintSolverIterations", "Number of solver iterations when computing constraint. (0 = Bullet default)",
                 40 ),
+
+            new ParameterDefn<float>("RapierNumThreads", "Threads Rapier uses inside a step (Rapier engine only)",
+                1f ),
+            new ParameterDefn<float>("RapierSolverIterations", "Solver iterations per Rapier step (Rapier engine only)",
+                4f ),
 
             new ParameterDefn<bool>("UseBulletRaycast", "If 'true', use the raycast function of the Bullet physics engine",
                 true ),

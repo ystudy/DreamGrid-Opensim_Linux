@@ -1,0 +1,12 @@
+# Tests for patches/parry3d-0.31.1-edge-codes.patch, run by build-linux.sh and build-windows.ps1 against the patched
+# Parry they build with (cargo --config patch.crates-io.parry3d.path=...). See ../README.md.
+[package]
+name = "edge-codes-test"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+parry3d = { version = "=0.31.1", default-features = false, features = ["required-features", "std", "alloc"] }
+
+[workspace]

@@ -148,22 +148,31 @@ namespace OpenSim.Region.PhysicsModule.BulletS
             float ret = BSTerrainManager.HEIGHT_GETHEIGHT_RET;
 
             try {
-                int baseX = (int)pos.X;
-                int baseY = (int)pos.Y;
+                // Where the engine puts the samples: Bullet's heightfield is centred on the region, so its sample (i, j)
+                // is at (i + 0.5, j + 0.5); Rapier's is at (i, j) (BSAPITemplate.TerrainSampleOffset). Looking up the
+                // map at the point less that offset gives the surface the engine collides with.
+                float offset = m_physicsScene.PE.TerrainSampleOffset;
+                float px = Math.Max(pos.X - offset, 0f);
+                float py = Math.Max(pos.Y - offset, 0f);
+                int baseX = (int)px;
+                int baseY = (int)py;
                 int maxX = (int)m_mapInfo.sizeX;
                 int maxY = (int)m_mapInfo.sizeY;
-                float diffX = pos.X - (float)baseX;
-                float diffY = pos.Y - (float)baseY;
+                float diffX = px - (float)baseX;
+                float diffY = py - (float)baseY;
 
-                float mapHeight1 = m_mapInfo.heightMap[baseY * maxY + baseX];
-                float mapHeight2 = m_mapInfo.heightMap[Math.Min(baseY + 1, maxY - 1) * maxY + baseX];
-                float mapHeight3 = m_mapInfo.heightMap[baseY * maxY + Math.Min(baseX + 1, maxX  - 1)];
-                float mapHeight4 = m_mapInfo.heightMap[Math.Min(baseY + 1, maxY - 1) * maxY +  Math.Min(baseX + 1, maxX  - 1)];
+                // The four samples around the point (rows of sizeX), and the height on the triangle of the cell the engine
+                // collides with (BSAPITemplate.TerrainTriangleRule). (The old sum took a Y difference for its X rise and
+                // halved both, so on a 30 degree slope it was up to 0.57 m off, and PositionSanityCheck lifted and stopped
+                // physical prims resting on it. A bilinear blend is still up to 0.1 m off on rough terrain.)
+                int nextX = Math.Min(baseX + 1, maxX - 1);
+                int nextY = Math.Min(baseY + 1, maxY - 1);
+                float h00 = m_mapInfo.heightMap[baseY * maxX + baseX];
+                float h10 = m_mapInfo.heightMap[baseY * maxX + nextX];
+                float h01 = m_mapInfo.heightMap[nextY * maxX + baseX];
+                float h11 = m_mapInfo.heightMap[nextY * maxX + nextX];
 
-                float Xrise = (mapHeight4 - mapHeight3) * diffX;
-                float Yrise = (mapHeight2 - mapHeight1) * diffY;
-
-                ret = mapHeight1 + ((Xrise + Yrise) / 2f);
+                ret = HeightInCell(m_physicsScene.PE.TerrainTriangleRule, baseX, baseY, diffX, diffY, h00, h10, h01, h11);
                 // m_physicsScene.DetailLog("{0},BSTerrainHeightMap,GetTerrainHeightAtXYZ,pos={1},{2}/{3}/{4}/{5},ret={6}",
                 //         BSScene.DetailLogZero, pos, mapHeight1, mapHeight2, mapHeight3, mapHeight4, ret);
             }
@@ -175,6 +184,42 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                 ret = BSTerrainManager.HEIGHT_GETHEIGHT_RET;
             }
             return ret;
+        }
+
+        // The height at (fx, fy) within cell (cellX, cellY), whose corner samples are h00 (0,0), h10 (1,0), h01 (0,1) and
+        // h11 (1,1), on the triangle the rule's split gives.
+        internal static float HeightInCell(TerrainTriangles rule, int cellX, int cellY, float fx, float fy,
+                                            float h00, float h10, float h01, float h11)
+        {
+            bool upDiagonal;
+            switch (rule)
+            {
+                case TerrainTriangles.DiagonalUp:
+                    upDiagonal = true;
+                    break;
+                case TerrainTriangles.DiagonalDown:
+                    upDiagonal = false;
+                    break;
+                case TerrainTriangles.DiamondEvenUp:
+                    upDiagonal = ((cellX + cellY) & 1) == 0;
+                    break;
+                case TerrainTriangles.DiamondEvenDown:
+                    upDiagonal = ((cellX + cellY) & 1) != 0;
+                    break;
+                default:
+                    float atY0 = h00 + (h10 - h00) * fx;
+                    float atY1 = h01 + (h11 - h01) * fx;
+                    return atY0 + (atY1 - atY0) * fy;
+            }
+            if (upDiagonal)
+            {
+                // Split along (0,0)-(1,1).
+                return (fx >= fy) ? h00 + (h10 - h00) * fx + (h11 - h10) * fy
+                                  : h00 + (h01 - h00) * fy + (h11 - h01) * fx;
+            }
+            // Split along (1,0)-(0,1).
+            return (fx + fy <= 1f) ? h00 + (h10 - h00) * fx + (h01 - h00) * fy
+                                   : h11 + (h01 - h11) * (1f - fx) + (h10 - h11) * (1f - fy);
         }
 
         // The passed position is relative to the base of the region.

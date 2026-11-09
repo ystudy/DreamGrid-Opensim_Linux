@@ -36,6 +36,7 @@ using OpenSim.Framework.Monitoring;
 using OpenSim.Region.Framework.Scenes;
 using OpenSim.Region.Framework.Interfaces;
 using OpenSim.Region.PhysicsModules.SharedBase;
+using OpenSim.Region.PhysicsModule.BulletS.Rapier;
 using Nini.Config;
 using log4net;
 using OpenMetaverse;
@@ -96,6 +97,18 @@ namespace OpenSim.Region.PhysicsModule.BulletS
 
         internal int m_maxSubSteps;
         internal float m_fixedTimeStep;
+        // Whether [BulletSim] set FixedTimeStep, so an engine's own default does not replace it.
+        private bool m_fixedTimeStepFromIni;
+        // Whether [BulletSim] set AvatarShape, so an engine's own default (capsules, PE.CapsuleAvatars) does not replace it.
+        private bool m_avatarShapeFromIni;
+        // The [BulletSim] section, so an engine's own parameter defaults (SetEngineDefault) do not replace what it sets.
+        private IConfig m_bulletSimConfig;
+
+        // The substep length the Rapier engine uses when the INI does not set FixedTimeStep: ubODE's 0.02 s, not
+        // Bullet's 1/60 s, so a frame takes fewer substeps.
+        internal const float RapierFixedTimeStep = 0.02f;
+        // Bullet's own default FixedTimeStep, which BulletS's tuning (the avatar jump) was done at.
+        internal const float BulletFixedTimeStep = 1f / 60f;
 
         internal float m_simulatedTime;     // the time simulated previously. Used for physics framerate calc.
 
@@ -318,6 +331,38 @@ namespace OpenSim.Region.PhysicsModule.BulletS
 
             // Get the connection to the physics engine (could be native or one of many DLLs)
             PE = SelectUnderlyingBulletEngine(BulletEngineName);
+            if (PE == null)
+            {
+                string message = string.Format("{0} Physics engine '{1}' could not be started; see the log line above for the reason", LogHeader, BulletEngineName);
+                m_log.Error(message);
+                throw new InvalidOperationException(message);
+            }
+
+            // An engine whose avatars are cheaper as capsules makes them the default; AvatarShape in the INI still wins.
+            if (PE.CapsuleAvatars && !m_avatarShapeFromIni
+                    && BSParam.TryGetParameter("AvatarShape", out BSParam.ParameterDefnBase avatarShape))
+            {
+                avatarShape.SetValue(this, BSShapeCollection.AvatarShapeCapsule.ToString());
+            }
+
+            // The engine's own avatar tuning; the INI still wins. Bullet's values are the parameters' defaults.
+            SetEngineDefault("AvatarSpeedFactor", PE.AvatarSpeedFactor);
+            SetEngineDefault("AvatarMotorTimeScale", PE.AvatarMotorTimeScale);
+            SetEngineDefault("AvatarMotorTimeConstant", PE.AvatarMotorTimeConstant);
+            SetEngineDefault("AvatarStopTimeConstant", PE.AvatarStopTimeConstant);
+            if (BSParam.AvatarMotorTimeConstant > 0f && m_bulletSimConfig != null && m_bulletSimConfig.Contains("AvatarMotorTimeScale"))
+                m_log.InfoFormat("{0} [BulletSim]AvatarMotorTimeScale is not used while AvatarMotorTimeConstant ({1}) is above 0; set AvatarMotorTimeConstant to 0 to use it",
+                            LogHeader, BSParam.AvatarMotorTimeConstant);
+            SetEngineDefault("AvatarStopZeroThreshold", PE.AvatarStopZeroThreshold);
+            SetEngineDefault("AvatarStepHeight", PE.AvatarStepHeight);
+            SetEngineDefault("AvatarStepsNeedAWalkableTop", PE.StepsNeedAWalkableTop);
+            SetEngineDefault("FrictionCombineGeometric", PE.FrictionCombineGeometric);
+            SetEngineDefault("LinearDamping", PE.DefaultLinearDamping);
+            SetEngineDefault("AngularDamping", PE.DefaultAngularDamping);
+            SetEngineDefault("PrimInertiaFromBoundingBox", PE.PrimInertiaFromBoundingBox);
+            SetEngineDefault("MeshWithoutPhysicsMeshIsConvex", PE.MeshesWithoutPhysicsMeshAreConvex);
+            SetEngineDefault("AvatarAlwaysRunFactor", PE.AvatarAlwaysRunFactor);
+            SetEngineDefault("AvatarRunFactorWhenFlying", PE.AvatarRunFactorWhenFlying);
 
             // Enable very detailed logging.
             // By creating an empty logger when not logging, the log message invocation code
@@ -381,6 +426,9 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                 if (pConfig != null)
                 {
                     BSParam.SetParameterConfigurationValues(this, pConfig);
+                    m_fixedTimeStepFromIni = pConfig.Contains("FixedTimeStep");
+                    m_avatarShapeFromIni = pConfig.Contains("AvatarShape");
+                    m_bulletSimConfig = pConfig;
 
                     // There are two Bullet implementations to choose from
                     BulletEngineName = pConfig.GetString("BulletEngine", "BulletUnmanaged");
@@ -433,6 +481,23 @@ namespace OpenSim.Region.PhysicsModule.BulletS
             return ret;
         }
 
+        // Give a [BulletSim] parameter the engine's own default (a BSAPITemplate capability), unless the INI set it.
+        private void SetEngineDefault(string parmName, float value)
+        {
+            if (m_bulletSimConfig != null && m_bulletSimConfig.Contains(parmName))
+                return;
+            if (BSParam.TryGetParameter(parmName, out BSParam.ParameterDefnBase defn))
+                defn.SetValue(this, value.ToString("R"));
+        }
+
+        private void SetEngineDefault(string parmName, bool value)
+        {
+            if (m_bulletSimConfig != null && m_bulletSimConfig.Contains(parmName))
+                return;
+            if (BSParam.TryGetParameter(parmName, out BSParam.ParameterDefnBase defn))
+                defn.SetValue(this, value.ToString());
+        }
+
         // Select the connection to the actual Bullet implementation.
         // The main engine selection is the engineName up to the first hypen.
         // So "Bullet-2.80-OpenCL-Intel" specifies the 'bullet' class here and the whole name
@@ -446,7 +511,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS
             string selectionName = engineName.ToLower();
             int hyphenIndex = engineName.IndexOf("-");
             if (hyphenIndex > 0)
-                selectionName = engineName.ToLower().Substring(0, hyphenIndex - 1);
+                selectionName = engineName.ToLower().Substring(0, hyphenIndex);
 
             switch (selectionName)
             {
@@ -467,11 +532,20 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                     m_log.InfoFormat("{0}    Setting terrain implimentation to Heightmap", LogHeader);
                     BSParam.TerrainImplementation = (float)BSTerrainPhys.TerrainImplementation.Heightmap;
                     break;
+                case "rapier":
+                    ret = SelectRapierEngine(engineName);
+                    if (ret != null && !m_fixedTimeStepFromIni)
+                    {
+                        m_log.InfoFormat("{0} Rapier steps {1} s at a time (set [BulletSim]FixedTimeStep to change it)",
+                                    LogHeader, RapierFixedTimeStep);
+                        m_fixedTimeStep = RapierFixedTimeStep;
+                    }
+                    break;
             }
 
             if (ret == null)
             {
-                m_log.ErrorFormat("{0} COULD NOT SELECT BULLET ENGINE: '[BulletSim]PhysicsEngine' must be either 'BulletUnmanaged-*' or 'BulletXNA-*'", LogHeader);
+                m_log.ErrorFormat("{0} COULD NOT SELECT BULLET ENGINE: '[BulletSim]PhysicsEngine' must be either 'BulletUnmanaged-*', 'BulletXNA-*' or 'Rapier'", LogHeader);
             }
             else
             {
@@ -479,6 +553,45 @@ namespace OpenSim.Region.PhysicsModule.BulletS
             }
 
             return ret;
+        }
+
+        // Load the Rapier library, check it is the one this build was written against, and connect to it.
+        // Any problem with the library is logged here, with what is wrong, and gives null (the caller then reports
+        //    that no engine was selected). Nothing a missing, wrong or broken library does gets out of this routine.
+        private BSAPITemplate SelectRapierEngine(string engineName)
+        {
+            try
+            {
+                // BSParam is read before the engine is chosen, so RapierNumThreads picks the build: "rapier" for one
+                // thread, "rapier_mt" (parallel) for more.
+                string error, warning;
+                if (!RapierNative.TryLoad(Math.Max(1, (int)BSParam.RapierNumThreads), out error, out warning))
+                {
+                    m_log.ErrorFormat("{0} Rapier native library could not be loaded: {1}", LogHeader, error);
+                    return null;
+                }
+                if (warning != null)
+                    m_log.WarnFormat("{0} {1}", LogHeader, warning);
+                error = RapierNative.VerifyAbi();
+                if (error != null)
+                {
+                    m_log.ErrorFormat("{0} Rapier native library does not match this build: {1}", LogHeader, error);
+                    return null;
+                }
+                return new BSAPIRapier(engineName, this);
+            }
+            catch (Exception e)
+            {
+                m_log.ErrorFormat("{0} Rapier native library could not be used: {1}", LogHeader, e.Message);
+                m_log.Debug(e.ToString());
+                return null;
+            }
+        }
+
+        // The test project calls the private engine selection through this, with a scene that was never initialized.
+        internal static BSAPITemplate SelectEngineForTest(string engineName)
+        {
+            return new BSScene().SelectUnderlyingBulletEngine(engineName);
         }
 
         public override void Dispose()
@@ -796,8 +909,9 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         {
             if (!m_initialized) return 5.0f;
 
-            DetailLog("{0},SendUpdatesToSimulator,collisions={1},updates={2},simedTime={3}",
-                BSScene.DetailLogZero, ObjectsWithCollisions.Count, ObjectsWithUpdates.Count, m_simulatedTime);
+            if (PhysicsLogging.Enabled)
+                DetailLog("{0},SendUpdatesToSimulator,collisions={1},updates={2},simedTime={3}",
+                    BSScene.DetailLogZero, ObjectsWithCollisions.Count, ObjectsWithUpdates.Count, m_simulatedTime);
             // Push the collisions into the simulator.
             lock (CollisionLock)
             {
@@ -880,7 +994,8 @@ namespace OpenSim.Region.PhysicsModule.BulletS
             if (!PhysObjects.TryGetValue(localID, out collider))
             {
                 // If the object that is colliding cannot be found, just ignore the collision.
-                DetailLog("{0},BSScene.SendCollision,colliderNotInObjectList,id={1},with={2}", DetailLogZero, localID, collidingWith);
+                if (PhysicsLogging.Enabled)
+                    DetailLog("{0},BSScene.SendCollision,colliderNotInObjectList,id={1},with={2}", DetailLogZero, localID, collidingWith);
                 return;
             }
 

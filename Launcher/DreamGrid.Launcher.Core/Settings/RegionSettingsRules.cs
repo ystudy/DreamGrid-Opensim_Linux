@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using DreamGrid.Launcher.Core.Modules;
 
 namespace DreamGrid.Launcher.Core.Settings;
@@ -9,7 +10,32 @@ namespace DreamGrid.Launcher.Core.Settings;
 public static class RegionSettingsRules
 {
     /// <summary>The physics engines a program may use.</summary>
-    public static readonly IReadOnlyList<string> PhysicsEngines = ["ubODE", "BulletSim", "BulletSimThreaded"];
+    public static readonly IReadOnlyList<string> PhysicsEngines = ["ubODE", "BulletSim", "BulletSimThreaded", "Rapier"];
+
+    /// <summary>
+    /// Whether a Rapier library ships for this platform: Linux x64 and Windows x64. There is no macOS build.
+    /// </summary>
+    /// <remarks>
+    /// Linux arm64 has a dllmap line in OpenSim.Region.PhysicsModule.BulletS.dll.config, but no library yet. Arm64 comes
+    /// back here when bin/lib64/librapier-arm64.so is committed.
+    /// </remarks>
+    public static bool RapierSupported(OSPlatform os, Architecture arch) =>
+        (os == OSPlatform.Linux && arch == Architecture.X64)
+        || (os == OSPlatform.Windows && arch == Architecture.X64);
+
+    /// <summary>Rapier supported by the platform this process runs on.</summary>
+    public static bool RapierSupportedHere() => RapierSupported(CurrentPlatform(), RuntimeInformation.OSArchitecture);
+
+    /// <summary>The engines this computer can run, for the pages that offer a choice.</summary>
+    public static IReadOnlyList<string> AvailablePhysicsEngines() => PlatformSupport.Current.Engines;
+
+    internal static OSPlatform CurrentPlatform() =>
+        OperatingSystem.IsWindows() ? OSPlatform.Windows
+        : OperatingSystem.IsLinux() ? OSPlatform.Linux
+        : OperatingSystem.IsMacOS() ? OSPlatform.OSX
+        : OSPlatform.Create("Other");
+
+    internal const string RapierUnavailable = "Rapier isn't available on this computer.";
 
     internal const string PriorityNeedsRoot = "On Linux only the root user can raise the priority of these regions.";
 
@@ -31,11 +57,17 @@ public static class RegionSettingsRules
         if (value is { } v && (v < low || v > high)) errors[key] = Range(low, high);
     }
 
-    public static ValidationResult Program(string? physics, ProgramOptions o, int processorCount)
+    public static ValidationResult Program(string? physics, ProgramOptions o, int processorCount) =>
+        Program(physics, o, processorCount, CurrentPlatform(), RuntimeInformation.OSArchitecture);
+
+    /// <summary>As above, for an explicit platform so the Rapier check can be tested anywhere.</summary>
+    public static ValidationResult Program(string? physics, ProgramOptions o, int processorCount, OSPlatform os, Architecture arch)
     {
         var errors = new Dictionary<string, string>();
         if (physics is not null && !PhysicsEngines.Contains(physics))
-            errors["Physics"] = "Pick ubODE, BulletSim or BulletSimThreaded, or use the grid default.";
+            errors["Physics"] = "Pick ubODE, BulletSim, BulletSimThreaded or Rapier, or use the grid default.";
+        else if (physics == "Rapier" && !RapierSupported(os, arch))
+            errors["Physics"] = RapierUnavailable;
         if (o.MinTimerInterval is { } t && !(t >= 0.05 && t <= 10))
             errors[nameof(ProgramOptions.MinTimerInterval)] = "Use a number of seconds from 0.05 to 10, or leave it empty for OpenSim's default.";
         if (o.FramesPerSecond is { } f && (f < 5 || f > 55))

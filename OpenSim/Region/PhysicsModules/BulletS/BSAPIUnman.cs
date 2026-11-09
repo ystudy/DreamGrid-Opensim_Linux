@@ -141,6 +141,21 @@ namespace OpenSim.Region.PhysicsModule.BulletS
         public override string BulletEngineName { get { return "BulletUnmanaged"; } }
         public override string BulletEngineVersion { get; protected set; }
 
+        // BulletSim's btHeightfieldTerrainShape uses diamond subdivision: the diagonal alternates by the parity of i + j.
+        // Which way round depends on the library (measured with 4,000 rays on rough terrain): Bullet 2.84 ("1.0,2.84",
+        // the Linux build) splits even cells along (i, j)-(i + 1, j + 1), Bullet 3.26 ("1.3,3.26", Windows and macOS)
+        // along the other diagonal. The Bullet version is the part of BulletEngineVersion after the comma.
+        public override TerrainTriangles TerrainTriangleRule
+        {
+            get
+            {
+                string version = BulletEngineVersion ?? "";
+                int comma = version.IndexOf(',');
+                string bullet = comma >= 0 ? version.Substring(comma + 1) : version;
+                return bullet.StartsWith("2.") ? TerrainTriangles.DiamondEvenUp : TerrainTriangles.DiamondEvenDown;
+            }
+        }
+
         public BSAPIUnman(string paramName, BSScene physScene)
         {
             DllmapConfigHelper.RegisterAssembly(typeof(BSAPIUnman).Assembly);

@@ -348,8 +348,8 @@ public sealed class AdvancedSettingsTests : IAsyncLifetime
         using var client = await SignedInAsync(_f);
         var page = await client.GetStringAsync("/advanced/regions", Ct);
         var doc = Parse(page);
-        Assert.Equal(["ubODE", "BulletSim", "BulletSimThreaded"],
-            doc.QuerySelectorAll("input[name=DefaultPhysics]").Select(i => i.GetAttribute("value")).ToList());
+        Assert.Equal(RegionSettingsRules.AvailablePhysicsEngines().ToList(), // Rapier is offered where its library ships
+            doc.QuerySelectorAll("input[name=DefaultPhysics]").Select(i => i.GetAttribute("value")!).ToList());
         Assert.Equal("ubODE", doc.QuerySelector("input[name=DefaultPhysics][checked]")!.GetAttribute("value"));
         Assert.Equal("true", doc.QuerySelector("input[name=DefaultScripts][checked]")!.GetAttribute("value"));
         Assert.Contains("BulletSim in its own thread", Text(page));

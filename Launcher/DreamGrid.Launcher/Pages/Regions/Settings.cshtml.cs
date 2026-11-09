@@ -13,7 +13,7 @@ namespace DreamGrid.Launcher.Pages.Regions;
 /// Each tab is one plain form posting <c>?handler=&lt;tab&gt;</c>. A wrong value comes back at its field and nothing is
 /// saved. Options belong to the region; the others belong to the program the region runs in, so every region in it shares them.
 /// </summary>
-public sealed class SettingsModel(IGridController grid, OarJobs oarJobs, Func<CpuPriority, string?> priorityUnavailable) : PageModel
+public sealed class SettingsModel(IGridController grid, OarJobs oarJobs, Func<CpuPriority, string?> priorityUnavailable, PlatformSupport platform) : PageModel
 {
     public static readonly IReadOnlyList<(string Key, string Label)> Tabs =
     [
@@ -101,6 +101,23 @@ public sealed class SettingsModel(IGridController grid, OarJobs oarJobs, Func<Cp
 
     /// <summary>Why a priority can't be chosen here, or null.</summary>
     public string? Unavailable(CpuPriority p) => priorityUnavailable(p);
+
+    /// <summary>The engines this computer can run, for the Physics tab.</summary>
+    public IReadOnlyList<string> PhysicsEngines => platform.Engines;
+
+    /// <summary>
+    /// Set when the program's own engine, or the grid default it follows, is one this computer cannot run (settings moved
+    /// from another computer): the Physics tab says so, since the region will not start until another engine is picked.
+    /// </summary>
+    public string? PhysicsNotice
+    {
+        get
+        {
+            var effective = Physics == "" ? DefaultPhysics : Physics;
+            return platform.Unavailable(effective) is null ? null
+                : $"{(Physics == "" ? "The grid default" : "This program")} is set to {SettingLabels.Physics(effective)}, which isn't available on this computer. Pick another engine.";
+        }
+    }
 
     public IActionResult OnGet(Guid id, string? tab)
     {
@@ -292,7 +309,10 @@ public sealed class SettingsModel(IGridController grid, OarJobs oarJobs, Func<Cp
                 // Only the CPU tab changes the cores. Saved cores this computer lacks (settings from another computer) must
                 // not block the other tabs: they are checked as the cores this computer has, and saved as they were.
                 var check = tab == "cpu" ? opts : opts with { Cores = RegionSettingsRules.UsableCores(opts.Cores, Cores) };
-                AddErrors(RegionSettingsRules.Program(physics, check, Cores));
+                // A Rapier saved on another computer blocks nothing while it stays as it was: only the Physics tab, or a
+                // change of engine, is checked for it.
+                var checkPhysics = tab == "physics" || physics != _program.Physics ? physics : null;
+                AddErrors(RegionSettingsRules.Program(checkPhysics, check, Cores, platform.Os, platform.Arch));
                 if (!ModelState.IsValid) return Page();
 
                 try

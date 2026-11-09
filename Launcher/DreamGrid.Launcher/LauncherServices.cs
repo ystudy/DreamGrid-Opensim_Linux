@@ -24,6 +24,7 @@ public static class LauncherServices
         // Read per request from the controller's cache (never the file), so a change the controller saved is seen at once.
         services.AddSingleton<Func<LauncherSettings>>(sp => sp.GetRequiredService<IGridController>().CurrentSettings);
         services.AddSingleton(TimeProvider.System);
+        services.AddSingleton(PlatformSupport.Current);
         services.AddSingleton(sp =>
         {
             try

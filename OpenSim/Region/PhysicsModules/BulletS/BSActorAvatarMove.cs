@@ -136,7 +136,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS
             {
                 // Infinite decay and timescale values so motor only changes current to target values.
                 m_velocityMotor = new BSVMotor("BSCharacter.Velocity",
-                                                    0.2f,                       // time scale
+                                                    BSParam.AvatarMotorTimeScale, // time scale (0.2 s unless the engine or INI says)
                                                     BSMotor.Infinite,           // decay time scale
                                                     1f                          // efficiency
                 );
@@ -185,6 +185,28 @@ namespace OpenSim.Region.PhysicsModule.BulletS
             //   from real pushing.
             // The code below uses whether the collider is static or moving to decide whether to zero motion.
     
+            // With a time constant (BSParam.AvatarMotorTimeConstant, Rapier's default), the motor closes the share
+            // 1 - exp(-dt/tau) of the gap each frame, so it feels the same at any frame time and never goes past the
+            // target. Without one (Bullet, or a time constant set to 0), it closes dt / AvatarMotorTimeScale of it, as it
+            // always has; the timescale is read each frame, so either parameter changed at run time takes effect at once.
+            float stopTau = 0f;
+            OMV.Vector3 frameStartValue = m_velocityMotor.CurrentValue;
+            if (BSParam.AvatarMotorTimeConstant > 0f)
+            {
+                if (timeStep > 0f)
+                {
+                    bool stopping = m_velocityMotor.TargetValue == OMV.Vector3.Zero;
+                    if (stopping && BSParam.AvatarStopTimeConstant > 0f)
+                        stopTau = BSParam.AvatarStopTimeConstant;
+                    float tau = (stopTau > 0f) ? stopTau : BSParam.AvatarMotorTimeConstant;
+                    float share = 1f - MathF.Exp(-timeStep / tau);
+                    m_velocityMotor.TimeScale = timeStep / share;
+                }
+            }
+            else
+            {
+                m_velocityMotor.TimeScale = BSParam.AvatarMotorTimeScale;
+            }
             m_velocityMotor.Step(timeStep);
             m_controllingPrim.IsStationary = false;
     
@@ -256,6 +278,11 @@ namespace OpenSim.Region.PhysicsModule.BulletS
             {
                 // Supposed to be moving.
                 OMV.Vector3 stepVelocity = m_velocityMotor.CurrentValue;
+                // Braking to a stop (AvatarStopTimeConstant): the velocity decays as exp(-t/tau) through the frame, so
+                // the frame gets its average, tau (1 - exp(-dt/tau)) / dt of the start value. The slide is then about
+                // speed * tau at any frame time, as ubODE's in-step brake gives, and not the end value held for a frame.
+                if (stopTau > 0f)
+                    stepVelocity = frameStartValue * (stopTau * (1f - MathF.Exp(-timeStep / stopTau)) / timeStep);
     
                 if (m_controllingPrim.Friction != BSParam.AvatarFriction)
                 {
@@ -381,7 +408,9 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                                         // The normal should be our contact point to the object so it is pointing away
                                         //    thus the difference between our facing orientation and the normal should be small.
                                         float diff = Math.Abs(OMV.Vector3.Distance(directionFacing, touchNormal));
-                                        if (diff < BSParam.AvatarStepApproachFactor)
+                                        if (diff < BSParam.AvatarStepApproachFactor
+                                            && (!BSParam.AvatarStepsNeedAWalkableTop
+                                                || HasWalkableTop(kvp.Key, touchPosition, nearFeetHeightMin, nearFeetHeightMax)))
                                         {
                                             if (highestTouchPosition.Z < touchPosition.Z)
                                                 highestTouchPosition = touchPosition;
@@ -418,6 +447,62 @@ namespace OpenSim.Region.PhysicsModule.BulletS
             }
     
             return ret;
+        }
+
+        // How far past the touch point HasWalkableTop looks for the step's top, how far below the touch the ray goes, and
+        // how level the top must be. The reach only has to get the ray past the face, so it is small: a step as thin as
+        // 2 cm (a sill, a kerb) still has its top under the ray. A short reach cannot make a wall a step: a wall taller
+        // than the step range still has the ray start inside it, and if a wall is thinner than the reach the ray falls
+        // past it onto something else, whose ID is not the touched object's.
+        private const float StepTopProbeReach = 0.01f;
+        private const float StepTopProbeDepth = 0.05f;
+        private const float StepTopMinNormalZ = 0.7f;   // about 45 degrees
+        private const uint StepTopRayGroup = (uint)CollisionFilterGroups.BCharacterGroup;
+        private const uint StepTopRayMask = (uint)(CollisionFilterGroups.BAllGroup
+                                    & ~(CollisionFilterGroups.BCharacterGroup | CollisionFilterGroups.BSensorTrigger));
+        // How far past the touch point the second, "room to stand" ray looks: about the capsule's radius (0.225 m for the
+        // default avatar), where the avatar's centre would be once on the step.
+        private const float StepRoomProbeReach = 0.2f;
+
+        // Whether the object touched is a step the avatar can stand on. Two rays straight down, from the top of the step
+        // range (BSParam.AvatarStepsNeedAWalkableTop, defaulted by BSAPITemplate.StepsNeedAWalkableTop):
+        //  - the top: StepTopProbeReach beyond the touch (away from the avatar), down to just below the touch, must land
+        //    on the touched object's upward face. In a wall it starts inside the solid, where the ray reports no upward
+        //    face, so a wall is not taken for a step;
+        //  - room to stand: StepRoomProbeReach beyond the touch, down to the bottom of the step range, must land on an
+        //    upward face of anything (the step's top, or the ground beyond a thin board). A shallow ledge in front of a wall
+        //    (a skirting board, a plinth) passes the first ray, but this one starts inside the wall and is refused.
+        private bool HasWalkableTop(uint touchedId, OMV.Vector3 touch, float rangeBottomZ, float rangeTopZ)
+        {
+            OMV.Vector3 away = touch - m_controllingPrim.RawPosition;
+            away.Z = 0f;
+            float length = away.Length();
+            if (length < 1e-4f)
+                return false;
+            away /= length;
+            OMV.Vector3 probe = touch + away * StepTopProbeReach;
+            OMV.Vector3 from = new OMV.Vector3(probe.X, probe.Y, rangeTopZ);
+            OMV.Vector3 to = new OMV.Vector3(probe.X, probe.Y, touch.Z - StepTopProbeDepth);
+            if (from.Z <= to.Z)
+                return false;
+            // The rays look as an avatar does (so static prims, which collide only with avatars and solids, are hit) and
+            // see neither avatars nor volume-detect sensors, which would otherwise be hit first and hide the step's top.
+            RaycastHit hit = m_physicsScene.PE.RayTest2(m_physicsScene.World, from, to, StepTopRayGroup, StepTopRayMask);
+            bool walkable = hit.hasHit() && hit.ID == touchedId && hit.Normal.Z >= StepTopMinNormalZ;
+            bool room = false;
+            OMV.Vector3 roomNormal = OMV.Vector3.Zero;
+            if (walkable)
+            {
+                OMV.Vector3 roomProbe = touch + away * StepRoomProbeReach;
+                OMV.Vector3 roomFrom = new OMV.Vector3(roomProbe.X, roomProbe.Y, rangeTopZ);
+                OMV.Vector3 roomTo = new OMV.Vector3(roomProbe.X, roomProbe.Y, rangeBottomZ);
+                RaycastHit roomHit = m_physicsScene.PE.RayTest2(m_physicsScene.World, roomFrom, roomTo, StepTopRayGroup, StepTopRayMask);
+                roomNormal = roomHit.Normal;
+                room = roomHit.hasHit() && roomHit.Normal.Z >= StepTopMinNormalZ;
+            }
+            m_physicsScene.DetailLog("{0},BSCharacter.WalkUpStairs.HasWalkableTop,touched={1},from={2},hitID={3},hitNormal={4},walkable={5},roomNormal={6},room={7}",
+                            m_controllingPrim.LocalID, touchedId, from, hit.ID, hit.Normal, walkable, roomNormal, room);
+            return walkable && room;
         }
 
         private OMV.Vector3 ComputeStairCorrection(float stepUp)
