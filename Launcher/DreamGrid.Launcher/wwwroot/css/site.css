@@ -216,9 +216,9 @@ form[role=search] .btn { flex-shrink: 0; white-space: nowrap; }
 .panel-tools { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; margin-bottom: .6rem; }
 
 /* Estates page: the list gets the room, making a new estate sits beside it. */
-.estates-columns { display: grid; gap: .75rem; grid-template-columns: minmax(0, 1fr); align-items: start; }
-@media (min-width: 992px) { .estates-columns { grid-template-columns: minmax(0, 1fr) 22rem; } }
-.estates-search { flex: 0 1 22rem; }
+.estates-columns, .list-columns { display: grid; gap: .75rem; grid-template-columns: minmax(0, 1fr); align-items: start; }
+@media (min-width: 992px) { .estates-columns, .list-columns { grid-template-columns: minmax(0, 1fr) 22rem; } }
+.estates-search, .list-search { flex: 0 1 32rem; }
 th .sort-link { display: inline-flex; align-items: center; gap: .25rem; color: inherit; text-decoration: none; }
 th .sort-link:hover, th .sort-link:focus-visible { text-decoration: underline; }
 th .sort-link .btn-icon { width: .9em; height: .9em; margin: 0; }
@@ -361,3 +361,36 @@ header .signout { margin: 0; }
 /* The front page's legal pages: a row of buttons under the two cards. */
 .front-legal { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .75rem; margin-top: 1.25rem; padding: .75rem 1rem; border: 1px solid var(--bs-border-color); border-radius: var(--bs-border-radius-lg); }
 .front-legal h2 { margin-right: .25rem; }
+
+/* Work pages with one form: a panel no wider than the form needs, and its buttons in one row. */
+.form-panel { max-width: 46rem; }
+.form-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1rem; }
+
+/* A region's settings: the sections as an icon list on the left, the open one in a panel beside it. */
+.settings-columns { display: grid; gap: .75rem; grid-template-columns: minmax(0, 1fr); align-items: start; }
+@media (min-width: 992px) { .settings-columns { grid-template-columns: 13rem minmax(0, 1fr); } .settings-nav { position: sticky; top: 1rem; } }
+.settings-tabs .nav-link { display: flex; align-items: center; gap: .5rem; padding: .45rem .65rem; color: var(--bs-body-color); border-radius: var(--bs-border-radius); }
+.settings-tabs .nav-link .btn-icon { margin: 0; }
+.settings-tabs .nav-link:hover { background: var(--bs-tertiary-bg); }
+.settings-tabs .nav-link.active { color: #fff; background: var(--bs-primary); }
+.settings-body > form:first-of-type > .form-label:first-child, .settings-body > form:first-of-type > label:first-child { margin-top: 0 !important; }
+.list-pager { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; }
+
+/* Settings hub: one card per settings page with its icon, three across on a wide screen. */
+.settings-hub { display: grid; gap: .75rem; grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr)); }
+.hub-card { display: flex; align-items: flex-start; gap: .75rem; }
+.hub-card:hover { border-color: var(--bs-body-color); }
+.hub-icon { flex: 0 0 auto; width: 1.6rem; height: 1.6rem; margin-top: .1rem; color: var(--bs-link-color); }
+/* A column of panels beside a main panel (the Plan page). */
+.side-stack { display: flex; flex-direction: column; gap: .75rem; }
+@media (min-width: 992px) { .plan-columns { grid-template-columns: minmax(0, 1fr) 24rem; } }
+/* Network: the form beside the table of ports the regions use. */
+.network-columns { display: grid; gap: .75rem; grid-template-columns: minmax(0, 1fr); align-items: start; }
+@media (min-width: 1200px) { .network-columns { grid-template-columns: minmax(0, 46rem) minmax(0, 1fr); } }
+.port-grid { display: grid; gap: 0 1rem; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); }
+.port-grid .form-label { margin-top: .5rem; }
+/* Region defaults: physics and scripts side by side. */
+.defaults-grid { display: grid; gap: 1rem 2rem; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); }
+/* Logs: the pickers in one row above the log. */
+.log-pick { display: flex; align-items: center; gap: .5rem; margin: 0; white-space: nowrap; }
+.log-pick .form-select { width: auto; }

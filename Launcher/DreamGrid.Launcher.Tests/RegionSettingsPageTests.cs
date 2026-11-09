@@ -76,8 +76,8 @@ public sealed class RegionSettingsPageTests : IAsyncLifetime
         foreach (var tab in Tabs)
         {
             var doc = await GetAsync(client, HomeId, tab);
-            Assert.Equal(8, doc.QuerySelectorAll("ul.nav-tabs a.nav-link").Length);
-            Assert.Equal(tab, doc.QuerySelector("ul.nav-tabs a.nav-link.active")!.GetAttribute("href")!.Split('/')[^1]);
+            Assert.Equal(8, doc.QuerySelectorAll("ul.settings-tabs a.nav-link").Length);
+            Assert.Equal(tab, doc.QuerySelector("ul.settings-tabs a.nav-link.active")!.GetAttribute("href")!.Split('/')[^1]);
         }
         // No tab given is Basics.
         var basics = new HtmlParser().ParseDocument(await client.GetStringAsync($"/regions/region/{HomeId}/settings", Ct));

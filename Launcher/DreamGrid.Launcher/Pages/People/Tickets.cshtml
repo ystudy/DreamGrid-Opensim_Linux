@@ -5,59 +5,64 @@
 @using DreamGrid.Launcher.Security
 @{
     ViewData["Title"] = "Tickets";
+    ViewData["Wide"] = true;
 }
 <p class="back-link"><a href="/people">‹ People</a></p>
-<h1>Tickets</h1>
-<p>Questions and reports from guests. Everyone on staff can answer them.</p>
-<form id="ticket-filter" method="get" class="d-flex flex-wrap gap-2 align-items-end mb-3">
-    <div>
-        <label class="form-label" for="show">Show</label>
-        <select class="form-select" id="show" name="show">
-            @foreach (var f in Enum.GetValues<TicketFilter>())
-            {
-                <option value="@f" selected="@(Model.Show == f)">@TicketsModel.FilterText(f)</option>
-            }
-        </select>
+<div class="page-head">
+    <h1>Tickets<help-tip class="help-start">Questions and reports from guests. Everyone on staff can answer them. Open a ticket to read it, take it, answer it or close it.</help-tip></h1>
+</div>
+<section class="work-panel" aria-labelledby="tickets-title">
+    <div class="panel-tools">
+        <h2 id="tickets-title" class="panel-title mb-0">Tickets</h2>
+        <form id="ticket-filter" method="get" class="list-search ms-auto" role="search">
+            <div class="input-group input-group-sm">
+                <label class="visually-hidden" for="show">Show</label>
+                <select class="form-select" id="show" name="show">
+                    @foreach (var f in Enum.GetValues<TicketFilter>())
+                    {
+                        <option value="@f" selected="@(Model.Show == f)">@TicketsModel.FilterText(f)</option>
+                    }
+                </select>
+                <label class="visually-hidden" for="q">Search</label>
+                <input class="form-control" id="q" name="q" value="@Model.Q" maxlength="120" placeholder="Subject, name or T-0001">
+                <button type="submit" class="btn btn-primary" icon="search">Search</button>
+            </div>
+        </form>
     </div>
-    <div>
-        <label class="form-label" for="q">Search</label>
-        <input class="form-control" id="q" name="q" value="@Model.Q" maxlength="120" placeholder="Subject, name or T-0001">
-    </div>
-    <button type="submit" class="btn btn-primary">Search</button>
-</form>
-@if (Model.Rows.Count == 0)
-{
-    <p id="no-tickets" class="text-body-secondary">No tickets here.</p>
-}
-else
-{
-    <div class="table-responsive">
-        <table id="tickets" class="table align-middle">
-            <thead><tr><th>Ticket</th><th>Subject</th><th>About</th><th>From</th><th>State</th><th>Taken by</th><th>Last message</th></tr></thead>
-            <tbody>
-                @foreach (var t in Model.Rows)
-                {
-                    <tr>
-                        <td><a href="/people/tickets/@t.Number">@t.Number</a></td>
-                        <td>@t.Subject
-                            @if (t.Urgent)
-                            {
-                                <span class="badge state-failed ms-1">Urgent</span>
-                            }
-                        </td>
-                        <td>@TicketCategories.Title(t.Category)
-                            @if (t.Category == TicketCategories.Abuse)
-                            {
-                                <span class="badge state-starting ms-1">Abuse</span>
-                            }
-                        </td>
-                        <td>@t.Sender.Name</td>
-                        <td><span class="badge @TicketsModel.StateClass(t.State)">@TicketsModel.StateText(t.State)</span></td>
-                        <td>@(t.TakenBy is null ? "" : t.TakenBy == AuditActor.Of(User).Id ? "You" : t.TakenByName)</td>
-                        <td>@t.LastActivity.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    </div>
-}
+    @if (Model.Rows.Count == 0)
+    {
+        <p id="no-tickets" class="text-body-secondary mb-0">No tickets here.</p>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table id="tickets" class="table align-middle mb-0">
+                <thead><tr><th>Ticket</th><th>Subject</th><th>About</th><th>From</th><th>State</th><th>Taken by</th><th>Last message</th></tr></thead>
+                <tbody>
+                    @foreach (var t in Model.Rows)
+                    {
+                        <tr>
+                            <td><a class="fw-semibold" href="/people/tickets/@t.Number">@t.Number</a></td>
+                            <td>@t.Subject
+                                @if (t.Urgent)
+                                {
+                                    <span class="badge state-failed ms-1">Urgent</span>
+                                }
+                            </td>
+                            <td>@TicketCategories.Title(t.Category)
+                                @if (t.Category == TicketCategories.Abuse)
+                                {
+                                    <span class="badge state-starting ms-1">Abuse</span>
+                                }
+                            </td>
+                            <td>@t.Sender.Name</td>
+                            <td><span class="badge @TicketsModel.StateClass(t.State)">@TicketsModel.StateText(t.State)</span></td>
+                            <td>@(t.TakenBy is null ? "" : t.TakenBy == AuditActor.Of(User).Id ? "You" : t.TakenByName)</td>
+                            <td>@t.LastActivity.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>

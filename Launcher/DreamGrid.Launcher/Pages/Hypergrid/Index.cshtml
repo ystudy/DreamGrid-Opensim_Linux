@@ -2,9 +2,11 @@
 @model DreamGrid.Launcher.Pages.Hypergrid.IndexModel
 @{
     ViewData["Title"] = "Hypergrid links";
+    ViewData["Wide"] = true;
 }
-<h1>Hypergrid links</h1>
-<p>Regions on other grids, shown on your grid's map so residents can teleport there from the map or a landmark.</p>
+<div class="page-head">
+    <h1>Hypergrid links<help-tip class="help-start">Regions on other grids, shown on your grid's map so residents can teleport there from the map or a landmark.</help-tip></h1>
+</div>
 @if (Model.Error is not null)
 {
     <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
@@ -13,70 +15,76 @@
 {
     <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
 }
-@if (Model.Unavailable)
-{
-    <p id="hyperlinks-unavailable">@DreamGrid.Launcher.Hypergrid.HypergridAdmin.DatabaseDown</p>
-}
-else if (Model.Rows.Count == 0)
-{
-    <p id="hyperlinks-none">No links yet.</p>
-}
-else
-{
-    <div class="table-responsive">
-        <table id="hyperlinks" class="table align-middle">
-            <thead><tr><th>Region</th><th>Address</th><th>On the map</th><th></th></tr></thead>
-            <tbody>
-            @foreach (var l in Model.Rows)
-            {
-                <tr>
-                    <td>@l.Name</td>
-                    <td class="address">@l.Address</td>
-                    <td class="cell">@l.X, @l.Y</td>
-                    <td>
-                        <div class="d-flex flex-wrap gap-2">
-                            <form method="post" action="/hypergrid?handler=Check" asp-antiforgery="true">
-                                <input type="hidden" name="link" value="@l.Id">
-                                <button type="submit" class="btn btn-sm btn-outline-secondary">Check</button>
-                            </form>
-                            <form method="post" action="/hypergrid?handler=Remove" asp-antiforgery="true">
-                                <input type="hidden" name="link" value="@l.Id">
-                                <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
-                            </form>
-                        </div>
-                    </td>
-                </tr>
-            }
-            </tbody>
-        </table>
-    </div>
-}
+<div class="list-columns">
+    <section class="work-panel" aria-labelledby="hyperlinks-title">
+        <h2 id="hyperlinks-title" class="panel-title"><span>Links</span>@if (!Model.Unavailable && Model.Rows.Count > 0) { <span class="badge text-bg-secondary ms-2">@Model.Rows.Count</span> }</h2>
+        @if (Model.Unavailable)
+        {
+            <p id="hyperlinks-unavailable" class="mb-0">@DreamGrid.Launcher.Hypergrid.HypergridAdmin.DatabaseDown</p>
+        }
+        else if (Model.Rows.Count == 0)
+        {
+            <p id="hyperlinks-none" class="mb-0">No links yet.</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table id="hyperlinks" class="table align-middle mb-0">
+                    <thead><tr><th>Region</th><th>Address</th><th>On the map</th><th></th></tr></thead>
+                    <tbody>
+                    @foreach (var l in Model.Rows)
+                    {
+                        <tr>
+                            <td class="fw-semibold">@l.Name</td>
+                            <td class="address">@l.Address</td>
+                            <td class="cell">@l.X, @l.Y</td>
+                            <td>
+                                <div class="d-flex flex-wrap gap-2 justify-content-end">
+                                    <form method="post" action="/hypergrid?handler=Check" asp-antiforgery="true">
+                                        <input type="hidden" name="link" value="@l.Id">
+                                        <button type="submit" class="btn btn-sm btn-outline-secondary" icon="activity">Check</button>
+                                    </form>
+                                    <form method="post" action="/hypergrid?handler=Remove" asp-antiforgery="true">
+                                        <input type="hidden" name="link" value="@l.Id">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
 
-<h2 class="mt-4">Add a link</h2>
-@if (!Model.CanAdd)
-{
-    <p id="hypergrid-off">@(User.IsInRole(DreamGrid.Launcher.Security.AuthSchemes.AdminRole) ? DreamGrid.Launcher.Hypergrid.HypergridAdmin.HypergridOff : DreamGrid.Launcher.Hypergrid.HypergridAdmin.HypergridOffAskStaff)</p>
-}
-else
-{
-    <form id="hyperlink-add" method="post" action="/hypergrid?handler=Add" asp-antiforgery="true">
-        <label class="form-label" for="address">Address</label>
-        <input class="form-control" id="address" name="address" value="@Model.TypedAddress" autocomplete="off" autocapitalize="off" spellcheck="false"
-               placeholder="grid.example.org:8002:Region Name" maxlength="300">
-        <p class="hint form-text">The other grid's hypergrid address, with a region name after it if you want a particular region:
-            <code>grid.example.org:8002</code>, <code>grid.example.org:8002:Welcome Island</code> or <code>https://grid.example.org:8002/ Welcome Island</code>.
-            Only grids on the internet can be linked. The address is checked first, and nothing is linked if that grid doesn't answer.</p>
-        <div class="row g-2">
-            <div class="col-auto">
-                <label class="form-label" for="x">X</label>
-                <input class="form-control" id="x" name="x" value="@Model.TypedX" inputmode="numeric" autocomplete="off" size="6">
-            </div>
-            <div class="col-auto">
-                <label class="form-label" for="y">Y</label>
-                <input class="form-control" id="y" name="y" value="@Model.TypedY" inputmode="numeric" autocomplete="off" size="6">
-            </div>
-        </div>
-        <p class="hint form-text">Where it goes on your map, in regions. Leave both empty to put it on a free spot just above your grid.</p>
-        <button type="submit" class="btn btn-primary">Add link</button>
-    </form>
-}
+    <section class="work-panel" aria-labelledby="hyperlink-add-title">
+        <h2 id="hyperlink-add-title" class="panel-title">Add a link<help-tip class="help-start">Only grids on the internet can be linked. The address is checked first, and nothing is linked if that grid doesn't answer.</help-tip></h2>
+        @if (!Model.CanAdd)
+        {
+            <p id="hypergrid-off" class="mb-0">@(User.IsInRole(DreamGrid.Launcher.Security.AuthSchemes.AdminRole) ? DreamGrid.Launcher.Hypergrid.HypergridAdmin.HypergridOff : DreamGrid.Launcher.Hypergrid.HypergridAdmin.HypergridOffAskStaff)</p>
+        }
+        else
+        {
+            <form id="hyperlink-add" method="post" action="/hypergrid?handler=Add" asp-antiforgery="true">
+                <label class="form-label" for="address">Address</label>
+                <input class="form-control" id="address" name="address" value="@Model.TypedAddress" autocomplete="off" autocapitalize="off" spellcheck="false"
+                       placeholder="grid.example.org:8002:Region Name" maxlength="300">
+                <p class="hint form-text">The other grid's hypergrid address, with a region name after it if you want a particular region:
+                    <code>grid.example.org:8002</code>, <code>grid.example.org:8002:Welcome Island</code> or <code>https://grid.example.org:8002/ Welcome Island</code>.</p>
+                <div class="row g-2">
+                    <div class="col">
+                        <label class="form-label" for="x">X</label>
+                        <input class="form-control" id="x" name="x" value="@Model.TypedX" inputmode="numeric" autocomplete="off" size="6">
+                    </div>
+                    <div class="col">
+                        <label class="form-label" for="y">Y</label>
+                        <input class="form-control" id="y" name="y" value="@Model.TypedY" inputmode="numeric" autocomplete="off" size="6">
+                    </div>
+                </div>
+                <p class="hint form-text">Where it goes on your map, in regions. Leave both empty to put it on a free spot just above your grid.</p>
+                <button type="submit" class="btn btn-primary w-100" icon="link">Add link</button>
+            </form>
+        }
+    </section>
+</div>
