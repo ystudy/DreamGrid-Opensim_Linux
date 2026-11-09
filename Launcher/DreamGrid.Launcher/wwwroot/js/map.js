@@ -57,7 +57,6 @@ function startMap(map) {
         if (question && !window.confirm(question)) e.preventDefault();
     });
     var panelColumn = document.getElementById("panel-column");
-    var mapColumn = document.getElementById("map-column");
     var typeItems = document.querySelectorAll("#region-types li[data-type]");
 
     // The view: the square at the map's centre and the zoom. Elements in the layer are placed relative to an
@@ -354,7 +353,6 @@ function startMap(map) {
         setRegionInUrl(id);
         markSelected();
         panelColumn.hidden = false;
-        mapColumn.classList.replace("col-lg-10", "col-lg-7");
         panelBody.textContent = "Loading…";
         if (isOverlay() && window.bootstrap) bootstrap.Offcanvas.getOrCreateInstance(panel).show();
         getText(panelUrl + encodeURIComponent(id) + "?partial=1").then(function (html) {
@@ -372,7 +370,6 @@ function startMap(map) {
         markSelected();
         if (panel.classList.contains("show") && window.bootstrap) bootstrap.Offcanvas.getOrCreateInstance(panel).hide();
         panelColumn.hidden = true;
-        mapColumn.classList.replace("col-lg-7", "col-lg-10");
         panelBody.textContent = "";
         update();
     }
@@ -586,7 +583,7 @@ function startMap(map) {
 
     if (moveId) {
         // Only the spot is asked for: the region types step aside and the map is ready to click.
-        typeItems.forEach(function (li) { li.closest(".col-lg-2").hidden = true; });
+        document.getElementById("types-column").hidden = true;
         placingType = moveId;
         map.classList.add("placing");
         showPlacement("Choose a new spot for " + moveName + ".", true);

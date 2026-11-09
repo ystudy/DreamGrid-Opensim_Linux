@@ -107,59 +107,61 @@
         </form>
     }
 
-    <form method="post" action="/regions/region/@Model.Id?handler=power" asp-antiforgery="true" class="mb-3">
-        <details class="power-menu">
-            <summary class="btn btn-primary">Power</summary>
-            <div class="power-items list-group shadow">
-                @foreach (var item in Model.Menu)
-                {
-                    <div class="list-group-item">
-                        <button type="submit" name="action" value="@item.Action" class="btn btn-link p-0 fw-semibold">@item.Label</button>
-                        <span class="form-text d-block m-0">@item.Help</span>
-                    </div>
-                }
-            </div>
-        </details>
-    </form>
-
     @if (Model.BusyText is not null)
     {
         <p class="oar-busy alert alert-info py-2" role="status">@Model.BusyText is running. <a href="/regions/region/@Model.Id/job">See how it's going</a></p>
     }
-    <form method="post" action="/regions/region/@Model.Id?handler=oar" asp-antiforgery="true" class="mb-3">
-        @{ var oarOff = !Model.CanOar || Model.BusyText is not null; }
-        <details class="oar-menu">
-            <summary class="btn btn-outline-primary">OAR</summary>
-            <div class="power-items list-group shadow">
-                @if (!Model.CanOar)
-                {
-                    <div class="list-group-item form-text m-0">@RegionPanelModel.OarNotRunning</div>
-                }
-                <div class="list-group-item">
-                    @if (oarOff)
+    @* Power and OAR: two menus side by side. *@
+    <div class="region-menus">
+        <form method="post" action="/regions/region/@Model.Id?handler=power" asp-antiforgery="true">
+            <details class="power-menu">
+                <summary class="btn btn-primary">Power</summary>
+                <div class="power-items list-group shadow">
+                    @foreach (var item in Model.Menu)
                     {
-                        <button type="button" class="btn btn-link p-0 fw-semibold" disabled>Import OAR…</button>
+                        <div class="list-group-item">
+                            <button type="submit" name="action" value="@item.Action" class="btn btn-link p-0 fw-semibold">@item.Label</button>
+                            <span class="form-text d-block m-0">@item.Help</span>
+                        </div>
                     }
-                    else
+                </div>
+            </details>
+        </form>
+        <form method="post" action="/regions/region/@Model.Id?handler=oar" asp-antiforgery="true">
+            @{ var oarOff = !Model.CanOar || Model.BusyText is not null; }
+            <details class="oar-menu">
+                <summary class="btn btn-outline-primary">OAR</summary>
+                <div class="power-items list-group shadow">
+                    @if (!Model.CanOar)
                     {
-                        <a class="fw-semibold" href="/regions/region/@Model.Id/import">Import OAR…</a>
+                        <div class="list-group-item form-text m-0">@RegionPanelModel.OarNotRunning</div>
                     }
-                    <span class="form-text d-block m-0">Replaces its land and objects with a file from the OAR library.</span>
-                </div>
-                <div class="list-group-item">
-                    <button type="submit" name="action" value="Save" class="btn btn-link p-0 fw-semibold" disabled="@oarOff">Save as OAR</button>
-                    <span class="form-text d-block m-0">Saves its land and objects into the OAR library.</span>
-                </div>
-                @if (Model.NeedsContent)
-                {
                     <div class="list-group-item">
-                        <button type="submit" name="action" value="MakeLand" class="btn btn-link p-0 fw-semibold" disabled="@oarOff">Make the land again</button>
-                        <span class="form-text d-block m-0">Its land didn't finish loading when it was added.</span>
+                        @if (oarOff)
+                        {
+                            <button type="button" class="btn btn-link p-0 fw-semibold" disabled>Import OAR…</button>
+                        }
+                        else
+                        {
+                            <a class="fw-semibold" href="/regions/region/@Model.Id/import">Import OAR…</a>
+                        }
+                        <span class="form-text d-block m-0">Replaces its land and objects with a file from the OAR library.</span>
                     </div>
-                }
-            </div>
-        </details>
-    </form>
+                    <div class="list-group-item">
+                        <button type="submit" name="action" value="Save" class="btn btn-link p-0 fw-semibold" disabled="@oarOff">Save as OAR</button>
+                        <span class="form-text d-block m-0">Saves its land and objects into the OAR library.</span>
+                    </div>
+                    @if (Model.NeedsContent)
+                    {
+                        <div class="list-group-item">
+                            <button type="submit" name="action" value="MakeLand" class="btn btn-link p-0 fw-semibold" disabled="@oarOff">Make the land again</button>
+                            <span class="form-text d-block m-0">Its land didn't finish loading when it was added.</span>
+                        </div>
+                    }
+                </div>
+            </details>
+        </form>
+    </div>
 
     @if (Model.HasGuestSide)
     {
@@ -214,14 +216,14 @@
         </section>
     }
 
-    <div class="d-flex flex-wrap gap-3 mb-3">
-        <a href="/regions/region/@Model.Id/move">Move…</a>
-        <a href="/regions/region/@Model.Id/runs">How it runs…</a>
+    <div class="region-links">
+        <a class="region-settings-link btn btn-sm btn-outline-secondary" href="/regions/region/@Model.Id/settings" icon="gear">Settings…</a>
+        <a class="btn btn-sm btn-outline-secondary" href="/regions/region/@Model.Id/move">Move…</a>
+        <a class="btn btn-sm btn-outline-secondary" href="/regions/region/@Model.Id/runs" icon="cpu">How it runs…</a>
         <form method="post" action="/regions/region/@Model.Id?handler=delete" asp-antiforgery="true" class="d-inline">
-            <button type="submit" class="btn btn-link p-0 text-danger">Delete…</button>
+            <button type="submit" class="btn btn-sm btn-outline-danger">Delete…</button>
         </form>
     </div>
-    <p class="mb-0"><a class="region-settings-link" href="/regions/region/@Model.Id/settings">Settings…</a></p>
 </div>
 
 @section Scripts {
