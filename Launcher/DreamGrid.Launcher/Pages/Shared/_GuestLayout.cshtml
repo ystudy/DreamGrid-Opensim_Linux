@@ -14,7 +14,7 @@
     <link rel="stylesheet" href="/css/site.css">
     @await RenderSectionAsync("Head", required: false)
 </head>
-<body>
+<body class="@(ViewData["Wide"] is true ? "page-wide" : null)">
 @* The guest pages: the grid's name and nothing of the staff side. *@
 <header class="navbar navbar-expand bg-body border-bottom shadow-sm">
     <div class="container">

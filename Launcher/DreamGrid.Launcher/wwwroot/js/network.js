@@ -27,11 +27,11 @@
     var input = document.getElementById("PublicAddress");
     if (!button || !input) return;
     var error = document.getElementById("address-error");
-    var label = button.textContent;
+    var label = button.textContent.trim();
     button.classList.remove("d-none");
     button.addEventListener("click", function () {
         button.disabled = true;
-        button.textContent = "Finding…";
+        setButtonText(button, "Finding…");
         fetch(button.dataset.url, { headers: { Accept: "application/json" }, credentials: "same-origin" })
             .then(function (r) { return r.ok ? r.json() : { error: "DreamGrid couldn't find this computer's public address. Type the address." }; })
             .catch(function () { return { error: "DreamGrid couldn't find this computer's public address. Type the address." }; })
@@ -39,7 +39,7 @@
                 if (result.address) input.value = result.address;
                 if (error) error.textContent = result.error || "";
                 button.disabled = false;
-                button.textContent = label;
+                setButtonText(button, label);
             });
     });
 })();

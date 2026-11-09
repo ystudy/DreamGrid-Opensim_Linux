@@ -1,7 +1,81 @@
 /* Bootstrap does the styling; this file holds what Bootstrap has no class for. */
 
 body { min-height: 100vh; display: flex; flex-direction: column; background: var(--bs-tertiary-bg); }
-main { flex: 1 0 auto; max-width: 56rem; overflow-wrap: anywhere; }
+main { flex: 1 0 auto; overflow-wrap: anywhere; }
+
+/* One centred column on a wide screen: the header, the page and the footer line up in the middle, rather than short
+   pages sitting at the left of a 1320px row. A page that needs the room (the region map, the logs) sets ViewData["Wide"]. */
+@media (min-width: 1200px) {
+    body:not(.page-wide) > header > .container,
+    body:not(.page-wide) > main.container,
+    body:not(.page-wide) > footer.container { max-width: 960px; }
+}
+
+/* Bright text: Bootstrap's greys are hard to read on its grey backgrounds, so the secondary text is close to the main
+   text in both themes, and borders are easier to see. */
+:root, [data-bs-theme=light] {
+    --bs-secondary-color: #343a40;
+    --bs-secondary-color-rgb: 52, 58, 64;
+    --bs-tertiary-color: #495057;
+    --bs-tertiary-color-rgb: 73, 80, 87;
+}
+[data-bs-theme=dark] {
+    --bs-body-color: #f8f9fa;
+    --bs-body-color-rgb: 248, 249, 250;
+    --bs-emphasis-color: #fff;
+    --bs-secondary-color: #e2e6ea;
+    --bs-secondary-color-rgb: 226, 230, 234;
+    --bs-tertiary-color: #ced4da;
+    --bs-tertiary-color-rgb: 206, 212, 218;
+    --bs-border-color: #6c757d;
+    --bs-link-color: #9ec5fe;
+    --bs-link-color-rgb: 158, 197, 254;
+    --bs-link-hover-color: #cfe2ff;
+    --bs-link-hover-color-rgb: 207, 226, 255;
+    --bs-primary-text-emphasis: #9ec5fe;
+}
+.navbar { --bs-navbar-color: var(--bs-body-color); --bs-navbar-hover-color: var(--bs-emphasis-color); --bs-navbar-active-color: var(--bs-emphasis-color); }
+.form-control::placeholder { color: var(--bs-tertiary-color); opacity: .8; }
+
+/* Outline buttons: words and outline in the text colour (white in the dark theme), filled on hover. */
+.btn-outline-primary, .btn-outline-secondary {
+    --bs-btn-color: var(--bs-body-color);
+    --bs-btn-border-color: var(--bs-body-color);
+    --bs-btn-hover-color: var(--bs-body-bg);
+    --bs-btn-hover-bg: var(--bs-body-color);
+    --bs-btn-hover-border-color: var(--bs-body-color);
+    --bs-btn-active-color: var(--bs-body-bg);
+    --bs-btn-active-bg: var(--bs-body-color);
+    --bs-btn-active-border-color: var(--bs-body-color);
+    --bs-btn-disabled-color: var(--bs-body-color);
+    --bs-btn-disabled-border-color: var(--bs-body-color);
+}
+[data-bs-theme=dark] .btn-outline-primary, [data-bs-theme=dark] .btn-outline-secondary {
+    --bs-btn-color: #fff;
+    --bs-btn-border-color: #fff;
+    --bs-btn-hover-color: #212529;
+    --bs-btn-hover-bg: #fff;
+    --bs-btn-hover-border-color: #fff;
+    --bs-btn-active-color: #212529;
+    --bs-btn-active-bg: #dee2e6;
+    --bs-btn-active-border-color: #dee2e6;
+    --bs-btn-disabled-color: #fff;
+    --bs-btn-disabled-border-color: #fff;
+}
+/* Danger keeps its red outline, so a delete still looks different, but its words are bright too. */
+[data-bs-theme=dark] .btn-outline-danger {
+    --bs-btn-color: #fff;
+    --bs-btn-border-color: #ff6b6b;
+    --bs-btn-hover-color: #fff;
+    --bs-btn-hover-bg: #dc3545;
+    --bs-btn-hover-border-color: #dc3545;
+    --bs-btn-active-color: #fff;
+    --bs-btn-active-bg: #b02a37;
+    --bs-btn-active-border-color: #b02a37;
+}
+
+/* Button icons (ButtonIconTagHelper, wwwroot/img/icons.svg): drawn in the button's text colour, before its words. */
+.btn-icon { width: 1.1em; height: 1.1em; margin-right: .45em; vertical-align: -.2em; flex-shrink: 0; }
 footer { padding: 1rem; text-align: center; color: var(--bs-secondary-color); font-size: .875em; }
 h1 { font-size: 1.6rem; margin-bottom: 1rem; }
 h2 { font-size: 1.15rem; margin-bottom: .75rem; }

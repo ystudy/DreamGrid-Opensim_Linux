@@ -12,10 +12,17 @@ function copyButton(source, button) {
     button.hidden = false;
     button.addEventListener("click", function () {
         if (navigator.clipboard && window.isSecureContext) {
-            navigator.clipboard.writeText(source.textContent).then(function () { button.textContent = "Copied"; }, select);
+            navigator.clipboard.writeText(source.textContent).then(function () { setButtonText(button, "Copied"); }, select);
         } else {
             select();
-            button.textContent = "Selected: press Ctrl+C";
+            setButtonText(button, "Selected: press Ctrl+C");
         }
     });
+}
+
+// setButtonText(button, text) changes a button's words and keeps the icon the server put at its start (ButtonIconTagHelper).
+function setButtonText(button, text) {
+    var icon = button.querySelector("svg.btn-icon");
+    button.textContent = text;
+    if (icon) button.insertBefore(icon, button.firstChild);
 }
