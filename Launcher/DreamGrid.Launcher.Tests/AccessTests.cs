@@ -166,7 +166,7 @@ public sealed class AccessTests
         using var dashboard = await NoRedirect(f).GetAsync("/dashboard", Ct);
 
         Assert.Equal(HttpStatusCode.OK, root.StatusCode);
-        Assert.Contains("href=\"/guest/sign-in\"", await root.Content.ReadAsStringAsync(Ct));
+        Assert.Contains("action=\"/guest/sign-in\"", await root.Content.ReadAsStringAsync(Ct)); // the front page's sign-in card
         Assert.Equal(HttpStatusCode.Redirect, dashboard.StatusCode);
         Assert.Equal("/login", LocationPath(dashboard));
     }
