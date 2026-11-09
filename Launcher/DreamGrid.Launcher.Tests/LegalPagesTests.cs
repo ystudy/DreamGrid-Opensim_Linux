@@ -274,4 +274,26 @@ public sealed class LegalPagesTests
             Assert.Equal(HttpStatusCode.NotFound, r.StatusCode);
         }
     }
+
+    [Fact]
+    public async Task The_front_page_shows_the_written_legal_pages_as_buttons()
+    {
+        await using var f = Factory(Legal(true, "contact", "privacy", "terms"));
+        using var r = await Client(f).GetAsync("/", Ct);
+        var page = new HtmlParser().ParseDocument(await r.Content.ReadAsStringAsync(Ct));
+
+        var buttons = page.QuerySelectorAll("main #front-legal a.btn").ToList();
+        Assert.Equal(["/terms", "/privacy", "/contact"], buttons.Select(a => a.GetAttribute("href")));
+        Assert.Equal(["Terms", "Privacy", "Contact"], buttons.Select(a => a.TextContent.Trim()));
+        Assert.Equal(["/img/icons.svg#document", "/img/icons.svg#lock", "/img/icons.svg#mail"],
+            buttons.Select(a => a.QuerySelector("svg use")!.GetAttribute("href")));
+    }
+
+    [Fact]
+    public async Task No_legal_text_means_no_row_on_the_front_page()
+    {
+        await using var f = Factory(new LegalSettings());
+        using var r = await Client(f).GetAsync("/", Ct);
+        Assert.Null(new HtmlParser().ParseDocument(await r.Content.ReadAsStringAsync(Ct)).QuerySelector("#front-legal"));
+    }
 }

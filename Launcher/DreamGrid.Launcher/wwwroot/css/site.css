@@ -358,3 +358,6 @@ header .signout { margin: 0; }
 .front-cards > .card > *, .front-cards .front-fields { margin: 0; }
 .front-cards form { display: contents; }
 .front-cards .front-fields { padding-bottom: .5rem; }
+/* The front page's legal pages: a row of buttons under the two cards. */
+.front-legal { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .75rem; margin-top: 1.25rem; padding: .75rem 1rem; border: 1px solid var(--bs-border-color); border-radius: var(--bs-border-radius-lg); }
+.front-legal h2 { margin-right: .25rem; }

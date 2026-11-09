@@ -67,7 +67,7 @@ public sealed class ButtonIconsTests
         };
         foreach (var label in labels) Assert.Contains(ButtonIcons.For(label), ids);
         // Named by pages and scripts: the help icon, the splash shelf, its layer buttons, and the editor script's buttons.
-        foreach (var name in new[] { "help", "bring-forward", "send-back", "edit", "eye", "image", "trash", "arrow-up", "arrow-down", "plus", "map-pin" }
+        foreach (var name in new[] { "help", "bring-forward", "send-back", "edit", "eye", "image", "trash", "arrow-up", "arrow-down", "plus", "map-pin", "document", "lock", "cookie", "mail" }
                      .Concat(DreamGrid.Launcher.Pages.Splash.IndexModel.Shelf.Select(s => s.Icon)))
             Assert.Contains(name, ids);
     }

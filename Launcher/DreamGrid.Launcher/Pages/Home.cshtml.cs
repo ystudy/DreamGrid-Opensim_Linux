@@ -15,9 +15,24 @@ public sealed class HomeModel(Func<LauncherSettings> settings) : PageModel
 {
     public string GridName { get; private set; } = "";
 
+    /// <summary>The legal pages the operator has written, in link order (Terms, Privacy, Cookies, Contact).</summary>
+    public IReadOnlyList<string> LegalPages { get; private set; } = [];
+
+    /// <summary>The icon for a legal page's button.</summary>
+    public static string LegalIcon(string page) => page switch
+    {
+        Core.Guests.LegalPages.Terms => "document",
+        Core.Guests.LegalPages.Privacy => "lock",
+        Core.Guests.LegalPages.Cookies => "cookie",
+        Core.Guests.LegalPages.Contact => "mail",
+        _ => "link",
+    };
+
     public async Task OnGetAsync()
     {
-        GridName = settings().GridName;
+        var s = settings();
+        GridName = s.GridName;
+        LegalPages = [.. Core.Guests.LegalPages.All.Where(p => Core.Guests.LegalPages.Get(s, p) is not null)];
         // The sign-in card posts to /guest/sign-in, which sees the guest cookie's user (or nobody), never the staff one. Its
         // antiforgery token is made for HttpContext.User, so the page takes that same user first: otherwise a staff member
         // looking at the guest side (Guest view) gets a 400 from the card. The header asks the staff cookie itself.

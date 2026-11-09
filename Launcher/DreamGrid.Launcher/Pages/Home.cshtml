@@ -31,6 +31,17 @@
         <a class="btn btn-outline-primary w-100" href="/signup">Create an account</a>
     </section>
 </div>
+@* The operator's legal pages, only those written (the footer lists them too). *@
+@if (Model.LegalPages.Count > 0)
+{
+    <section id="front-legal" class="front-legal" aria-labelledby="front-legal-title">
+        <h2 id="front-legal-title" class="h6 mb-0">About this grid</h2>
+        @foreach (var id in Model.LegalPages)
+        {
+            <a class="btn btn-sm btn-outline-secondary" href="/@id" icon="@(DreamGrid.Launcher.Pages.HomeModel.LegalIcon(id))">@DreamGrid.Launcher.Core.Guests.LegalPages.Title(id)</a>
+        }
+    </section>
+}
 @section HeaderActions {
     <a id="staff-link" class="btn btn-sm btn-outline-secondary" href="/login" icon="shield">Staff sign in</a>
 }
