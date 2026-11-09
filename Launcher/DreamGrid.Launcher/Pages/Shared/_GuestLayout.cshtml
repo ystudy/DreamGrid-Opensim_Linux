@@ -2,6 +2,9 @@
 @inject Func<LauncherSettings> Settings
 @{
     var gridName = Settings().GridName;
+    // Asked of the staff cookie itself: on the guest pages User is the guest sign-in (the Guest policy's scheme).
+    var staffUser = (await Microsoft.AspNetCore.Authentication.AuthenticationHttpContextExtensions.AuthenticateAsync(Context, DreamGrid.Launcher.Security.AuthSchemes.Admin)).Principal;
+    var isStaff = staffUser is not null && DreamGrid.Launcher.Security.StaffSignIn.RoleOf(staffUser) != DreamGrid.Launcher.Core.Security.StaffRole.None;
 }
 <!DOCTYPE html>
 <html lang="en">
@@ -21,7 +24,7 @@
         <strong class="navbar-brand grid-name me-auto">@gridName</strong>
         @* Help on every guest page, plus whatever a page adds (the front page: staff sign in). Not a <nav>: the guest side has no site navigation. *@
         <div class="guest-actions">
-            @if (DreamGrid.Launcher.Security.StaffSignIn.RoleOf(User) != DreamGrid.Launcher.Core.Security.StaffRole.None)
+            @if (isStaff)
             {
                 @* A staff member looking at the guest side (the staff menu's Guest view): the way back. *@
                 <a id="staff-side-link" class="btn btn-sm btn-primary" href="/" icon="arrow-left">Back to staff pages</a>
