@@ -358,7 +358,7 @@ jobs:
           cp "$RUNNER_TEMP/windows/DreamGridSetup-$VERSION.exe" "$release/"
           cp setup/debian/install.sh "$release/"
           (cd "$release" && sha256sum -- * > SHA256SUMS && cat SHA256SUMS)
-          releases=https://github.com/ystudy/DreamGrid-Opensim_Linux/releases
+          releases=https://github.com/ystudy/GridGate-OpenSim/releases
           case "$VERSION" in
             *-*) one_liner="curl -fsSL $releases/download/$GITHUB_REF_NAME/install.sh | sudo DREAMGRID_RELEASE=$GITHUB_REF_NAME bash"
                  kind="This is a pre-release for testing." ;;

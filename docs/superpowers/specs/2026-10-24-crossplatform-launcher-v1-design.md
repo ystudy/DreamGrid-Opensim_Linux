@@ -2,7 +2,7 @@
 
 Date: 2026-10-24
 Branch: `design/crossplatform-launcher-v1`
-Repo: fork of `Outworldz/DreamGrid-Opensim` (branch `V7`), at `ystudy/DreamGrid-Opensim_Linux`
+Repo: fork of `Outworldz/DreamGrid-Opensim` (branch `V7`), at `ystudy/GridGate-OpenSim`
 
 ## 1. Intent
 
@@ -142,7 +142,7 @@ A launcher update, crash or settings reload must not take the world down.
   - a Linux tarball (amd64; arm64 if cheap),
   - the Windows `DreamGridSetup.exe`.
 
-  Both attach to a GitHub Release on `ystudy/DreamGrid-Opensim_Linux`.
+  Both attach to a GitHub Release on `ystudy/GridGate-OpenSim`.
 - **Debian:** a one-line install (`curl -fsSL <url>/install.sh | sudo bash`) downloads the latest release tarball. Re-running it upgrades in place (stop launcher → replace program files → start; data untouched; children are restarted only if the OpenSim binaries changed).
 - **Packaging:** the starter OAR in `content/` and the runtime files from `bin/` are packaged into the artifacts.
 - **Versioning:** the builder chooses the scheme, but the version must show in the web UI.

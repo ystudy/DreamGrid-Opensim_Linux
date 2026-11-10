@@ -34,7 +34,7 @@ Checked in the code and on the Debian test VM (2026-11-04).
 2. DreamGrid's region template sets:
    - `Cap_GetTexture="${Const|BaseURL}:${Const|PublicPort}/CAPS/GetTexture/"`, which is Robust's public port, one fixed address for everyone.
    - `Cap_GetMesh="localhost"` and `Cap_GetAsset="localhost"` (the default), so the region serves meshes and `ViewerAsset` itself.
-3. Robust's `/CAPS/GetTexture/` connector **did not load on Linux**. `bin/Robust.HG.ini.proto` named `Opensim.Capabilities.Handlers.dll:GetTextureSeverConnector`, and Linux file names are case-sensitive. On the VM that address returned 404. **Fixed in PR 35** (ystudy/DreamGrid-Opensim_Linux#35).
+3. Robust's `/CAPS/GetTexture/` connector **did not load on Linux**. `bin/Robust.HG.ini.proto` named `Opensim.Capabilities.Handlers.dll:GetTextureSeverConnector`, and Linux file names are case-sensitive. On the VM that address returned 404. **Fixed in PR 35** (ystudy/GridGate-OpenSim#35).
 4. Current Firestorm most likely uses `ViewerAsset` for textures and meshes whenever the region offers it. That is why the broken GetTexture address went unnoticed. *Not yet confirmed in Firestorm; see 8.1.*
 5. Behind the region: the Flotsam cache (memory, then disk), then Robust's asset service, then FSAssets (a MySQL row UUID → hash, and a gzipped file named by the hash).
 
