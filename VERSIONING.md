@@ -15,8 +15,8 @@ GridGate uses [semantic versioning](https://semver.org/): `major.minor.patch`.
 
 The first release is `0.1.0`. `1.0.0` is the release we call stable.
 
-This number replaces Fred's DreamGrid numbering (`7.x`, e.g. `7.21191`). Our main branch is still named `V7`,
-but that name is not a version.
+This number replaces Fred's DreamGrid numbering (`7.x`, e.g. `7.21191`). Our main branch was named `V7` until
+November 2026, after Fred's branch; it is now `main` (the old tip is kept as the tag `archive/V7`).
 
 ### Where the number comes from
 
@@ -50,7 +50,7 @@ OpenSimulator 0.9.3.1 Dev, 9d00a555 + 3 picks
   (`BASE` as in `MERGING.md`, after `git fetch opensim`):
 
   ```bash
-  git log V7 --format='%(trailers:key=Upstream-OpenSim,valueonly)' | grep . | sort -u |
+  git log main --format='%(trailers:key=Upstream-OpenSim,valueonly)' | grep . | sort -u |
     grep -Fxf <(git rev-list $BASE..opensim/master) | wc -l
   ```
 
@@ -71,7 +71,7 @@ tag; tags stay plain.
 ## Making a release
 
 1. Pick the version from the rules above.
-2. In a PR into `V7`, set `Version.txt` to the full version. Update the OpenSimulator part if an
+2. In a PR into `main`, set `Version.txt` to the full version. Update the OpenSimulator part if an
    update batch has landed since the last release.
 3. After that PR is merged, tag the merge commit and push the tag:
 
