@@ -8,8 +8,8 @@ needs: its own MariaDB database, the Robust grid services, the regions, and
 service are called **DreamGrid**, so that is the name you'll see in folders,
 the service and the installer files.
 
-It started as a fork of [Outworldz/DreamGrid-Opensim](https://github.com/Outworldz/DreamGrid-Opensim)
-and now runs on Debian Linux as well as Windows.
+It started as a fork of Outworldz DreamGrid and is now developed on its own, on
+Debian Linux as well as Windows.
 
 ## What you get
 
@@ -121,7 +121,6 @@ your avatar's name and password.
 
 See [BUILDING.md](BUILDING.md). The GridGate website and the launcher are in
 `Launcher/`; the installers are in `setup/` (see [setup/README.md](setup/README.md)).
-Merging from upstream DreamGrid is described in [MERGING.md](MERGING.md).
 
 ## Bug reports
 
