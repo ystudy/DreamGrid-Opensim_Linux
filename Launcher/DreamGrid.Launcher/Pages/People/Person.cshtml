@@ -54,6 +54,18 @@ else
 {
     <p id="person-takedowns">Takedowns: <a href="/people/takedowns">named in @t.Named (@t.NamedOpen open); held a copy in @t.Copies</a></p>
 }
+<div id="person-upload" class="mb-3">
+    <span>May upload models: @(Model.MayUpload ? "Yes" : "No")</span>
+    @if (Model.UploadTask is { } upload)
+    {
+        var label = upload == DreamGrid.Launcher.Core.Security.PersonTask.StopUpload ? "Stop allowing uploads" : "Allow uploads";
+        <form method="post" action="/people/@a.PrincipalId?handler=Task" asp-antiforgery="true" class="d-inline ms-2">
+            <input type="hidden" name="id" value="@a.PrincipalId">
+            <input type="hidden" name="task" value="@upload">
+            <button type="submit" class="btn btn-sm people-icon btn-outline-secondary" data-task="@upload" title="@label" aria-label="@($"{label}: {p.FullName}")"><svg aria-hidden="true"><use href="/img/people-icons.svg#box"></use></svg><span class="ms-1">@label</span></button>
+        </form>
+    }
+</div>
 <partial name="_TaskIcons" model="Model.Icons" />
 <h2 class="h4 mt-4">Recent changes</h2>
 <div id="person-history">

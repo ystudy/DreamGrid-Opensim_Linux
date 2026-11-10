@@ -267,6 +267,8 @@ builder.Services.AddSingleton(sp => new HeldNames(Path.Combine(paths.Guests, "he
 builder.Services.AddSingleton<IRobustNames>(sp => new RobustNames(sp.GetRequiredService<Func<LauncherSettings>>()));
 builder.Services.AddSingleton(sp => new RegionRights(Path.Combine(paths.Guests, "region-rights.json"), sp.GetRequiredService<TimeProvider>(),
     sp.GetRequiredService<ILogger<RegionRights>>()));
+builder.Services.AddSingleton(sp => new UploadRights(Path.Combine(paths.Guests, "upload-rights.json"), sp.GetRequiredService<TimeProvider>(),
+    sp.GetRequiredService<ILogger<UploadRights>>()));
 builder.Services.AddSingleton(sp => new EmailTokens(Path.Combine(paths.Guests, "email-tokens.json"), sp.GetRequiredService<TimeProvider>(),
     sp.GetRequiredService<ILogger<EmailTokens>>()));
 builder.Services.AddSingleton(sp => new ResetLimits(sp.GetRequiredService<TimeProvider>(), Path.Combine(paths.Guests, "reset-limits.json"),
