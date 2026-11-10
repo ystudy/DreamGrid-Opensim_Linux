@@ -24,6 +24,16 @@
     <Reference Include="System.Drawing.Common">
       <HintPath>$(DgRoot)bin\System.Drawing.Common.dll</HintPath>
     </Reference>
+    <!-- The mesh asset tests read the asset back with OpenMetaverse's FacetedMesh and LLSD parser, as OpenSim does. -->
+    <Reference Include="OpenMetaverse">
+      <HintPath>$(DgRoot)bin\OpenMetaverse.dll</HintPath>
+    </Reference>
+    <Reference Include="OpenMetaverseTypes">
+      <HintPath>$(DgRoot)bin\OpenMetaverseTypes.dll</HintPath>
+    </Reference>
+    <Reference Include="OpenMetaverse.StructuredData">
+      <HintPath>$(DgRoot)bin\OpenMetaverse.StructuredData.dll</HintPath>
+    </Reference>
   </ItemGroup>
 
   <ItemGroup>
