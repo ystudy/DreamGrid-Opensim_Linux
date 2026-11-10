@@ -109,6 +109,8 @@ public sealed class JoiningPagesKeysTests
         var signUp = await GetAsync(anon, "/signup");
         Assert.NotNull(signUp.QuerySelector("#dg-captcha-answer"));
         NoRawKeys(signUp, "sign-up with every bot layer");
+        // The hint that digits work comes with the question.
+        Assert.Contains("You can type the answer in digits, for example 11.", signUp.QuerySelector(".dg-captcha")!.TextContent);
         // The CAPTCHA's sum, written in the page's words.
         Assert.Matches(@"^What is (one|two|three|four|five|six|seven|eight|nine) plus (one|two|three|four|five|six|seven|eight|nine)\?$",
             signUp.QuerySelector("label[for=dg-captcha-answer]")!.TextContent.Trim());
@@ -231,6 +233,23 @@ public sealed class JoiningPagesKeysTests
         // The number words the CAPTCHA question is built from.
         for (var n = 1; n <= 9; n++) Assert.False(t["Bots.Number" + n].ResourceNotFound, "Bots.Number" + n);
     }
+}
+
+[CollectionDefinition("Process culture", DisableParallelization = true)]
+public sealed class ProcessCultureCollection;
+
+/// <summary>Changes the process-wide UI culture, so it runs alone: no other test is running while it is set.</summary>
+[Collection("Process culture")]
+public sealed class StaffPagesEnglishTests
+{
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
+    private static async Task<IHtmlDocument> PageAsync(HttpClient client, string url)
+    {
+        using var r = await client.GetAsync(url, Ct);
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        return new HtmlParser().ParseDocument(await r.Content.ReadAsStringAsync(Ct));
+    }
 
     [Fact]
     public async Task Staff_pages_stay_English_whatever_the_system_language()
@@ -257,7 +276,7 @@ public sealed class JoiningPagesKeysTests
 
             // /setup/connect is a staff page that shows the login address through _LoginAddress, which reads ResidentText.
             (await client.GetAsync("/__test/signin", Ct)).Dispose();
-            var page = await GetAsync(client, "/setup/connect");
+            var page = await PageAsync(client, "/setup/connect");
             Assert.Equal("Copy", page.QuerySelector("#copy-uri")!.TextContent.Trim());
             Assert.Equal("Copied", page.QuerySelector("#copy-uri")!.GetAttribute("data-copied"));
         }

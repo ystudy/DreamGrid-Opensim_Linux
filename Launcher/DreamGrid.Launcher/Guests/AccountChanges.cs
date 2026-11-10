@@ -75,8 +75,9 @@ public sealed class AccountChanges(Func<LauncherSettings> settings, IRobustClien
         var (refused, account) = await CheckAsync(principal, current, code, ip, "password-change-refused", ct);
         if (refused is not null) return refused;
         var a = account!;
-        if (PasswordRules.Problem(password, again, a.FirstName, a.LastName) is { } problem)
-            return Refused(a, ip, "password-change-refused", "weak password", new(AccountResult.Invalid, problem));
+        if (PasswordRules.Check(password, again, a.FirstName, a.LastName) is { } fault)
+            return Refused(a, ip, "password-change-refused", "weak password",
+                new(AccountResult.Invalid, PasswordRules.Problem(password, again, a.FirstName, a.LastName), PasswordFaultText.Message(fault)));
         if (password == current) return Refused(a, ip, "password-change-refused", "same password", new(AccountResult.Unchanged, SamePassword, new("Account.SamePassword")));
 
         try
@@ -108,8 +109,9 @@ public sealed class AccountChanges(Func<LauncherSettings> settings, IRobustClien
         var (refused, account) = await CheckAsync(principal, current, code, ip, "email-change-refused", ct);
         if (refused is not null) return refused;
         var a = account!;
-        if (SignUpRules.EmailProblem(newEmail) is { } problem)
-            return Refused(a, ip, "email-change-refused", "bad address", new(AccountResult.Invalid, problem));
+        if (SignUpRules.EmailCheck(newEmail) is { } emailFault)
+            return Refused(a, ip, "email-change-refused", "bad address",
+                new(AccountResult.Invalid, SignUpRules.EmailProblem(newEmail), SignUps.EmailMessage(emailFault)));
         var email = SignUpRules.NormalEmail(newEmail!);
         if (email == SignUpRules.NormalEmail(a.Email))
             return Refused(a, ip, "email-change-refused", "same address", new(AccountResult.Unchanged, SameAddress, new("Account.SameAddress")));

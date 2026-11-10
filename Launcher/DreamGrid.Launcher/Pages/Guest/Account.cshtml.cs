@@ -58,7 +58,7 @@ public sealed class AccountModel(AccountChanges changes, IRobustClient robust, F
             if (Account is not null) await GuestSignIn.SignInAsync(HttpContext, Account);
             PasswordNotice = t["Account.PasswordDone"];
         }
-        else PasswordError = r.Message?.In(t) ?? r.Problem;
+        else PasswordError = r.Message!.In(t);
         return Page();
     }
 
@@ -72,7 +72,7 @@ public sealed class AccountModel(AccountChanges changes, IRobustClient robust, F
             EmailNotice = t["Account.AskReply"];
             NewEmail = null;
         }
-        else EmailError = r.Message?.In(t) ?? r.Problem;
+        else EmailError = r.Message!.In(t);
         return Page();
     }
 

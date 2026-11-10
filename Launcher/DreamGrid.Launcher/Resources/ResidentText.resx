@@ -208,6 +208,8 @@
   <data name="Bots.PictureAlt" xml:space="preserve"><value>Picture of letters; answer the question below instead if you can't see it</value></data>
   <data name="Bots.TypeLetters" xml:space="preserve"><value>Type the letters</value></data>
   <data name="Bots.Question" xml:space="preserve"><value>What is {0} plus {1}?</value></data>
+  <!-- Translators: the sum is checked as digits (for example 11) or as English number words only. Keep "digits" in Bots.DigitsWork; the Bots.Number words are only for reading the question. -->
+  <data name="Bots.DigitsWork" xml:space="preserve"><value>You can type the answer in digits, for example 11.</value></data>
   <data name="Bots.EitherOne" xml:space="preserve"><value>Answer either one.</value></data>
   <data name="Bots.Number1" xml:space="preserve"><value>one</value></data>
   <data name="Bots.Number2" xml:space="preserve"><value>two</value></data>

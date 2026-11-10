@@ -61,7 +61,7 @@ public sealed class SignUpModel(Func<LauncherSettings> settings, SignUps signUps
                 Error = t["Common.SignUpBusy"];
                 break;
             default:
-                Error = r.Message?.In(t) ?? r.Problem;
+                Error = r.Message!.In(t);
                 break;
         }
         return Page();

@@ -110,6 +110,6 @@ public sealed class MyRegionsModel(RegionRights rights, IGridController grid, IO
     {
         var process = status.Programs.FirstOrDefault(p => p.Regions.Contains(region.Id))?.Process;
         if (region.State is not (RegionState.Running or RegionState.Starting) || process?.Uptime is not { } uptime) return t["Regions.NotRunning"].Value;
-        return t["Regions.LastStarted", (now - uptime).UtcDateTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.CurrentCulture)].Value;
+        return t["Regions.LastStarted", (now - uptime).UtcDateTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)].Value;
     }
 }

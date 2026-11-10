@@ -432,4 +432,31 @@ public sealed class AccountChangesTests
         Assert.Equal(EmailLinkResult.Expired, (await rig.Changes.ConfirmEmailChangeAsync(tokenA, Ct)).Result);
         Assert.Equal("ann@example.com", rig.Ann.Email);
     }
+
+    /// <summary>Every refusal a resident can read carries a ResidentText message, so no page falls back to English.</summary>
+    [Fact]
+    public async Task Every_refusal_a_resident_reads_carries_a_message()
+    {
+        await using var rig = Factory();
+        var outcomes = new List<AccountOutcome>
+        {
+            await ChangeAsync(rig, current: "nope-nope-1"),
+            await ChangeAsync(rig, password: "short", again: "short"),
+            await ChangeAsync(rig, password: New, again: "different"),
+            await ChangeAsync(rig, password: Old),
+            await AskAsync(rig, email: "not-an-address"),
+            await AskAsync(rig, email: "ann@example.com"),
+            await AskAsync(rig, current: "nope-nope-1"),
+        };
+        Assert.All(outcomes, o =>
+        {
+            Assert.NotEqual(AccountResult.Done, o.Result);
+            Assert.False(string.IsNullOrEmpty(o.Problem));
+            Assert.NotNull(o.Message);
+        });
+        await using var noMail = Factory(email: false);
+        var none = await AskAsync(noMail);
+        Assert.Equal(AccountResult.NoEmail, none.Result);
+        Assert.NotNull(none.Message);
+    }
 }
