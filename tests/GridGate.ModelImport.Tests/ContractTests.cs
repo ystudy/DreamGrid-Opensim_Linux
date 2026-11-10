@@ -16,6 +16,8 @@ public class ContractTests
         AssertRoundTrip<ImportLimits>("limits.json");
         AssertRoundTrip<ImportOptions>("options.json");
         AssertRoundTrip<ImportReport>("report.json");
+        // A null stays JSON null (never omitted): the launcher writes and reads the same shape.
+        AssertRoundTrip<ImportReport>("report-fits.json");
         AssertRoundTrip<ImportManifest>("manifest.json");
     }
 

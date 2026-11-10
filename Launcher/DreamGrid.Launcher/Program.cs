@@ -9,6 +9,7 @@ using DreamGrid.Launcher.Core.Groups;
 using DreamGrid.Launcher.Core.Guests;
 using DreamGrid.Launcher.Core.Logs;
 using DreamGrid.Launcher.Endpoints;
+using DreamGrid.Launcher.Core.ModelImport;
 using DreamGrid.Launcher.Core.Modules;
 using DreamGrid.Launcher.Core.OpenSim;
 using DreamGrid.Launcher.Core.Settings;
@@ -22,6 +23,7 @@ using DreamGrid.Launcher.Splash;
 using DreamGrid.Launcher.Email;
 using DreamGrid.Launcher.Groups;
 using DreamGrid.Launcher.Guests;
+using DreamGrid.Launcher.ModelImport;
 using DreamGrid.Launcher.Setup;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -370,6 +372,9 @@ builder.Services.AddHostedService<RegionEstateSync>();
 // Deletes sign-ups nobody confirmed; after GridHostedService too.
 builder.Services.AddSingleton<SignUpCleanup>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<SignUpCleanup>());
+builder.Services.AddSingleton(sp => new ImportJobs(paths, sp.GetRequiredService<TimeProvider>()));
+builder.Services.AddSingleton<IModelConverter>(sp => new ModelConverter(paths, sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<ModelConverter>>()));
+builder.Services.AddHostedService<ImportJobSweep>();
 builder.Services.AddSingleton<TicketSweep>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<TicketSweep>());
 // Registered after GridHostedService, so it stops first: running work is awaited before the controller detaches.

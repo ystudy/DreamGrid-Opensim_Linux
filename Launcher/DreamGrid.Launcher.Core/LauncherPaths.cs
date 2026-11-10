@@ -9,6 +9,8 @@ public sealed record LauncherPaths(string Data, string OpenSimProgram, string? M
     public string MariaDbTmp => Path.Combine(Data, "mariadb", "tmp");
     public string RuntimeOpenSim => Path.Combine(Data, "runtime", "opensim");
     public string RegionsRoot => Path.Combine(Data, "state", "regions");
+    /// <summary>Model-upload job folders, one random folder per upload (deleted after the upload or after an hour).</summary>
+    public string Uploads => Path.Combine(Data, "state", "uploads");
     public string AssetCache => Path.Combine(Data, "state", "assetcache");
     public string FsAssetsData => Path.Combine(Data, "state", "fsassets", "data");
     public string FsAssetsSpool => Path.Combine(Data, "state", "fsassets", "tmp");
@@ -98,7 +100,7 @@ public sealed record LauncherPaths(string Data, string OpenSimProgram, string? M
         CreateOwnerOnly(Data);
         foreach (var dir in new[]
         {
-            Data, MariaDbData, MariaDbTmp, RuntimeOpenSim, RegionsRoot, AssetCache, FsAssetsData, FsAssetsSpool,
+            Data, MariaDbData, MariaDbTmp, RuntimeOpenSim, RegionsRoot, Uploads, AssetCache, FsAssetsData, FsAssetsSpool,
             ScriptEngines, Logs, Pids, DataProtectionKeys, Security, Guests, Email, Oars, OarsIncoming, OarsSaving,
         })
             Directory.CreateDirectory(dir);
