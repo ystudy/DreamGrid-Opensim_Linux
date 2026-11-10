@@ -144,7 +144,7 @@ public static class ContractJson { public static JsonSerializerOptions Options {
   - `Upload_above_cap_is_blocking`: `MaxUploadBytes` = 1000 and Box.glb: `too-large-file`.
   - `Over_2M_triangles_or_512_nodes_is_blocking`: limits lowered to 11 triangles and to 0 nodes, on Box.glb.
   - `Not_glTF_is_blocking`: a text file gives `bad-file`.
-  - `Nested_transforms_are_baked_into_part_placement` (Review Focus 1): a model built in the test with a parent node (rotation 90° about glTF Y, scale (2,1,1)) and a child mesh node (translation (1,0,0)) reads as a part whose `Position` is (0,-2,0) in Z-up metres. Assert to 1e-4.
+  - `Nested_transforms_are_baked_into_part_placement` (Review Focus 1): a model built in the test with a parent node (rotation 90° about glTF Y, scale (2,1,1)) and a child mesh node (translation (1,0,0)) reads as a part whose `Position` is (0,2,0) in Z-up metres. Assert to 1e-4.
 - [ ] **Step 2: Run.** Expected: FAIL.
 - [ ] **Step 3: Implement.** Check order in `GltfReader.Read`: byte cap → parse JSON chunk only → `extensionsUsed`/`extensionsRequired` for `KHR_draco_mesh_compression`, `EXT_meshopt_compression`, `KHR_meshopt_compression` → every buffer/image `uri` must be `data:` (or absent in `.glb`) → node count → image headers → then full read → triangle count. Any `Exception` from SharpGLTF on a full read becomes `bad-file`.
 - [ ] **Step 4: Run.** Expected: PASS.
