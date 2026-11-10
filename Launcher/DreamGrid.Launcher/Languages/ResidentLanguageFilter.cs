@@ -25,18 +25,23 @@ public sealed class ResidentLanguageFilter(bool welcome) : IAsyncPageFilter, IAs
 
     public async Task OnPageHandlerExecutionAsync(PageHandlerExecutingContext context, PageHandlerExecutionDelegate next)
     {
-        await Pick(context.HttpContext);
+        var culture = await Pick(context.HttpContext);
+        // Set here, not in Pick: a culture changed inside an awaited async method is dropped when it returns (AsyncLocal).
+        CultureInfo.CurrentCulture = culture;
+        CultureInfo.CurrentUICulture = culture;
         await next();
     }
 
     // The page is rendered after the handler, in the result stage, which the page filter does not wrap; the culture is set there too.
     public async Task OnResultExecutionAsync(ResultExecutingContext context, ResultExecutionDelegate next)
     {
-        await Pick(context.HttpContext);
+        var culture = await Pick(context.HttpContext);
+        CultureInfo.CurrentCulture = culture;
+        CultureInfo.CurrentUICulture = culture;
         await next();
     }
 
-    private async Task Pick(HttpContext ctx)
+    private async Task<CultureInfo> Pick(HttpContext ctx)
     {
         if (!ctx.Items.ContainsKey(ItemKey))
         {
@@ -46,8 +51,6 @@ public sealed class ResidentLanguageFilter(bool welcome) : IAsyncPageFilter, IAs
             ctx.Items[ItemKey] = LanguagePick.For(ctx, sp.GetRequiredService<Func<LauncherSettings>>()().Languages,
                 sp.GetRequiredService<ResidentLanguages>(), guest, welcome);
         }
-        var culture = Core.Languages.Culture(Current(ctx));
-        CultureInfo.CurrentCulture = culture;
-        CultureInfo.CurrentUICulture = culture;
+        return Core.Languages.Culture(Current(ctx));
     }
 }

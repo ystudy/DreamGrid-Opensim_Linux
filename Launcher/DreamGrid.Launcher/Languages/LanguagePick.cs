@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Security.Claims;
 using DreamGrid.Launcher.Core;
 using DreamGrid.Launcher.Core.Settings;
@@ -15,19 +14,6 @@ public static class LanguagePick
 
     private const int MostAcceptEntries = 10;
 
-    private static bool HasCulture(string code)
-    {
-        try
-        {
-            CultureInfo.GetCultureInfo(code == "pt" ? "pt-BR" : code, predefinedOnly: true);
-            return true;
-        }
-        catch (CultureNotFoundException)
-        {
-            return false;
-        }
-    }
-
     /// <summary>
     /// The offered language for this request. The welcome page uses only the <c>lang=</c> query, then the default. Other pages use
     /// the cookie, then the signed-in guest's saved language, then the browser's Accept-Language (highest q first), then the default.
@@ -37,7 +23,7 @@ public static class LanguagePick
     public static string For(HttpContext ctx, LanguageSettings s, ResidentLanguages saved, ClaimsPrincipal? guest, bool welcome)
     {
         // OfferedOrDefault adds a hand-edited unknown default to the list; only codes with a culture may be picked.
-        var offered = s.OfferedOrDefault().Where(HasCulture).ToList();
+        var offered = s.OfferedOrDefault().Where(Core.Languages.HasCulture).ToList();
         string? Try(string? tag) => Core.Languages.Match(tag, offered);
 
         if (welcome)

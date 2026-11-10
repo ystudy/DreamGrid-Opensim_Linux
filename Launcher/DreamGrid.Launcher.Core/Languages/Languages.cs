@@ -29,9 +29,24 @@ public static class Languages
         return primary is not null && offered.Contains(primary) ? primary : null;
     }
 
+    private static string CultureName(string code) => code == "pt" ? "pt-BR" : code;
+
     /// <summary>The culture used to write dates and numbers in a language; Portuguese is Brazilian.</summary>
-    public static CultureInfo Culture(string code) =>
-        CultureInfo.GetCultureInfo(code == "pt" ? "pt-BR" : code);
+    public static CultureInfo Culture(string code) => CultureInfo.GetCultureInfo(CultureName(code));
+
+    /// <summary>Whether the system has a predefined culture for the language code (an unknown one such as "xx" has none).</summary>
+    public static bool HasCulture(string code)
+    {
+        try
+        {
+            CultureInfo.GetCultureInfo(CultureName(code), predefinedOnly: true);
+            return true;
+        }
+        catch (CultureNotFoundException)
+        {
+            return false;
+        }
+    }
 
     /// <summary>Whether a language is written right to left.</summary>
     public static bool IsRightToLeft(string code) => Culture(code).TextInfo.IsRightToLeft;

@@ -1,9 +1,16 @@
+using System.Globalization;
 using System.Net;
 using System.Security.Claims;
 using DreamGrid.Launcher.Core;
 using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Resident;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Abstractions;
+using Microsoft.AspNetCore.Mvc.Filters;
+using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace DreamGrid.Launcher.Tests;
@@ -121,5 +128,44 @@ public sealed class LanguagePickTests
         using var resp = await c.SendAsync(req, Ct);
         var html = await resp.Content.ReadAsStringAsync(Ct);
         Assert.Contains("<html lang=\"en\">", html);
+        // The server's culture is not touched on a staff page: the dashboard's date stays in the process culture.
+        Assert.DoesNotContain("lang=\"de\"", html);
+    }
+
+    [Fact]
+    public async Task The_culture_reaches_both_the_handler_and_the_render()
+    {
+        using var f = new LauncherFactory(s => s with { GridName = "Avalon", SetupToken = null });
+        using var scope = f.Services.CreateScope();
+        var ctx = new DefaultHttpContext { RequestServices = scope.ServiceProvider };
+        ctx.Request.Headers.Cookie = "dg-lang=de";
+        var actionCtx = new ActionContext(ctx, new RouteData(), new PageActionDescriptor());
+        var filter = new ResidentLanguageFilter(welcome: false);
+        var before = (CultureInfo.CurrentCulture, CultureInfo.CurrentUICulture);
+        try
+        {
+            string? inHandler = null, inRender = null;
+            var handlerCtx = new PageHandlerExecutingContext(new PageContext(actionCtx), [], null!, new Dictionary<string, object?>(), new object());
+            await filter.OnPageHandlerExecutionAsync(handlerCtx, () =>
+            {
+                inHandler = $"{CultureInfo.CurrentCulture.Name}/{CultureInfo.CurrentUICulture.Name}";
+                return Task.FromResult<PageHandlerExecutedContext>(null!);
+            });
+            CultureInfo.CurrentCulture = before.CurrentCulture;
+            CultureInfo.CurrentUICulture = before.CurrentUICulture;
+            await filter.OnResultExecutionAsync(new ResultExecutingContext(actionCtx, [], new EmptyResult(), new object()), () =>
+            {
+                inRender = $"{CultureInfo.CurrentCulture.Name}/{CultureInfo.CurrentUICulture.Name}";
+                return Task.FromResult<ResultExecutedContext>(null!);
+            });
+            Assert.Equal("de/de", inHandler);
+            Assert.Equal("de/de", inRender);
+            Assert.Equal("de", ResidentLanguageFilter.Current(ctx));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = before.CurrentCulture;
+            CultureInfo.CurrentUICulture = before.CurrentUICulture;
+        }
     }
 }
