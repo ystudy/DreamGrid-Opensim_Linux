@@ -51,21 +51,25 @@ public static class FaceSplitter
             triangles.Clear();
         }
 
+        int Take(int old)
+        {
+            if (newIndex[old] < 0)
+            {
+                newIndex[old] = used.Count;
+                used.Add(old);
+            }
+            return newIndex[old];
+        }
+
         for (int t = 0; t + 2 < face.Triangles.Length; t += 3)
         {
             int a = face.Triangles[t], b = face.Triangles[t + 1], c = face.Triangles[t + 2];
             int needed = (newIndex[a] < 0 ? 1 : 0) + (newIndex[b] < 0 && b != a ? 1 : 0)
                 + (newIndex[c] < 0 && c != a && c != b ? 1 : 0);
             if (used.Count + needed > MaxVerticesPerFace) Flush();
-            foreach (var old in new[] { a, b, c })
-            {
-                if (newIndex[old] < 0)
-                {
-                    newIndex[old] = used.Count;
-                    used.Add(old);
-                }
-                triangles.Add(newIndex[old]);
-            }
+            triangles.Add(Take(a));
+            triangles.Add(Take(b));
+            triangles.Add(Take(c));
         }
         Flush();
         return pieces;

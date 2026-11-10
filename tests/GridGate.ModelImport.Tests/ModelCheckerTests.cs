@@ -140,14 +140,48 @@ public class ModelCheckerTests
     }
 
     [Fact]
-    public void Size_is_measured_in_world_axes_after_rotation()
+    public void Part_size_ignores_rotation()
     {
-        // 300 along X, turned a quarter about Z: 300 along Y, still too big. Legs of 200 m fit, but turned 45 degrees their box is 283 m wide.
-        var turned = Part("Wall", Triangle(300)) with { Rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, MathF.PI / 2) };
-        Assert.NotNull(Find(Check(Model(new[] { turned })), "too-big"));
-        var diag = Part("Beam", Triangle(200)) with { Rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, MathF.PI / 4) };
-        Assert.Null(Find(Check(Model(new[] { Part("Beam", Triangle(200)) })), "too-big"));
-        Assert.NotNull(Find(Check(Model(new[] { diag })), "too-big"));
+        // A 200 m square turned 45 degrees about Z is still a 200 m prim: not too big against 256.
+        var turned = Part("Plate", Square(0, 200)) with { Rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, MathF.PI / 4) };
+        var r = Check(Model(new[] { turned }));
+        Assert.Null(Find(r, "too-big"));
+        Assert.False(r.Blocked);
+        // A part that is too big reports its own size.
+        var big = turned with { Scale = new Vector3(1.5f, 1, 1) };
+        Assert.Equal("300", Find(Check(Model(new[] { big })), "too-big")!.Values["side"]);
+    }
+
+    [Fact]
+    public void Summary_size_is_the_world_box()
+    {
+        var turned = Part("Plate", Square(-0.5f, 0.5f)) with { Rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, MathF.PI / 4) };
+        var size = Check(Model(new[] { turned })).Summary.SizeMetres;
+        Assert.Equal(1.4142, size[0], 3);
+        Assert.Equal(1.4142, size[1], 3);
+    }
+
+    private static ImportFace Square(float lo, float hi) => new(
+        new[] { new Vector3(lo, lo, 0), new Vector3(hi, lo, 0), new Vector3(hi, hi, 0), new Vector3(lo, hi, 0) },
+        Enumerable.Repeat(Vector3.UnitZ, 4).ToArray(), null, new[] { 0, 1, 2, 0, 2, 3 }, 0, null);
+
+    [Fact]
+    public void Scaled_but_still_too_big_offers_the_fit_for_the_original()
+    {
+        var r = Check(Model(new[] { Part("Wall", Triangle(300)) }), scale: 90);
+        var f = Find(r, "too-big")!;
+        Assert.Equal("270", f.Values["side"]);
+        Assert.Equal("85", f.Values["fitPercent"]);
+    }
+
+    [Fact]
+    public void No_fit_offer_when_even_one_percent_is_too_big()
+    {
+        var r = Check(Model(new[] { Part("Huge", Triangle(100_000)) }));
+        var f = Find(r, "too-big")!;
+        Assert.False(f.Values.ContainsKey("fitPercent"));
+        Assert.Null(r.Summary.LargestFitPercent);
+        Assert.True(r.Blocked);
     }
 
     [Fact]

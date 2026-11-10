@@ -294,12 +294,7 @@ public static class GltfReader
             var t = Vector3.TransformNormal(n, normalMatrix);
             return t.LengthSquared() > 0 ? Vector3.Normalize(t) : Vector3.UnitZ;
         }).ToArray();
-        var triangles = face.Triangles;
-        if (m.GetDeterminant() < 0)
-        {
-            triangles = (int[])triangles.Clone();
-            for (int i = 0; i + 2 < triangles.Length; i += 3) (triangles[i + 1], triangles[i + 2]) = (triangles[i + 2], triangles[i + 1]);
-        }
+        var triangles = m.GetDeterminant() < 0 ? Winding.Reversed(face.Triangles) : face.Triangles;
         return face with { Positions = positions, Normals = normals, Triangles = triangles };
     }
 

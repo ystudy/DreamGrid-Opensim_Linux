@@ -64,9 +64,12 @@ public static class ModelChecker
         int? fit = null;
         if (biggest != null && biggestSide > limits.MaxPartSize)
         {
-            fit = (int)Math.Floor(limits.MaxPartSize * 100.0 / (biggestSide / factor) + 1e-9);
-            findings.Add(Make("too-big", FindingKind.Blocking, ("part", biggest.Name), ("side", Num(biggestSide)), ("limit", Num(limits.MaxPartSize)),
-                ("fitPercent", Num(fit.Value))));
+            // The offer is at least 1%; when even that does not fit there is no offer.
+            var offer = (int)Math.Floor(limits.MaxPartSize * 100.0 / (biggestSide / factor) + 1e-9);
+            if (offer >= 1) fit = offer;
+            var values = new List<(string, string)> { ("part", biggest.Name), ("side", Num(biggestSide)), ("limit", Num(limits.MaxPartSize)) };
+            if (fit != null) values.Add(("fitPercent", Num(fit.Value)));
+            findings.Add(Make("too-big", FindingKind.Blocking, values.ToArray()));
         }
 
         // Faces and parts within the grid's mesh format.
@@ -119,62 +122,46 @@ public static class ModelChecker
         bool flip = sign.X * sign.Y * sign.Z < 0;
         var faces = part.Mesh.Faces.Select(f =>
         {
-            var triangles = f.Triangles;
-            if (flip)
-            {
-                triangles = (int[])triangles.Clone();
-                for (int i = 0; i + 2 < triangles.Length; i += 3) (triangles[i + 1], triangles[i + 2]) = (triangles[i + 2], triangles[i + 1]);
-            }
+            var triangles = flip ? Winding.Reversed(f.Triangles) : f.Triangles;
             return f with { Positions = f.Positions.Select(v => v * sign).ToArray(), Normals = f.Normals.Select(v => v * sign).ToArray(), Triangles = triangles };
         }).ToList();
         return part with { Scale = Vector3.Abs(part.Scale), Mesh = new ImportMesh(faces) };
     }
 
-    // The sides of the part's bounding box along the world axes (scale and rotation applied, position not). Null without vertices.
+    // The part's own size the way OpenSim sees a prim: its local vertex box times the scale, whatever its rotation. Null without vertices.
     private static float[]? Sides(ImportPart part)
     {
-        var (min, max, any) = Bounds(part);
+        var (lo, hi, any) = LocalBox(part);
         if (!any) return null;
-        var size = max - min;
+        var size = (hi - lo) * Vector3.Abs(part.Scale);
         return new[] { size.X, size.Y, size.Z };
     }
 
-    private static (Vector3 Min, Vector3 Max, bool Any) Bounds(ImportPart part, bool withPosition = false)
+    private static (Vector3 Min, Vector3 Max, bool Any) LocalBox(ImportPart part)
     {
         var lo = new Vector3(float.MaxValue);
         var hi = new Vector3(float.MinValue);
         bool any = false;
         foreach (var f in part.Mesh.Faces)
             foreach (var v in f.Positions) { lo = Vector3.Min(lo, v); hi = Vector3.Max(hi, v); any = true; }
-        if (!any) return (Vector3.Zero, Vector3.Zero, false);
-
-        // The corners of the local box carry the same extremes as the vertices after any scale and rotation.
-        var min = new Vector3(float.MaxValue);
-        var max = new Vector3(float.MinValue);
-        for (int i = 0; i < 8; i++)
-        {
-            var corner = new Vector3((i & 1) == 0 ? lo.X : hi.X, (i & 2) == 0 ? lo.Y : hi.Y, (i & 4) == 0 ? lo.Z : hi.Z);
-            var w = Vector3.Transform(corner * part.Scale, part.Rotation) + (withPosition ? part.Position : Vector3.Zero);
-            min = Vector3.Min(min, w);
-            max = Vector3.Max(max, w);
-        }
-        return (min, max, true);
+        return any ? (lo, hi, true) : (Vector3.Zero, Vector3.Zero, false);
     }
 
-    // The size of the whole item along the world axes, in metres.
+    // The size of the whole item along the world axes, in metres: every vertex through scale, rotation and position. Display only.
     private static double[] Overall(IReadOnlyList<ImportPart> parts)
     {
         var min = new Vector3(float.MaxValue);
         var max = new Vector3(float.MinValue);
         bool any = false;
         foreach (var p in parts)
-        {
-            var (lo, hi, has) = Bounds(p, true);
-            if (!has) continue;
-            min = Vector3.Min(min, lo);
-            max = Vector3.Max(max, hi);
-            any = true;
-        }
+            foreach (var f in p.Mesh.Faces)
+                foreach (var v in f.Positions)
+                {
+                    var w = Vector3.Transform(v * p.Scale, p.Rotation) + p.Position;
+                    min = Vector3.Min(min, w);
+                    max = Vector3.Max(max, w);
+                    any = true;
+                }
         if (!any) return new double[3];
         var size = max - min;
         return new double[] { size.X, size.Y, size.Z };
