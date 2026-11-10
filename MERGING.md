@@ -41,7 +41,7 @@ Work in a branch named after the batch, e.g. `opensim-merge-2`.
 ```bash
 git fetch opensim
 BASE=9d00a5555225b17d3d1063cb0f3496fb1b6217f9
-git log V7 --format='%(trailers:key=Upstream-OpenSim,valueonly)' | grep . | sort -u > picked.txt
+git log main --format='%(trailers:key=Upstream-OpenSim,valueonly)' | grep . | sort -u > picked.txt
 git rev-list --reverse --no-merges $BASE..opensim/master | grep -vFf picked.txt > todo.txt
 git log --no-walk=unsorted --date=short --format='%h %ad %an | %s' $(cat todo.txt)
 ```

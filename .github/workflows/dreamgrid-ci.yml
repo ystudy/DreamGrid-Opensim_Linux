@@ -2,7 +2,7 @@ name: build-and-smoke
 
 # Builds DreamGrid.sln on .NET 10, runs the unit tests, and boots a real region with the smoke harness
 # (tests/DreamGrid.Smoke) on Windows and Debian 12. msbuildnet.yml is upstream's and only runs on opensim/opensim.
-# For pull requests and pushes to V7 that change setup/ or Launcher/, it also runs release.yml's packaging and install
+# For pull requests and pushes to main that change setup/ or Launcher/, it also runs release.yml's packaging and install
 # smokes (without publishing).
 
 on:
@@ -40,7 +40,7 @@ jobs:
       - name: Scan files
         run: $RUNNER_TEMP/gitleaks dir . --config .gitleaks.toml --redact --verbose --no-banner
 
-      # A new branch has no "before" commit, so its range is everything not yet on V7.
+      # A new branch has no "before" commit, so its range is everything not yet on main.
       - name: Scan new commits
         env:
           PR_BASE: ${{ github.event.pull_request.base.sha }}
@@ -48,7 +48,7 @@ jobs:
         run: |
           if [ -n "$PR_BASE" ]; then range="$PR_BASE..HEAD"
           elif [ -n "$PUSH_BEFORE" ] && [ "$PUSH_BEFORE" != 0000000000000000000000000000000000000000 ]; then range="$PUSH_BEFORE..HEAD"
-          else range="origin/V7..HEAD"
+          else range="origin/main..HEAD"
           fi
           echo "Scanning $range"
           $RUNNER_TEMP/gitleaks git . --config .gitleaks.toml --redact --no-banner --log-opts="$range"
@@ -314,10 +314,10 @@ jobs:
           name: launcher-logs-debian${{ matrix.debian }}
           path: ${{ env.DG_TEST_TEMP }}/Dréam Grid */state/logs/*
 
-  # The install smoke (release.yml without its publish job) when a pull request or a push to V7 touches setup/ or
+  # The install smoke (release.yml without its publish job) when a pull request or a push to main touches setup/ or
   # Launcher/. Feature-branch pushes skip it (run release.yml by hand there); tags run it in release.yml itself.
   installer-changes:
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/V7')
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     outputs:
       changed: ${{ steps.diff.outputs.changed }}
