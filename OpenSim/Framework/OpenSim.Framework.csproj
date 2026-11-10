@@ -394,6 +394,9 @@
     <Compile Include="NetworkXffUtil.cs">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="NrbfReader.cs">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="ObjectChangeData.cs">
       <SubType>Code</SubType>
     </Compile>
