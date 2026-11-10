@@ -299,6 +299,9 @@ builder.Services.AddSingleton(sp => new DreamGrid.Launcher.Core.Tickets.TicketNo
 builder.Services.AddSingleton<TicketCookie>();
 builder.Services.AddSingleton<DreamGrid.Launcher.Security.StaffTickets>();
 builder.Services.AddSingleton<SignUpNotices>();
+// The language each resident chose (plan 16a).
+builder.Services.AddSingleton(sp => new DreamGrid.Launcher.Core.ResidentLanguages(Path.Combine(paths.Guests, "languages.json"),
+    sp.GetRequiredService<ILogger<DreamGrid.Launcher.Core.ResidentLanguages>>()));
 // The resident account page (plan 10): email changes waiting for their link, and their own request counts.
 builder.Services.AddSingleton(sp => new PendingEmailChanges(Path.Combine(paths.Guests, "email-changes.json"), sp.GetRequiredService<TimeProvider>(),
     sp.GetRequiredService<ILogger<PendingEmailChanges>>()));

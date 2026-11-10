@@ -30,7 +30,7 @@ public sealed class PeopleActions(IPeopleDirectory people, StaffActions staff, F
     EmailSender sender, IRobustClient robust, IRobustNames names, IRobustEmails emails, IStaffDirectory directory, HeldNames held,
     PasswordResets resets, StaffSessions sessions, GuestStamps stamps, IGridController grid, IAccountRemover remover, IEstateRemover estates,
     RegionRights rights, AccountHolds holds, SuspendedStore suspended, EmailTokens tokens, PendingEmailChanges emailChanges, AuditLog audit,
-    ILogger<PeopleActions> log)
+    ResidentLanguages languages, ILogger<PeopleActions> log)
 {
     public const string OnHold = "This account is on hold.";
     public const string Moving = "Their regions are moving back to the grid's estate. Try again in a minute.";
@@ -305,6 +305,7 @@ public sealed class PeopleActions(IPeopleDirectory people, StaffActions staff, F
         }
         stamps.Rotate(principal);
         sessions.EndAll(principal);
+        languages.Remove(principal);
 
         Write(actor, ip, "deleted", target, estateLeft ? "failed" : "ok");
         return estateLeft
