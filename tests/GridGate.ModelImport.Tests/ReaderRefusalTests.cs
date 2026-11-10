@@ -129,7 +129,7 @@ public class ReaderRefusalTests
     }
 
     // A .glb with the one-triangle mesh and one base colour image kept in the binary chunk (declared as mime, whatever it holds).
-    private static byte[] TexturedGlb(byte[] image, string mime)
+    private static byte[] TexturedGlb(byte[] image, string mime, bool webpTexture = false)
     {
         var bin = new List<byte>();
         foreach (var f in new float[] { 0, 1, 0, 1, 0, 0, 0, 0, 1 }) bin.AddRange(BitConverter.GetBytes(f));
@@ -140,7 +140,8 @@ public class ReaderRefusalTests
             + "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\",\"min\":[0,0,0],\"max\":[1,1,1]}],"
             + "\"bufferViews\":[{\"buffer\":0,\"byteLength\":36},{\"buffer\":0,\"byteOffset\":36,\"byteLength\":" + image.Length + "}],"
             + "\"buffers\":[{\"byteLength\":" + bin.Count + "}],"
-            + "\"images\":[{\"bufferView\":1,\"mimeType\":\"" + mime + "\"}],\"textures\":[{\"source\":0}],"
+            + "\"images\":[{\"bufferView\":1,\"mimeType\":\"" + mime + "\"}],\"textures\":[" + (webpTexture ? "{\"extensions\":{\"EXT_texture_webp\":{\"source\":0}}}" : "{\"source\":0}") + "],"
+            + (webpTexture ? "\"extensionsUsed\":[\"EXT_texture_webp\"]," : "")
             + "\"materials\":[{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0}}}]}";
         var jsonBytes = new List<byte>(Encoding.UTF8.GetBytes(json));
         while (jsonBytes.Count % 4 != 0) jsonBytes.Add((byte)' ');
@@ -152,27 +153,41 @@ public class ReaderRefusalTests
         glb.AddRange(BitConverter.GetBytes((uint)bin.Count)); glb.AddRange(BitConverter.GetBytes(0x004E4942u)); glb.AddRange(bin);
         return glb.ToArray();
     }
-
     [Theory]
     [InlineData("bmp")]
-    [InlineData("unknown")]
-    public void An_image_that_is_not_png_or_jpeg_is_left_out_without_being_checked(string kind)
+    [InlineData("junk")]
+    public void An_image_SharpGLTF_does_not_accept_makes_the_file_bad(string kind)
     {
-        // A BMP header claiming 60000x60000, or junk: neither is PNG/JPEG, so neither is ever decoded; the material loses its texture.
+        // A BMP header claiming 60000x60000, or junk bytes: SharpGLTF's validation refuses them, so the file is bad-file and
+        // nothing is ever decoded.
         var bytes = kind == "bmp"
             ? new byte[] { (byte)'B', (byte)'M', 0, 0, 0, 0, 0, 0, 0, 0, 54, 0, 0, 0, 40, 0, 0, 0, 0x60, 0xEA, 0, 0, 0x60, 0xEA, 0, 0, 1, 0, 24, 0 }
             : Encoding.ASCII.GetBytes("this is not an image at all");
-        var r = Read(TexturedGlb(bytes, "image/png"));
+        Assert.Equal("bad-file", OnlyBlocking(Read(TexturedGlb(bytes, "image/png"))).Code);
+    }
+
+    [Fact]
+    public void A_webp_image_is_left_out_with_a_finding()
+    {
+        // SharpGLTF 1.0.7 does not read EXT_texture_webp or KHR_texture_basisu (those files are bad-file), but it accepts a WebP image used as a plain
+        // texture source. That is not PNG or JPEG, so it is dropped and the material loses its texture.
+        var webp = Encoding.ASCII.GetBytes("RIFF\x20\0\0\0WEBPVP8 and some more bytes that are not a real image");
+        var r = Read(TexturedGlb(webp, "image/webp"));
         Assert.True(r.Model != null, string.Join(";", r.Findings.Select(x => x.Code + string.Join(",", x.Values))));
-        Assert.NotNull(r.Model);
-        Assert.DoesNotContain(r.Findings, f => f.Kind == FindingKind.Blocking);
         var f = Assert.Single(r.Findings);
         Assert.Equal("texture-unsupported", f.Code);
         Assert.Equal(FindingKind.Risky, f.Kind);
-        Assert.Equal(kind, f.Values["format"]);
+        Assert.Equal("webp", f.Values["format"]);
         Assert.False(string.IsNullOrEmpty(f.Values["image"]));
         Assert.Empty(r.Model!.Images);
         Assert.Null(r.Model.Materials[0].BaseColourImage);
+    }
+
+    [Fact]
+    public void A_webp_texture_extension_is_bad_file_because_SharpGLTF_does_not_read_it()
+    {
+        var webp = Encoding.ASCII.GetBytes("RIFF\x20\0\0\0WEBPVP8 and some more bytes that are not a real image");
+        Assert.Equal("bad-file", OnlyBlocking(Read(TexturedGlb(webp, "image/webp", webpTexture: true))).Code);
     }
 
     [Fact]

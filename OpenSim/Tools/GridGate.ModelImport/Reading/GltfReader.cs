@@ -82,10 +82,6 @@ public static class GltfReader
                 onSatelliteRequest?.Invoke(uri);
                 throw new IOException("External file references are not read: " + uri);
             });
-            // SharpGLTF's own validation refuses an image it does not recognise (BMP, junk), which would make the whole file bad-file.
-            // Those images are meant to be dropped with a finding instead, so its content validation is skipped; every accessor and
-            // index is still bounds-checked when read, and any exception is caught below.
-            context.Validation = SharpGLTF.Validation.ValidationMode.Skip;
             // The callback above is the backstop: if the JSON check in step 2 and SharpGLTF ever disagree about what counts as an
             // outside file, the request still fails here and the file becomes bad-file; nothing is ever opened.
             root = context.ReadSchema2(new MemoryStream(bytes.Array!, bytes.Offset, bytes.Count, false));
