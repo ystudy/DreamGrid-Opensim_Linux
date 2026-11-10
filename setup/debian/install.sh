@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # DreamGrid installer for Debian 12 and 13 (amd64).
 #
-#   curl -fsSL https://github.com/ystudy/DreamGrid-Opensim_Linux/releases/latest/download/install.sh | sudo bash
+#   curl -fsSL https://github.com/ystudy/GridGate-OpenSim/releases/latest/download/install.sh | sudo bash
 #
 # Options (with the one-liner: ... | sudo bash -s -- --web-port 8101):
 #   --from <tarball>   install this dreamgrid-*-linux-x64.tar.gz instead of downloading the latest release
@@ -9,7 +9,7 @@
 #                      ports 3307, 8002, 8003, 8004, 8010, 8011); saved in the settings, so later upgrades keep it
 #
 # DREAMGRID_RELEASE=<tag> installs that release (for example a pre-release, which is never "latest") instead:
-#   curl -fsSL https://github.com/ystudy/DreamGrid-Opensim_Linux/releases/download/v0.1.0-rc1/install.sh | sudo DREAMGRID_RELEASE=v0.1.0-rc1 bash
+#   curl -fsSL https://github.com/ystudy/GridGate-OpenSim/releases/download/v0.1.0-rc1/install.sh | sudo DREAMGRID_RELEASE=v0.1.0-rc1 bash
 #
 # Re-running it upgrades in place: the program in /opt/dreamgrid is replaced, the data in /var/lib/dreamgrid is never
 # touched, and the world keeps running (the grid service and region restart briefly when a release updates OpenSim).
@@ -18,7 +18,7 @@
 # Commands that might read stdin get </dev/null, since with the one-liner stdin is the rest of this script.
 set -euo pipefail
 
-releases=https://github.com/ystudy/DreamGrid-Opensim_Linux/releases
+releases=https://github.com/ystudy/GridGate-OpenSim/releases
 asset=dreamgrid-linux-x64.tar.gz
 prefix=/opt/dreamgrid
 # The private .NET runtime lives outside $prefix, one folder per version: children that keep running through an

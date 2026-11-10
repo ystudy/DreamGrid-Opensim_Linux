@@ -2,7 +2,7 @@
 
 Date: 2026-10-27
 Builds on: `2026-10-24-crossplatform-launcher-v1-design.md` (version 1) and the Bootstrap restyle (PR #6, merged into `V7` as 564faa1).
-Repo: `ystudy/DreamGrid-Opensim_Linux`, branch `V7`.
+Repo: `ystudy/GridGate-OpenSim`, branch `V7`.
 
 This is the second of three agreed website steps: (1) Bootstrap for every page (done), (2) **Regions**, (3) a status dashboard with graphs (uptime, usage, errors), which gets its own design later.
 

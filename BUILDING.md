@@ -2,7 +2,7 @@
 
 get or update source from git
 
- `git clone -c core.longpaths=true https://github.com/ystudy/DreamGrid-Opensim_Linux.git`
+ `git clone -c core.longpaths=true https://github.com/ystudy/GridGate-OpenSim.git`
 
 On Windows the repository has paths longer than 260 characters, so `core.longpaths` is required.
 

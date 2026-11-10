@@ -46,7 +46,7 @@
 - Program files and data are always separate. An install or upgrade never writes to, moves or deletes the data directory (§6.1: "Re-running the script on an installed system upgrades in place and never wipes data").
 - Children outlive the launcher: the systemd unit uses `KillMode=process` (§4.12), and Windows children are not in a job object that the service's end would kill.
 - An upgrade restarts children only when the OpenSim binaries changed. This is the existing `RuntimeStager` stamp; do not add another trigger.
-- The Debian one-liner is `curl -fsSL https://github.com/ystudy/DreamGrid-Opensim_Linux/releases/latest/download/install.sh | sudo bash` (§4.13).
+- The Debian one-liner is `curl -fsSL https://github.com/ystudy/GridGate-OpenSim/releases/latest/download/install.sh | sudo bash` (§4.13).
 - Release assets: `dreamgrid-<version>-linux-x64.tar.gz`, `DreamGridSetup-<version>.exe`, `install.sh`, `SHA256SUMS`. Version tags are `v<major>.<minor>.<patch>`. The version (`<major>.<minor>.<patch>` from the tag; `0.0.0-dev+<short sha>` for untagged builds) is the launcher's `InformationalVersion`, which the site footer already shows (§4.13).
 - `DreamGridSetup.exe` is unsigned. README and the release notes carry the SmartScreen note "More info → Run anyway" (§4.16).
 - Nothing in an install contacts outworldz.com or any third-party service at run time. Downloads happen only at build time (runtime, MariaDB) and in `install.sh` (GitHub Releases, Debian mirrors) (§4.15).
@@ -408,7 +408,7 @@
   - **`install.sh [--from <tarball>] [--web-port <n>]`**, in this order:
     1. Root check, and Debian 12/13 from `/etc/os-release` (`ID=debian`, `VERSION_ID` 12|13). Anything else → a plain message and exit 1.
     2. `apt-get install -y mariadb-server libgdiplus ca-certificates curl iproute2`, plus `libicu72` on 12 or `libicu76` on 13. The system `mariadb.service` is left as installed (§4.14).
-    3. Without `--from`, download `https://github.com/ystudy/DreamGrid-Opensim_Linux/releases/latest/download/dreamgrid-linux-x64.tar.gz` and `SHA256SUMS`, then verify. The release workflow (Task 13) also attaches the tarball under this stable name.
+    3. Without `--from`, download `https://github.com/ystudy/GridGate-OpenSim/releases/latest/download/dreamgrid-linux-x64.tar.gz` and `SHA256SUMS`, then verify. The release workflow (Task 13) also attaches the tarball under this stable name.
     4. If the service is not active and the web port (8001 or `--web-port`) is listening (`ss -ltnH "sport = :$port"`): print `Port <n> is already used by another program. Re-run with --web-port <free port>, for example --web-port 8101.` and exit 1.
     5. `useradd --system --home-dir /var/lib/dreamgrid --shell /usr/sbin/nologin dreamgrid` (if missing). Create `/var/lib/dreamgrid` with owner `dreamgrid` and mode 0700.
     6. Install or upgrade `/opt/dreamgrid` (Decisions table), owned by root, mode 755.
