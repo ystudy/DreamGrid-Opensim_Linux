@@ -62,6 +62,8 @@ public sealed class GridControllerWiringTests : IDisposable
         {
             DatabaseRunningForTests = () => _databaseUp,
             ProgramStartForTests = launchStandIns ? _ => StandIn() : null,
+            // Most fake consoles here never answer "login status" (a real region always does): keep the retry short.
+            AdoptedLoginStatusWait = TimeSpan.FromSeconds(1),
         };
     }
 

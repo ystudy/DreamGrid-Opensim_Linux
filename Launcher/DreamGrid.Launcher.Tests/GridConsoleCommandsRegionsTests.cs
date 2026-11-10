@@ -55,6 +55,43 @@ public sealed class GridConsoleCommandsRegionsTests
         Assert.True(console.Commands.Count(c => c == "show regions") >= 2);
     }
 
+    [Fact]
+    public async Task Adopted_login_status_asks_again_when_the_first_reply_has_no_answer()
+    {
+        // A slow console answered after the settle time. The region's one-time alert went out before this launcher was
+        // listening, so "no answer" taken for "disabled" left an adopted region Starting for good (CI, Debian 13).
+        var asked = 0;
+        var console = new FakeRestConsole(cmd => cmd == "login status"
+            ? (++asked == 1 ? [] : [("Login in Isle are enabled", false)])
+            : []);
+
+        var lines = await GridConsoleCommands.AdoptedLoginStatusAsync(console.Client, Settle, TimeProvider.System, CancellationToken.None);
+
+        Assert.True(GridConsoleCommands.ParseLoginStatus(lines)["Isle"]);
+        Assert.Equal(2, console.Commands.Count(c => c == "login status"));
+    }
+
+    [Fact]
+    public async Task Adopted_login_status_takes_a_disabled_answer_at_once()
+    {
+        var console = new FakeRestConsole(cmd => cmd == "login status" ? [("Login in Isle are disabled", false)] : []);
+
+        var lines = await GridConsoleCommands.AdoptedLoginStatusAsync(console.Client, Settle, TimeProvider.System, CancellationToken.None);
+
+        Assert.False(GridConsoleCommands.ParseLoginStatus(lines)["Isle"]);
+        Assert.Single(console.Commands, c => c == "login status");
+    }
+
+    [Fact]
+    public async Task Adopted_login_status_gives_up_when_no_answer_arrives_before_the_wait_runs_out()
+    {
+        var time = new FakeTimeProvider { AutoAdvanceAmount = TimeSpan.FromSeconds(10) };
+        var console = new FakeRestConsole(_ => []);
+
+        Assert.Empty(await GridConsoleCommands.AdoptedLoginStatusAsync(console.Client, Settle, time, CancellationToken.None));
+        Assert.True(console.Commands.Count(c => c == "login status") >= 2);
+    }
+
     private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(100);
 
     [Fact]
