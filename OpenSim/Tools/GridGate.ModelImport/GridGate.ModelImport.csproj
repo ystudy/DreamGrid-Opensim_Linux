@@ -46,6 +46,10 @@
       <HintPath>$(DgRoot)bin\OpenMetaverse.Rendering.Meshmerizer.dll</HintPath>
       <Private>False</Private>
     </Reference>
+    <Reference Include="System.Drawing.Common">
+      <HintPath>$(DgRoot)bin\System.Drawing.Common.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
     <Reference Include="log4net">
       <HintPath>$(DgRoot)bin\log4net.dll</HintPath>
       <Private>False</Private>
