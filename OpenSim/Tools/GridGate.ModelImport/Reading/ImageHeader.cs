@@ -15,6 +15,22 @@ public static class ImageHeader
         return null;
     }
 
+    /// <summary>
+    /// What the bytes are, by header: "png" or "jpeg" only when a size can be read from them (so a cut-short or damaged one is not
+    /// trusted), else a name for a few other known formats, else "unknown".
+    /// </summary>
+    public static string Format(ReadOnlySpan<byte> b)
+    {
+        if (Size(b) != null) return b[0] == 0x89 ? "png" : "jpeg";
+        if (b.Length >= 2 && b[0] == 'B' && b[1] == 'M') return "bmp";
+        if (b.Length >= 4 && b[0] == 'G' && b[1] == 'I' && b[2] == 'F' && b[3] == '8') return "gif";
+        if (b.Length >= 12 && b[0] == 'R' && b[1] == 'I' && b[2] == 'F' && b[3] == 'F' && b[8] == 'W' && b[9] == 'E' && b[10] == 'B' && b[11] == 'P') return "webp";
+        if (b.Length >= 4 && ((b[0] == 'I' && b[1] == 'I' && b[2] == 42 && b[3] == 0) || (b[0] == 'M' && b[1] == 'M' && b[2] == 0 && b[3] == 42))) return "tiff";
+        if (b.Length >= 4 && b[0] == 'D' && b[1] == 'D' && b[2] == 'S' && b[3] == ' ') return "dds";
+        if (b.Length >= 5 && b[0] == 0xAB && b[1] == 'K' && b[2] == 'T' && b[3] == 'X' && b[4] == ' ') return "ktx2";
+        return "unknown";
+    }
+
     // 8-byte signature, then the first chunk, which must be IHDR: length (4), "IHDR" (4), width (4), height (4), big-endian.
     private static (int, int)? Png(ReadOnlySpan<byte> b)
     {

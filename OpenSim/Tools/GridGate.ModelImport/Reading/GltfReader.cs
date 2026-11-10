@@ -37,10 +37,10 @@ public static class GltfReader
     internal static ReadResult Read(Stream input, string fileName, ImportLimits limits, Action<string>? onSatelliteRequest)
     {
         // 1. The upload cap, before anything is parsed. At most one chunk more than the cap is read.
-        byte[] bytes;
+        ArraySegment<byte> bytes;
         try
         {
-            using var buffer = new MemoryStream();
+            var buffer = new MemoryStream();
             var chunk = new byte[81920];
             long total = 0;
             int n;
@@ -51,7 +51,10 @@ public static class GltfReader
                     return Blocked(Refusal("too-large-file", ("what", "upload"), ("limit", Num(limits.MaxUploadBytes))));
                 buffer.Write(chunk, 0, n);
             }
-            bytes = buffer.ToArray();
+            // The stream's own buffer, not a copy of it. A text .gltf may start with a UTF-8 byte order mark, which is not part of the JSON.
+            bytes = new ArraySegment<byte>(buffer.GetBuffer(), 0, (int)buffer.Length);
+            if (!IsGlb(bytes) && bytes.Count >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
+                bytes = bytes.Slice(3);
         }
         catch (Exception e)
         {
@@ -79,7 +82,13 @@ public static class GltfReader
                 onSatelliteRequest?.Invoke(uri);
                 throw new IOException("External file references are not read: " + uri);
             });
-            root = context.ReadSchema2(new MemoryStream(bytes, false));
+            // SharpGLTF's own validation refuses an image it does not recognise (BMP, junk), which would make the whole file bad-file.
+            // Those images are meant to be dropped with a finding instead, so its content validation is skipped; every accessor and
+            // index is still bounds-checked when read, and any exception is caught below.
+            context.Validation = SharpGLTF.Validation.ValidationMode.Skip;
+            // The callback above is the backstop: if the JSON check in step 2 and SharpGLTF ever disagree about what counts as an
+            // outside file, the request still fails here and the file becomes bad-file; nothing is ever opened.
+            root = context.ReadSchema2(new MemoryStream(bytes.Array!, bytes.Offset, bytes.Count, false));
         }
         catch (Exception e)
         {
@@ -88,12 +97,11 @@ public static class GltfReader
 
         try
         {
-            // 4. Image headers, before any image is decoded.
+            // 4. Image headers, before any image is decoded. A PNG or JPEG above the cap is refused here; an image that is neither
+            // is not refused but is left out of the model later (texture-unsupported), so it is never decoded.
             foreach (var image in root.LogicalImages)
             {
-                var content = image.Content;
-                if (!content.IsValid) continue;
-                if (ImageHeader.Size(content.Content.Span) is { } size && (size.Width > limits.MaxImageSide || size.Height > limits.MaxImageSide))
+                if (ImageHeader.Size(image.Content.Content.Span) is { } size && (size.Width > limits.MaxImageSide || size.Height > limits.MaxImageSide))
                     return Blocked(Refusal("too-large-file", ("what", "image"), ("image", size.Width + "x" + size.Height), ("limit", Num(limits.MaxImageSide))));
             }
 
@@ -114,7 +122,9 @@ public static class GltfReader
             }
             if (primitives == 0) return Blocked(Unreadable("The file has no mesh."));
 
-            return new ReadResult(Convert(root, scene), Array.Empty<Finding>());
+            var findings = new List<Finding>();
+            var model = Convert(root, scene, findings);
+            return new ReadResult(model, findings);
         }
         catch (Exception e)
         {
@@ -135,20 +145,23 @@ public static class GltfReader
         root.DefaultScene ?? root.LogicalScenes.FirstOrDefault() ?? throw new InvalidDataException("The file has no scene.");
 
     // The JSON text of a .gltf, or of a .glb's first chunk. Throws when it is neither.
-    private static ReadOnlyMemory<byte> JsonChunk(byte[] bytes)
+    private static ReadOnlyMemory<byte> JsonChunk(ArraySegment<byte> bytes)
     {
-        if (bytes.Length >= 4 && bytes[0] == 'g' && bytes[1] == 'l' && bytes[2] == 'T' && bytes[3] == 'F')
+        if (IsGlb(bytes))
         {
             // 12-byte header, then the first chunk: length, type ("JSON" = 0x4E4F534A), data.
-            if (bytes.Length < 20) throw new InvalidDataException("The binary glTF header is cut short.");
-            var length = BitConverter.ToUInt32(bytes, 12);
-            var type = BitConverter.ToUInt32(bytes, 16);
+            if (bytes.Count < 20) throw new InvalidDataException("The binary glTF header is cut short.");
+            var length = BitConverter.ToUInt32(bytes.Array!, bytes.Offset + 12);
+            var type = BitConverter.ToUInt32(bytes.Array!, bytes.Offset + 16);
             if (type != 0x4E4F534A) throw new InvalidDataException("The binary glTF has no JSON chunk first.");
-            if (length > bytes.Length - 20) throw new InvalidDataException("The binary glTF JSON chunk is cut short.");
-            return new ReadOnlyMemory<byte>(bytes, 20, (int)length);
+            if (length > bytes.Count - 20) throw new InvalidDataException("The binary glTF JSON chunk is cut short.");
+            return new ReadOnlyMemory<byte>(bytes.Array, bytes.Offset + 20, (int)length);
         }
         return bytes;
     }
+
+    private static bool IsGlb(ArraySegment<byte> bytes) =>
+        bytes.Count >= 4 && bytes[0] == 'g' && bytes[1] == 'l' && bytes[2] == 'T' && bytes[3] == 'F';
 
     // Compression, outside files and the node count, from the JSON alone. Null when nothing is refused.
     private static Finding? CheckJson(JsonElement root, ImportLimits limits)
@@ -189,10 +202,10 @@ public static class GltfReader
         };
     }
 
-    private static ImportModel Convert(ModelRoot root, Scene scene)
+    private static ImportModel Convert(ModelRoot root, Scene scene, List<Finding> findings)
     {
         var dropped = new List<string>();
-        var materials = new MaterialTable(root);
+        var materials = new MaterialTable(root, findings);
         var skin = root.LogicalSkins.FirstOrDefault();
         var parts = new List<ImportPart>();
         bool morphs = false, cameras = false, lines = false, points = false;
@@ -388,8 +401,12 @@ public static class GltfReader
         private readonly Dictionary<Material, int> _materialIndex = new();
         private int _default = -1;
 
-        public MaterialTable(ModelRoot root)
+        private readonly List<Finding> _findings;
+        private readonly HashSet<Image> _unsupported = new();
+
+        public MaterialTable(ModelRoot root, List<Finding> findings)
         {
+            _findings = findings;
             foreach (var m in root.LogicalMaterials) _materialIndex[m] = Add(m);
         }
 
@@ -411,7 +428,7 @@ public static class GltfReader
         {
             var channel = m.FindChannel("BaseColor");
             // The colour is the channel's Vector4 parameter (RGBA).
-            var colour = channel?.Parameters.Select(p => p.Value).OfType<Vector4>().FirstOrDefault() ?? Vector4.One;
+            var colour = channel?.Parameters.Select(p => p.Value).OfType<Vector4>().Select(v => (Vector4?)v).FirstOrDefault() ?? Vector4.One;
             int? image = null;
             var img = channel?.Texture?.PrimaryImage;
             if (img != null) image = ImageIndex(img);
@@ -428,10 +445,21 @@ public static class GltfReader
         private int? ImageIndex(Image img)
         {
             if (_imageIndex.TryGetValue(img, out var i)) return i;
-            var content = img.Content;
-            if (!content.IsValid) return null;
-            var mime = content.IsPng ? "image/png" : content.IsJpg ? "image/jpeg" : content.MimeType;
-            _images.Add(new ImportImage(img.Name ?? "Image" + _images.Count, mime, content.Content.ToArray()));
+            var bytes = img.Content.Content;
+            // Only PNG and JPEG, judged by the header whatever mimeType says, ever reach a decoder. Anything else is left out.
+            var format = ImageHeader.Format(bytes.Span);
+            if (format != "png" && format != "jpeg")
+            {
+                if (_unsupported.Add(img))
+                    _findings.Add(new Finding("texture-unsupported", FindingKind.Risky, new Dictionary<string, string>
+                    {
+                        ["image"] = string.IsNullOrEmpty(img.Name) ? "Image" + img.LogicalIndex.ToString(CultureInfo.InvariantCulture) : img.Name,
+                        ["format"] = format,
+                    }));
+                return null;
+            }
+            var mime = format == "png" ? "image/png" : "image/jpeg";
+            _images.Add(new ImportImage(img.Name ?? "Image" + _images.Count, mime, bytes.ToArray()));
             return _imageIndex[img] = _images.Count - 1;
         }
     }

@@ -38,7 +38,7 @@ public class GltfReaderTests
 
     // A glTF whose mesh 0 is one triangle (vertex 0 at (0,1,0)). nodes is the JSON array of nodes; sceneNodes the scene's root
     // node indices; bufferUri the buffer's uri (embedded by default); top is extra top-level JSON, starting with a comma.
-    internal static byte[] GltfJson(string nodes, string sceneNodes, string? bufferUri = null, string top = "")
+    internal static byte[] GltfJson(string nodes, string sceneNodes, string? bufferUri = null, string top = "", string primitiveExtra = "")
     {
         var floats = new float[] { 0, 1, 0, 1, 0, 0, 0, 0, 1 };
         var bytes = new byte[floats.Length * 4];
@@ -46,7 +46,7 @@ public class GltfReaderTests
         bufferUri ??= "data:application/octet-stream;base64," + Convert.ToBase64String(bytes);
         var json = "{\"asset\":{\"version\":\"2.0\"},\"scene\":0,\"scenes\":[{\"nodes\":" + sceneNodes + "}],"
             + "\"nodes\":" + nodes + ","
-            + "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0}}]}],"
+            + "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0}" + primitiveExtra + "}]}],"
             + "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\",\"min\":[0,0,0],\"max\":[1,1,1]}],"
             + "\"bufferViews\":[{\"buffer\":0,\"byteLength\":36}],"
             + "\"buffers\":[{\"byteLength\":36,\"uri\":\"" + bufferUri + "\"}]" + top + "}";

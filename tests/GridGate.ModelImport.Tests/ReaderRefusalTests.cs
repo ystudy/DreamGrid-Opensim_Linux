@@ -113,12 +113,74 @@ public class ReaderRefusalTests
     }
 
     [Fact]
-    public void Image_at_the_limit_is_not_refused()
+    public void Image_at_the_limit_is_kept()
     {
-        var root = ModelRoot.CreateModel();
-        root.UseImage(new MemoryImage(PngHeader(8192, 8192)));
-        var f = Read(root.WriteGLB().ToArray());
-        Assert.DoesNotContain(f.Findings, x => x.Code == "too-large-file");
+        var m = Read(TexturedGltf(PngHeader(8192, 8192))).Model!;
+        Assert.Single(m.Images);
+        Assert.Equal("image/png", m.Images[0].MimeType);
+        Assert.Equal(0, m.Materials[0].BaseColourImage);
+    }
+
+    private static byte[] TexturedGltf(byte[] image, string mime = "image/png")
+    {
+        var top = ",\"images\":[{\"uri\":\"data:" + mime + ";base64," + Convert.ToBase64String(image) + "\"}],\"textures\":[{\"source\":0}],"
+            + "\"materials\":[{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0}}}]";
+        return GltfJson("[{\"mesh\":0}]", "[0]", top: top, primitiveExtra: ",\"material\":0");
+    }
+
+    // A .glb with the one-triangle mesh and one base colour image kept in the binary chunk (declared as mime, whatever it holds).
+    private static byte[] TexturedGlb(byte[] image, string mime)
+    {
+        var bin = new List<byte>();
+        foreach (var f in new float[] { 0, 1, 0, 1, 0, 0, 0, 0, 1 }) bin.AddRange(BitConverter.GetBytes(f));
+        bin.AddRange(image);
+        while (bin.Count % 4 != 0) bin.Add(0);
+        var json = "{\"asset\":{\"version\":\"2.0\"},\"scene\":0,\"scenes\":[{\"nodes\":[0]}],\"nodes\":[{\"mesh\":0}],"
+            + "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"material\":0}]}],"
+            + "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\",\"min\":[0,0,0],\"max\":[1,1,1]}],"
+            + "\"bufferViews\":[{\"buffer\":0,\"byteLength\":36},{\"buffer\":0,\"byteOffset\":36,\"byteLength\":" + image.Length + "}],"
+            + "\"buffers\":[{\"byteLength\":" + bin.Count + "}],"
+            + "\"images\":[{\"bufferView\":1,\"mimeType\":\"" + mime + "\"}],\"textures\":[{\"source\":0}],"
+            + "\"materials\":[{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0}}}]}";
+        var jsonBytes = new List<byte>(Encoding.UTF8.GetBytes(json));
+        while (jsonBytes.Count % 4 != 0) jsonBytes.Add((byte)' ');
+        var glb = new List<byte>();
+        glb.AddRange(Encoding.ASCII.GetBytes("glTF"));
+        glb.AddRange(BitConverter.GetBytes(2u));
+        glb.AddRange(BitConverter.GetBytes((uint)(12 + 8 + jsonBytes.Count + 8 + bin.Count)));
+        glb.AddRange(BitConverter.GetBytes((uint)jsonBytes.Count)); glb.AddRange(BitConverter.GetBytes(0x4E4F534Au)); glb.AddRange(jsonBytes);
+        glb.AddRange(BitConverter.GetBytes((uint)bin.Count)); glb.AddRange(BitConverter.GetBytes(0x004E4942u)); glb.AddRange(bin);
+        return glb.ToArray();
+    }
+
+    [Theory]
+    [InlineData("bmp")]
+    [InlineData("unknown")]
+    public void An_image_that_is_not_png_or_jpeg_is_left_out_without_being_checked(string kind)
+    {
+        // A BMP header claiming 60000x60000, or junk: neither is PNG/JPEG, so neither is ever decoded; the material loses its texture.
+        var bytes = kind == "bmp"
+            ? new byte[] { (byte)'B', (byte)'M', 0, 0, 0, 0, 0, 0, 0, 0, 54, 0, 0, 0, 40, 0, 0, 0, 0x60, 0xEA, 0, 0, 0x60, 0xEA, 0, 0, 1, 0, 24, 0 }
+            : Encoding.ASCII.GetBytes("this is not an image at all");
+        var r = Read(TexturedGlb(bytes, "image/png"));
+        Assert.True(r.Model != null, string.Join(";", r.Findings.Select(x => x.Code + string.Join(",", x.Values))));
+        Assert.NotNull(r.Model);
+        Assert.DoesNotContain(r.Findings, f => f.Kind == FindingKind.Blocking);
+        var f = Assert.Single(r.Findings);
+        Assert.Equal("texture-unsupported", f.Code);
+        Assert.Equal(FindingKind.Risky, f.Kind);
+        Assert.Equal(kind, f.Values["format"]);
+        Assert.False(string.IsNullOrEmpty(f.Values["image"]));
+        Assert.Empty(r.Model!.Images);
+        Assert.Null(r.Model.Materials[0].BaseColourImage);
+    }
+
+    [Fact]
+    public void A_utf8_byte_order_mark_before_the_json_is_accepted()
+    {
+        var json = GltfJson("[{\"mesh\":0}]", "[0]");
+        var withBom = new byte[] { 0xEF, 0xBB, 0xBF }.Concat(json).ToArray();
+        Assert.NotNull(Read(withBom).Model);
     }
 
     [Fact]
