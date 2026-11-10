@@ -8,8 +8,9 @@ On Windows the repository has paths longer than 260 characters, so `core.longpat
 
 # Project files
 
-The `.csproj` files and `DreamGrid.sln` are checked in. Prebuild is no longer run:
-`prebuild.xml` is kept only as a reference when merging from Outworldz/DreamGrid-Opensim; see `MERGING.md`.
+The `.csproj` files and `DreamGrid.sln` are checked in, and Prebuild is not run. The `prebuild.xml` files
+left in the tree are not used by the build. When an OpenSimulator update changes upstream's `prebuild.xml`,
+the same change is made by hand to the `.csproj` files; see `MERGING.md`.
 Shared settings (target framework `net10.0`) live in `Directory.Build.props` and `Directory.Build.targets`.
 
 # Building on Windows
