@@ -26,10 +26,7 @@
  */
 
 using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.IO;
-using System.IO.Compression;
 using System.Reflection;
 using System.Net;
 
@@ -69,6 +66,12 @@ namespace OpenSim.Server.Handlers.Simulation
             }
 
             if (httpRequest.ContentType != "application/json" && httpRequest.ContentType != "application/x-gzip")
+            {
+                httpResponse.StatusCode = (int)HttpStatusCode.NotAcceptable;
+                httpResponse.RawBuffer = Utils.falseStrBytes;
+            }
+
+            if(httpRequest.Headers["X-SecondLife-Shard"] != null)
             {
                 httpResponse.StatusCode = (int)HttpStatusCode.NotAcceptable;
                 httpResponse.RawBuffer = Utils.falseStrBytes;
@@ -221,6 +224,12 @@ namespace OpenSim.Server.Handlers.Simulation
                 httpResponse.StatusCode = (int)HttpStatusCode.InternalServerError;
                 httpResponse.RawBuffer = Utils.falseStrBytes;
                 return;
+            }
+
+            if(httpRequest.Headers["X-SecondLife-Shard"] != null)
+            {
+                httpResponse.StatusCode = (int)HttpStatusCode.NotAcceptable;
+                httpResponse.RawBuffer = Utils.falseStrBytes;
             }
 
             if (!Utils.GetParams(httpRequest.UriPath, out UUID agentID, out UUID regionID, out string action))

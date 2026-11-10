@@ -9,14 +9,16 @@ longer public, so we now take them from OpenSimulator directly.
 
 ## Where our tree stands
 
-- **Base:** OpenSimulator `master` at `78cb44c0c93dcb2af2b73b46f8cbdb56d2d7e0b7` (2026-08-11, "recover lost
-  change"), version `0.9.3.1` Dev. Fred brought that in as "Update to August core" (`a19786cf`). On top of it
-  sit the DreamGrid patches and our own changes.
+- **Base:** OpenSimulator `master` at `9d00a5555225b17d3d1063cb0f3496fb1b6217f9` (2026-11-07, "soem extra
+  spaces"), version `0.9.3.1` Dev. Every upstream commit up to it has been picked or recorded. On top of it sit
+  the DreamGrid patches and our own changes.
+- **How we got there:** Fred brought in upstream `78cb44c0` (2026-08-11) as "Update to August core"
+  (`a19786cf`). "OpenSim merge 1" (PR #30) picked 34 later commits, and "OpenSim merge 2" picked the other 36.
 - **No shared history.** Our history starts with Fred's import of the source in January 2025 ("V5 from Tandy"),
   so `git merge-base` finds no common commit with OpenSimulator. A `git merge` would treat every file that
   differs as a conflict, so we cherry-pick instead.
 - **What we have taken since the base** is recorded in commit trailers: every commit picked from
-  OpenSimulator carries `Upstream-OpenSim: <full upstream SHA>`. The first batch was "OpenSim merge 1" (PR #30).
+  OpenSimulator carries `Upstream-OpenSim: <full upstream SHA>`.
 
 ## One-time setup
 
@@ -38,7 +40,7 @@ Work in a branch named after the batch, e.g. `opensim-merge-2`.
 
 ```bash
 git fetch opensim
-BASE=78cb44c0c93dcb2af2b73b46f8cbdb56d2d7e0b7
+BASE=9d00a5555225b17d3d1063cb0f3496fb1b6217f9
 git log V7 --format='%(trailers:key=Upstream-OpenSim,valueonly)' | grep . | sort -u > picked.txt
 git rev-list --reverse --no-merges $BASE..opensim/master | grep -vFf picked.txt > todo.txt
 git log --no-walk=unsorted --date=short --format='%h %ad %an | %s' $(cat todo.txt)

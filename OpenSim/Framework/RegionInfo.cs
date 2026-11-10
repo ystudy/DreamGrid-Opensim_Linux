@@ -28,10 +28,10 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
-using System.Net.Sockets;
 using System.Reflection;
 using System.Xml;
 using System.IO;
+using System.Runtime.CompilerServices;
 using log4net;
 using Nini.Config;
 using OpenMetaverse;
@@ -46,19 +46,15 @@ namespace OpenSim.Framework
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
         private static readonly string LogHeader = "[REGION INFO]";
 
-        public bool commFailTF = false;
         public ConfigurationMember configMember;
-        public string DataStore = String.Empty;
 
-        public string RegionFile = String.Empty;
+        public string RegionFile = string.Empty;
         public bool isSandbox = false;
         public bool Persistent = true;
 
         private EstateSettings m_estateSettings;
         private RegionSettings m_regionSettings;
-        // private IConfigSource m_configSource = null;
 
-        public UUID originRegionID = UUID.Zero;
         public string regionSecret = UUID.Random().ToString();
 
         public string osSecret;
@@ -213,13 +209,10 @@ namespace OpenSim.Framework
 
         public EstateSettings EstateSettings
         {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get
             {
-                if (m_estateSettings == null)
-                {
-                    m_estateSettings = new EstateSettings();
-                }
-
+                m_estateSettings ??= new EstateSettings();
                 return m_estateSettings;
             }
 
@@ -228,13 +221,10 @@ namespace OpenSim.Framework
 
         public RegionSettings RegionSettings
         {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get
             {
-                if (m_regionSettings == null)
-                {
-                    m_regionSettings = new RegionSettings();
-                }
-
+                m_regionSettings ??= new RegionSettings();
                 return m_regionSettings;
             }
 
@@ -243,41 +233,49 @@ namespace OpenSim.Framework
 
         public float NonphysPrimMin
         {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get { return m_nonphysPrimMin; }
         }
 
         public int NonphysPrimMax
         {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get { return m_nonphysPrimMax; }
         }
 
         public float PhysPrimMin
         {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get { return m_physPrimMin; }
         }
 
         public int PhysPrimMax
         {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get { return m_physPrimMax; }
         }
 
         public bool ClampPrimSize
         {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get { return m_clampPrimSize; }
         }
 
         public int ObjectCapacity
         {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get { return m_objectCapacity; }
         }
 
         public int MaxPrimsPerUser
         {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get { return m_maxPrimsPerUser; }
         }
 
         public int LinksetCapacity
         {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get { return m_linksetCapacity; }
         }
 
@@ -323,7 +321,7 @@ namespace OpenSim.Framework
                 }
             }
             set {
-                if ( value.EndsWith("/") ) {
+                if ( value.EndsWith('/') ) {
                     m_serverURI = value;
                 } else {
                     m_serverURI = value + '/';
@@ -343,7 +341,7 @@ namespace OpenSim.Framework
             set { m_remotingPort = value; }
         }
 
-        
+
         /// <value>
         /// This accessor can throw all the exceptions that Dns.GetHostAddresses can throw.
         ///
@@ -405,6 +403,14 @@ namespace OpenSim.Framework
         public ulong RegionHandle
         {
             get { return Util.UIntsToLong(WorldLocX, WorldLocY); }
+        }
+
+        //for legacy modules only
+        [Obsolete]
+        public UUID originRegionID
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get { return RegionID; }
         }
 
         public void SetEndPoint(string ipaddr, int port)
@@ -496,8 +502,6 @@ namespace OpenSim.Framework
                 }
                 config.Set("RegionUUID", regionUUID);
             }
-
-            originRegionID = RegionID; // What IS this?! (Needed for RegionCombinerModule?)
 
             // Location
             //
@@ -790,9 +794,6 @@ namespace OpenSim.Framework
             string location = String.Format("{0},{1}", RegionLocX, RegionLocY);
             config.Set("Location", location);
 
-            if (DataStore != String.Empty)
-                config.Set("Datastore", DataStore);
-
             if (RegionSizeX != Constants.RegionSize || RegionSizeY != Constants.RegionSize)
             {
                 config.Set("SizeX", RegionSizeX);
@@ -1005,7 +1006,6 @@ namespace OpenSim.Framework
             {
                 case "sim_UUID":
                     RegionID = (UUID) configuration_result;
-                    originRegionID = (UUID) configuration_result;
                     break;
                 case "sim_name":
                     RegionName = (string) configuration_result;
@@ -1024,9 +1024,6 @@ namespace OpenSim.Framework
                     break;
                 case "sim_size_z":
                     RegionSizeZ = (uint) configuration_result;
-                    break;
-                case "datastore":
-                    DataStore = (string) configuration_result;
                     break;
                 case "internal_ip_address":
                     IPAddress address = (IPAddress) configuration_result;

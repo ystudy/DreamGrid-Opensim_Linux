@@ -39,31 +39,33 @@ pads it to a fixed width (`VERSIONINFO_VERSION_LENGTH`), so we do not change it.
 branch since November 2024, and it has not released 0.9.3.1. So we name the base by commit:
 
 ```
-OpenSimulator 0.9.3.1 Dev, 78cb44c0 + 34 picks
+OpenSimulator 0.9.3.1 Dev, 9d00a555 + 3 picks
 ```
 
 - `0.9.3.1 Dev` is `VersionNumber` and `VERSION_FLAVOUR` from `VersionInfo.cs`.
-- `78cb44c0` is the upstream commit our tree is based on (`BASE` in `MERGING.md`).
-- `34 picks` is how many upstream commits after the base we have cherry-picked; those commits carry an
-  `Upstream-OpenSim:` trailer. Count them with:
+- `9d00a555` is the upstream commit our tree is based on (`BASE` in `MERGING.md`): every upstream commit up
+  to it has been picked or recorded.
+- `3 picks` (an example) is how many upstream commits after the base we have cherry-picked; those commits
+  carry an `Upstream-OpenSim:` trailer. Leave `+ N picks` out when there are none. Count them with
+  (`BASE` as in `MERGING.md`, after `git fetch opensim`):
 
   ```bash
-  git log V7 --format='%(trailers:key=Upstream-OpenSim,valueonly)' | grep . | sort -u | wc -l
+  git log V7 --format='%(trailers:key=Upstream-OpenSim,valueonly)' | grep . | sort -u |
+    grep -Fxf <(git rev-list $BASE..opensim/master) | wc -l
   ```
 
   Empty "already have" and "not taking" records count too: they mark upstream commits we have dealt with.
-  After the base moves forward, count only the trailers for commits after the new base.
 
 ## The full version
 
 The full version puts the two together:
 
 ```
-GridGate 0.1.0 (OpenSimulator 0.9.3.1 Dev, 78cb44c0 + 34 picks)
+GridGate 0.1.0 (OpenSimulator 0.9.3.1 Dev, 9d00a555 + 3 picks)
 ```
 
 It goes on the first line of `Version.txt`. The release workflow puts it at the top of each release's notes. Where a single token is
-needed, use semantic-versioning build metadata: `0.1.0+os.0.9.3.1-dev.78cb44c0.34`. Never use that form as a
+needed, use semantic-versioning build metadata: `0.1.0+os.0.9.3.1-dev.9d00a555.3`. Never use that form as a
 tag; tags stay plain.
 
 ## Making a release
@@ -74,7 +76,7 @@ tag; tags stay plain.
 3. After that PR is merged, tag the merge commit and push the tag:
 
    ```bash
-   git tag -a v0.1.0 -m "GridGate 0.1.0 (OpenSimulator 0.9.3.1 Dev, 78cb44c0 + 34 picks)"
+   git tag -a v0.1.0 -m "GridGate 0.1.0 (OpenSimulator 0.9.3.1 Dev, 9d00a555)"
    git push origin v0.1.0
    ```
 

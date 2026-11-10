@@ -781,7 +781,7 @@ namespace OpenSim.Region.CoreModules.World.Warp3DMap
                 return ret;
 
             AssetBase asset = m_scene.AssetService.Get(id.ToString());
-            if (asset is not null)
+            if (asset is not null && asset.Data is not null && asset.Data.Length > 2)
             {
                 try
                 {
