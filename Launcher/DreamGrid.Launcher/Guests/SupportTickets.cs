@@ -61,7 +61,7 @@ public sealed class SupportTickets(TicketStore store, EmailTokens tokens, EmailS
     /// for someone not signed in, whose ticket waits for them to confirm their email. The emails go out in <paramref name="language"/>,
     /// the language of the page (the sender may have no account, so no saved language; task 10 keeps it on the ticket).
     /// </summary>
-    public TicketSendResult Send(TicketForm form, RobustAccount? account, IPAddress? ip, string language = Languages.English)
+    public TicketSendResult Send(TicketForm form, RobustAccount? account, IPAddress? ip, string language)
     {
         var now = time.GetUtcNow();
         var anonymous = account is null;
@@ -118,7 +118,7 @@ public sealed class SupportTickets(TicketStore store, EmailTokens tokens, EmailS
     /// A confirmation link: the ticket opens, and its private link is emailed. Null for a used, expired or unknown link, or when
     /// opening it now would pass the open-ticket limits (checked again here, at the moment it opens).
     /// </summary>
-    public Ticket? Confirm(string? token, string language = Languages.English)
+    public Ticket? Confirm(string? token, string language)
     {
         // Find names the ticket; TryRedeem spends the token, once, for that ticket only.
         if (tokens.Find(ConfirmPurpose, token) is not { } id || !tokens.TryRedeem(ConfirmPurpose, id, token)) return null;
@@ -179,7 +179,7 @@ public sealed class SupportTickets(TicketStore store, EmailTokens tokens, EmailS
     /// "I lost my link": a new link for each of the address's open tickets or ones closed in the last 14 days. [S] The caller shows
     /// the same reply whatever happens here; at most 3 such emails per address a day.
     /// </summary>
-    public void SendLostLinks(string? address, string language = Languages.English)
+    public void SendLostLinks(string? address, string language)
     {
         if (TicketRules.Address(address) is not { } to) return;
         // [S] In the background, so the page answers in the same time whether or not the address has tickets.
@@ -204,14 +204,14 @@ public sealed class SupportTickets(TicketStore store, EmailTokens tokens, EmailS
     }
 
     /// <summary>
-    /// Staff answered: the sender gets an email with a fresh private link, never the reply's text. In the grid's default language
-    /// for now: the ticket's own language comes with task 10.
+    /// Staff answered: the sender gets an email with a fresh private link, never the reply's text. In the saved language of the
+    /// resident when the ticket belongs to an account, else in the grid's default language (the ticket's own language comes with task 10).
     /// </summary>
     public void TellGuestStaffReplied(Ticket ticket)
     {
         // No email can go out: don't use up one of the ticket's five live links for nothing.
         if (!email.IsReady) return;
-        SendAccess(ticket, emailLanguage.Default(), EmailTemplates.TicketStaffReply);
+        SendAccess(ticket, ticket.Sender.Account is { } account ? emailLanguage.ForResident(account) : emailLanguage.Default(), EmailTemplates.TicketStaffReply);
     }
 
     /// <summary>Adds a fresh private link to the ticket and emails it to the sender.</summary>

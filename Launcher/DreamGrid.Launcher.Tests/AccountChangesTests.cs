@@ -85,10 +85,10 @@ public sealed class AccountChangesTests
     private static string CodeNow(Rig rig, byte[] secret) => Totp.Code(secret, Totp.StepAt(rig.F.Time.GetUtcNow()));
 
     private static Task<AccountOutcome> ChangeAsync(Rig rig, string current = Old, string? code = null, string password = New, string? again = null) =>
-        rig.Changes.ChangePasswordAsync(AnnId, current, code, password, again ?? password, Caller, Ct);
+        rig.Changes.ChangePasswordAsync(AnnId, current, code, password, again ?? password, Caller, Ct, "en");
 
     private static Task<AccountOutcome> AskAsync(Rig rig, string email = "ann.new@example.com", string current = Old, string? code = null) =>
-        rig.Changes.AskEmailChangeAsync(AnnId, current, code, email, Caller, Ct);
+        rig.Changes.AskEmailChangeAsync(AnnId, current, code, email, Caller, Ct, "en");
 
     private static async Task<string> AskedTokenAsync(Rig rig, string email = "ann.new@example.com", string current = Old)
     {
@@ -201,7 +201,7 @@ public sealed class AccountChangesTests
         Assert.Equal(AccountResult.Done, (await ChangeAsync(rig)).Result);
         Assert.Equal(annStamp, sessions.StampOf(AnnId));
 
-        var r = await rig.Changes.ChangePasswordAsync(TestAuth.AdminId, "pass-word1", null, New, New, Caller, Ct);
+        var r = await rig.Changes.ChangePasswordAsync(TestAuth.AdminId, "pass-word1", null, New, New, Caller, Ct, "en");
         Assert.Equal(AccountResult.Done, r.Result);
         Assert.NotEqual(adminStamp, sessions.StampOf(TestAuth.AdminId));
     }
@@ -416,7 +416,7 @@ public sealed class AccountChangesTests
         await using var rig = Factory();
         var token = await AskedTokenAsync(rig);
         var reset = rig.F.Services.GetRequiredService<Core.Guests.EmailTokens>().Issue(PasswordResets.Purpose, AnnId, PasswordResets.LinkLifetime);
-        var (result, _, _) = await rig.F.Services.GetRequiredService<PasswordResets>().ResetAsync(reset, null, New, New, Caller, Ct);
+        var (result, _, _) = await rig.F.Services.GetRequiredService<PasswordResets>().ResetAsync(reset, null, New, New, Caller, Ct, "en");
         Assert.Equal(ResetResult.Done, result);
         Assert.Equal(EmailLinkResult.Expired, (await rig.Changes.ConfirmEmailChangeAsync(token, Ct)).Result);
         Assert.Equal("ann@example.com", rig.Ann.Email);

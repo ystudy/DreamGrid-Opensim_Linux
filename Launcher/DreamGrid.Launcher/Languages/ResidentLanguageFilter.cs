@@ -19,7 +19,10 @@ public sealed class ResidentLanguageFilter(bool welcome) : IAsyncPageFilter, IAs
     private const string ItemKey = "dg-lang";
 
     /// <summary>The language picked for this request; English when no resident filter ran.</summary>
-    public static string Current(HttpContext ctx) => ctx.Items[ItemKey] as string ?? Core.Languages.English;
+    public static string Current(HttpContext ctx) => Picked(ctx) ?? Core.Languages.English;
+
+    /// <summary>The language picked for this request, or null when no resident filter ran.</summary>
+    internal static string? Picked(HttpContext ctx) => ctx.Items[ItemKey] as string;
 
     public Task OnPageHandlerSelectionAsync(PageHandlerSelectedContext context) => Task.CompletedTask;
 

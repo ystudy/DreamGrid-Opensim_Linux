@@ -1,3 +1,4 @@
+using DreamGrid.Launcher.Core;
 using DreamGrid.Launcher.Core.Email;
 using DreamGrid.Launcher.Core.Settings;
 using Xunit;
@@ -127,6 +128,14 @@ public sealed class EmailTemplatesTests
         var s = WithWording("de", "confirm-email", mine);
         Assert.Equal(mine, EmailTemplates.Current(s, "confirm-email", "de"));
         Assert.Equal(EmailTemplates.Default("confirm-email", "en"), EmailTemplates.Current(s, "confirm-email", "en"));
+    }
+
+    [Fact]
+    public void A_missing_resident_text_throws_instead_of_giving_an_empty_email()
+    {
+        var e = Assert.Throws<InvalidOperationException>(() => EmailTemplates.Resource("no-such-email.Subject", Languages.Culture("en")));
+        Assert.Contains("no-such-email.Subject", e.Message);
+        Assert.Equal("30 minutes", EmailTemplates.Resource("ExpiresIn.30m", Languages.Culture("en")));
     }
 
     [Fact]

@@ -71,7 +71,7 @@ public sealed class AccountChanges(Func<LauncherSettings> settings, IRobustClien
     public bool EmailChangeAvailable() => sender.IsReady;
 
     public async Task<AccountOutcome> ChangePasswordAsync(Guid principal, string? current, string? code, string? password, string? again,
-        IPAddress? ip, CancellationToken ct, string language = Languages.English)
+        IPAddress? ip, CancellationToken ct, string language)
     {
         var (refused, account) = await CheckAsync(principal, current, code, ip, "password-change-refused", ct);
         if (refused is not null) return refused;
@@ -104,7 +104,7 @@ public sealed class AccountChanges(Func<LauncherSettings> settings, IRobustClien
     }
 
     public async Task<AccountOutcome> AskEmailChangeAsync(Guid principal, string? current, string? code, string? newEmail, IPAddress? ip,
-        CancellationToken ct, string language = Languages.English)
+        CancellationToken ct, string language)
     {
         if (!sender.IsReady) return new(AccountResult.NoEmail, NoEmailText, new("Account.NoEmail"));
         var (refused, account) = await CheckAsync(principal, current, code, ip, "email-change-refused", ct);

@@ -49,7 +49,7 @@ public sealed record SignUpLimits(ResetLimits Counts);
 /// </summary>
 public sealed class SignUps(Func<LauncherSettings> settings, IGridController grid, IRobustClient robust, IStaffDirectory directory,
     IAccountRemover remover, IRobustPasswords passwords, SignUpBoard pending, SignUpLimits limits, EmailTokens tokens,
-    EmailSender sender, TermsAcceptances terms, SignUpLock gate, AuditLog audit, GroupsAdmin groups, HeldNames heldNames, ILogger<SignUps> log)
+    EmailSender sender, EmailLanguage emailLanguage, TermsAcceptances terms, SignUpLock gate, AuditLog audit, GroupsAdmin groups, HeldNames heldNames, ILogger<SignUps> log)
 {
     public const string Purpose = "confirm-signup";
     public static readonly TimeSpan LinkLifetime = TimeSpan.FromHours(24);
@@ -63,7 +63,7 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
     private ResetLimits Counts => limits.Counts;
 
     /// <summary>Signs someone up; the emails go out in <paramref name="language"/>, the language of the page.</summary>
-    public async Task<SignUpResult> SubmitAsync(SignUpForm form, IPAddress? ip, CancellationToken ct, string language = Languages.English)
+    public async Task<SignUpResult> SubmitAsync(SignUpForm form, IPAddress? ip, CancellationToken ct, string language)
     {
         var s = settings();
         if (!SignUpRules.IsOpen(s)) return new(SignUpOutcome.Closed);
@@ -225,7 +225,7 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
     /// limits. Answers <see cref="SignUpOutcome.CheckEmail"/> whatever the name, and <see cref="SignUpOutcome.Busy"/> only when the
     /// grid can't send email.
     /// </summary>
-    public async Task<SignUpOutcome> ResendAsync(string? first, string? last, IPAddress? ip, CancellationToken ct, string language = Languages.English)
+    public async Task<SignUpOutcome> ResendAsync(string? first, string? last, IPAddress? ip, CancellationToken ct, string language)
     {
         if (!sender.IsReady) return SignUpOutcome.Busy;
         if (!Counts.AddressAllowed(ip)) return SignUpOutcome.CheckEmail;
@@ -268,7 +268,8 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
         if (!Counts.SendAllowed(owner.PrincipalId, email)) return;
         Counts.CountSend(owner.PrincipalId, email);
         var full = Full(owner);
-        sender.Queue(EmailTemplates.AlreadyHaveAccount, language, email, full,
+        // To the account's owner: their saved language if the grid offers it, else the page it was typed on.
+        sender.Queue(EmailTemplates.AlreadyHaveAccount, emailLanguage.ForResident(owner.PrincipalId, language), email, full,
             new Dictionary<string, string> { ["AvatarName"] = full, ["Link"] = $"{Site(s)}{PasswordResets.AskPath}" });
     }
 

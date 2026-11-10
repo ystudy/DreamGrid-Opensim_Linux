@@ -92,7 +92,7 @@ public sealed class AccountPageTests
     private static async Task<string> AskedTokenAsync(LauncherFactory f)
     {
         var changes = f.Services.GetRequiredService<AccountChanges>();
-        Assert.Equal(AccountResult.Done, (await changes.AskEmailChangeAsync(AnnId, Old, null, "ann.new@example.com", IPAddress.Loopback, Ct)).Result);
+        Assert.Equal(AccountResult.Done, (await changes.AskEmailChangeAsync(AnnId, Old, null, "ann.new@example.com", IPAddress.Loopback, Ct, "en")).Result);
         var tokens = f.Services.GetRequiredService<Core.Guests.EmailTokens>();
         // Replace the link just sent with one whose token the test knows, tied to the same address as the ask ties it.
         var token = tokens.Issue(AccountChanges.Purpose, AnnId, AccountChanges.LinkLifetime);

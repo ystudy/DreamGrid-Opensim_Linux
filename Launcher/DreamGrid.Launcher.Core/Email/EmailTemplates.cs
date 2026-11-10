@@ -121,7 +121,7 @@ public static class EmailTemplates
         var t = Get(id);
         if (IsStaffEmail(id)) return new(t.Subject, t.Body, Shipped);
         var culture = CultureFor(language);
-        return new(Text.GetString(id + ".Subject", culture) ?? t.Subject, Text.GetString(id + ".Body", culture) ?? t.Body, Shipped);
+        return new(Resource(id + ".Subject", culture), Resource(id + ".Body", culture), Shipped);
     }
 
     /// <summary>
@@ -142,6 +142,10 @@ public static class EmailTemplates
             ? t
             : Default(id, language);
     }
+
+    /// <summary>A text of <c>EmailText</c> in <paramref name="culture"/>; a key it lacks is a bug, never an empty email.</summary>
+    internal static string Resource(string key, CultureInfo culture) =>
+        Text.GetString(key, culture) ?? throw new InvalidOperationException($"EmailText has no \"{key}\".");
 
     private static CultureInfo CultureFor(string language) =>
         Languages.HasCulture(language) ? Languages.Culture(language) : Languages.Culture(Languages.English);

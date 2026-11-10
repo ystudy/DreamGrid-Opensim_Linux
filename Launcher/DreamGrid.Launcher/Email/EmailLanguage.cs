@@ -18,13 +18,16 @@ public sealed class EmailLanguage(Func<LauncherSettings> settings, ResidentLangu
     /// <summary>The language <paramref name="principal"/> chose, if the grid still offers it, else the default.</summary>
     public string ForResident(Guid principal) => Pick(saved.Get(principal));
 
-    /// <summary>The language the resident page of this request is in (<see cref="ResidentLanguageFilter.Current"/>), if offered, else the default.</summary>
-    public string ForRequest(HttpContext ctx) => Pick(ResidentLanguageFilter.Current(ctx));
+    /// <summary>The language <paramref name="principal"/> chose, if the grid still offers it, else <paramref name="fallback"/> (itself checked: the default if it is not offered).</summary>
+    public string ForResident(Guid principal, string fallback) => Pick(saved.Get(principal), fallback);
 
-    private string Pick(string? tag)
+    /// <summary>The language the resident page of this request is in (<see cref="ResidentLanguageFilter.Current"/>), if offered; the default when it is not or no resident page ran.</summary>
+    public string ForRequest(HttpContext ctx) => Pick(ResidentLanguageFilter.Picked(ctx));
+
+    private string Pick(string? tag, string? fallback = null)
     {
         var s = settings().Languages;
         var offered = s.OfferedOrDefault().Where(Languages.HasCulture).ToList();
-        return Languages.Match(tag, offered) ?? Languages.Match(s.Default, offered) ?? Languages.English;
+        return Languages.Match(tag, offered) ?? Languages.Match(fallback, offered) ?? Languages.Match(s.Default, offered) ?? Languages.English;
     }
 }

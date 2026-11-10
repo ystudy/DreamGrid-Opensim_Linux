@@ -15,7 +15,7 @@ public sealed class SignUpCleanupTests
     private static async Task<(SignUpsTests.Rig Rig, Guid Bea)> PendingAsync()
     {
         var rig = SignUpsTests.Factory();
-        await rig.SignUps.SubmitAsync(SignUpsTests.Form(), null, Ct);
+        await rig.SignUps.SubmitAsync(SignUpsTests.Form(), null, Ct, "en");
         return (rig, rig.F.Robust.All.Single(a => a.FirstName == "Bea").PrincipalId);
     }
 
@@ -74,7 +74,7 @@ public sealed class SignUpCleanupTests
     public async Task Deletes_unlisted_after_24_hours()
     {
         await using var rig = SignUpsTests.Factory();
-        await rig.SignUps.SubmitAsync(SignUpsTests.Form(email: "ann@example.com"), null, Ct);
+        await rig.SignUps.SubmitAsync(SignUpsTests.Form(email: "ann@example.com"), null, Ct, "en");
         var bea = rig.F.Robust.All.Single(a => a.FirstName == "Bea").PrincipalId;
         rig.F.Time.Advance(TimeSpan.FromHours(23));
         await Cleanup(rig).RunOnceAsync(Ct);
@@ -151,7 +151,7 @@ public sealed class SignUpCleanupTests
         var (rig, bea) = await PendingAsync();
         await using var _ = rig;
         rig.F.Time.Advance(TimeSpan.FromHours(23));
-        await rig.SignUps.ResendAsync("Bea", "Example", null, Ct);
+        await rig.SignUps.ResendAsync("Bea", "Example", null, Ct, "en");
         rig.F.Time.Advance(TimeSpan.FromHours(2));
 
         await Cleanup(rig).RunOnceAsync(Ct);

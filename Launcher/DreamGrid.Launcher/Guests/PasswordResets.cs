@@ -65,7 +65,7 @@ public sealed class PasswordResets(Func<LauncherSettings> settings, IRobustClien
     public bool Available() => Recovery.AnyOn(settings()) && sender.IsReady;
 
     /// <summary>Asks for a reset link; the email goes out in <paramref name="language"/>, the language of the page asked on.</summary>
-    public async Task<ResetAsk> AskAsync(string? name, string? email, IPAddress? ip, CancellationToken ct, string language = Languages.English)
+    public async Task<ResetAsk> AskAsync(string? name, string? email, IPAddress? ip, CancellationToken ct, string language)
     {
         if (!Available()) return ResetAsk.GridOff;
         var typed = AvatarName.Parse(name);
@@ -186,7 +186,7 @@ public sealed class PasswordResets(Func<LauncherSettings> settings, IRobustClien
     }
 
     public async Task<(ResetResult Result, ResetLink? Link, PasswordRules.Fault? Problem)> ResetAsync(string? token, string? code, string? password,
-        string? again, IPAddress? ip, CancellationToken ct, string language = Languages.English)
+        string? again, IPAddress? ip, CancellationToken ct, string language)
     {
         // One reset at a time (they are rare): two tabs posting the same link at once can't both write a password before
         // either spends it; the second finds it spent.

@@ -75,9 +75,31 @@ public sealed class EmailLanguageTests : IDisposable
     }
 
     [Fact]
-    public void ForRequest_with_no_resident_page_is_English()
+    public void ForRequest_with_no_resident_page_gives_the_grid_default()
+    {
+        var (language, _) = Make(defaultLanguage: "fr");
+        Assert.Equal("fr", language.ForRequest(new DefaultHttpContext()));
+    }
+
+    [Fact]
+    public void ForResident_with_a_fallback_uses_the_saved_language_first()
+    {
+        var (language, saved) = Make();
+        saved.Set(_ann, "de");
+        Assert.Equal("de", language.ForResident(_ann, "fr"));
+    }
+
+    [Fact]
+    public void ForResident_with_a_fallback_uses_it_when_nothing_is_saved()
     {
         var (language, _) = Make();
-        Assert.Equal("en", language.ForRequest(new DefaultHttpContext()));
+        Assert.Equal("fr", language.ForResident(_ann, "fr"));
+    }
+
+    [Fact]
+    public void ForResident_with_a_fallback_not_offered_gives_the_default()
+    {
+        var (language, _) = Make(offered: ["en", "de"], defaultLanguage: "en");
+        Assert.Equal("en", language.ForResident(_ann, "fr"));
     }
 }

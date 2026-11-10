@@ -121,7 +121,7 @@ public sealed class SignUpOwnerTests
     private static async Task<SignUpsTests.Rig> WithPendingAsync()
     {
         var rig = SignUpsTests.Factory();
-        await rig.SignUps.SubmitAsync(SignUpsTests.Form(), null, Ct);
+        await rig.SignUps.SubmitAsync(SignUpsTests.Form(), null, Ct, "en");
         return rig;
     }
 
