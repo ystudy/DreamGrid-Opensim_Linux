@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "blocked": true,
+  "summary": {
+    "parts": 3,
+    "faces": 24,
+    "triangles": 2100000,
+    "textures": 4,
+    "sizeMetres": [
+      300,
+      20,
+      12.5
+    ],
+    "largestFitPercent": 85
+  },
+  "findings": [
+    {
+      "code": "split-materials",
+      "kind": "safe",
+      "values": {
+        "materials": "20",
+        "perPart": "8",
+        "parts": "3"
+      }
+    },
+    {
+      "code": "heavy-mesh",
+      "kind": "risky",
+      "values": {
+        "triangles": "2100000",
+        "threshold": "200000"
+      }
+    },
+    {
+      "code": "too-big",
+      "kind": "blocking",
+      "values": {
+        "side": "300",
+        "limit": "256",
+        "fitPercent": "85"
+      }
+    }
+  ]
+}

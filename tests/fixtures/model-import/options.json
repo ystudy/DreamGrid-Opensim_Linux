@@ -1,0 +1,12 @@
+{
+  "itemName": "Castle",
+  "fileName": "castle.glb",
+  "scalePercent": 100,
+  "nextOwner": {
+    "copy": true,
+    "modify": true,
+    "transfer": false
+  },
+  "uploaderId": "6f1c2a7e-3b4d-4e8a-9c21-5d7f0a8b9e10",
+  "uploaderName": "Guest One"
+}

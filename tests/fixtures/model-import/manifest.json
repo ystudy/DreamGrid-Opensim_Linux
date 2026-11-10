@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "assets": [
+    {
+      "id": "2b7e9d40-5c1a-4f63-8e2d-91a0c4b7f5d3",
+      "type": 0,
+      "name": "Castle wall texture",
+      "file": "assets/2b7e9d40-5c1a-4f63-8e2d-91a0c4b7f5d3.bin"
+    },
+    {
+      "id": "8d3f1a52-7e6b-4c09-a4f1-3c5e2b9d7a68",
+      "type": 49,
+      "name": "Castle mesh",
+      "file": "assets/8d3f1a52-7e6b-4c09-a4f1-3c5e2b9d7a68.bin"
+    },
+    {
+      "id": "e4a90c17-2f8d-4b35-9d6e-7a1c5f0b3e24",
+      "type": 6,
+      "name": "Castle",
+      "file": "assets/e4a90c17-2f8d-4b35-9d6e-7a1c5f0b3e24.bin"
+    }
+  ],
+  "item": {
+    "assetId": "e4a90c17-2f8d-4b35-9d6e-7a1c5f0b3e24",
+    "name": "Castle",
+    "description": "Castle model imported from castle.glb",
+    "nextOwnerMask": 49152,
+    "creatorId": "6f1c2a7e-3b4d-4e8a-9c21-5d7f0a8b9e10"
+  }
+}

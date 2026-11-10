@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <None Include="Models/**" Link="Models/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../fixtures/model-import/*.json" Link="fixtures/model-import/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

@@ -1,0 +1,12 @@
+{
+  "maxPartSize": 256,
+  "minPartSize": 0.001,
+  "maxPhysicalPartSize": 10,
+  "maxLinksetParts": 0,
+  "maxUploadBytes": 67108864,
+  "maxImageSide": 8192,
+  "maxTextureSide": 1024,
+  "maxTriangles": 2000000,
+  "maxNodes": 512,
+  "heavyTriangles": 200000
+}
