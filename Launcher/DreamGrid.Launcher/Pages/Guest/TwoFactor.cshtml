@@ -2,10 +2,10 @@
 @model DreamGrid.Launcher.Pages.Guest.TwoFactorModel
 @using DreamGrid.Launcher.Core.Security
 @{
-    ViewData["Title"] = "Two-factor sign-in";
+    ViewData["Title"] = T["TwoFactor.Title"].Value;
 }
-<h1>Two-factor sign-in</h1>
-<p>With two-factor sign-in, signing in to this website and resetting your password need a code from an authenticator app on your phone as well as your password or email.</p>
+<h1>@T["TwoFactor.Title"]</h1>
+<p>@T["TwoFactor.Intro"]</p>
 @if (Model.Error is not null)
 {
     <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
@@ -16,54 +16,54 @@
 }
 @if (Model.State == TwoFactorState.Unknown)
 {
-    <div class="alert alert-danger" role="alert">Two-factor sign-in can't be checked right now. Contact the grid owner.</div>
+    <div class="alert alert-danger" role="alert">@T["SignIn.CodeUnknown"]</div>
 }
 else if (Model.BackupCodes is { } codes)
 {
-    <div class="alert alert-success" role="status">Two-factor sign-in is on.</div>
-    <h2>Your backup codes</h2>
-    <p>Each code works once, when you don't have your phone. Keep them somewhere safe. They won't be shown again.</p>
+    <div class="alert alert-success" role="status">@T["TwoFactor.IsOn"]</div>
+    <h2>@T["TwoFactor.BackupCodes"]</h2>
+    <p>@T["TwoFactor.BackupCodesIntro"]</p>
     <ul id="backup-codes" class="backup-codes list-unstyled">
         @foreach (var c in codes)
         {
             <li>@c</li>
         }
     </ul>
-    <p><a class="btn btn-primary" href="/guest">Continue</a></p>
+    <p><a class="btn btn-primary" href="/guest">@T["TwoFactor.Continue"]</a></p>
 }
 else if (Model.State == TwoFactorState.Off)
 {
-    <p>Two-factor sign-in is off.</p>
+    <p>@T["TwoFactor.IsOff"]</p>
     @if (Model.QrSvg is not null)
     {
-        <h2>Turn it on</h2>
-        <p>Scan this code with an authenticator app on your phone, then enter the 6-digit code the app shows.</p>
-        <div class="two-factor-qr mb-3" role="img" aria-label="QR code for your authenticator app">@Html.Raw(Model.QrSvg)</div>
-        <p>Can't scan it? Enter this key in the app instead: <code id="two-factor-secret">@Model.SecretText</code></p>
+        <h2>@T["TwoFactor.TurnItOn"]</h2>
+        <p>@T["TwoFactor.ScanIntro"]</p>
+        <div class="two-factor-qr mb-3" role="img" aria-label="@T["TwoFactor.QrLabel"]">@Html.Raw(Model.QrSvg)</div>
+        <p>@T["TwoFactor.CantScan"] <code id="two-factor-secret">@Model.SecretText</code></p>
         <form id="turn-on" method="post" asp-page-handler="TurnOn" class="mb-4">
             <input type="hidden" name="Shown" value="@Model.Shown">
-            <label class="form-label" for="turn-on-code">Code</label>
+            <label class="form-label" for="turn-on-code">@T["SignIn.Code"]</label>
             <input class="form-control mb-3 code-input" id="turn-on-code" name="Code" value="" maxlength="32" autocomplete="one-time-code" inputmode="numeric" required>
-            <button type="submit" class="btn btn-primary">Turn on</button>
+            <button type="submit" class="btn btn-primary">@T["TwoFactor.TurnOn"]</button>
         </form>
     }
 }
 else
 {
-    <div class="alert alert-success" role="status">Two-factor sign-in is on.</div>
-    <h2>New backup codes</h2>
-    <p>This replaces all your backup codes. Enter a code from your authenticator app.</p>
+    <div class="alert alert-success" role="status">@T["TwoFactor.IsOn"]</div>
+    <h2>@T["TwoFactor.NewCodes"]</h2>
+    <p>@T["TwoFactor.NewCodesIntro"]</p>
     <form id="new-codes" method="post" asp-page-handler="NewCodes" class="mb-4">
-        <label class="form-label" for="new-codes-code">Code</label>
+        <label class="form-label" for="new-codes-code">@T["SignIn.Code"]</label>
         <input class="form-control mb-3 code-input" id="new-codes-code" name="Code" value="" maxlength="32" autocomplete="one-time-code" inputmode="numeric" required>
-        <button type="submit" class="btn btn-outline-primary">New backup codes</button>
+        <button type="submit" class="btn btn-outline-primary">@T["TwoFactor.NewCodes"]</button>
     </form>
-    <h2>Turn off</h2>
-    <p>Enter a code from your authenticator app, or a backup code.</p>
+    <h2>@T["TwoFactor.TurnOff"]</h2>
+    <p>@T["TwoFactor.TurnOffIntro"]</p>
     <form id="turn-off" method="post" asp-page-handler="TurnOff">
-        <label class="form-label" for="turn-off-code">Code</label>
+        <label class="form-label" for="turn-off-code">@T["SignIn.Code"]</label>
         <input class="form-control mb-3 code-input" id="turn-off-code" name="Code" value="" maxlength="32" autocomplete="one-time-code" required>
-        <button type="submit" class="btn btn-danger">Turn off</button>
+        <button type="submit" class="btn btn-danger">@T["TwoFactor.TurnOff"]</button>
     </form>
 }
-<p class="mt-4"><a href="/guest">Back to your account</a></p>
+<p class="mt-4"><a href="/guest">@T["TwoFactor.BackToAccount"]</a></p>

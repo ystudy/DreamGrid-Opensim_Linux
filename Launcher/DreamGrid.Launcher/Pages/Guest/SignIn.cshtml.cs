@@ -7,6 +7,7 @@ using DreamGrid.Launcher.Guests;
 using DreamGrid.Launcher.Security;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Localization;
 
 namespace DreamGrid.Launcher.Pages.Guest;
 
@@ -21,12 +22,8 @@ namespace DreamGrid.Launcher.Pages.Guest;
 /// so an address gets 20 failures in all, whichever door. The password is never logged; only the cleaned first name is.
 /// </summary>
 public sealed class SignInModel(IRobustClient robust, LoginThrottle throttle, AuditLog audit, ResidentTwoFactor residents,
-    SignUpBoard pending, Func<LauncherSettings> settings, ILogger<SignInModel> log) : PageModel
+    SignUpBoard pending, Func<LauncherSettings> settings, ILogger<SignInModel> log, IStringLocalizer<ResidentText> t) : PageModel
 {
-    private const string Generic = "Name or password is wrong.";
-    public const string ConfirmFirst = "Confirm your email first. Or wait for staff to approve you.";
-    public const string WaitForStaff = "Your account is waiting for approval by the grid's staff.";
-
     [BindProperty] public string? Name { get; set; }
     [BindProperty] public string? Password { get; set; }
 
@@ -50,7 +47,7 @@ public sealed class SignInModel(IRobustClient robust, LoginThrottle throttle, Au
         var address = HttpContext.Connection.RemoteIpAddress;
         if (throttle.IsLocked(SignInDoor.Guest, name.Key, address))
         {
-            Error = "Too many attempts. Try again in a few minutes.";
+            Error = t["SignIn.TooManyAttempts"];
             return Page();
         }
         if (!name.IsComplete) return Fail(name);
@@ -68,11 +65,11 @@ public sealed class SignInModel(IRobustClient robust, LoginThrottle throttle, Au
             {
                 if (pending.Get(account.PrincipalId)?.State == SignUpState.WaitingForStaff)
                 {
-                    Error = WaitForStaff;
+                    Error = t["SignIn.WaitForStaff"];
                     return Page();
                 }
                 Pending = account;
-                Error = ConfirmFirst;
+                Error = t["SignIn.ConfirmFirst"];
                 return Page();
             }
         }
@@ -80,7 +77,7 @@ public sealed class SignInModel(IRobustClient robust, LoginThrottle throttle, Au
             or InvalidDataException && !ct.IsCancellationRequested)
         {
             log.LogWarning("Guest sign-in: the account service did not answer: {Message}", e.Message);
-            Error = "The grid's sign-in service isn't running right now. Try again later.";
+            Error = t["SignIn.ServiceDown"];
             return Page();
         }
         if (!allowed) return Fail(name);
@@ -112,7 +109,7 @@ public sealed class SignInModel(IRobustClient robust, LoginThrottle throttle, Au
         log.LogInformation("Guest sign-in: a sign-in for first name {First} was refused", name.ForLog);
         audit.Write(new AuditEntry(name.ForLog, null, StaffRole.None.AuditName(),
             HttpContext.Connection.RemoteIpAddress?.ToString(), "sign-in-refused", null, "refused"));
-        Error = Generic;
+        Error = t["SignIn.WrongNameOrPassword"];
         return Page();
     }
 }

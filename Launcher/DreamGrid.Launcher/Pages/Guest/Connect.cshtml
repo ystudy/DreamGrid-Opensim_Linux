@@ -1,84 +1,84 @@
 @page "/guest/connect"
 @model DreamGrid.Launcher.Pages.Guest.ConnectModel
 @{
-    ViewData["Title"] = "How to connect";
+    ViewData["Title"] = T["Connect.Title"].Value;
 }
-<h1>How to connect to @Model.GridName</h1>
-<p class="text-body-secondary">Choose a viewer, then add @Model.GridName in its Grid Manager.</p>
+<h1>@T["Connect.Heading", Model.GridName]</h1>
+<p class="text-body-secondary">@T["Connect.Choose", Model.GridName]</p>
 @if (Model.Approved)
 {
-    <div class="alert alert-success" role="status">You're approved. Log in as @Model.DisplayName.</div>
+    <div class="alert alert-success" role="status">@T["Connect.Approved", Model.DisplayName]</div>
 }
 
 <div class="row g-3 mb-3">
     <div class="col-md-6">
         <section id="viewer-firestorm" class="panel h-100">
-            <div class="panel-head"><h2>Firestorm</h2><span class="badge state-running">Recommended</span></div>
+            <div class="panel-head"><h2>Firestorm</h2><span class="badge state-running">@T["Connect.Recommended"]</span></div>
             <ul class="panel-rows">
-                <li><span>Windows, macOS and Linux</span><a class="ms-auto" href="@ConnectModel.Firestorm.Url" rel="noopener noreferrer">@ConnectModel.Firestorm.LinkText</a></li>
+                <li><span>@T["Connect.FirestormSystems"]</span><a class="ms-auto" href="@ConnectModel.Firestorm.Url" rel="noopener noreferrer">@T["Connect.Download"]</a></li>
             </ul>
-            <p class="form-text mb-0">On Firestorm's page, pick your system and the OpenSim version, not the Second Life one.</p>
+            <p class="form-text mb-0">@T["Connect.FirestormNote"]</p>
         </section>
     </div>
     <div class="col-md-6">
         <section id="viewer-others" class="panel h-100">
-            <div class="panel-head"><h2>Other viewers</h2><span class="form-text m-0">Any OpenSim viewer works</span></div>
+            <div class="panel-head"><h2>@T["Connect.OtherViewers"]</h2><span class="form-text m-0">@T["Connect.AnyViewer"]</span></div>
             <ul class="panel-rows">
                 @foreach (var v in ConnectModel.Others)
                 {
-                    <li><span>@v.Name</span><a class="ms-auto" href="@v.Url" rel="noopener noreferrer">@v.LinkText</a></li>
+                    <li><span>@v.Name</span><a class="ms-auto" href="@v.Url" rel="noopener noreferrer">@T["Connect.Website"]</a></li>
                 }
             </ul>
-            <p class="form-text mb-0">The links go to each viewer's own site. This grid doesn't host viewers.</p>
+            <p class="form-text mb-0">@T["Connect.OthersNote"]</p>
         </section>
     </div>
 </div>
 
 <section id="grid-settings-panel" class="panel mb-3">
-    <div class="panel-head"><h2>Grid manager settings</h2><button type="button" id="copy-settings" class="btn btn-sm btn-outline-primary" hidden>Copy</button></div>
+    <div class="panel-head"><h2>@T["Connect.GridSettings"]</h2><button type="button" id="copy-settings" class="btn btn-sm btn-outline-primary" hidden data-copied="@T["Connect.Copied"]" data-selected="@T["Connect.CopySelected"]">@T["Connect.Copy"]</button></div>
     <pre id="grid-settings" class="panel-pre">@Model.SettingsText()</pre>
-    <p class="form-text mb-0">Most viewers fill in the rest themselves once you give them the Login URI.</p>
+    <p class="form-text mb-0">@T["Connect.SettingsNote"]</p>
 </section>
 
 <div class="row g-3 mb-3">
     <div class="col-md-6">
         <section id="steps" class="panel h-100">
-            <div class="panel-head"><h2>Steps in Firestorm</h2></div>
+            <div class="panel-head"><h2>@T["Connect.Steps"]</h2></div>
             <ol class="steps mb-0">
-                <li>Open Preferences, then OpenSim, then Grid Manager.</li>
-                <li>Paste the Login URI, <code id="login-uri">@Model.LoginUri</code>, in "Add new grid" and press Apply.</li>
-                <li>On the login screen, pick @Model.GridName from the grid list.</li>
+                <li>@T["Connect.Step1"]</li>
+                <li>@T["Connect.Step2"] <code id="login-uri">@Model.LoginUri</code></li>
+                <li>@T["Connect.Step3", Model.GridName]</li>
                 @if (Model.DisplayName.Length > 0)
                 {
-                    <li>Log in as @Model.DisplayName with your password.</li>
+                    <li>@T["Connect.Step4Named", Model.DisplayName]</li>
                 }
                 else
                 {
-                    <li>Log in with your avatar's first and last name and your password.</li>
+                    <li>@T["Connect.Step4"]</li>
                 }
             </ol>
         </section>
     </div>
     <div class="col-md-6">
         <section id="help" class="panel h-100">
-            <div class="panel-head"><h2>Help</h2></div>
+            <div class="panel-head"><h2>@T["Connect.Help"]</h2></div>
             <ul class="panel-rows">
-                <li><a href="@ConnectModel.FirestormHelp" rel="noopener noreferrer">Firestorm's own help pages</a></li>
+                <li><a href="@ConnectModel.FirestormHelp" rel="noopener noreferrer">@T["Connect.FirestormHelp"]</a></li>
                 @if (Model.DisplayName.Length == 0)
                 {
-                    <li><a href="/signup">Make an account</a></li>
+                    <li><a href="/signup">@T["Connect.MakeAccount"]</a></li>
                 }
-                <li><a href="/guest/forgot-password">Forgot your password</a></li>
-                <li><a href="/support">Ask the grid's staff for help</a></li>
+                <li><a href="/guest/forgot-password">@T["Connect.ForgotPassword"]</a></li>
+                <li><a href="/support">@T["Connect.AskStaff"]</a></li>
                 @foreach (var (id, title) in Model.HelpPages)
                 {
-                    <li><a href="/@id">@title</a></li>
+                    <li><a href="/@id">@(id switch { "terms" => T["Connect.HelpTerms"].Value, "contact" => T["Connect.HelpContact"].Value, _ => title })</a></li>
                 }
             </ul>
         </section>
     </div>
 </div>
-<p class="text-body-secondary text-center small">@Model.GridName doesn't give technical support for viewers.</p>
+<p class="text-body-secondary text-center small">@T["Connect.NoSupport", Model.GridName]</p>
 
 @section Scripts {
 <script src="/js/connect.js"></script>

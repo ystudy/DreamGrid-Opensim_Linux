@@ -5,6 +5,7 @@ using DreamGrid.Launcher.Guests;
 using DreamGrid.Launcher.Security;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Localization;
 
 namespace DreamGrid.Launcher.Pages.Guest;
 
@@ -15,10 +16,9 @@ namespace DreamGrid.Launcher.Pages.Guest;
 /// door and the address; while locked, no code is checked. Without a pending cookie, or once two-factor was turned off for them
 /// meanwhile, this sends back to the password. Codes are never logged.
 /// </summary>
-public sealed class SignInCodeModel(ResidentTwoFactor residents, LoginThrottle throttle, AuditLog audit, ILogger<SignInCodeModel> log) : PageModel
+public sealed class SignInCodeModel(ResidentTwoFactor residents, LoginThrottle throttle, AuditLog audit, ILogger<SignInCodeModel> log,
+    IStringLocalizer<ResidentText> t) : PageModel
 {
-    public const string WrongCode = "That code isn't right. Try again.";
-
     [BindProperty] public string? Code { get; set; }
 
     public string? Error { get; private set; }
@@ -35,7 +35,7 @@ public sealed class SignInCodeModel(ResidentTwoFactor residents, LoginThrottle t
         var remote = HttpContext.Connection.RemoteIpAddress;
         if (throttle.IsLocked(SignInDoor.Guest, key, remote))
         {
-            Error = "Too many attempts. Try again in a few minutes.";
+            Error = t["SignIn.TooManyAttempts"];
             return Page();
         }
 
@@ -58,7 +58,7 @@ public sealed class SignInCodeModel(ResidentTwoFactor residents, LoginThrottle t
         {
             log.LogWarning("Guest sign-in: a two-factor code for first name {First} couldn't be marked used: {Message}",
                 LogText.Clean(pending.First, 32), e.Message);
-            Error = TwoFactorStore.SaveFailed;
+            Error = t["SignIn.SaveFailed"];
             return Page();
         }
 
@@ -68,7 +68,7 @@ public sealed class SignInCodeModel(ResidentTwoFactor residents, LoginThrottle t
             throttle.RecordFailure(SignInDoor.Guest, key, remote);
             log.LogInformation("Guest sign-in: a two-factor code for first name {First} was refused", LogText.Clean(pending.First, 32));
             audit.Write(new AuditEntry(pending.Name, pending.Principal, AuthSchemes.GuestRole, ip, "sign-in-refused", "two-factor code", "refused"));
-            Error = WrongCode;
+            Error = t["SignIn.WrongCode"];
             return Page();
         }
 

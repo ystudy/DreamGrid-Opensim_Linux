@@ -1,6 +1,7 @@
 using DreamGrid.Launcher.Guests;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Localization;
 
 namespace DreamGrid.Launcher.Pages.Guest;
 
@@ -10,10 +11,8 @@ namespace DreamGrid.Launcher.Pages.Guest;
 /// (<see cref="BotGuard"/>, form <c>forgot-password</c>). The page shows the one reply whatever happened, or, when nobody can
 /// reset a password here, says so before asking anything.
 /// </summary>
-public sealed class ForgotPasswordModel(PasswordResets resets, BotGuard bots) : PageModel
+public sealed class ForgotPasswordModel(PasswordResets resets, BotGuard bots, IStringLocalizer<ResidentText> t) : PageModel
 {
-    public const string BotFailed = "The form couldn't check that you're a person. Try again.";
-
     [BindProperty] public string? Name { get; set; }
     [BindProperty] public string? Email { get; set; }
 
@@ -32,7 +31,7 @@ public sealed class ForgotPasswordModel(PasswordResets resets, BotGuard bots) : 
         }
         if (!bots.Check(HttpContext, "forgot-password").Passed)
         {
-            Error = BotFailed;
+            Error = t["ForgotPassword.BotFailed"];
             return Page();
         }
         Off = await resets.AskAsync(Name, Email, HttpContext.Connection.RemoteIpAddress, ct) == ResetAsk.GridOff;

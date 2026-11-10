@@ -182,7 +182,7 @@ public sealed class PasswordResets(Func<LauncherSettings> settings, IRobustClien
         return new ResetLink(principal, account, role, needsCode, ByStaff: false);
     }
 
-    public async Task<(ResetResult Result, ResetLink? Link, string? Problem)> ResetAsync(string? token, string? code, string? password,
+    public async Task<(ResetResult Result, ResetLink? Link, PasswordRules.Fault? Problem)> ResetAsync(string? token, string? code, string? password,
         string? again, IPAddress? ip, CancellationToken ct)
     {
         // One reset at a time (they are rare): two tabs posting the same link at once can't both write a password before
@@ -200,7 +200,7 @@ public sealed class PasswordResets(Func<LauncherSettings> settings, IRobustClien
 
     private readonly SemaphoreSlim _one = new(1, 1);
 
-    private async Task<(ResetResult Result, ResetLink? Link, string? Problem)> ResetOneAsync(string? token, string? code, string? password,
+    private async Task<(ResetResult Result, ResetLink? Link, PasswordRules.Fault? Problem)> ResetOneAsync(string? token, string? code, string? password,
         string? again, IPAddress? ip, CancellationToken ct)
     {
         if (await OpenAsync(token, ct) is not { } link) return (ResetResult.Expired, null, null);
@@ -212,7 +212,7 @@ public sealed class PasswordResets(Func<LauncherSettings> settings, IRobustClien
 
         // The password first, and the code only checked here: a right code is used up only once the password is written, so a
         // weak password or a failed write never costs the person their code (or a backup code).
-        if (PasswordRules.Problem(password, again, a.FirstName, a.LastName) is { } problem) return (ResetResult.BadPassword, link, problem);
+        if (PasswordRules.Check(password, again, a.FirstName, a.LastName) is { } problem) return (ResetResult.BadPassword, link, problem);
         if (link.NeedsCode)
         {
             if (throttle.IsLocked(door, key, ip)) return (ResetResult.Locked, link, null);

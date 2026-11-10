@@ -1,21 +1,21 @@
 @page "/guest/confirm"
 @model DreamGrid.Launcher.Pages.Guest.ConfirmModel
 @{
-    ViewData["Title"] = "Confirm your email";
+    ViewData["Title"] = T["Confirm.Title"].Value;
 }
 <div class="card card-body shadow-sm mx-auto sign-in-card">
-<h1>Confirm your email</h1>
+<h1>@T["Confirm.Title"]</h1>
 @if (Model.Busy)
 {
-    <p role="alert">Sign-up isn't working right now. Try again in a few minutes.</p>
+    <p role="alert">@T["Confirm.Busy"]</p>
 }
 else if (Model.AlreadyApproved)
 {
-    <p role="status">You're already approved. <a href="/guest/sign-in">Sign in.</a></p>
+    <p role="status">@T["Confirm.AlreadyApproved"] <a href="/guest/sign-in">@T["Confirm.SignInLink"]</a></p>
 }
 else
 {
-    <p role="alert">This link has expired or was already used.</p>
-    <p class="mb-0"><a href="/signup">Sign up again</a>, or <a href="/guest/sign-in">sign in</a> to ask for a new link.</p>
+    <p role="alert">@T["Confirm.Expired"]</p>
+    <p class="mb-0"><a href="/signup">@T["Confirm.SignUpAgain"]</a> · <a href="/guest/sign-in">@T["Confirm.SignInForNewLink"]</a></p>
 }
 </div>

@@ -2,6 +2,7 @@ using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Guests;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Localization;
 
 namespace DreamGrid.Launcher.Pages.Guest;
 
@@ -11,10 +12,8 @@ namespace DreamGrid.Launcher.Pages.Guest;
 /// (<see cref="PasswordResets.ResetAsync"/>). A used, expired or unknown link, or one whose rule is now off, says so and offers a
 /// new one. The page only changes a password; it never signs anyone in. Typed passwords are never put back into the page.
 /// </summary>
-public sealed class ResetPasswordModel(PasswordResets resets) : PageModel
+public sealed class ResetPasswordModel(PasswordResets resets, IStringLocalizer<ResidentText> t) : PageModel
 {
-    public const string ExpiredText = "This link has expired or was already used. Ask for a new one.";
-
     [BindProperty(SupportsGet = true)] public string? Token { get; set; }
     [BindProperty] public string? Code { get; set; }
     [BindProperty] public string? Password { get; set; }
@@ -51,19 +50,19 @@ public sealed class ResetPasswordModel(PasswordResets resets) : PageModel
                 Expired = true;
                 break;
             case ResetResult.WrongCode:
-                Error = "That code isn't right. Try again, or use a backup code.";
+                Error = t["ResetPassword.WrongCode"];
                 break;
             case ResetResult.Locked:
-                Error = "Too many attempts. Try again in a few minutes.";
+                Error = t["SignIn.TooManyAttempts"];
                 break;
             case ResetResult.CodeUnknown:
-                Error = "Two-factor sign-in can't be checked right now. Contact the grid owner.";
+                Error = t["SignIn.CodeUnknown"];
                 break;
             case ResetResult.BadPassword:
-                Error = problem;
+                Error = PasswordFaultText.For(t, problem!.Value);
                 break;
             case ResetResult.WriteFailed:
-                Error = "Couldn't change the password right now. Try again in a few minutes.";
+                Error = t["ResetPassword.WriteFailed"];
                 break;
         }
         return Page();

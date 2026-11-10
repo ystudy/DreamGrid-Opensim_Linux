@@ -1,36 +1,36 @@
 @page "/guest/sign-in"
 @model DreamGrid.Launcher.Pages.Guest.SignInModel
 @{
-    ViewData["Title"] = "Sign in";
+    ViewData["Title"] = T["SignIn.Title"].Value;
 }
 <div class="card card-body shadow-sm mx-auto sign-in-card">
-<h1>Sign in</h1>
-<p>Use the name and password of your avatar.</p>
+<h1>@T["SignIn.Title"]</h1>
+<p>@T["SignIn.Intro"]</p>
 @if (Model.Error is not null)
 {
     <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
 }
 <form method="post">
-    <label class="form-label mt-3" asp-for="Name">Avatar name</label>
-    <input class="form-control" asp-for="Name" maxlength="64" autocomplete="username" placeholder="First Last" required>
-    <label class="form-label mt-3" asp-for="Password">Password</label>
+    <label class="form-label mt-3" asp-for="Name">@T["SignIn.AvatarName"]</label>
+    <input class="form-control" asp-for="Name" maxlength="64" autocomplete="username" placeholder="@T["SignIn.NamePlaceholder"]" required>
+    <label class="form-label mt-3" asp-for="Password">@T["SignIn.Password"]</label>
     <input class="form-control" asp-for="Password" type="password" value="" autocomplete="current-password" required>
-    <button type="submit" class="btn btn-primary w-100 mt-4">Sign in</button>
+    <button type="submit" class="btn btn-primary w-100 mt-4">@T["SignIn.Button"]</button>
 </form>
 @if (Model.Pending is { } pending)
 {
     <form id="resend" method="post" action="/signup?handler=Resend" asp-antiforgery="true" class="mt-3">
         <input type="hidden" name="First" value="@pending.FirstName">
         <input type="hidden" name="Last" value="@pending.LastName">
-        <button type="submit" class="btn btn-outline-primary w-100">Send the link again</button>
+        <button type="submit" class="btn btn-outline-primary w-100">@T["SignIn.ResendLink"]</button>
     </form>
 }
 @if (Model.ShowForgot)
 {
-    <p class="mt-3 mb-0"><a href="/guest/forgot-password">Forgot password?</a> · <a href="/support">Can't sign in? Ask for help</a></p>
+    <p class="mt-3 mb-0"><a href="/guest/forgot-password">@T["SignIn.Forgot"]</a> · <a href="/support">@T["SignIn.CantSignIn"]</a></p>
 }
 @if (Model.ShowSignUp)
 {
-    <p class="mt-2 mb-0"><a href="/signup">Create an account</a></p>
+    <p class="mt-2 mb-0"><a href="/signup">@T["SignIn.CreateAccount"]</a></p>
 }
 </div>
