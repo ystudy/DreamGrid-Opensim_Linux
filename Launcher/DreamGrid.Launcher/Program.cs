@@ -331,6 +331,7 @@ builder.Services.AddSingleton(sp => new EmailOutbox(paths.Email, sp.GetRequiredS
     log: sp.GetRequiredService<ILogger<EmailOutbox>>()));
 builder.Services.AddSingleton<IMailTransport, SmtpMailTransport>();
 builder.Services.AddSingleton<EmailSender>();
+builder.Services.AddSingleton<EmailLanguage>();
 builder.Services.AddSingleton<EmailTestLimiter>();
 builder.Services.AddHostedService<EmailWorker>();
 // The proof-of-work key lives in the owner-only security folder; one key for the life of the install. The image CAPTCHA signs with

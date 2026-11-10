@@ -1,3 +1,4 @@
+using DreamGrid.Launcher.Email;
 using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Guests;
 using Microsoft.AspNetCore.Mvc;
@@ -12,7 +13,7 @@ namespace DreamGrid.Launcher.Pages.Guest;
 /// (<see cref="PasswordResets.ResetAsync"/>). A used, expired or unknown link, or one whose rule is now off, says so and offers a
 /// new one. The page only changes a password; it never signs anyone in. Typed passwords are never put back into the page.
 /// </summary>
-public sealed class ResetPasswordModel(PasswordResets resets, IStringLocalizer<ResidentText> t) : PageModel
+public sealed class ResetPasswordModel(PasswordResets resets, EmailLanguage emailLanguage, IStringLocalizer<ResidentText> t) : PageModel
 {
     [BindProperty(SupportsGet = true)] public string? Token { get; set; }
     [BindProperty] public string? Code { get; set; }
@@ -39,7 +40,7 @@ public sealed class ResetPasswordModel(PasswordResets resets, IStringLocalizer<R
 
     public async Task<IActionResult> OnPostAsync(CancellationToken ct)
     {
-        var (result, link, problem) = await resets.ResetAsync(Token, Code, Password, Again, HttpContext.Connection.RemoteIpAddress, ct);
+        var (result, link, problem) = await resets.ResetAsync(Token, Code, Password, Again, HttpContext.Connection.RemoteIpAddress, ct, emailLanguage.ForRequest(HttpContext));
         if (link is not null) Show(link);
         switch (result)
         {

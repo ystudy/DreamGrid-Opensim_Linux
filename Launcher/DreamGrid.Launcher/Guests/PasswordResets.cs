@@ -46,7 +46,7 @@ public enum ResetResult { Done, Expired, WrongCode, Locked, BadPassword, WriteFa
 public sealed class PasswordResets(Func<LauncherSettings> settings, IRobustClient robust, ResetLimits limits, EmailTokens tokens,
     EmailSender sender, AuditLog audit, IRobustPasswords passwords, TwoFactorStore staffTwoFactor, ResidentTwoFactor residents,
     LoginThrottle throttle, StaffSessions sessions, GuestStamps guestStamps, IResetWork work, PendingEmailChanges emailChanges,
-    ILogger<PasswordResets> log)
+    EmailLanguage emailLanguage, ILogger<PasswordResets> log)
 {
     public const string Purpose = "reset-password";
 
@@ -56,14 +56,16 @@ public sealed class PasswordResets(Func<LauncherSettings> settings, IRobustClien
     /// </summary>
     public const string StaffPurpose = "staff-reset-password";
     public static readonly TimeSpan LinkLifetime = TimeSpan.FromMinutes(30);
-    public const string ExpiresIn = "30 minutes";
+    /// <summary>The <c>EmailText</c> key of "30 minutes", read in the email's language by <see cref="EmailTemplates.Words(string, string)"/>.</summary>
+    public const string ExpiresIn = "ExpiresIn.30m";
     public const string ResetPath = "/guest/reset-password";
     public const string AskPath = "/guest/forgot-password";
 
     /// <summary>Whether anyone can reset a password: some rule is on and the grid can send email.</summary>
     public bool Available() => Recovery.AnyOn(settings()) && sender.IsReady;
 
-    public async Task<ResetAsk> AskAsync(string? name, string? email, IPAddress? ip, CancellationToken ct)
+    /// <summary>Asks for a reset link; the email goes out in <paramref name="language"/>, the language of the page asked on.</summary>
+    public async Task<ResetAsk> AskAsync(string? name, string? email, IPAddress? ip, CancellationToken ct, string language = Languages.English)
     {
         if (!Available()) return ResetAsk.GridOff;
         var typed = AvatarName.Parse(name);
@@ -95,11 +97,11 @@ public sealed class PasswordResets(Func<LauncherSettings> settings, IRobustClien
         // Whether it matches, and the link and email if it does, are worked out after the reply, so a match takes no longer to
         // answer than a miss (spec §5.2). The work runs one item at a time, so the limits' check and count can't interleave.
         var typedEmail = (email ?? "").Trim();
-        work.Post(() => DecideAsync(typed, typedEmail, account, ip));
+        work.Post(() => DecideAsync(typed, typedEmail, account, ip, language));
         return ResetAsk.Sent;
     }
 
-    private Task DecideAsync(AvatarName typed, string typedEmail, RobustAccount? account, IPAddress? ip)
+    private Task DecideAsync(AvatarName typed, string typedEmail, RobustAccount? account, IPAddress? ip, string language)
     {
         var s = settings();
         if (account is null || account.UserLevel < 0 || typedEmail.Length == 0
@@ -119,8 +121,8 @@ public sealed class PasswordResets(Func<LauncherSettings> settings, IRobustClien
         var token = tokens.Issue(Purpose, account.PrincipalId, LinkLifetime);
         var link = $"http://{HostAddress.Effective(s.Hostname)}:{s.WebPort}{ResetPath}?token={token}";
         var full = $"{account.FirstName} {account.LastName}";
-        var queued = sender.Queue(EmailTemplates.ResetPassword, account.Email.Trim(), full,
-            new Dictionary<string, string> { ["AvatarName"] = full, ["Link"] = link, ["ExpiresIn"] = ExpiresIn }, LinkLifetime);
+        var queued = sender.Queue(EmailTemplates.ResetPassword, language, account.Email.Trim(), full,
+            new Dictionary<string, string> { ["AvatarName"] = full, ["Link"] = link, ["ExpiresIn"] = EmailTemplates.Words(ExpiresIn, language) }, LinkLifetime);
         if (queued != QueueResult.Queued)
             log.LogWarning("Password reset: the email for first name {First} couldn't be queued: {Result}", typed.ForLog, queued);
         audit.Write(new AuditEntry(full, account.PrincipalId, AdminRule.RoleOf(s, account).AuditName(), ip?.ToString(),
@@ -144,8 +146,9 @@ public sealed class PasswordResets(Func<LauncherSettings> settings, IRobustClien
         var s = settings();
         var link = $"http://{HostAddress.Effective(s.Hostname)}:{s.WebPort}{ResetPath}?token={token}";
         var full = $"{account.FirstName} {account.LastName}";
-        var queued = sender.Queue(EmailTemplates.StaffResetPassword, to, full,
-            new Dictionary<string, string> { ["AvatarName"] = full, ["Link"] = link, ["ExpiresIn"] = ExpiresIn }, LinkLifetime);
+        var language = emailLanguage.ForResident(account.PrincipalId);
+        var queued = sender.Queue(EmailTemplates.StaffResetPassword, language, to, full,
+            new Dictionary<string, string> { ["AvatarName"] = full, ["Link"] = link, ["ExpiresIn"] = EmailTemplates.Words(ExpiresIn, language) }, LinkLifetime);
         if (queued == QueueResult.Queued) return StaffResetResult.Sent;
         tokens.Revoke(StaffPurpose, account.PrincipalId);
         return StaffResetResult.EmailOff;
@@ -183,14 +186,14 @@ public sealed class PasswordResets(Func<LauncherSettings> settings, IRobustClien
     }
 
     public async Task<(ResetResult Result, ResetLink? Link, PasswordRules.Fault? Problem)> ResetAsync(string? token, string? code, string? password,
-        string? again, IPAddress? ip, CancellationToken ct)
+        string? again, IPAddress? ip, CancellationToken ct, string language = Languages.English)
     {
         // One reset at a time (they are rare): two tabs posting the same link at once can't both write a password before
         // either spends it; the second finds it spent.
         await _one.WaitAsync(ct);
         try
         {
-            return await ResetOneAsync(token, code, password, again, ip, ct);
+            return await ResetOneAsync(token, code, password, again, ip, ct, language);
         }
         finally
         {
@@ -201,7 +204,7 @@ public sealed class PasswordResets(Func<LauncherSettings> settings, IRobustClien
     private readonly SemaphoreSlim _one = new(1, 1);
 
     private async Task<(ResetResult Result, ResetLink? Link, PasswordRules.Fault? Problem)> ResetOneAsync(string? token, string? code, string? password,
-        string? again, IPAddress? ip, CancellationToken ct)
+        string? again, IPAddress? ip, CancellationToken ct, string language)
     {
         if (await OpenAsync(token, ct) is not { } link) return (ResetResult.Expired, null, null);
         var a = link.Account;
@@ -272,7 +275,7 @@ public sealed class PasswordResets(Func<LauncherSettings> settings, IRobustClien
         sessions.EndAll(link.Principal);
         guestStamps.Rotate(link.Principal);
         if (a.Email.Trim() is { Length: > 0 } to)
-            sender.Queue(EmailTemplates.PasswordChanged, to, full, new Dictionary<string, string> { ["AvatarName"] = full });
+            sender.Queue(EmailTemplates.PasswordChanged, language, to, full, new Dictionary<string, string> { ["AvatarName"] = full });
         audit.Write(new AuditEntry(full, link.Principal, link.Role.AuditName(), ip?.ToString(), "password-reset", cleared, "ok"));
         return (ResetResult.Done, link, null);
     }

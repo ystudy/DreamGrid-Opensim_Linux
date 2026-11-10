@@ -39,7 +39,8 @@ public sealed class AccountChanges(Func<LauncherSettings> settings, IRobustClien
 {
     public const string Purpose = "change-email";
     public static readonly TimeSpan LinkLifetime = PendingEmailChanges.KeepFor;
-    public const string ExpiresIn = "24 hours";
+    /// <summary>The <c>EmailText</c> key of "24 hours", read in the email's language by <see cref="EmailTemplates.Words(string, string)"/>.</summary>
+    public const string ExpiresIn = "ExpiresIn.24h";
     public const string ConfirmPath = "/guest/confirm-email";
 
     /// <summary>The English sentences below are for logs and tests; residents read the matching <c>ResidentText</c> keys through <see cref="AccountOutcome.Message"/>.</summary>
@@ -70,7 +71,7 @@ public sealed class AccountChanges(Func<LauncherSettings> settings, IRobustClien
     public bool EmailChangeAvailable() => sender.IsReady;
 
     public async Task<AccountOutcome> ChangePasswordAsync(Guid principal, string? current, string? code, string? password, string? again,
-        IPAddress? ip, CancellationToken ct)
+        IPAddress? ip, CancellationToken ct, string language = Languages.English)
     {
         var (refused, account) = await CheckAsync(principal, current, code, ip, "password-change-refused", ct);
         if (refused is not null) return refused;
@@ -97,13 +98,13 @@ public sealed class AccountChanges(Func<LauncherSettings> settings, IRobustClien
         stamps.Rotate(principal);
         if (AdminRule.RoleOf(settings(), a) != StaffRole.None) sessions.EndAll(principal);
         if (sender.IsReady && a.Email.Trim() is { Length: > 0 } to)
-            sender.Queue(EmailTemplates.PasswordChanged, to, Full(a), new Dictionary<string, string> { ["AvatarName"] = Full(a) });
+            sender.Queue(EmailTemplates.PasswordChanged, language, to, Full(a), new Dictionary<string, string> { ["AvatarName"] = Full(a) });
         Write(a, ip, "password-changed", null, "ok");
         return new(AccountResult.Done);
     }
 
     public async Task<AccountOutcome> AskEmailChangeAsync(Guid principal, string? current, string? code, string? newEmail, IPAddress? ip,
-        CancellationToken ct)
+        CancellationToken ct, string language = Languages.English)
     {
         if (!sender.IsReady) return new(AccountResult.NoEmail, NoEmailText, new("Account.NoEmail"));
         var (refused, account) = await CheckAsync(principal, current, code, ip, "email-change-refused", ct);
@@ -131,13 +132,13 @@ public sealed class AccountChanges(Func<LauncherSettings> settings, IRobustClien
         waiting.Set(principal, email, token);
         var s = settings();
         var full = Full(a);
-        var queued = sender.Queue(EmailTemplates.ConfirmNewEmail, email, full,
-            new Dictionary<string, string> { ["AvatarName"] = full, ["Link"] = $"{Site(s)}{ConfirmPath}?token={token}", ["ExpiresIn"] = ExpiresIn },
+        var queued = sender.Queue(EmailTemplates.ConfirmNewEmail, language, email, full,
+            new Dictionary<string, string> { ["AvatarName"] = full, ["Link"] = $"{Site(s)}{ConfirmPath}?token={token}", ["ExpiresIn"] = EmailTemplates.Words(ExpiresIn, language) },
             LinkLifetime);
         if (queued != QueueResult.Queued)
             log.LogWarning("Account: the new-address email for first name {First} couldn't be queued: {Result}", LogText.Clean(a.FirstName, 32), queued);
         if (a.Email.Trim() is { Length: > 0 } old)
-            sender.Queue(EmailTemplates.EmailChangeNotice, old, full,
+            sender.Queue(EmailTemplates.EmailChangeNotice, language, old, full,
                 new Dictionary<string, string> { ["AvatarName"] = full, ["Link"] = $"{Site(s)}{PasswordResets.AskPath}" });
         Write(a, ip, "email-change-asked", null, "ok");
         return new(AccountResult.Done);

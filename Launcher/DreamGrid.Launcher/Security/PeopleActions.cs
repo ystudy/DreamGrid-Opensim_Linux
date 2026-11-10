@@ -30,7 +30,7 @@ public sealed class PeopleActions(IPeopleDirectory people, StaffActions staff, F
     EmailSender sender, IRobustClient robust, IRobustNames names, IRobustEmails emails, IStaffDirectory directory, HeldNames held,
     PasswordResets resets, StaffSessions sessions, GuestStamps stamps, IGridController grid, IAccountRemover remover, IEstateRemover estates,
     RegionRights rights, AccountHolds holds, SuspendedStore suspended, EmailTokens tokens, PendingEmailChanges emailChanges, AuditLog audit,
-    ResidentLanguages languages, ILogger<PeopleActions> log)
+    ResidentLanguages languages, EmailLanguage emailLanguage, ILogger<PeopleActions> log)
 {
     public const string OnHold = "This account is on hold.";
     public const string Moving = "Their regions are moving back to the grid's estate. Try again in a minute.";
@@ -136,7 +136,7 @@ public sealed class PeopleActions(IPeopleDirectory people, StaffActions staff, F
             if (!string.Equals(newName, oldName, StringComparison.OrdinalIgnoreCase) && !held.Hold(oldName, principal))
                 log.LogWarning("People: the old name couldn't be held (the held-names file couldn't be saved).");
             if (a.Email.Trim() is { Length: > 0 } to)
-                sender.Queue(EmailTemplates.NameChanged, to, newName, new Dictionary<string, string> { ["OldName"] = oldName, ["AvatarName"] = newName });
+                sender.Queue(EmailTemplates.NameChanged, emailLanguage.ForResident(principal), to, newName, new Dictionary<string, string> { ["OldName"] = oldName, ["AvatarName"] = newName });
             Write(actor, ip, "name-changed", LogText.Clean($"{oldName} -> {newName}", 140), "ok");
             said.Add($"{oldName} is now {newName}. Viewers may show the old name until they log in again, and other grids for longer.");
         }
@@ -159,9 +159,9 @@ public sealed class PeopleActions(IPeopleDirectory people, StaffActions staff, F
             tokens.Revoke(PasswordResets.StaffPurpose, principal);
             var forgot = $"http://{HostAddress.Effective(s.Hostname)}:{s.WebPort}{PasswordResets.AskPath}";
             if (a.Email.Trim() is { Length: > 0 } old)
-                sender.Queue(EmailTemplates.EmailChangedByStaff, old, newName, new Dictionary<string, string> { ["AvatarName"] = newName, ["Link"] = forgot });
+                sender.Queue(EmailTemplates.EmailChangedByStaff, emailLanguage.ForResident(principal), old, newName, new Dictionary<string, string> { ["AvatarName"] = newName, ["Link"] = forgot });
             if (newEmail.Length > 0)
-                sender.Queue(EmailTemplates.EmailSetByStaff, newEmail, newName, new Dictionary<string, string> { ["AvatarName"] = newName });
+                sender.Queue(EmailTemplates.EmailSetByStaff, emailLanguage.ForResident(principal), newEmail, newName, new Dictionary<string, string> { ["AvatarName"] = newName });
             Write(actor, ip, "email-changed", LogText.Clean(newName, 64), "ok");
             said.Add(newEmail.Length > 0 ? $"{newName}'s email address is changed." : $"{newName} has no email address now.");
         }

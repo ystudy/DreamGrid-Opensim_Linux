@@ -1,3 +1,4 @@
+using DreamGrid.Launcher.Email;
 using System.Globalization;
 using DreamGrid.Launcher.Core.OpenSim;
 using DreamGrid.Launcher.Core.Security;
@@ -16,7 +17,7 @@ namespace DreamGrid.Launcher.Pages.Guest;
 /// the new stamp, so it stays signed in while every other session ends.
 /// </summary>
 public sealed class AccountModel(AccountChanges changes, IRobustClient robust, Func<LauncherSettings> settings, RegionRights rights,
-    ResidentTwoFactor residents, ILogger<AccountModel> log, IStringLocalizer<ResidentText> t) : PageModel
+    ResidentTwoFactor residents, EmailLanguage emailLanguage, ILogger<AccountModel> log, IStringLocalizer<ResidentText> t) : PageModel
 {
     [BindProperty] public string? Current { get; set; }
     [BindProperty] public string? Code { get; set; }
@@ -50,7 +51,8 @@ public sealed class AccountModel(AccountChanges changes, IRobustClient robust, F
     public async Task<IActionResult> OnPostPasswordAsync(CancellationToken ct)
     {
         if (GuestSignIn.Read(User) is not { } guest) return Challenge();
-        var r = await changes.ChangePasswordAsync(guest.Principal, Current, Code, Password, Again, HttpContext.Connection.RemoteIpAddress, ct);
+        var r = await changes.ChangePasswordAsync(guest.Principal, Current, Code, Password, Again, HttpContext.Connection.RemoteIpAddress, ct,
+            emailLanguage.ForRequest(HttpContext));
         await LoadAsync(guest.Principal, ct);
         if (r.Result == AccountResult.Done)
         {
@@ -65,7 +67,8 @@ public sealed class AccountModel(AccountChanges changes, IRobustClient robust, F
     public async Task<IActionResult> OnPostEmailAsync(CancellationToken ct)
     {
         if (GuestSignIn.Read(User) is not { } guest) return Challenge();
-        var r = await changes.AskEmailChangeAsync(guest.Principal, Current, Code, NewEmail, HttpContext.Connection.RemoteIpAddress, ct);
+        var r = await changes.AskEmailChangeAsync(guest.Principal, Current, Code, NewEmail, HttpContext.Connection.RemoteIpAddress, ct,
+            emailLanguage.ForRequest(HttpContext));
         await LoadAsync(guest.Principal, ct);
         if (r.Result == AccountResult.Done)
         {

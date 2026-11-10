@@ -7,6 +7,7 @@ using DreamGrid.Launcher.Core.OpenSim;
 using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Core.Tickets;
+using DreamGrid.Launcher.Core;
 using DreamGrid.Launcher.Email;
 
 namespace DreamGrid.Launcher.Guests;
@@ -27,7 +28,7 @@ public sealed record TicketSendResult(TicketSendOutcome Outcome, string? Problem
 /// memory (a restart forgets them, as the other guest limits do).
 /// </summary>
 public sealed class SupportTickets(TicketStore store, EmailTokens tokens, EmailSender email, Func<LauncherSettings> settings,
-    AuditLog audit, TimeProvider time, ILogger<SupportTickets> log)
+    AuditLog audit, TimeProvider time, EmailLanguage emailLanguage, ILogger<SupportTickets> log)
 {
     public const int MaxOpenPerSender = 3;
     public const int MaxOpenInAll = 2000;
@@ -57,9 +58,10 @@ public sealed class SupportTickets(TicketStore store, EmailTokens tokens, EmailS
 
     /// <summary>
     /// Sends a ticket. <paramref name="account"/> is the signed-in resident (their name and email come from their account), or null
-    /// for someone not signed in, whose ticket waits for them to confirm their email.
+    /// for someone not signed in, whose ticket waits for them to confirm their email. The emails go out in <paramref name="language"/>,
+    /// the language of the page (the sender may have no account, so no saved language; task 10 keeps it on the ticket).
     /// </summary>
-    public TicketSendResult Send(TicketForm form, RobustAccount? account, IPAddress? ip)
+    public TicketSendResult Send(TicketForm form, RobustAccount? account, IPAddress? ip, string language = Languages.English)
     {
         var now = time.GetUtcNow();
         var anonymous = account is null;
@@ -105,10 +107,10 @@ public sealed class SupportTickets(TicketStore store, EmailTokens tokens, EmailS
         if (anonymous)
         {
             var token = tokens.Issue(ConfirmPurpose, ticket.Id, ConfirmLifetime);
-            Queue(EmailTemplates.TicketConfirm, address, name, ticket, Website() + ConfirmPath + "?token=" + token, ConfirmLifetime);
+            Queue(EmailTemplates.TicketConfirm, language, address, name, ticket, Website() + ConfirmPath + "?token=" + token, ConfirmLifetime);
             return new(TicketSendOutcome.CheckEmail);
         }
-        SendAccess(ticket);
+        SendAccess(ticket, language);
         return new(TicketSendOutcome.Opened, Ticket: store.Get(ticket.Id));
     }
 
@@ -116,7 +118,7 @@ public sealed class SupportTickets(TicketStore store, EmailTokens tokens, EmailS
     /// A confirmation link: the ticket opens, and its private link is emailed. Null for a used, expired or unknown link, or when
     /// opening it now would pass the open-ticket limits (checked again here, at the moment it opens).
     /// </summary>
-    public Ticket? Confirm(string? token)
+    public Ticket? Confirm(string? token, string language = Languages.English)
     {
         // Find names the ticket; TryRedeem spends the token, once, for that ticket only.
         if (tokens.Find(ConfirmPurpose, token) is not { } id || !tokens.TryRedeem(ConfirmPurpose, id, token)) return null;
@@ -130,7 +132,7 @@ public sealed class SupportTickets(TicketStore store, EmailTokens tokens, EmailS
                 : null);
         if (ticket is null) return null;
         audit.Write(new AuditEntry(ticket.Sender.Name, null, "guest", null, "ticket-confirmed", ticket.Number, "ok"));
-        SendAccess(ticket);
+        SendAccess(ticket, language);
         return store.Get(id);
     }
 
@@ -177,7 +179,7 @@ public sealed class SupportTickets(TicketStore store, EmailTokens tokens, EmailS
     /// "I lost my link": a new link for each of the address's open tickets or ones closed in the last 14 days. [S] The caller shows
     /// the same reply whatever happens here; at most 3 such emails per address a day.
     /// </summary>
-    public void SendLostLinks(string? address)
+    public void SendLostLinks(string? address, string language = Languages.English)
     {
         if (TicketRules.Address(address) is not { } to) return;
         // [S] In the background, so the page answers in the same time whether or not the address has tickets.
@@ -191,7 +193,7 @@ public sealed class SupportTickets(TicketStore store, EmailTokens tokens, EmailS
                 foreach (var t in mine)
                 {
                     if (!Allowed(to, time.GetUtcNow())) break;
-                    SendAccess(t);
+                    SendAccess(t, language);
                 }
             }
             catch (Exception e)
@@ -201,16 +203,19 @@ public sealed class SupportTickets(TicketStore store, EmailTokens tokens, EmailS
         });
     }
 
-    /// <summary>Staff answered: the sender gets an email with a fresh private link, never the reply's text.</summary>
+    /// <summary>
+    /// Staff answered: the sender gets an email with a fresh private link, never the reply's text. In the grid's default language
+    /// for now: the ticket's own language comes with task 10.
+    /// </summary>
     public void TellGuestStaffReplied(Ticket ticket)
     {
         // No email can go out: don't use up one of the ticket's five live links for nothing.
         if (!email.IsReady) return;
-        SendAccess(ticket, EmailTemplates.TicketStaffReply);
+        SendAccess(ticket, emailLanguage.Default(), EmailTemplates.TicketStaffReply);
     }
 
     /// <summary>Adds a fresh private link to the ticket and emails it to the sender.</summary>
-    private void SendAccess(Ticket ticket, string template = EmailTemplates.TicketAccess)
+    private void SendAccess(Ticket ticket, string language, string template = EmailTemplates.TicketAccess)
     {
         string? link = null;
         var saved = store.Update(ticket.Id, t =>
@@ -220,13 +225,13 @@ public sealed class SupportTickets(TicketStore store, EmailTokens tokens, EmailS
             return next;
         });
         if (saved is null || link is null || string.IsNullOrEmpty(saved.Sender.Email)) return;
-        Queue(template, saved.Sender.Email, saved.Sender.Name, saved, Website() + TicketPath + "?id=" + saved.Id + "&link=" + link,
+        Queue(template, language, saved.Sender.Email, saved.Sender.Name, saved, Website() + TicketPath + "?id=" + saved.Id + "&link=" + link,
             TimeSpan.FromHours(24));
     }
 
-    private void Queue(string template, string to, string name, Ticket t, string link, TimeSpan validFor)
+    private void Queue(string template, string language, string to, string name, Ticket t, string link, TimeSpan validFor)
     {
-        var result = email.Queue(template, to, name, new Dictionary<string, string>
+        var result = email.Queue(template, language, to, name, new Dictionary<string, string>
         {
             ["Name"] = name, ["TicketNumber"] = t.Number, ["Subject"] = t.Subject, ["Link"] = link,
         }, validFor);

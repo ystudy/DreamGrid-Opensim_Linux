@@ -1,3 +1,4 @@
+using DreamGrid.Launcher.Email;
 using DreamGrid.Launcher.Core.OpenSim;
 using DreamGrid.Launcher.Core.Tickets;
 using DreamGrid.Launcher.Guests;
@@ -12,7 +13,7 @@ namespace DreamGrid.Launcher.Pages.Support;
 /// their own tickets here; someone not signed in gives a name and email and confirms it. Bot protection: form <c>support</c>.
 /// </summary>
 public sealed class IndexModel(SupportTickets tickets, BotGuard bots, IRobustClient robust, TicketCookie cookie,
-    IStringLocalizer<ResidentText> t) : PageModel
+    EmailLanguage emailLanguage, IStringLocalizer<ResidentText> t) : PageModel
 {
     [BindProperty] public string? Name { get; set; }
     [BindProperty] public string? Email { get; set; }
@@ -39,7 +40,8 @@ public sealed class IndexModel(SupportTickets tickets, BotGuard bots, IRobustCli
             Error = t["Common.BotFailed"];
             return Page();
         }
-        var r = tickets.Send(new TicketForm(Name, Email, Category, Subject, Message, Evidence, Logs), Account, HttpContext.Connection.RemoteIpAddress);
+        var r = tickets.Send(new TicketForm(Name, Email, Category, Subject, Message, Evidence, Logs), Account, HttpContext.Connection.RemoteIpAddress,
+            emailLanguage.ForRequest(HttpContext));
         switch (r.Outcome)
         {
             case TicketSendOutcome.Opened:

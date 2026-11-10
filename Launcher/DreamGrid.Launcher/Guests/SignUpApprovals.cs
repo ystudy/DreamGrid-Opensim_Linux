@@ -39,7 +39,7 @@ public sealed record ApprovalOutcome(ApprovalResult Result, string? Message = nu
 /// <c>signup-denied</c>); the note never is.
 /// </summary>
 public sealed class SignUpApprovals(Func<LauncherSettings> settings, IGridController grid, IRobustClient robust, IAccountRemover remover,
-    IStaffDirectory directory, SignUpBoard board, SignUpLock gate, EmailSender sender, AuditLog audit, GroupsAdmin groups, ILogger<SignUpApprovals> log)
+    IStaffDirectory directory, SignUpBoard board, SignUpLock gate, EmailSender sender, EmailLanguage emailLanguage, AuditLog audit, GroupsAdmin groups, ILogger<SignUpApprovals> log)
 {
     public const int NoteLimit = 500;
     public const string ApproveBusy = "Couldn't approve right now. Try again in a few minutes.";
@@ -82,7 +82,7 @@ public sealed class SignUpApprovals(Func<LauncherSettings> settings, IGridContro
             if (sender.IsReady && account.Email.Trim().Length > 0)
             {
                 var full = Full(account);
-                sender.Queue(EmailTemplates.AccountApproved, SignUpRules.NormalEmail(account.Email), full,
+                sender.Queue(EmailTemplates.AccountApproved, emailLanguage.ForResident(principal), SignUpRules.NormalEmail(account.Email), full,
                     new Dictionary<string, string> { ["AvatarName"] = full, ["Link"] = $"{Site(s)}/guest/sign-in" });
             }
             return new(ApprovalResult.Done);
@@ -91,6 +91,8 @@ public sealed class SignUpApprovals(Func<LauncherSettings> settings, IGridContro
     public Task<ApprovalOutcome> DenyAsync(Guid principal, string staffName, StaffRole role, string? note, IPAddress? ip, CancellationToken ct) =>
         ActAsync(principal, staffName, role, ip, DenyBusy, ct, async account =>
         {
+            // Read before the account goes: the person's saved language may go with it.
+            var language = emailLanguage.ForResident(principal);
             try
             {
                 await remover.DeleteAsync(principal, CancellationToken.None);
@@ -107,7 +109,7 @@ public sealed class SignUpApprovals(Func<LauncherSettings> settings, IGridContro
                 var words = (note ?? "").Trim();
                 if (words.Length > NoteLimit) words = words[..NoteLimit];
                 var full = Full(account);
-                sender.Queue(EmailTemplates.SignUpDenied, SignUpRules.NormalEmail(account.Email), full,
+                sender.Queue(EmailTemplates.SignUpDenied, language, SignUpRules.NormalEmail(account.Email), full,
                     new Dictionary<string, string> { ["AvatarName"] = full, ["Note"] = words });
             }
             return new(ApprovalResult.Done);

@@ -60,7 +60,7 @@ public sealed class EmailTemplatesTests
     public void Current_falls_back_to_default()
     {
         var s = TestSettings.Create();
-        Assert.Equal(EmailTemplates.Default("test"), EmailTemplates.Current(s, "test"));
+        Assert.Equal(EmailTemplates.Default("test"), EmailTemplates.Current(s, "test", "en"));
         var mine = new EmailTemplateText("Hello", "Mine {GridName}", Saved);
         var withMine = s with
         {
@@ -69,8 +69,70 @@ public sealed class EmailTemplatesTests
                 ["en"] = new Dictionary<string, EmailTemplateText> { ["test"] = mine },
             }),
         };
-        Assert.Equal(mine, EmailTemplates.Current(withMine, "test"));
-        Assert.Equal(EmailTemplates.Default("reset-password"), EmailTemplates.Current(withMine, "reset-password"));
+        Assert.Equal(mine, EmailTemplates.Current(withMine, "test", "en"));
+        Assert.Equal(EmailTemplates.Default("reset-password"), EmailTemplates.Current(withMine, "reset-password", "en"));
+    }
+
+    private static LauncherSettings WithWording(string language, string id, EmailTemplateText text) => TestSettings.Create() with
+    {
+        Email = new EmailSettings(new Dictionary<string, IReadOnlyDictionary<string, EmailTemplateText>>
+        {
+            [language] = new Dictionary<string, EmailTemplateText> { [id] = text },
+        }),
+    };
+
+    [Fact]
+    public void Staff_emails_are_the_four_that_go_to_staff()
+    {
+        Assert.Equal(["test", "signups-waiting", "ticket-new", "ticket-reply-guest"], EmailTemplates.All.Where(EmailTemplates.IsStaffEmail));
+    }
+
+    [Fact]
+    public void Staff_email_is_English_whatever_the_language()
+    {
+        foreach (var id in EmailTemplates.All.Where(EmailTemplates.IsStaffEmail))
+            Assert.Equal(EmailTemplates.Default(id, "en"), EmailTemplates.Default(id, "de"));
+        Assert.Equal(EmailTemplates.Default("ticket-new"), EmailTemplates.Default("ticket-new", "ru"));
+        var mine = new EmailTemplateText("Mine", "Mine {Link}", Saved);
+        Assert.Equal(mine, EmailTemplates.Current(WithWording("en", "ticket-new", mine), "ticket-new", "de"));
+    }
+
+    [Fact]
+    public void Default_without_a_language_is_the_English_one()
+    {
+        foreach (var id in EmailTemplates.All)
+            Assert.Equal(EmailTemplates.Default(id, "en"), EmailTemplates.Default(id));
+    }
+
+    [Fact]
+    public void A_language_without_text_falls_back_to_English()
+    {
+        Assert.Equal(EmailTemplates.Default("confirm-email", "en"), EmailTemplates.Default("confirm-email", "xx"));
+        Assert.Equal("30 minutes", EmailTemplates.Words("ExpiresIn.30m", "xx"));
+    }
+
+    [Fact]
+    public void Owner_wording_in_another_language_is_not_used()
+    {
+        var s = WithWording("en", "confirm-email", new EmailTemplateText("Mine", "Mine {Link} {ExpiresIn}", Saved));
+        Assert.Equal("Mine", EmailTemplates.Current(s, "confirm-email", "en").Subject);
+        Assert.Equal(EmailTemplates.Default("confirm-email", "de"), EmailTemplates.Current(s, "confirm-email", "de"));
+        Assert.NotEqual("Mine", EmailTemplates.Current(s, "confirm-email", "fr").Subject);
+    }
+
+    [Fact]
+    public void Owner_wording_in_the_language_is_used()
+    {
+        var mine = new EmailTemplateText("Meins", "Meins {Link} {ExpiresIn}", Saved);
+        var s = WithWording("de", "confirm-email", mine);
+        Assert.Equal(mine, EmailTemplates.Current(s, "confirm-email", "de"));
+        Assert.Equal(EmailTemplates.Default("confirm-email", "en"), EmailTemplates.Current(s, "confirm-email", "en"));
+    }
+
+    [Fact]
+    public void Words_for_an_unknown_key_throw()
+    {
+        Assert.Throws<ArgumentException>(() => EmailTemplates.Words("ExpiresIn.never", "en"));
     }
 
     [Fact]

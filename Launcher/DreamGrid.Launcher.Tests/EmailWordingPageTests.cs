@@ -112,7 +112,7 @@ public sealed class EmailWordingPageTests
         (await PostAsync(owner, "Save", EmailTemplates.Test, new() { ["Subject"] = "Mine", ["Body"] = "Mine." })).Dispose();
         using var r = await PostAsync(owner, "Reset", EmailTemplates.Test, []);
         Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
-        Assert.Equal(EmailTemplates.Default("test"), EmailTemplates.Current(f.Store.LoadOrCreate(), EmailTemplates.Test));
+        Assert.Equal(EmailTemplates.Default("test"), EmailTemplates.Current(f.Store.LoadOrCreate(), EmailTemplates.Test, "en"));
         Assert.Contains("email-template-reset", Audit(f));
     }
 

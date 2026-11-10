@@ -53,7 +53,8 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
 {
     public const string Purpose = "confirm-signup";
     public static readonly TimeSpan LinkLifetime = TimeSpan.FromHours(24);
-    public const string ExpiresIn = "24 hours";
+    /// <summary>The <c>EmailText</c> key of "24 hours", read in the email's language by <see cref="EmailTemplates.Words(string, string)"/>.</summary>
+    public const string ExpiresIn = "ExpiresIn.24h";
     public const string ConfirmPath = "/guest/confirm";
     public const string NameTaken = "That name is taken. Try another.";
     public const string TermsProblem = "Tick the box to accept the Terms of Service and the Privacy notice.";
@@ -61,7 +62,8 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
 
     private ResetLimits Counts => limits.Counts;
 
-    public async Task<SignUpResult> SubmitAsync(SignUpForm form, IPAddress? ip, CancellationToken ct)
+    /// <summary>Signs someone up; the emails go out in <paramref name="language"/>, the language of the page.</summary>
+    public async Task<SignUpResult> SubmitAsync(SignUpForm form, IPAddress? ip, CancellationToken ct, string language = Languages.English)
     {
         var s = settings();
         if (!SignUpRules.IsOpen(s)) return new(SignUpOutcome.Closed);
@@ -157,7 +159,7 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
         if (LegalPages.Get(s, LegalPages.Terms, s.Languages.Default) is { } t) terms.Accept(account.PrincipalId, t.Version, ip?.ToString());
         if (owner is not null)
         {
-            NoticeOwner(s, owner, email);
+            NoticeOwner(s, owner, email, language);
             Refused(form, ip, "email taken");
             return new(SignUpOutcome.CheckEmail);
         }
@@ -172,7 +174,7 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
             return new(SignUpOutcome.SignedUp, Account: account);
         }
 
-        SendLink(s, account, email);
+        SendLink(s, account, email, language);
         return new(SignUpOutcome.CheckEmail);
     }
 
@@ -223,7 +225,7 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
     /// limits. Answers <see cref="SignUpOutcome.CheckEmail"/> whatever the name, and <see cref="SignUpOutcome.Busy"/> only when the
     /// grid can't send email.
     /// </summary>
-    public async Task<SignUpOutcome> ResendAsync(string? first, string? last, IPAddress? ip, CancellationToken ct)
+    public async Task<SignUpOutcome> ResendAsync(string? first, string? last, IPAddress? ip, CancellationToken ct, string language = Languages.English)
     {
         if (!sender.IsReady) return SignUpOutcome.Busy;
         if (!Counts.AddressAllowed(ip)) return SignUpOutcome.CheckEmail;
@@ -242,11 +244,11 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
         }
         // Only a sign-up waiting for its email gets a link: never a decoy, whose address belongs to someone else.
         if (account is not null && pending.Get(account.PrincipalId)?.State == SignUpState.WaitingForEmail && account.Email.Trim().Length > 0)
-            SendLink(settings(), account, SignUpRules.NormalEmail(account.Email));
+            SendLink(settings(), account, SignUpRules.NormalEmail(account.Email), language);
         return SignUpOutcome.CheckEmail;
     }
 
-    private void SendLink(LauncherSettings s, RobustAccount account, string email)
+    private void SendLink(LauncherSettings s, RobustAccount account, string email, string language)
     {
         if (!Counts.SendAllowed(account.PrincipalId, email)) return;
         Counts.CountSend(account.PrincipalId, email);
@@ -255,18 +257,18 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
         pending.Linked(account.PrincipalId);
         var link = $"{Site(s)}{ConfirmPath}?token={token}";
         var full = Full(account);
-        var queued = sender.Queue(EmailTemplates.ConfirmEmail, email, full,
-            new Dictionary<string, string> { ["AvatarName"] = full, ["Link"] = link, ["ExpiresIn"] = ExpiresIn }, LinkLifetime);
+        var queued = sender.Queue(EmailTemplates.ConfirmEmail, language, email, full,
+            new Dictionary<string, string> { ["AvatarName"] = full, ["Link"] = link, ["ExpiresIn"] = EmailTemplates.Words(ExpiresIn, language) }, LinkLifetime);
         if (queued != QueueResult.Queued)
             log.LogWarning("Sign-up: the confirm email for first name {First} couldn't be queued: {Result}", LogText.Clean(account.FirstName, 32), queued);
     }
 
-    private void NoticeOwner(LauncherSettings s, RobustAccount owner, string email)
+    private void NoticeOwner(LauncherSettings s, RobustAccount owner, string email, string language)
     {
         if (!Counts.SendAllowed(owner.PrincipalId, email)) return;
         Counts.CountSend(owner.PrincipalId, email);
         var full = Full(owner);
-        sender.Queue(EmailTemplates.AlreadyHaveAccount, email, full,
+        sender.Queue(EmailTemplates.AlreadyHaveAccount, language, email, full,
             new Dictionary<string, string> { ["AvatarName"] = full, ["Link"] = $"{Site(s)}{PasswordResets.AskPath}" });
     }
 
