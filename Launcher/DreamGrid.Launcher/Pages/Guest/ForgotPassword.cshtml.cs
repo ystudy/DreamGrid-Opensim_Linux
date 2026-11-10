@@ -31,7 +31,7 @@ public sealed class ForgotPasswordModel(PasswordResets resets, BotGuard bots, IS
         }
         if (!bots.Check(HttpContext, "forgot-password").Passed)
         {
-            Error = t["ForgotPassword.BotFailed"];
+            Error = t["Common.BotFailed"];
             return Page();
         }
         Off = await resets.AskAsync(Name, Email, HttpContext.Connection.RemoteIpAddress, ct) == ResetAsk.GridOff;

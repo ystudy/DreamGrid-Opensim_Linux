@@ -7,18 +7,19 @@ using DreamGrid.Launcher.Guests;
 using DreamGrid.Launcher.Security;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Localization;
 
 namespace DreamGrid.Launcher.Pages.Guest;
 
 /// <summary>One region a guest has rights over, as the page shows it.</summary>
-public sealed record OwnedRegionCard(Guid Id, string Name, string State, string PeopleHere, string LastStarted, RestartOffer Restart);
+public sealed record OwnedRegionCard(Guid Id, string Name, string State, string PeopleHere, string LastStarted, RestartOffer Restart, string? RestartReason = null);
 
 /// <summary>
 /// The regions a guest has rights over (<c>AuthSchemes.GuestPolicy</c>, by the /Guest folder convention), with a restart for one
 /// that is stuck. The restart re-checks the person's rights and <see cref="RegionOwnerRules"/> on the server, whatever the form said.
 /// </summary>
 public sealed class MyRegionsModel(RegionRights rights, IGridController grid, IOnlineUsers online, RegionActions actions,
-    RegionRestarts restarts, AuditLog audit, TimeProvider time) : PageModel
+    RegionRestarts restarts, AuditLog audit, TimeProvider time, IStringLocalizer<ResidentText> t) : PageModel
 {
     public IReadOnlyList<OwnedRegionCard> Regions { get; private set; } = [];
 
@@ -35,10 +36,10 @@ public sealed class MyRegionsModel(RegionRights rights, IGridController grid, IO
         {
             var region = status.Regions.FirstOrDefault(r => r.Id == right.Region);
             if (region is null) continue;
+            var offer = RegionOwnerRules.Restart(status, region, owner, OwnerOf, restarts.Last(region.Id), now);
             cards.Add(new OwnedRegionCard(region.Id, region.Name, StateWords(region.State),
-                people.Available ? people.Avatars.Count(a => a.RegionId == region.Id).ToString(CultureInfo.InvariantCulture) : "unknown",
-                LastStarted(status, region, now),
-                RegionOwnerRules.Restart(status, region, owner, OwnerOf, restarts.Last(region.Id), now)));
+                people.Available ? people.Avatars.Count(a => a.RegionId == region.Id).ToString(CultureInfo.CurrentCulture) : t["Regions.Unknown"].Value,
+                LastStarted(status, region, now), offer, RestartReason(offer)));
         }
         Regions = cards.OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase).ToList();
     }
@@ -66,13 +67,13 @@ public sealed class MyRegionsModel(RegionRights rights, IGridController grid, IO
         if (!accepted)
         {
             Write(owner, region.Name, "refused");
-            Notice = offer.Reason ?? $"{region.Name} doesn't need a restart.";
+            Notice = RestartReason(offer) ?? t["Regions.NoRestartNeeded", region.Name];
             return Redirect("/guest/regions");
         }
 
         if (!actions.TryRun(id, offer.Action!.Value)) return NotFound();
         Write(owner, region.Name, "ok");
-        Notice = $"Restarting {region.Name}. It can take a minute or two.";
+        Notice = t["Regions.Restarting", region.Name];
         return Redirect("/guest/regions");
     }
 
@@ -86,21 +87,29 @@ public sealed class MyRegionsModel(RegionRights rights, IGridController grid, IO
         audit.Write(new AuditEntry(User.Identity?.Name ?? "", owner, AuthSchemes.GuestRole,
             HttpContext.Connection.RemoteIpAddress?.ToString(), "region-restart", target, result));
 
-    private static string StateWords(RegionState state) => state switch
+    /// <summary>Why a restart can't be used now, in the page's language; null when it can (or isn't offered).</summary>
+    private string? RestartReason(RestartOffer offer) => offer.Why switch
     {
-        RegionState.Running => "running",
-        RegionState.Stopped => "stopped",
-        RegionState.Starting => "starting",
-        RegionState.Stopping => "stopping",
-        RegionState.Failed => "not responding",
-        _ => "parked",
+        RestartWhy.SharedProgram => t["Regions.SharedProgram"].Value,
+        RestartWhy.RestartedRecently => t["Regions.RestartedRecently", offer.Again ?? ""].Value,
+        _ => offer.Reason,
+    };
+
+    private string StateWords(RegionState state) => state switch
+    {
+        RegionState.Running => t["Regions.StateRunning"].Value,
+        RegionState.Stopped => t["Regions.StateStopped"].Value,
+        RegionState.Starting => t["Regions.StateStarting"].Value,
+        RegionState.Stopping => t["Regions.StateStopping"].Value,
+        RegionState.Failed => t["Regions.StateFailed"].Value,
+        _ => t["Regions.StateParked"].Value,
     };
 
     /// <summary>When the region's program started (UTC), or "not running".</summary>
-    private static string LastStarted(GridStatus status, RegionStatus region, DateTimeOffset now)
+    private string LastStarted(GridStatus status, RegionStatus region, DateTimeOffset now)
     {
         var process = status.Programs.FirstOrDefault(p => p.Regions.Contains(region.Id))?.Process;
-        if (region.State is not (RegionState.Running or RegionState.Starting) || process?.Uptime is not { } uptime) return "not running";
-        return "Last started " + (now - uptime).UtcDateTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + " (UTC)";
+        if (region.State is not (RegionState.Running or RegionState.Starting) || process?.Uptime is not { } uptime) return t["Regions.NotRunning"].Value;
+        return t["Regions.LastStarted", (now - uptime).UtcDateTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.CurrentCulture)].Value;
     }
 }

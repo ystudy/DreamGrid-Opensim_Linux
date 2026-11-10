@@ -5,6 +5,7 @@ using DreamGrid.Launcher.Guests;
 using DreamGrid.Launcher.Security;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Localization;
 
 namespace DreamGrid.Launcher.Pages.Guest;
 
@@ -13,7 +14,8 @@ namespace DreamGrid.Launcher.Pages.Guest;
 /// names the version it showed; if the Terms changed meanwhile the acceptance is refused and the new version is shown. With no
 /// Terms text there is nothing to accept and the guest goes on.
 /// </summary>
-public sealed class TermsModel(Func<LauncherSettings> settings, TermsAcceptances acceptances, AuditLog audit) : PageModel
+public sealed class TermsModel(Func<LauncherSettings> settings, TermsAcceptances acceptances, AuditLog audit,
+    IStringLocalizer<ResidentText> t) : PageModel
 {
     public string GridName { get; private set; } = "";
     public int Version { get; private set; }
@@ -44,7 +46,7 @@ public sealed class TermsModel(Func<LauncherSettings> settings, TermsAcceptances
         if (version != terms.Version)
         {
             Show(terms);
-            Error = "The terms changed while you were reading. Read the new version.";
+            Error = t["Terms.Changed"];
             return Page();
         }
         var guest = Guest();

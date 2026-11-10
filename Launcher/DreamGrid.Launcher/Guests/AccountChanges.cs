@@ -18,7 +18,8 @@ public sealed record EmailChangeLimits(ResetLimits Counts);
 
 public enum AccountResult { Done, WrongPassword, WrongCode, Locked, Invalid, Unchanged, NoEmail, Busy }
 
-public sealed record AccountOutcome(AccountResult Result, string? Problem = null);
+/// <summary>How a change went. <c>Problem</c> is the sentence (English); <c>Message</c> is the same for the page to say in its language.</summary>
+public sealed record AccountOutcome(AccountResult Result, string? Problem = null, ResidentMessage? Message = null);
 
 public enum EmailLinkResult { Done, Expired, Taken, Busy }
 
@@ -41,6 +42,7 @@ public sealed class AccountChanges(Func<LauncherSettings> settings, IRobustClien
     public const string ExpiresIn = "24 hours";
     public const string ConfirmPath = "/guest/confirm-email";
 
+    /// <summary>The English sentences below are for logs and tests; residents read the matching <c>ResidentText</c> keys through <see cref="AccountOutcome.Message"/>.</summary>
     public const string WrongCurrent = "That isn't your current password.";
     public const string LockedText = "Too many attempts. Try again in a few minutes.";
     public const string SamePassword = "Choose a password you haven't been using.";
@@ -53,6 +55,7 @@ public sealed class AccountChanges(Func<LauncherSettings> settings, IRobustClien
     public const string AddressTaken = "That address is used by another avatar on this grid.";
     public const string EmailBusy = "Couldn't change your email right now. Try again in a few minutes.";
     public const string ServiceDown = "The grid's sign-in service isn't running right now. Try again later.";
+    public const string WrongCode = "That code isn't right. Try again.";
 
     private ResetLimits Counts => limits.Counts;
     private TwoFactorStore Store => residents.Store;
@@ -74,7 +77,7 @@ public sealed class AccountChanges(Func<LauncherSettings> settings, IRobustClien
         var a = account!;
         if (PasswordRules.Problem(password, again, a.FirstName, a.LastName) is { } problem)
             return Refused(a, ip, "password-change-refused", "weak password", new(AccountResult.Invalid, problem));
-        if (password == current) return Refused(a, ip, "password-change-refused", "same password", new(AccountResult.Unchanged, SamePassword));
+        if (password == current) return Refused(a, ip, "password-change-refused", "same password", new(AccountResult.Unchanged, SamePassword, new("Account.SamePassword")));
 
         try
         {
@@ -84,7 +87,7 @@ public sealed class AccountChanges(Func<LauncherSettings> settings, IRobustClien
         {
             log.LogWarning("Account: the password for first name {First} couldn't be written: {Message}",
                 LogText.Clean(a.FirstName, 32), e.InnerException?.Message ?? e.Message);
-            return new(AccountResult.Busy, PasswordBusy);
+            return new(AccountResult.Busy, PasswordBusy, new("Common.PasswordWriteFailed"));
         }
 
         // Written: everything below happens whatever else does.
@@ -101,7 +104,7 @@ public sealed class AccountChanges(Func<LauncherSettings> settings, IRobustClien
     public async Task<AccountOutcome> AskEmailChangeAsync(Guid principal, string? current, string? code, string? newEmail, IPAddress? ip,
         CancellationToken ct)
     {
-        if (!sender.IsReady) return new(AccountResult.NoEmail, NoEmailText);
+        if (!sender.IsReady) return new(AccountResult.NoEmail, NoEmailText, new("Account.NoEmail"));
         var (refused, account) = await CheckAsync(principal, current, code, ip, "email-change-refused", ct);
         if (refused is not null) return refused;
         var a = account!;
@@ -109,7 +112,7 @@ public sealed class AccountChanges(Func<LauncherSettings> settings, IRobustClien
             return Refused(a, ip, "email-change-refused", "bad address", new(AccountResult.Invalid, problem));
         var email = SignUpRules.NormalEmail(newEmail!);
         if (email == SignUpRules.NormalEmail(a.Email))
-            return Refused(a, ip, "email-change-refused", "same address", new(AccountResult.Unchanged, SameAddress));
+            return Refused(a, ip, "email-change-refused", "same address", new(AccountResult.Unchanged, SameAddress, new("Account.SameAddress")));
 
         // The password and code were right, so they are done with (a backup code is spent) whether or not a link goes out.
         Passed(a, code);
@@ -223,24 +226,24 @@ public sealed class AccountChanges(Func<LauncherSettings> settings, IRobustClien
         try
         {
             a = await robust.FindAccountByIdAsync(principal, ct);
-            if (a is null) return (new(AccountResult.Busy, ServiceDown), null);
-            if (throttle.IsLocked(SignInDoor.Guest, Key(a), ip)) return (new(AccountResult.Locked, LockedText), null);
+            if (a is null) return (new(AccountResult.Busy, ServiceDown, new("Common.ServiceDown")), null);
+            if (throttle.IsLocked(SignInDoor.Guest, Key(a), ip)) return (new(AccountResult.Locked, LockedText, new("Common.TooManyAttempts")), null);
             right = await robust.AuthenticateAsync(principal, current ?? "", ct);
         }
         catch (Exception e) when (Unreachable(e, ct))
         {
             log.LogWarning("Account: the account service did not answer: {Message}", e.Message);
-            return (new(AccountResult.Busy, ServiceDown), null);
+            return (new(AccountResult.Busy, ServiceDown, new("Common.ServiceDown")), null);
         }
         if (!right)
         {
             throttle.RecordFailure(SignInDoor.Guest, Key(a), ip);
-            return (Refused(a, ip, refusedAction, "wrong password", new(AccountResult.WrongPassword, WrongCurrent)), null);
+            return (Refused(a, ip, refusedAction, "wrong password", new(AccountResult.WrongPassword, WrongCurrent, new("Account.WrongCurrent"))), null);
         }
         if (NeedsCode(principal) && !Store.CheckCode(principal, code ?? ""))
         {
             throttle.RecordFailure(SignInDoor.Guest, Key(a), ip);
-            return (Refused(a, ip, refusedAction, "two-factor code", new(AccountResult.WrongCode, Pages.Guest.TwoFactorModel.WrongCode)), null);
+            return (Refused(a, ip, refusedAction, "two-factor code", new(AccountResult.WrongCode, WrongCode, new("Common.WrongCode"))), null);
         }
         return (null, a);
     }

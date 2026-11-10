@@ -20,8 +20,11 @@ public sealed record SignUpForm(string? First, string? Last, string? Email, stri
 /// <summary>How a sign-up post or a "send the link again" went.</summary>
 public enum SignUpOutcome { Closed, Invalid, NameTaken, CheckEmail, SignedUp, WaitingForStaff, Busy }
 
-/// <summary>A sign-up's outcome; <c>Problem</c> is the sentence to show, <c>Account</c> the avatar when it can be used at once.</summary>
-public sealed record SignUpResult(SignUpOutcome Outcome, string? Problem = null, RobustAccount? Account = null);
+/// <summary>
+/// A sign-up's outcome; <c>Problem</c> is the sentence (English), <c>Message</c> the same for the page to say in its language,
+/// <c>Account</c> the avatar when it can be used at once.
+/// </summary>
+public sealed record SignUpResult(SignUpOutcome Outcome, string? Problem = null, RobustAccount? Account = null, ResidentMessage? Message = null);
 
 /// <summary>How a confirm link went: the account is in now, staff had already let it in, or the link is used, expired or unknown.</summary>
 public enum ConfirmResult { Confirmed, AlreadyApproved, Bad }
@@ -65,18 +68,28 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
         if (!Counts.AddressAllowed(ip))
         {
             Refused(form, ip, "address limit");
-            return new(SignUpOutcome.Invalid, AddressProblem);
+            return new(SignUpOutcome.Invalid, AddressProblem, Message: new("SignUp.AddressLimit"));
         }
         Counts.CountAddress(ip);
 
         var first = form.First?.Trim() ?? "";
         var last = form.Last?.Trim() ?? "";
+        var nameFault = SignUpRules.NameCheck(first, last, s, heldNames.IsHeld);
+        var passwordFault = nameFault is null ? PasswordRules.Check(form.Password, form.Again, first, last) : null;
+        var emailFault = nameFault is null && passwordFault is null ? SignUpRules.EmailCheck(form.Email) : null;
         var problem = SignUpRules.NameProblem(first, last, s, heldNames.IsHeld)
             ?? PasswordRules.Problem(form.Password, form.Again, first, last)
             ?? SignUpRules.EmailProblem(form.Email)
             ?? (form.AcceptTerms ? null : TermsProblem);
         if (problem is not null)
-            return problem == NameTaken ? Taken(form, ip) : new(SignUpOutcome.Invalid, problem);
+        {
+            if (nameFault == SignUpRules.NameFault.Taken) return Taken(form, ip);
+            var message = nameFault is { } nf ? NameMessage(nf)
+                : passwordFault is { } pf ? PasswordFaultText.Message(pf)
+                : emailFault is { } ef ? EmailMessage(ef)
+                : new ResidentMessage("SignUp.TermsProblem");
+            return new(SignUpOutcome.Invalid, problem, Message: message);
+        }
         var email = SignUpRules.NormalEmail(form.Email!);
         var withEmail = sender.IsReady;
 
@@ -260,8 +273,25 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
     private SignUpResult Taken(SignUpForm form, IPAddress? ip)
     {
         Refused(form, ip, "name taken");
-        return new(SignUpOutcome.NameTaken, NameTaken);
+        return new(SignUpOutcome.NameTaken, NameTaken, Message: NameMessage(SignUpRules.NameFault.Taken));
     }
+
+    /// <summary>What a page says about a name that can't be used.</summary>
+    public static ResidentMessage NameMessage(SignUpRules.NameFault fault) => fault switch
+    {
+        SignUpRules.NameFault.Missing => new("SignUp.NameMissing"),
+        SignUpRules.NameFault.TooLong => new("SignUp.NameTooLong", SignUpRules.MaxNamePart),
+        SignUpRules.NameFault.BadCharacters => new("SignUp.NameBadCharacters"),
+        _ => new("SignUp.NameTaken"),
+    };
+
+    /// <summary>What a page says about an email address that can't be used.</summary>
+    public static ResidentMessage EmailMessage(SignUpRules.EmailFault fault) => fault switch
+    {
+        SignUpRules.EmailFault.Missing => new("SignUp.EmailMissing"),
+        SignUpRules.EmailFault.TooLong => new("SignUp.EmailTooLong", SignUpRules.MaxEmail),
+        _ => new("SignUp.EmailBadShape"),
+    };
 
     private void Refused(SignUpForm form, IPAddress? ip, string reason) =>
         audit.Write(new AuditEntry(LogText.Clean($"{form.First} {form.Last}".Trim(), 64), null, StaffRole.None.AuditName(), ip?.ToString(),

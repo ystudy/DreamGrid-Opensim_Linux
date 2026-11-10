@@ -35,7 +35,7 @@ public sealed class SignInCodeModel(ResidentTwoFactor residents, LoginThrottle t
         var remote = HttpContext.Connection.RemoteIpAddress;
         if (throttle.IsLocked(SignInDoor.Guest, key, remote))
         {
-            Error = t["SignIn.TooManyAttempts"];
+            Error = t["Common.TooManyAttempts"];
             return Page();
         }
 
@@ -68,7 +68,7 @@ public sealed class SignInCodeModel(ResidentTwoFactor residents, LoginThrottle t
             throttle.RecordFailure(SignInDoor.Guest, key, remote);
             log.LogInformation("Guest sign-in: a two-factor code for first name {First} was refused", LogText.Clean(pending.First, 32));
             audit.Write(new AuditEntry(pending.Name, pending.Principal, AuthSchemes.GuestRole, ip, "sign-in-refused", "two-factor code", "refused"));
-            Error = t["SignIn.WrongCode"];
+            Error = t["Common.WrongCode"];
             return Page();
         }
 

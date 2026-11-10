@@ -142,7 +142,7 @@ public sealed class SignInPagesKeysTests
             .Append(Path.Combine(root, "DreamGrid.Launcher", "Languages", "PasswordFaultText.cs"));
 
         var keys = files.Where(File.Exists)
-            .SelectMany(p => Regex.Matches(File.ReadAllText(p), @"\bt?T?\[""([A-Z][A-Za-z]+\.[A-Za-z0-9]+)""").Select(m => m.Groups[1].Value))
+            .SelectMany(p => Regex.Matches(File.ReadAllText(p), @"(?:\b[tT]\[|\bnew\()""([A-Z][A-Za-z]+\.[A-Za-z0-9]+)""").Select(m => m.Groups[1].Value))
             .Distinct().ToList();
         Assert.True(keys.Count > 80, "found only " + keys.Count + " keys; the scan is not finding them");
         Assert.All(keys, k => Assert.False(t[k].ResourceNotFound, k + " has no entry in ResidentText.resx"));

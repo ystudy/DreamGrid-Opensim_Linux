@@ -53,7 +53,7 @@ public sealed class ResetPasswordModel(PasswordResets resets, IStringLocalizer<R
                 Error = t["ResetPassword.WrongCode"];
                 break;
             case ResetResult.Locked:
-                Error = t["SignIn.TooManyAttempts"];
+                Error = t["Common.TooManyAttempts"];
                 break;
             case ResetResult.CodeUnknown:
                 Error = t["SignIn.CodeUnknown"];
@@ -62,7 +62,7 @@ public sealed class ResetPasswordModel(PasswordResets resets, IStringLocalizer<R
                 Error = PasswordFaultText.For(t, problem!.Value);
                 break;
             case ResetResult.WriteFailed:
-                Error = t["ResetPassword.WriteFailed"];
+                Error = t["Common.PasswordWriteFailed"];
                 break;
         }
         return Page();

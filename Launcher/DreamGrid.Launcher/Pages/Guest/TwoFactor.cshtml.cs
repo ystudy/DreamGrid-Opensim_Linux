@@ -23,7 +23,6 @@ namespace DreamGrid.Launcher.Pages.Guest;
 public sealed class TwoFactorModel(ResidentTwoFactor residents, Func<LauncherSettings> settings, AuditLog audit, IDataProtectionProvider dp,
     LoginThrottle throttle, ILogger<TwoFactorModel> log, IStringLocalizer<ResidentText> t) : PageModel
 {
-    public const string WrongCode = "That code isn't right. Try again.";
     private const string ShownPurpose = "DreamGrid.GuestTwoFactorSetup.v1";
 
     [BindProperty] public string? Code { get; set; }
@@ -73,7 +72,7 @@ public sealed class TwoFactorModel(ResidentTwoFactor residents, Func<LauncherSet
         {
             if (Store.IsPending(principal, shown))
             {
-                Error = t["SignIn.WrongCode"];
+                Error = t["Common.WrongCode"];
                 ShowSecret(principal, shown);
             }
             else
@@ -143,7 +142,7 @@ public sealed class TwoFactorModel(ResidentTwoFactor residents, Func<LauncherSet
     private bool Locked()
     {
         if (!throttle.IsLocked(SignInDoor.Guest, ThrottleKey, HttpContext.Connection.RemoteIpAddress)) return false;
-        Error = t["SignIn.TooManyAttempts"];
+        Error = t["Common.TooManyAttempts"];
         return true;
     }
 
@@ -151,7 +150,7 @@ public sealed class TwoFactorModel(ResidentTwoFactor residents, Func<LauncherSet
     {
         throttle.RecordFailure(SignInDoor.Guest, ThrottleKey, HttpContext.Connection.RemoteIpAddress);
         audit.Write(Entry(principal, "sign-in-refused", "two-factor code", "refused"));
-        Error = t["SignIn.WrongCode"];
+        Error = t["Common.WrongCode"];
         return Page();
     }
 

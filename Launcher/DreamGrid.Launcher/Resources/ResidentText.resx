@@ -9,36 +9,35 @@
   <data name="Layout.Help" xml:space="preserve"><value>Ask for help</value></data>
   <data name="Layout.Language" xml:space="preserve"><value>Language</value></data>
   <data name="Layout.ChangeLanguage" xml:space="preserve"><value>Change language</value></data>
-  <data name="SignIn.Title" xml:space="preserve"><value>Sign in</value></data>
+  <data name="Common.SignIn" xml:space="preserve"><value>Sign in</value></data>
   <data name="SignIn.Intro" xml:space="preserve"><value>Use the name and password of your avatar.</value></data>
-  <data name="SignIn.AvatarName" xml:space="preserve"><value>Avatar name</value></data>
-  <data name="SignIn.NamePlaceholder" xml:space="preserve"><value>First Last</value></data>
-  <data name="SignIn.Password" xml:space="preserve"><value>Password</value></data>
-  <data name="SignIn.Button" xml:space="preserve"><value>Sign in</value></data>
+  <data name="Common.AvatarName" xml:space="preserve"><value>Avatar name</value></data>
+  <data name="Common.NamePlaceholder" xml:space="preserve"><value>First Last</value></data>
+  <data name="Common.Password" xml:space="preserve"><value>Password</value></data>
   <data name="SignIn.ResendLink" xml:space="preserve"><value>Send the link again</value></data>
-  <data name="SignIn.Forgot" xml:space="preserve"><value>Forgot password?</value></data>
+  <data name="Common.ForgotPasswordLink" xml:space="preserve"><value>Forgot password?</value></data>
   <data name="SignIn.CantSignIn" xml:space="preserve"><value>Can't sign in? Ask for help</value></data>
-  <data name="SignIn.CreateAccount" xml:space="preserve"><value>Create an account</value></data>
+  <data name="Common.CreateAccount" xml:space="preserve"><value>Create an account</value></data>
   <data name="SignIn.WrongNameOrPassword" xml:space="preserve"><value>Name or password is wrong.</value></data>
-  <data name="SignIn.TooManyAttempts" xml:space="preserve"><value>Too many attempts. Try again in a few minutes.</value></data>
+  <data name="Common.TooManyAttempts" xml:space="preserve"><value>Too many attempts. Try again in a few minutes.</value></data>
   <data name="SignIn.ConfirmFirst" xml:space="preserve"><value>Confirm your email first. Or wait for staff to approve you.</value></data>
   <data name="SignIn.WaitForStaff" xml:space="preserve"><value>Your account is waiting for approval by the grid's staff.</value></data>
-  <data name="SignIn.ServiceDown" xml:space="preserve"><value>The grid's sign-in service isn't running right now. Try again later.</value></data>
-  <data name="SignIn.WrongCode" xml:space="preserve"><value>That code isn't right. Try again.</value></data>
+  <data name="Common.ServiceDown" xml:space="preserve"><value>The grid's sign-in service isn't running right now. Try again later.</value></data>
+  <data name="Common.WrongCode" xml:space="preserve"><value>That code isn't right. Try again.</value></data>
   <data name="SignIn.CodeUnknown" xml:space="preserve"><value>Two-factor sign-in can't be checked right now. Contact the grid owner.</value></data>
   <data name="SignIn.SaveFailed" xml:space="preserve"><value>The two-factor file couldn't be saved. Try again.</value></data>
   <data name="SignIn.Code" xml:space="preserve"><value>Code</value></data>
-  <data name="SignIn.BackToSignIn" xml:space="preserve"><value>Back to sign in</value></data>
+  <data name="Common.BackToSignIn" xml:space="preserve"><value>Back to sign in</value></data>
   <data name="SignInCode.Title" xml:space="preserve"><value>Two-factor code</value></data>
   <data name="SignInCode.Intro" xml:space="preserve"><value>Enter the 6-digit code from your authenticator app. If you don't have your phone, enter one of your backup codes.</value></data>
   <data name="SignInCode.StartAgain" xml:space="preserve"><value>Start again</value></data>
-  <data name="TwoFactor.Title" xml:space="preserve"><value>Two-factor sign-in</value></data>
+  <data name="Common.TwoFactorSignIn" xml:space="preserve"><value>Two-factor sign-in</value></data>
   <data name="TwoFactor.Intro" xml:space="preserve"><value>With two-factor sign-in, signing in to this website and resetting your password need a code from an authenticator app on your phone as well as your password or email.</value></data>
   <data name="TwoFactor.IsOn" xml:space="preserve"><value>Two-factor sign-in is on.</value></data>
   <data name="TwoFactor.IsOff" xml:space="preserve"><value>Two-factor sign-in is off.</value></data>
   <data name="TwoFactor.BackupCodes" xml:space="preserve"><value>Your backup codes</value></data>
   <data name="TwoFactor.BackupCodesIntro" xml:space="preserve"><value>Each code works once, when you don't have your phone. Keep them somewhere safe. They won't be shown again.</value></data>
-  <data name="TwoFactor.Continue" xml:space="preserve"><value>Continue</value></data>
+  <data name="Common.Continue" xml:space="preserve"><value>Continue</value></data>
   <data name="TwoFactor.TurnItOn" xml:space="preserve"><value>Turn it on</value></data>
   <data name="TwoFactor.ScanIntro" xml:space="preserve"><value>Scan this code with an authenticator app on your phone, then enter the 6-digit code the app shows.</value></data>
   <data name="TwoFactor.QrLabel" xml:space="preserve"><value>QR code for your authenticator app</value></data>
@@ -48,33 +47,33 @@
   <data name="TwoFactor.NewCodesIntro" xml:space="preserve"><value>This replaces all your backup codes. Enter a code from your authenticator app.</value></data>
   <data name="TwoFactor.TurnOff" xml:space="preserve"><value>Turn off</value></data>
   <data name="TwoFactor.TurnOffIntro" xml:space="preserve"><value>Enter a code from your authenticator app, or a backup code.</value></data>
-  <data name="TwoFactor.BackToAccount" xml:space="preserve"><value>Back to your account</value></data>
+  <data name="Common.BackToAccount" xml:space="preserve"><value>Back to your account</value></data>
   <data name="TwoFactor.StartedAgain" xml:space="preserve"><value>Setup started again. Scan the new code below.</value></data>
   <data name="TwoFactor.StartedElsewhere" xml:space="preserve"><value>Setup was started again somewhere else. Scan the new code below.</value></data>
   <data name="ForgotPassword.Title" xml:space="preserve"><value>Forgot password</value></data>
   <data name="ForgotPassword.Off" xml:space="preserve"><value>Password reset isn't turned on for this grid. Contact the grid owner.</value></data>
   <data name="ForgotPassword.Reply" xml:space="preserve"><value>If that name and email match an account, we've sent a link. It works once, for 30 minutes. Check your spam folder.</value></data>
   <data name="ForgotPassword.Intro" xml:space="preserve"><value>Type your avatar name and the email address on your account. We'll email you a link to choose a new password.</value></data>
-  <data name="ForgotPassword.Email" xml:space="preserve"><value>Email</value></data>
-  <data name="ForgotPassword.Send" xml:space="preserve"><value>Send the link</value></data>
-  <data name="ForgotPassword.BotFailed" xml:space="preserve"><value>The form couldn't check that you're a person. Try again.</value></data>
+  <data name="Common.Email" xml:space="preserve"><value>Email</value></data>
+  <data name="Common.SendLink" xml:space="preserve"><value>Send the link</value></data>
+  <data name="Common.BotFailed" xml:space="preserve"><value>The form couldn't check that you're a person. Try again.</value></data>
   <data name="ResetPassword.Title" xml:space="preserve"><value>Choose a new password</value></data>
   <data name="ResetPassword.Done" xml:space="preserve"><value>Your password is changed. Sign in with your new password.</value></data>
   <data name="ResetPassword.Expired" xml:space="preserve"><value>This link has expired or was already used. Ask for a new one.</value></data>
   <data name="ResetPassword.AskNew" xml:space="preserve"><value>Ask for a new link</value></data>
   <data name="ResetPassword.Intro" xml:space="preserve"><value>For {0}. Use at least {1} characters.</value></data>
-  <data name="ResetPassword.CodeLabel" xml:space="preserve"><value>Code from your authenticator app, or a backup code</value></data>
-  <data name="ResetPassword.NewPassword" xml:space="preserve"><value>New password</value></data>
-  <data name="ResetPassword.NewPasswordAgain" xml:space="preserve"><value>New password again</value></data>
-  <data name="ResetPassword.Change" xml:space="preserve"><value>Change password</value></data>
+  <data name="Common.CodeLabel" xml:space="preserve"><value>Code from your authenticator app, or a backup code</value></data>
+  <data name="Common.NewPassword" xml:space="preserve"><value>New password</value></data>
+  <data name="Common.NewPasswordAgain" xml:space="preserve"><value>New password again</value></data>
+  <data name="Common.ChangePassword" xml:space="preserve"><value>Change password</value></data>
   <data name="ResetPassword.WrongCode" xml:space="preserve"><value>That code isn't right. Try again, or use a backup code.</value></data>
-  <data name="ResetPassword.WriteFailed" xml:space="preserve"><value>Couldn't change the password right now. Try again in a few minutes.</value></data>
+  <data name="Common.PasswordWriteFailed" xml:space="preserve"><value>Couldn't change the password right now. Try again in a few minutes.</value></data>
   <data name="Password.Mismatch" xml:space="preserve"><value>Type the same password twice.</value></data>
   <data name="Password.TooShort" xml:space="preserve"><value>Use at least {0} characters.</value></data>
   <data name="Password.TooCommon" xml:space="preserve"><value>That password is too common. Choose another.</value></data>
   <data name="Password.IsName" xml:space="preserve"><value>Don't use your avatar's name as the password.</value></data>
   <data name="Confirm.Title" xml:space="preserve"><value>Confirm your email</value></data>
-  <data name="Confirm.Busy" xml:space="preserve"><value>Sign-up isn't working right now. Try again in a few minutes.</value></data>
+  <data name="Common.SignUpBusy" xml:space="preserve"><value>Sign-up isn't working right now. Try again in a few minutes.</value></data>
   <data name="Confirm.AlreadyApproved" xml:space="preserve"><value>You're already approved.</value></data>
   <data name="Confirm.SignInLink" xml:space="preserve"><value>Sign in.</value></data>
   <data name="Confirm.Expired" xml:space="preserve"><value>This link has expired or was already used.</value></data>
@@ -86,7 +85,7 @@
   <data name="ConfirmEmail.Busy" xml:space="preserve"><value>Couldn't change your email right now. Try again in a few minutes.</value></data>
   <data name="ConfirmEmail.Expired" xml:space="preserve"><value>This link has expired or was already used.</value></data>
   <data name="ConfirmEmail.ToAccount" xml:space="preserve"><value>Go to your account</value></data>
-  <data name="Connect.Title" xml:space="preserve"><value>How to connect</value></data>
+  <data name="Common.HowToConnect" xml:space="preserve"><value>How to connect</value></data>
   <data name="Connect.Heading" xml:space="preserve"><value>How to connect to {0}</value></data>
   <data name="Connect.Choose" xml:space="preserve"><value>Choose a viewer, then add {0} in its Grid Manager.</value></data>
   <data name="Connect.Approved" xml:space="preserve"><value>You're approved. Log in as {0}.</value></data>
@@ -119,7 +118,104 @@
   <data name="Connect.MakeAccount" xml:space="preserve"><value>Make an account</value></data>
   <data name="Connect.ForgotPassword" xml:space="preserve"><value>Forgot your password</value></data>
   <data name="Connect.AskStaff" xml:space="preserve"><value>Ask the grid's staff for help</value></data>
-  <data name="Connect.HelpTerms" xml:space="preserve"><value>Terms</value></data>
-  <data name="Connect.HelpContact" xml:space="preserve"><value>Contact</value></data>
+  <data name="Legal.Terms" xml:space="preserve"><value>Terms</value></data>
+  <data name="Legal.Contact" xml:space="preserve"><value>Contact</value></data>
   <data name="Connect.NoSupport" xml:space="preserve"><value>{0} doesn't give technical support for viewers.</value></data>
+  <data name="Legal.Privacy" xml:space="preserve"><value>Privacy</value></data>
+  <data name="Legal.Cookies" xml:space="preserve"><value>Cookies</value></data>
+  <data name="Home.Title" xml:space="preserve"><value>Welcome</value></data>
+  <data name="Home.Intro" xml:space="preserve"><value>Welcome. Sign in with your avatar to see how to connect, or create an account to join.</value></data>
+  <data name="Home.SignInIntro" xml:space="preserve"><value>Already have an avatar here? Use its name and password.</value></data>
+  <data name="Home.NewHere" xml:space="preserve"><value>New here? Make an avatar to join {0} and its world.</value></data>
+  <data name="Home.AboutGrid" xml:space="preserve"><value>About this grid</value></data>
+  <data name="Home.StaffSignIn" xml:space="preserve"><value>Staff sign in</value></data>
+  <data name="SignUp.Closed" xml:space="preserve"><value>This grid isn't open for sign-ups yet.</value></data>
+  <data name="SignUp.SignInIfAccount" xml:space="preserve"><value>{0} if you already have an account.</value></data>
+  <data name="SignUp.CheckEmail" xml:space="preserve"><value>Check your email. We sent a link to confirm your account. It works once, for 24 hours. Check your spam folder.</value></data>
+  <data name="SignUp.CantFindEmail" xml:space="preserve"><value>Can't find the email? Staff can approve you too.</value></data>
+  <data name="SignUp.SendAgain" xml:space="preserve"><value>Send it again</value></data>
+  <data name="SignUp.WaitingForStaff" xml:space="preserve"><value>Thanks. The grid's staff will look at your sign-up. Once you're approved, you can sign in here with the name and password you just chose.</value></data>
+  <data name="SignUp.Intro" xml:space="preserve"><value>Choose a name for your avatar and a password. You'll use them to log in to {0}.</value></data>
+  <data name="SignUp.FirstName" xml:space="preserve"><value>First name</value></data>
+  <data name="SignUp.LastName" xml:space="preserve"><value>Last name</value></data>
+  <data name="SignUp.PasswordAgain" xml:space="preserve"><value>Password again</value></data>
+  <data name="SignUp.AcceptTerms" xml:space="preserve"><value>I accept the {0} and the {1}.</value></data>
+  <data name="SignUp.TermsOfService" xml:space="preserve"><value>Terms of Service</value></data>
+  <data name="SignUp.PrivacyNotice" xml:space="preserve"><value>Privacy notice</value></data>
+  <data name="SignUp.CreateAvatar" xml:space="preserve"><value>Create my avatar</value></data>
+  <data name="SignUp.AddressLimit" xml:space="preserve"><value>Too many sign-ups from your address. Try again in an hour.</value></data>
+  <data name="SignUp.TermsProblem" xml:space="preserve"><value>Tick the box to accept the Terms of Service and the Privacy notice.</value></data>
+  <data name="SignUp.NameMissing" xml:space="preserve"><value>Type a first name and a last name.</value></data>
+  <data name="SignUp.NameTooLong" xml:space="preserve"><value>Each name can have at most {0} characters.</value></data>
+  <data name="SignUp.NameBadCharacters" xml:space="preserve"><value>Use only letters A to Z, digits and hyphens in the name.</value></data>
+  <data name="SignUp.NameTaken" xml:space="preserve"><value>That name is taken. Try another.</value></data>
+  <data name="SignUp.EmailMissing" xml:space="preserve"><value>Type your email address.</value></data>
+  <data name="SignUp.EmailTooLong" xml:space="preserve"><value>Use an email address of at most {0} characters.</value></data>
+  <data name="SignUp.EmailBadShape" xml:space="preserve"><value>That doesn't look like an email address.</value></data>
+  <data name="Guest.Title" xml:space="preserve"><value>Your account</value></data>
+  <data name="Guest.SignedInAs" xml:space="preserve"><value>You're signed in as {0}.</value></data>
+  <data name="Guest.ConnectHeading" xml:space="preserve"><value>Connect with Firestorm</value></data>
+  <data name="Guest.Step1" xml:space="preserve"><value>Install Firestorm for OpenSim from {0}.</value></data>
+  <data name="Guest.Step2" xml:space="preserve"><value>In Firestorm open Preferences, then OpenSim, then Grid Manager.</value></data>
+  <data name="Guest.Step3" xml:space="preserve"><value>Paste {0} and click Apply.</value></data>
+  <data name="Guest.Step4" xml:space="preserve"><value>Pick {0} on the login screen and sign in with your avatar name and password.</value></data>
+  <data name="Guest.SignOut" xml:space="preserve"><value>Sign out</value></data>
+  <data name="Terms.Version" xml:space="preserve"><value>Version {0}</value></data>
+  <data name="Terms.Accepted" xml:space="preserve"><value>You have accepted this version.</value></data>
+  <data name="Terms.Accept" xml:space="preserve"><value>I accept these terms</value></data>
+  <data name="Terms.Changed" xml:space="preserve"><value>The terms changed while you were reading. Read the new version.</value></data>
+  <data name="Regions.Title" xml:space="preserve"><value>My regions</value></data>
+  <data name="Regions.None" xml:space="preserve"><value>You don't have any regions.</value></data>
+  <data name="Regions.RestartInWorld" xml:space="preserve"><value>Normal restarts are done in-world from the viewer's Region/Estate window.</value></data>
+  <data name="Regions.State" xml:space="preserve"><value>This region is {0}.</value></data>
+  <data name="Regions.PeopleHere" xml:space="preserve"><value>People here now: {0}</value></data>
+  <data name="Regions.Unknown" xml:space="preserve"><value>unknown</value></data>
+  <data name="Regions.NotRunning" xml:space="preserve"><value>not running</value></data>
+  <data name="Regions.LastStarted" xml:space="preserve"><value>Last started {0} (UTC)</value></data>
+  <data name="Regions.Start" xml:space="preserve"><value>Start this region</value></data>
+  <data name="Regions.Restart" xml:space="preserve"><value>Restart this region</value></data>
+  <data name="Regions.SharedProgram" xml:space="preserve"><value>This region runs with regions that aren't yours. To restart it, contact the grid's staff.</value></data>
+  <data name="Regions.RestartedRecently" xml:space="preserve"><value>This region was restarted a few minutes ago. Try again after {0} (UTC).</value></data>
+  <data name="Regions.NoRestartNeeded" xml:space="preserve"><value>{0} doesn't need a restart.</value></data>
+  <data name="Regions.Restarting" xml:space="preserve"><value>Restarting {0}. It can take a minute or two.</value></data>
+  <data name="Regions.StateRunning" xml:space="preserve"><value>running</value></data>
+  <data name="Regions.StateStopped" xml:space="preserve"><value>stopped</value></data>
+  <data name="Regions.StateStarting" xml:space="preserve"><value>starting</value></data>
+  <data name="Regions.StateStopping" xml:space="preserve"><value>stopping</value></data>
+  <data name="Regions.StateFailed" xml:space="preserve"><value>not responding</value></data>
+  <data name="Regions.StateParked" xml:space="preserve"><value>parked</value></data>
+  <data name="Account.Title" xml:space="preserve"><value>Account settings</value></data>
+  <data name="Account.Details" xml:space="preserve"><value>Your details</value></data>
+  <data name="Account.EmailAddress" xml:space="preserve"><value>Email address</value></data>
+  <data name="Account.NoEmailAddress" xml:space="preserve"><value>No email address</value></data>
+  <data name="Account.Role" xml:space="preserve"><value>Role</value></data>
+  <data name="Account.Made" xml:space="preserve"><value>Account made</value></data>
+  <data name="Account.RoleOwner" xml:space="preserve"><value>Owner</value></data>
+  <data name="Account.RoleAdmin" xml:space="preserve"><value>Admin</value></data>
+  <data name="Account.RoleSupervisor" xml:space="preserve"><value>Supervisor</value></data>
+  <data name="Account.RoleResident" xml:space="preserve"><value>Resident</value></data>
+  <data name="Account.CurrentPassword" xml:space="preserve"><value>Current password</value></data>
+  <data name="Account.ChangeEmail" xml:space="preserve"><value>Change email</value></data>
+  <data name="Account.NewEmail" xml:space="preserve"><value>New email address</value></data>
+  <data name="Account.NoEmail" xml:space="preserve"><value>Changing your email needs the grid's email to be set up. Ask the grid owner.</value></data>
+  <data name="Account.PasswordDone" xml:space="preserve"><value>Your password is changed.</value></data>
+  <data name="Account.AskReply" xml:space="preserve"><value>We sent a link to the new address. Your email stays the same until you open it. It works once, for 24 hours.</value></data>
+  <data name="Account.WrongCurrent" xml:space="preserve"><value>That isn't your current password.</value></data>
+  <data name="Account.SamePassword" xml:space="preserve"><value>Choose a password you haven't been using.</value></data>
+  <data name="Account.SameAddress" xml:space="preserve"><value>That's already your email address.</value></data>
+  <data name="Bots.LeaveEmpty" xml:space="preserve"><value>Leave this empty</value></data>
+  <data name="Bots.NeedsJs" xml:space="preserve"><value>This form needs JavaScript to prove you are not a bot.</value></data>
+  <data name="Bots.PictureAlt" xml:space="preserve"><value>Picture of letters; answer the question below instead if you can't see it</value></data>
+  <data name="Bots.TypeLetters" xml:space="preserve"><value>Type the letters</value></data>
+  <data name="Bots.Question" xml:space="preserve"><value>What is {0} plus {1}?</value></data>
+  <data name="Bots.EitherOne" xml:space="preserve"><value>Answer either one.</value></data>
+  <data name="Bots.Number1" xml:space="preserve"><value>one</value></data>
+  <data name="Bots.Number2" xml:space="preserve"><value>two</value></data>
+  <data name="Bots.Number3" xml:space="preserve"><value>three</value></data>
+  <data name="Bots.Number4" xml:space="preserve"><value>four</value></data>
+  <data name="Bots.Number5" xml:space="preserve"><value>five</value></data>
+  <data name="Bots.Number6" xml:space="preserve"><value>six</value></data>
+  <data name="Bots.Number7" xml:space="preserve"><value>seven</value></data>
+  <data name="Bots.Number8" xml:space="preserve"><value>eight</value></data>
+  <data name="Bots.Number9" xml:space="preserve"><value>nine</value></data>
 </root>

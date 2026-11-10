@@ -3,6 +3,7 @@ using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Guests;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Localization;
 
 namespace DreamGrid.Launcher.Pages;
 
@@ -13,11 +14,9 @@ namespace DreamGrid.Launcher.Pages;
 /// the new resident is signed in and sent to How to connect; with email the page says to check it and offers to send the link
 /// again (<see cref="SignUps.ResendAsync"/>), which the guest sign-in's "Confirm your email first" posts to as well.
 /// </summary>
-public sealed class SignUpModel(Func<LauncherSettings> settings, SignUps signUps, BotGuard bots) : PageModel
+public sealed class SignUpModel(Func<LauncherSettings> settings, SignUps signUps, BotGuard bots,
+    IStringLocalizer<ResidentText> t) : PageModel
 {
-    public const string BotFailed = "The form couldn't check that you're a person. Try again.";
-    public const string Busy = "Sign-up isn't working right now. Try again in a few minutes.";
-
     [BindProperty] public string? First { get; set; }
     [BindProperty] public string? Last { get; set; }
     [BindProperty] public string? Email { get; set; }
@@ -40,7 +39,7 @@ public sealed class SignUpModel(Func<LauncherSettings> settings, SignUps signUps
         if (Closed) return Page();
         if (!bots.Check(HttpContext, "signup").Passed)
         {
-            Error = BotFailed;
+            Error = t["Common.BotFailed"];
             return Page();
         }
         var r = await signUps.SubmitAsync(new SignUpForm(First, Last, Email, Password, Again, AcceptTerms), HttpContext.Connection.RemoteIpAddress, ct);
@@ -59,10 +58,10 @@ public sealed class SignUpModel(Func<LauncherSettings> settings, SignUps signUps
                 WaitingForStaff = true;
                 break;
             case SignUpOutcome.Busy:
-                Error = Busy;
+                Error = t["Common.SignUpBusy"];
                 break;
             default:
-                Error = r.Problem;
+                Error = r.Message?.In(t) ?? r.Problem;
                 break;
         }
         return Page();
@@ -73,7 +72,7 @@ public sealed class SignUpModel(Func<LauncherSettings> settings, SignUps signUps
     {
         Load();
         if (await signUps.ResendAsync(First, Last, HttpContext.Connection.RemoteIpAddress, ct) == SignUpOutcome.Busy)
-            Error = Busy;
+            Error = t["Common.SignUpBusy"];
         else
             CheckEmail = true;
         Closed = false;

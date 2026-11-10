@@ -47,7 +47,7 @@ public sealed class SignInModel(IRobustClient robust, LoginThrottle throttle, Au
         var address = HttpContext.Connection.RemoteIpAddress;
         if (throttle.IsLocked(SignInDoor.Guest, name.Key, address))
         {
-            Error = t["SignIn.TooManyAttempts"];
+            Error = t["Common.TooManyAttempts"];
             return Page();
         }
         if (!name.IsComplete) return Fail(name);
@@ -77,7 +77,7 @@ public sealed class SignInModel(IRobustClient robust, LoginThrottle throttle, Au
             or InvalidDataException && !ct.IsCancellationRequested)
         {
             log.LogWarning("Guest sign-in: the account service did not answer: {Message}", e.Message);
-            Error = t["SignIn.ServiceDown"];
+            Error = t["Common.ServiceDown"];
             return Page();
         }
         if (!allowed) return Fail(name);

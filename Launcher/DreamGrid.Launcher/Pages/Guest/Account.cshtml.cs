@@ -5,6 +5,7 @@ using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Guests;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Localization;
 
 namespace DreamGrid.Launcher.Pages.Guest;
 
@@ -15,7 +16,7 @@ namespace DreamGrid.Launcher.Pages.Guest;
 /// the new stamp, so it stays signed in while every other session ends.
 /// </summary>
 public sealed class AccountModel(AccountChanges changes, IRobustClient robust, Func<LauncherSettings> settings, RegionRights rights,
-    ResidentTwoFactor residents, ILogger<AccountModel> log) : PageModel
+    ResidentTwoFactor residents, ILogger<AccountModel> log, IStringLocalizer<ResidentText> t) : PageModel
 {
     [BindProperty] public string? Current { get; set; }
     [BindProperty] public string? Code { get; set; }
@@ -55,9 +56,9 @@ public sealed class AccountModel(AccountChanges changes, IRobustClient robust, F
         {
             // The stamp just changed, so this browser's cookie is no longer good: issue a new one.
             if (Account is not null) await GuestSignIn.SignInAsync(HttpContext, Account);
-            PasswordNotice = AccountChanges.PasswordDone;
+            PasswordNotice = t["Account.PasswordDone"];
         }
-        else PasswordError = r.Problem;
+        else PasswordError = r.Message?.In(t) ?? r.Problem;
         return Page();
     }
 
@@ -68,10 +69,10 @@ public sealed class AccountModel(AccountChanges changes, IRobustClient robust, F
         await LoadAsync(guest.Principal, ct);
         if (r.Result == AccountResult.Done)
         {
-            EmailNotice = AccountChanges.AskReply;
+            EmailNotice = t["Account.AskReply"];
             NewEmail = null;
         }
-        else EmailError = r.Problem;
+        else EmailError = r.Message?.In(t) ?? r.Problem;
         return Page();
     }
 
@@ -89,17 +90,17 @@ public sealed class AccountModel(AccountChanges changes, IRobustClient robust, F
         }
         if (Account is null)
         {
-            Unavailable = AccountChanges.ServiceDown;
+            Unavailable = t["Common.ServiceDown"];
             return;
         }
         Role = AdminRule.RoleOf(s, Account) switch
         {
-            StaffRole.Owner => "Owner",
-            StaffRole.Admin => "Admin",
-            StaffRole.Supervisor => "Supervisor",
-            _ => "Resident",
+            StaffRole.Owner => t["Account.RoleOwner"].Value,
+            StaffRole.Admin => t["Account.RoleAdmin"].Value,
+            StaffRole.Supervisor => t["Account.RoleSupervisor"].Value,
+            _ => t["Account.RoleResident"].Value,
         };
-        Created = Account.Created?.ToString("d MMMM yyyy", CultureInfo.InvariantCulture);
+        Created = Account.Created?.ToString("d MMMM yyyy", CultureInfo.CurrentCulture);
         NeedsCode = changes.NeedsCode(principal);
         EmailChangeAvailable = changes.EmailChangeAvailable();
         TwoFactorLink = ResidentTwoFactor.PageShown(s, residents.Store.StateOf(principal));

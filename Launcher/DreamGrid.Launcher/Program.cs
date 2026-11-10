@@ -41,6 +41,10 @@ var processEnv = new Dictionary<string, string?>
 if (await CommandLine.RunVerbAsync(args, processEnv, Console.Out, CancellationToken.None) is { } verbExit)
     return verbExit;
 
+// Staff pages stay in English whatever the operating system's language: only resident pages get ResidentLanguageFilter, which
+// sets the culture for its own request. (CurrentCulture, for dates and numbers, is left as the system has it.)
+System.Globalization.CultureInfo.DefaultThreadCurrentUICulture = System.Globalization.CultureInfo.GetCultureInfo("en");
+
 var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseSystemd();
 builder.Host.UseWindowsService(o => o.ServiceName = "DreamGrid");

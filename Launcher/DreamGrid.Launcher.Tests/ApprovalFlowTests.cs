@@ -98,7 +98,8 @@ public sealed class ApprovalFlowTests
         Settings(rig, b => b with { AdminApproval = true });
         var guest = Browser(rig);
         using var signUp = await SignUpPageTests.PostSignUpAsync(guest);
-        Assert.Contains(SignUpPageTests.WaitingForStaff, await signUp.Content.ReadAsStringAsync(Ct));
+        // Resource text is HTML-encoded (the apostrophe is &#x27;).
+        Assert.Contains(SignUpPageTests.WaitingForStaff.Replace("'", "&#x27;"), await signUp.Content.ReadAsStringAsync(Ct));
 
         using (var waiting = await SignInAsync(guest, "Bea Example"))
             Assert.Contains("Your account is waiting for approval by the grid&#x27;s staff.", await waiting.Content.ReadAsStringAsync(Ct));

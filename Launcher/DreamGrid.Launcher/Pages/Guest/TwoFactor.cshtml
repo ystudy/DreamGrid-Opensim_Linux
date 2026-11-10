@@ -2,9 +2,9 @@
 @model DreamGrid.Launcher.Pages.Guest.TwoFactorModel
 @using DreamGrid.Launcher.Core.Security
 @{
-    ViewData["Title"] = T["TwoFactor.Title"].Value;
+    ViewData["Title"] = T["Common.TwoFactorSignIn"].Value;
 }
-<h1>@T["TwoFactor.Title"]</h1>
+<h1>@T["Common.TwoFactorSignIn"]</h1>
 <p>@T["TwoFactor.Intro"]</p>
 @if (Model.Error is not null)
 {
@@ -29,7 +29,7 @@ else if (Model.BackupCodes is { } codes)
             <li>@c</li>
         }
     </ul>
-    <p><a class="btn btn-primary" href="/guest">@T["TwoFactor.Continue"]</a></p>
+    <p><a class="btn btn-primary" href="/guest">@T["Common.Continue"]</a></p>
 }
 else if (Model.State == TwoFactorState.Off)
 {
@@ -66,4 +66,4 @@ else
         <button type="submit" class="btn btn-danger">@T["TwoFactor.TurnOff"]</button>
     </form>
 }
-<p class="mt-4"><a href="/guest">@T["TwoFactor.BackToAccount"]</a></p>
+<p class="mt-4"><a href="/guest">@T["Common.BackToAccount"]</a></p>

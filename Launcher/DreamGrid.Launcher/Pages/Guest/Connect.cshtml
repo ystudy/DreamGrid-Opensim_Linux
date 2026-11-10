@@ -1,7 +1,7 @@
 @page "/guest/connect"
 @model DreamGrid.Launcher.Pages.Guest.ConnectModel
 @{
-    ViewData["Title"] = T["Connect.Title"].Value;
+    ViewData["Title"] = T["Common.HowToConnect"].Value;
 }
 <h1>@T["Connect.Heading", Model.GridName]</h1>
 <p class="text-body-secondary">@T["Connect.Choose", Model.GridName]</p>
@@ -70,9 +70,9 @@
                 }
                 <li><a href="/guest/forgot-password">@T["Connect.ForgotPassword"]</a></li>
                 <li><a href="/support">@T["Connect.AskStaff"]</a></li>
-                @foreach (var (id, title) in Model.HelpPages)
+                @foreach (var (id, _) in Model.HelpPages)
                 {
-                    <li><a href="/@id">@(id switch { "terms" => T["Connect.HelpTerms"].Value, "contact" => T["Connect.HelpContact"].Value, _ => title })</a></li>
+                    <li><a href="/@id">@T.LegalTitle(id)</a></li>
                 }
             </ul>
         </section>
