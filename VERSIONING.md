@@ -62,7 +62,7 @@ The full version puts the two together:
 GridGate 0.1.0 (OpenSimulator 0.9.3.1 Dev, 78cb44c0 + 34 picks)
 ```
 
-It goes on the first line of `Version.txt` and at the top of each release's notes. Where a single token is
+It goes on the first line of `Version.txt`. The release workflow puts it at the top of each release's notes. Where a single token is
 needed, use semantic-versioning build metadata: `0.1.0+os.0.9.3.1-dev.78cb44c0.34`. Never use that form as a
 tag; tags stay plain.
 
@@ -78,4 +78,11 @@ tag; tags stay plain.
    git push origin v0.1.0
    ```
 
-4. When the release workflow has published the release, put the full version at the top of its notes.
+The release workflow checks `Version.txt` before it builds anything:
+
+- Every run fails unless the first line has the form
+  `GridGate <major>.<minor>.<patch> (OpenSimulator <base>)`.
+- A tag push also fails unless the tag matches that GridGate number. A pre-release tag only needs to match
+  without its suffix, so `v0.1.0-rc1` can be tagged while `Version.txt` says `0.1.0`.
+
+The published release notes then start with `GridGate <tag version> (OpenSimulator <base>)`.
