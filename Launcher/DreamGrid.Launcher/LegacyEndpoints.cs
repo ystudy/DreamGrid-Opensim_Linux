@@ -160,7 +160,7 @@ public static class LegacyEndpoints
     /// </summary>
     private static LegalText? TermsToAccept(LauncherSettings s, TermsAcceptances acceptances, Guid id, int level)
     {
-        if (LegalPages.Get(s, LegalPages.Terms) is not { } terms) return null;
+        if (LegalPages.Get(s, LegalPages.Terms, s.Languages.Default) is not { } terms) return null;
         if (AdminRule.RoleOf(s, new RobustAccount(id, "", "", level, "")) != StaffRole.None) return null;
         return acceptances.HasAccepted(id, terms.Version) ? null : terms;
     }

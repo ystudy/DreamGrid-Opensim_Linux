@@ -17,7 +17,9 @@ public sealed record TicketForm(string? Name, string? Email, string? Category, s
 public enum TicketSendOutcome { Opened, CheckEmail, Invalid, TooManyOpen, Full, EmailOff, Busy }
 
 /// <param name="Ticket">The ticket, when it was opened at once (a signed-in resident).</param>
-public sealed record TicketSendResult(TicketSendOutcome Outcome, string? Problem = null, Ticket? Ticket = null);
+/// <param name="Problem">The problem in English, for logs and tests.</param>
+/// <param name="Message">The same problem for the page, in the resident's language (<see cref="ResidentMessage"/>).</param>
+public sealed record TicketSendResult(TicketSendOutcome Outcome, string? Problem = null, Ticket? Ticket = null, ResidentMessage? Message = null);
 
 /// <summary>
 /// The guest side of support tickets (design 2026-11-05-support-tickets): sending, confirming by email, private links, the guest's
@@ -61,11 +63,11 @@ public sealed class SupportTickets(TicketStore store, EmailTokens tokens, EmailS
     {
         var now = time.GetUtcNow();
         var anonymous = account is null;
-        if (anonymous && !email.IsReady) return new(TicketSendOutcome.EmailOff, EmailOff);
+        if (anonymous && !email.IsReady) return new(TicketSendOutcome.EmailOff, EmailOff, Message: new("Support.EmailOff"));
         var name = anonymous ? Line(form.Name) : $"{account!.FirstName} {account.LastName}";
         // [S] One address, one way of writing it: "x <a@b.c>" and "A@B.C" are a@b.c, so no limit can be got round by rewriting it.
         var address = anonymous ? TicketRules.Address(form.Email) ?? "" : (account!.Email ?? "").Trim().ToLowerInvariant();
-        if (TicketRules.Problem(form, name, address, anonymous) is { } problem) return new(TicketSendOutcome.Invalid, problem);
+        if (TicketRules.Check(form, name, address, anonymous) is var (problem, message)) return new(TicketSendOutcome.Invalid, problem, Message: message);
         // Unconfirmed tickets older than their link are gone now, not only at the next sweep, so they never count against the limits.
         store.DeleteWhere(t => t.State == TicketState.Unconfirmed && now - t.Created > ConfirmLifetime);
 
@@ -94,9 +96,9 @@ public sealed class SupportTickets(TicketStore store, EmailTokens tokens, EmailS
             return refused switch
             {
                 TicketSendOutcome.CheckEmail => new(TicketSendOutcome.CheckEmail),
-                TicketSendOutcome.Full => new(TicketSendOutcome.Full, Full),
-                TicketSendOutcome.TooManyOpen => new(TicketSendOutcome.TooManyOpen, TooManyOpen),
-                _ => new(TicketSendOutcome.Busy, Busy),
+                TicketSendOutcome.Full => new(TicketSendOutcome.Full, Full, Message: new("Support.Full")),
+                TicketSendOutcome.TooManyOpen => new(TicketSendOutcome.TooManyOpen, TooManyOpen, Message: new("Support.TooManyOpen", MaxOpenPerSender)),
+                _ => new(TicketSendOutcome.Busy, Busy, Message: new("Support.Busy")),
             };
 
         audit.Write(new AuditEntry(name, account?.PrincipalId, "guest", ip?.ToString(), "ticket-sent", ticket.Number, anonymous ? "unconfirmed" : "ok"));
@@ -151,22 +153,22 @@ public sealed class SupportTickets(TicketStore store, EmailTokens tokens, EmailS
         t.State is TicketState.Open or TicketState.Waiting
         || (t.State == TicketState.Closed && t.ClosedAt is { } closed && time.GetUtcNow() - closed < ReopenWithin);
 
-    /// <summary>The guest's reply: the ticket is open again (reopened if it was closed less than 14 days ago). The problem, or null.</summary>
-    public string? Reply(Guid id, string? text, IPAddress? ip)
+    /// <summary>The guest's reply: the ticket is open again (reopened if it was closed less than 14 days ago). The problem for the page, or null.</summary>
+    public ResidentMessage? Reply(Guid id, string? text, IPAddress? ip)
     {
         var body = Text(text);
-        if (body.Length < TicketRules.MessageMin) return $"Write at least {TicketRules.MessageMin} characters.";
-        if (body.Length > TicketRules.MessageMax) return $"Keep it under {TicketRules.MessageMax:N0} characters.";
+        if (body.Length < TicketRules.MessageMin) return new("Support.ReplyShort", TicketRules.MessageMin);
+        if (body.Length > TicketRules.MessageMax) return new("Support.ReplyLong", TicketRules.MessageMax);
         var now = time.GetUtcNow();
-        string? problem = null;
+        ResidentMessage? problem = null;
         var saved = store.Update(id, t =>
         {
-            if (!CanReply(t)) { problem = ClosedForGood; return null; }
+            if (!CanReply(t)) { problem = new("Support.ClosedForGood"); return null; }
             if (t.Messages.Count >= MaxMessages || t.Messages.Sum(m => m.Text.Length) + body.Length > MaxTicketCharacters)
-            { problem = "This ticket is too long. Start a new ticket."; return null; }
+            { problem = new("Support.TooLong"); return null; }
             return t with { State = TicketState.Open, ClosedAt = null, Messages = [.. t.Messages, new TicketMessage(now, null, null, body)] };
         });
-        if (saved is null) return problem ?? Busy;
+        if (saved is null) return problem ?? new("Support.Busy");
         audit.Write(new AuditEntry(saved.Sender.Name, saved.Sender.Account, "guest", ip?.ToString(), "ticket-guest-reply", saved.Number, "ok"));
         return null;
     }
@@ -290,24 +292,35 @@ public static class TicketRules
             && parsed.Address.Contains('@') ? parsed.Address.ToLowerInvariant() : null;
     }
 
-    /// <summary>The first problem with the form, in plain words, or null.</summary>
-    public static string? Problem(TicketForm f, string name, string email, bool anonymous)
+    /// <summary>The first problem with the form, in plain words (English, for logs and tests), or null.</summary>
+    public static string? Problem(TicketForm f, string name, string email, bool anonymous) =>
+        Check(f, name, email, anonymous)?.English;
+
+    /// <summary>The first problem with the form: its English words, and the same for the page in the resident's language.</summary>
+    public static (string English, ResidentMessage Message)? Check(TicketForm f, string name, string email, bool anonymous)
     {
-        if (anonymous && (name.Length == 0 || name.Length > NameMax)) return $"Write your name, up to {NameMax} characters.";
-        if (anonymous && email.Length == 0) return "Write the email address we should answer.";
-        if (f.Category is null || !TicketCategories.All.Contains(f.Category)) return "Pick what your ticket is about.";
+        if (anonymous && (name.Length == 0 || name.Length > NameMax))
+            return ($"Write your name, up to {NameMax} characters.", new("Support.NameProblem", NameMax));
+        if (anonymous && email.Length == 0)
+            return ("Write the email address we should answer.", new("Support.EmailProblem"));
+        if (f.Category is null || !TicketCategories.All.Contains(f.Category))
+            return ("Pick what your ticket is about.", new("Support.CategoryProblem"));
         var subject = SupportTickets.Line(f.Subject);
-        if (subject.Length < SubjectMin || subject.Length > SubjectMax) return $"Write a subject of {SubjectMin} to {SubjectMax} characters.";
+        if (subject.Length < SubjectMin || subject.Length > SubjectMax)
+            return ($"Write a subject of {SubjectMin} to {SubjectMax} characters.", new("Support.SubjectProblem", SubjectMin, SubjectMax));
         var message = SupportTickets.Text(f.Message);
-        if (message.Length < MessageMin) return $"Write at least {MessageMin} characters about the problem.";
-        if (message.Length > MessageMax) return $"Keep the message under {MessageMax:N0} characters.";
+        if (message.Length < MessageMin)
+            return ($"Write at least {MessageMin} characters about the problem.", new("Support.MessageShort", MessageMin));
+        if (message.Length > MessageMax)
+            return ($"Keep the message under {MessageMax:N0} characters.", new("Support.MessageLong", MessageMax));
         if (!string.IsNullOrWhiteSpace(f.Evidence))
         {
             var e = f.Evidence.Trim();
             if (e.Length > EvidenceMax || !Uri.TryCreate(e, UriKind.Absolute, out var u) || u.Scheme is not ("http" or "https"))
-                return "The evidence link must be one web address starting with https:// or http://.";
+                return ("The evidence link must be one web address starting with https:// or http://.", new("Support.EvidenceProblem"));
         }
-        if ((f.Logs ?? "").Length > LogsMax) return $"Keep the logs under {LogsMax:N0} characters.";
+        if ((f.Logs ?? "").Length > LogsMax)
+            return ($"Keep the logs under {LogsMax:N0} characters.", new("Support.LogsProblem", LogsMax));
         return null;
     }
 }

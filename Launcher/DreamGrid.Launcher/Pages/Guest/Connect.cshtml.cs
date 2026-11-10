@@ -3,6 +3,7 @@ using DreamGrid.Launcher.Core.Guests;
 using DreamGrid.Launcher.Core.Plans;
 using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Guests;
+using DreamGrid.Launcher.Resident;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Localization;
 
@@ -60,7 +61,7 @@ public sealed class ConnectModel(Func<LauncherSettings> settings, IStringLocaliz
             (t["Connect.Password"].Value, WebsiteAddress.ForgotPassword(s)),
         ];
         HelpPages = new[] { LegalPages.Terms, LegalPages.Contact }
-            .Where(id => LegalPages.Get(s, id) is not null)
+            .Where(id => LegalPages.Get(s, id, ResidentLanguageFilter.Current(HttpContext)) is not null)
             .Select(id => (id, LegalPages.Title(id)))
             .ToList();
     }

@@ -47,6 +47,14 @@ public static partial class ResidentHtml
         return code;
     }
 
+    /// <summary>A <c>strong</c> element: the text is encoded.</summary>
+    public static IHtmlContent Strong(string text)
+    {
+        var strong = new TagBuilder("strong");
+        strong.InnerHtml.Append(text);
+        return strong;
+    }
+
     /// <summary>The title of a legal page (Terms, Privacy, Cookies, Contact) in the page's language.</summary>
     public static string LegalTitle(this IStringLocalizer<ResidentText> t, string page) => page switch
     {

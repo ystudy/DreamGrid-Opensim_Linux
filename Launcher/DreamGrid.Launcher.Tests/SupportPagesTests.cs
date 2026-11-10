@@ -104,7 +104,8 @@ public sealed partial class SupportPagesTests
 
         // A second press of the same link does nothing.
         using (var again = await PostAsync(Client(r), confirm, new() { ["Token"] = confirm.Split("token=")[1] }))
-            Assert.Contains("doesn't work any more", await again.Content.ReadAsStringAsync(Ct));
+            // Read as text: Razor encodes the apostrophe in the page's own words.
+            Assert.Contains("doesn't work any more", Parser.ParseDocument(await again.Content.ReadAsStringAsync(Ct)).Body!.TextContent);
 
         // The private link from the second email opens it in another browser, and the reply goes on the ticket.
         var link = await EmailLinkAsync(r, "/support/ticket", 1);

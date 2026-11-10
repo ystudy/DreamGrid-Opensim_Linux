@@ -3,6 +3,7 @@ using DreamGrid.Launcher.Core.Tickets;
 using DreamGrid.Launcher.Guests;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Localization;
 
 namespace DreamGrid.Launcher.Pages.Support;
 
@@ -11,7 +12,8 @@ namespace DreamGrid.Launcher.Pages.Support;
 /// <c>dg-ticket</c> cookie and comes back without the link in the address), by that cookie, or for the signed-in resident who sent
 /// it. Anything else gets the same "this link has run out" page, whether or not the ticket exists.
 /// </summary>
-public sealed class TicketModel(SupportTickets tickets, TicketCookie cookie, IRobustClient robust, BotGuard bots) : PageModel
+public sealed class TicketModel(SupportTickets tickets, TicketCookie cookie, IRobustClient robust, BotGuard bots,
+    IStringLocalizer<ResidentText> loc) : PageModel
 {
     [BindProperty(SupportsGet = true)] public Guid Id { get; set; }
     [BindProperty(SupportsGet = true)] public string? Link { get; set; }
@@ -45,12 +47,12 @@ public sealed class TicketModel(SupportTickets tickets, TicketCookie cookie, IRo
         // [S] The same per-hour limit as the other public forms, so replies can't be sent by the thousand.
         if (!bots.CheckRate(HttpContext, "support-reply").Passed)
         {
-            Error = "Too many replies for now. Try again in a while.";
+            Error = loc["Support.TooManyReplies"];
             return Page();
         }
         if (tickets.Reply(Ticket.Id, Reply, HttpContext.Connection.RemoteIpAddress) is { } problem)
         {
-            Error = problem;
+            Error = problem.In(loc);
             return Page();
         }
         return LocalRedirect(SupportTickets.TicketPath + "?id=" + Ticket.Id + "&sent=1");
@@ -68,6 +70,6 @@ public sealed class TicketModel(SupportTickets tickets, TicketCookie cookie, IRo
         if (byCookie) cookie.Set(HttpContext, t.Id); // 8 hours from the last use
         Ticket = t;
         CanReply = tickets.CanReply(t);
-        if (Request.Query["sent"] == "1") Notice = "Your reply is with the staff.";
+        if (Request.Query["sent"] == "1") Notice = loc["Support.ReplySent"];
     }
 }

@@ -220,4 +220,84 @@
   <data name="Bots.Number7" xml:space="preserve"><value>seven</value></data>
   <data name="Bots.Number8" xml:space="preserve"><value>eight</value></data>
   <data name="Bots.Number9" xml:space="preserve"><value>nine</value></data>
+  <data name="Legal.ShownInDefault" xml:space="preserve"><value>This page is shown in {0}.</value></data>
+  <data name="Legal.VersionSaved" xml:space="preserve"><value>Version {0}, {1}</value></data>
+  <data name="Legal.NavLabel" xml:space="preserve"><value>Legal pages</value></data>
+  <data name="Welcome.Online" xml:space="preserve"><value>Online</value></data>
+  <data name="Welcome.Offline" xml:space="preserve"><value>Offline</value></data>
+  <data name="Welcome.OnePersonOnline" xml:space="preserve"><value>1 person online</value></data>
+  <data name="Welcome.PeopleOnline" xml:space="preserve"><value>{0} people online</value></data>
+  <data name="Welcome.OneRegion" xml:space="preserve"><value>1 region</value></data>
+  <data name="Welcome.Regions" xml:space="preserve"><value>{0} regions</value></data>
+  <data name="Welcome.StatusUnavailable" xml:space="preserve"><value>Status unavailable</value></data>
+  <data name="Welcome.Picture" xml:space="preserve"><value>Picture</value></data>
+  <data name="Welcome.ForgotPassword" xml:space="preserve"><value>Forgot password</value></data>
+  <data name="Welcome.AboutGrid" xml:space="preserve"><value>About this grid</value></data>
+  <data name="Support.Title" xml:space="preserve"><value>Ask for help</value></data>
+  <data name="Support.CheckEmail" xml:space="preserve"><value>Check your email. We sent a link to send your ticket to staff. It works for 24 hours. Check your spam folder.</value></data>
+  <data name="Support.StartAnother" xml:space="preserve"><value>Start another ticket</value></data>
+  <data name="Support.StartNew" xml:space="preserve"><value>Start a new ticket</value></data>
+  <data name="Support.Intro" xml:space="preserve"><value>Send a ticket to the grid's staff. You'll get a private link by email to read their answers and reply.</value></data>
+  <data name="Support.YourTickets" xml:space="preserve"><value>Your tickets</value></data>
+  <data name="Support.EmailOff" xml:space="preserve"><value>Sign in to send a ticket. This grid can't send email yet, so it can't check an address.</value></data>
+  <data name="Support.From" xml:space="preserve"><value>From {0}. We'll answer at the email on your account.</value></data>
+  <data name="Support.NameLabel" xml:space="preserve"><value>Your name or avatar name</value></data>
+  <data name="Support.EmailLabel" xml:space="preserve"><value>Your email</value></data>
+  <data name="Support.CategoryLabel" xml:space="preserve"><value>What is it about?</value></data>
+  <data name="Support.ChooseOne" xml:space="preserve"><value>Choose one</value></data>
+  <data name="Support.CategoryAccounts" xml:space="preserve"><value>Accounts and sign-in</value></data>
+  <data name="Support.CategoryLand" xml:space="preserve"><value>Land and regions</value></data>
+  <data name="Support.CategoryAbuse" xml:space="preserve"><value>Report abuse</value></data>
+  <data name="Support.CategoryTechnical" xml:space="preserve"><value>Technical problem</value></data>
+  <data name="Support.CategoryOther" xml:space="preserve"><value>Something else</value></data>
+  <data name="Support.SubjectLabel" xml:space="preserve"><value>Subject</value></data>
+  <data name="Support.MessageLabel" xml:space="preserve"><value>Message</value></data>
+  <data name="Support.MessageHelp" xml:space="preserve"><value>Say what happened, when, and the avatar or region names involved.</value></data>
+  <data name="Support.EvidenceLabel" xml:space="preserve"><value>Evidence link (optional)</value></data>
+  <data name="Support.EvidenceHelp" xml:space="preserve"><value>One web address, for example a picture you uploaded. Staff see it as text.</value></data>
+  <data name="Support.LogsLabel" xml:space="preserve"><value>Logs (optional)</value></data>
+  <data name="Support.Send" xml:space="preserve"><value>Send ticket</value></data>
+  <data name="Support.NoPasswords" xml:space="preserve"><value>Staff will read this. Don't put passwords in it.</value></data>
+  <data name="Support.LostLink" xml:space="preserve"><value>Lost the link to your ticket?</value></data>
+  <data name="Support.ConfirmTitle" xml:space="preserve"><value>Send your ticket</value></data>
+  <data name="Support.ConfirmFailed" xml:space="preserve"><value>This link doesn't work any more. It works once, for 24 hours. {0}.</value></data>
+  <data name="Support.ConfirmIntro" xml:space="preserve"><value>Press the button to send your ticket to the grid's staff.</value></data>
+  <data name="Support.ConfirmButton" xml:space="preserve"><value>Send my ticket</value></data>
+  <data name="Support.LostTitle" xml:space="preserve"><value>Lost your ticket link</value></data>
+  <data name="Support.LostHeading" xml:space="preserve"><value>Lost your ticket link?</value></data>
+  <data name="Support.LostSent" xml:space="preserve"><value>If there are tickets for that address, we've sent their links. Check your spam folder.</value></data>
+  <data name="Support.LostIntro" xml:space="preserve"><value>Give the email address you sent your ticket from, and we'll send a new link.</value></data>
+  <data name="Support.SendNewLink" xml:space="preserve"><value>Send me a new link</value></data>
+  <data name="Support.TicketTitle" xml:space="preserve"><value>{0}: {1}</value></data>
+  <data name="Support.YourTicket" xml:space="preserve"><value>Your ticket</value></data>
+  <data name="Support.RanOutTitle" xml:space="preserve"><value>This link has run out</value></data>
+  <data name="Support.RanOutText" xml:space="preserve"><value>Links to a ticket work for 30 days. We can send you a new one.</value></data>
+  <data name="Support.Back" xml:space="preserve"><value>‹ Ask for help</value></data>
+  <data name="Support.You" xml:space="preserve"><value>You</value></data>
+  <data name="Support.FromStaff" xml:space="preserve"><value>Staff ({0})</value></data>
+  <data name="Support.StaffName" xml:space="preserve"><value>staff</value></data>
+  <data name="Support.EvidenceSent" xml:space="preserve"><value>Evidence link you sent: {0}</value></data>
+  <data name="Support.ReplyLabel" xml:space="preserve"><value>Your reply</value></data>
+  <data name="Support.SendReply" xml:space="preserve"><value>Send reply</value></data>
+  <data name="Support.ClosedForGood" xml:space="preserve"><value>This ticket is closed. Start a new ticket.</value></data>
+  <data name="Support.StateOpen" xml:space="preserve"><value>Open</value></data>
+  <data name="Support.StateWaiting" xml:space="preserve"><value>Waiting for you</value></data>
+  <data name="Support.StateClosed" xml:space="preserve"><value>Closed</value></data>
+  <data name="Support.StateUnsent" xml:space="preserve"><value>Not sent yet</value></data>
+  <data name="Support.TooManyReplies" xml:space="preserve"><value>Too many replies for now. Try again in a while.</value></data>
+  <data name="Support.ReplySent" xml:space="preserve"><value>Your reply is with the staff.</value></data>
+  <data name="Support.TooManyOpen" xml:space="preserve"><value>You already have {0} open tickets. Reply on one of them instead.</value></data>
+  <data name="Support.Full" xml:space="preserve"><value>The grid isn't taking new tickets right now. Try again later.</value></data>
+  <data name="Support.Busy" xml:space="preserve"><value>Your ticket couldn't be saved. Try again in a few minutes.</value></data>
+  <data name="Support.TooLong" xml:space="preserve"><value>This ticket is too long. Start a new ticket.</value></data>
+  <data name="Support.ReplyShort" xml:space="preserve"><value>Write at least {0} characters.</value></data>
+  <data name="Support.ReplyLong" xml:space="preserve"><value>Keep it under {0:N0} characters.</value></data>
+  <data name="Support.NameProblem" xml:space="preserve"><value>Write your name, up to {0} characters.</value></data>
+  <data name="Support.EmailProblem" xml:space="preserve"><value>Write the email address we should answer.</value></data>
+  <data name="Support.CategoryProblem" xml:space="preserve"><value>Pick what your ticket is about.</value></data>
+  <data name="Support.SubjectProblem" xml:space="preserve"><value>Write a subject of {0} to {1} characters.</value></data>
+  <data name="Support.MessageShort" xml:space="preserve"><value>Write at least {0} characters about the problem.</value></data>
+  <data name="Support.MessageLong" xml:space="preserve"><value>Keep the message under {0:N0} characters.</value></data>
+  <data name="Support.EvidenceProblem" xml:space="preserve"><value>The evidence link must be one web address starting with https:// or http://.</value></data>
+  <data name="Support.LogsProblem" xml:space="preserve"><value>Keep the logs under {0:N0} characters.</value></data>
 </root>

@@ -35,14 +35,14 @@ public sealed class TermsModel(Func<LauncherSettings> settings, TermsAcceptances
 
     public IActionResult OnGet()
     {
-        if (LegalPages.Get(settings(), LegalPages.Terms) is not { } terms) return Redirect(Next);
+        if (LegalPages.Get(settings(), LegalPages.Terms, settings().Languages.Default) is not { } terms) return Redirect(Next);
         Show(terms);
         return Page();
     }
 
     public IActionResult OnPost([FromForm(Name = "Version")] int version)
     {
-        if (LegalPages.Get(settings(), LegalPages.Terms) is not { } terms) return Redirect(Next);
+        if (LegalPages.Get(settings(), LegalPages.Terms, settings().Languages.Default) is not { } terms) return Redirect(Next);
         if (version != terms.Version)
         {
             Show(terms);

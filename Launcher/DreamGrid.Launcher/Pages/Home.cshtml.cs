@@ -32,7 +32,7 @@ public sealed class HomeModel(Func<LauncherSettings> settings) : PageModel
     {
         var s = settings();
         GridName = s.GridName;
-        LegalPages = [.. Core.Guests.LegalPages.All.Where(p => Core.Guests.LegalPages.Get(s, p) is not null)];
+        LegalPages = [.. Core.Guests.LegalPages.All.Where(p => Core.Guests.LegalPages.Get(s, p, DreamGrid.Launcher.Resident.ResidentLanguageFilter.Current(HttpContext)) is not null)];
         // The sign-in card posts to /guest/sign-in, which sees the guest cookie's user (or nobody), never the staff one. Its
         // antiforgery token is made for HttpContext.User, so the page takes that same user first: otherwise a staff member
         // looking at the guest side (Guest view) gets a 400 from the card. The header asks the staff cookie itself.

@@ -54,7 +54,7 @@ public sealed class LegalEditorTests
         PostAsync(client, "Save", new() { ["Texts[" + page + "]"] = text });
 
     private static LegalText? Stored(LauncherFactory f, string page) =>
-        LegalPages.Get(f.Store.LoadOrCreate(), page);
+        LegalPages.Get(f.Store.LoadOrCreate(), page, "en");
 
     private static List<JsonElement> Audit(LauncherFactory f)
     {

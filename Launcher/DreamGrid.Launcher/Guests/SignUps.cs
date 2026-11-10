@@ -154,7 +154,7 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
             return new(SignUpOutcome.Busy);
         }
 
-        if (LegalPages.Get(s, LegalPages.Terms) is { } t) terms.Accept(account.PrincipalId, t.Version, ip?.ToString());
+        if (LegalPages.Get(s, LegalPages.Terms, s.Languages.Default) is { } t) terms.Accept(account.PrincipalId, t.Version, ip?.ToString());
         if (owner is not null)
         {
             NoticeOwner(s, owner, email);
