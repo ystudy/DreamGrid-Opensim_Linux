@@ -22,6 +22,7 @@ using DreamGrid.Launcher.Splash;
 using DreamGrid.Launcher.Email;
 using DreamGrid.Launcher.Groups;
 using DreamGrid.Launcher.Guests;
+using DreamGrid.Launcher.Resident;
 using DreamGrid.Launcher.Setup;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -216,6 +217,13 @@ builder.Services.AddRazorPages(o =>
     // Outside /Guest, which needs the guest sign-in and the Terms gate.
     o.Conventions.AllowAnonymousToFolder("/Support");
     o.Conventions.AddFolderApplicationModelConvention("/Support", m => m.Filters.Add(new GuestSideOnly()));
+    // The resident pages pick their language per visitor (see ResidentLanguageFilter); staff pages stay English. Only the welcome
+    // page takes its language from ?lang= alone.
+    o.Conventions.AddPageApplicationModelConvention("/Welcome", m => m.Filters.Add(new ResidentLanguageFilter(welcome: true)));
+    foreach (var folder in new[] { "/Guest", "/Support" })
+        o.Conventions.AddFolderApplicationModelConvention(folder, m => m.Filters.Add(new ResidentLanguageFilter(welcome: false)));
+    foreach (var page in new[] { "/Home", "/Legal", "/SignUp" })
+        o.Conventions.AddPageApplicationModelConvention(page, m => m.Filters.Add(new ResidentLanguageFilter(welcome: false)));
     // The dashboard's forms post here: a POST to "/" belongs to the port-8001 contract (LegacyRootPolicy).
     o.Conventions.AddPageRoute("/Index", "dashboard");
 });
