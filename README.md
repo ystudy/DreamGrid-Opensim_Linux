@@ -80,6 +80,8 @@ page on the [releases list](https://github.com/ystudy/DreamGrid-Opensim_Linux/re
 
 Please see BUILDING.md
 
+For how releases are numbered and which OpenSimulator code they are built on, see VERSIONING.md.
+
 # Running OpenSim on Windows
 
 You will need the dotnet 10.0 runtime (https://dotnet.microsoft.com/en-us/download/dotnet/10.0)
