@@ -21,6 +21,13 @@ public sealed class SettingsModel(IGridController grid, OarJobs oarJobs, Func<Cp
         ("scripts", "Scripts"), ("permissions", "Permissions"), ("access", "Access"), ("cpu", "CPU"),
     ];
 
+    /// <summary>The icon beside a section in the settings list.</summary>
+    public static string TabIcon(string tab) => tab switch
+    {
+        "options" => "gear", "map" => "map-pin", "physics" => "activity", "scripts" => "text",
+        "permissions" => "lock", "access" => "person", "cpu" => "cpu", _ => "edit",
+    };
+
     public Guid Id { get; private set; }
     public string Name { get; private set; } = "";
     public string Tab { get; private set; } = "basics";

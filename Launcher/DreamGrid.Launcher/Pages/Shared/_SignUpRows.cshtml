@@ -19,9 +19,9 @@ else
                     <form method="post" action="/people/sign-ups?handler=approve" asp-antiforgery="true" class="d-inline">
                         <input type="hidden" name="id" value="@e.Principal">
                         <input type="hidden" name="returnUrl" value="@Model.ReturnUrl">
-                        <button type="submit" class="approve btn btn-sm btn-success">&#10004; Approve</button>
+                        <button type="submit" class="approve btn btn-sm btn-success">Approve</button>
                     </form>
-                    <a class="deny btn btn-sm btn-outline-danger" href="/people/sign-ups/deny?id=@e.Principal&amp;returnUrl=@Uri.EscapeDataString(Model.ReturnUrl)">&#10006; Deny</a>
+                    <a class="deny btn btn-sm btn-outline-danger" href="/people/sign-ups/deny?id=@e.Principal&amp;returnUrl=@Uri.EscapeDataString(Model.ReturnUrl)">Deny</a>
                     <span class="badge text-bg-warning">@SignUpRows.Badge(e)</span>
                 }
                 else

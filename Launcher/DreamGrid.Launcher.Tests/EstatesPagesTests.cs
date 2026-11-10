@@ -288,4 +288,65 @@ public sealed class EstatesPagesTests
         Assert.NotNull((await PageAsync(client, "/estates")).QuerySelector("#estates-unavailable"));
         Assert.NotNull((await PageAsync(client, Url(rig.Spare))).QuerySelector("#estate-unavailable"));
     }
+
+    private static string[] Names(IHtmlDocument page) =>
+        [.. page.QuerySelectorAll("#estates-list tbody tr td:first-child").Select(td => td.TextContent.Trim())];
+
+    [Fact]
+    public async Task The_list_sorts_by_its_column_headings()
+    {
+        await using var rig = Make();
+        var client = await StaffAsync(rig.F, "admin");
+
+        var first = await PageAsync(client, "/estates");
+        Assert.Equal(["Ann Guest Estate", "Avalon Estate", "Spare"], Names(first));
+        Assert.Equal("ascending", first.QuerySelector("th[aria-sort=ascending]")?.GetAttribute("aria-sort"));
+        Assert.Equal("/estates?sort=-name", first.QuerySelector("th a.sort-link.sorted")?.GetAttribute("href"));
+
+        Assert.Equal(["Spare", "Avalon Estate", "Ann Guest Estate"], Names(await PageAsync(client, "/estates?sort=-name")));
+        Assert.Equal(["Avalon Estate", "Spare", "Ann Guest Estate"], Names(await PageAsync(client, "/estates?sort=-owner")));
+        Assert.Equal(["Ann Guest Estate", "Avalon Estate", "Spare"], Names(await PageAsync(client, "/estates?sort=nonsense")));
+    }
+
+    [Fact]
+    public async Task The_search_keeps_estates_whose_name_or_owner_matches()
+    {
+        await using var rig = Make();
+        var client = await StaffAsync(rig.F, "admin");
+
+        var ann = await PageAsync(client, "/estates?q=ANN&sort=-name");
+        Assert.Equal(["Ann Guest Estate"], Names(ann));
+        Assert.Contains("1 of 3", ann.QuerySelector("#estates-title")!.TextContent);
+        Assert.Equal("ANN", ann.QuerySelector("#estates-search input[name=q]")?.GetAttribute("value"));
+        Assert.Equal("-name", ann.QuerySelector("#estates-search input[name=sort]")?.GetAttribute("value"));
+        Assert.Equal("/estates?q=ANN", ann.QuerySelector("th a.sort-link.sorted")?.GetAttribute("href"));
+
+        var none = await PageAsync(client, "/estates?q=zzz");
+        Assert.Null(none.QuerySelector("#estates-list"));
+        Assert.Contains("zzz", none.QuerySelector("#estates-no-match")!.TextContent);
+        Assert.NotNull(none.QuerySelector("#estate-create"));
+    }
+
+    [Fact]
+    public async Task The_page_is_wide_with_the_list_and_new_estate_in_two_panels()
+    {
+        await using var rig = Make();
+        var page = await PageAsync(await StaffAsync(rig.F, "admin"), "/estates");
+        Assert.Equal("page-wide", page.Body!.ClassName);
+        var panels = page.QuerySelectorAll(".estates-columns > section.work-panel");
+        Assert.Equal(2, panels.Length);
+        Assert.NotNull(panels[0].QuerySelector("#estates-list"));
+        Assert.NotNull(panels[1].QuerySelector("#estate-create"));
+    }
+
+    [Fact]
+    public void Arrange_breaks_ties_by_name_and_sorts_counts_as_numbers()
+    {
+        EstateSummary E(string name, string owner, int regions) => new(0, name, Guid.Empty, owner, regions, 0);
+        var all = new[] { E("b", "Zed", 2), E("a", "Zed", 10), E("c", "Amy", 2) };
+        Assert.Equal(["a", "b", "c"], DreamGrid.Launcher.Pages.Estates.IndexModel.Arrange(all, null, "-regions").Select(e => e.Name));
+        Assert.Equal(["b", "c", "a"], DreamGrid.Launcher.Pages.Estates.IndexModel.Arrange(all, "  ", "regions").Select(e => e.Name));
+        Assert.Equal(["c", "a", "b"], DreamGrid.Launcher.Pages.Estates.IndexModel.Arrange(all, null, "owner").Select(e => e.Name));
+        Assert.Equal(["a", "b"], DreamGrid.Launcher.Pages.Estates.IndexModel.Arrange(all, "zed", "name").Select(e => e.Name));
+    }
 }

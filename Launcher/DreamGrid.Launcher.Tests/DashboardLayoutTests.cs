@@ -96,4 +96,26 @@ public sealed class DashboardLayoutTests
         Assert.Equal("Ada Lovelace", page.QuerySelector($"#online a[href='/people/{person}']")!.TextContent.Trim());
         Assert.Equal("1", page.QuerySelector("#tile-online")!.TextContent.Trim());
     }
+
+    [Fact]
+    public async Task Controls_are_in_the_heading_row_and_the_panels_in_three_columns()
+    {
+        await using var f = Factory();
+        f.Counts.Result = Full;
+        var page = await HomeAsync(f);
+
+        Assert.Equal("page-wide", page.Body!.ClassName);
+        var controls = page.QuerySelector(".page-head > form#controls");
+        Assert.NotNull(controls);
+        Assert.NotNull(controls.QuerySelector("details.power-menu button[value=stop]"));
+        Assert.NotNull(controls.QuerySelector("button[value=restart-database]"));
+
+        var cols = page.QuerySelectorAll(".home-columns > .home-col");
+        Assert.Equal(3, cols.Length);
+        Assert.NotNull(cols[0].QuerySelector("#components"));
+        Assert.NotNull(cols[0].QuerySelector("#login-uri"));
+        Assert.NotNull(cols[1].QuerySelector("#region-rows"));
+        Assert.NotNull(cols[1].QuerySelector("#online"));
+        Assert.NotNull(cols[2].QuerySelector("#world-counts"));
+    }
 }

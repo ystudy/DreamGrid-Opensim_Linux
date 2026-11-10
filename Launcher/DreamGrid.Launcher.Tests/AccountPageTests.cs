@@ -241,4 +241,48 @@ public sealed class AccountPageTests
         var page = await PageAsync(await SignedInAsync(f), "/guest");
         Assert.NotNull(page.QuerySelector("a[href='/guest/account']"));
     }
+
+    [Fact]
+    public async Task The_front_page_card_signs_a_resident_in()
+    {
+        await using var f = Factory();
+        var client = Client(f);
+        var front = await PageAsync(client, "/home");
+        var form = front.QuerySelector("main form#front-sign-in")!;
+        Assert.Equal("/guest/sign-in", form.GetAttribute("action"));
+        Assert.NotNull(form.QuerySelector("input[name=Name][autocomplete=username]"));
+        Assert.NotNull(form.QuerySelector("input[name=Password][type=password]"));
+        Assert.NotNull(front.QuerySelector("main a.btn[href='/signup']"));
+
+        using var r = await client.PostAsync(form.GetAttribute("action"), new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["Name"] = "Ann Smith", ["Password"] = Old, ["__RequestVerificationToken"] = Token(front, "form#front-sign-in"),
+        }), Ct);
+        Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/guest/account", Ct)).StatusCode);
+    }
+
+    [Fact]
+    public async Task The_front_page_card_works_for_staff_looking_at_the_guest_side_and_for_a_signed_in_resident()
+    {
+        await using var f = Factory();
+        // A staff member on the guest side (Guest view): the card's token must match what /guest/sign-in sees, not the staff cookie.
+        var staff = await SplashPictureApiTests.StaffAsync(f, "owner");
+        var front = await PageAsync(staff, "/home");
+        Assert.NotNull(front.QuerySelector("#staff-side-link")); // still offered the way back
+        using (var r = await staff.PostAsync("/guest/sign-in", new FormUrlEncodedContent(new Dictionary<string, string>
+               {
+                   ["Name"] = "Ann Smith", ["Password"] = Old, ["__RequestVerificationToken"] = Token(front, "form#front-sign-in"),
+               }), Ct))
+            Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
+
+        // A resident already signed in who signs in again from the front page.
+        var resident = await SignedInAsync(f);
+        var again = await PageAsync(resident, "/home");
+        using var r2 = await resident.PostAsync("/guest/sign-in", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["Name"] = "Ann Smith", ["Password"] = Old, ["__RequestVerificationToken"] = Token(again, "form#front-sign-in"),
+        }), Ct);
+        Assert.Equal(HttpStatusCode.Redirect, r2.StatusCode);
+    }
 }

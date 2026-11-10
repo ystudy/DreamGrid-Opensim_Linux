@@ -319,8 +319,11 @@ public sealed class RegionPanelTests : IAsyncLifetime
         var delete = doc.QuerySelector($"form[action='/regions/region/{SunsetId}?handler=delete']")!;
         var row = move.ParentElement!;
         Assert.Equal("DIV", row.TagName);
-        Assert.Contains("d-flex", row.ClassList);
+        Assert.Contains("region-links", row.ClassList);
         Assert.Same(row, runs.ParentElement);
+        Assert.Same(row, doc.QuerySelector("a.region-settings-link")!.ParentElement); // Settings joins the row
+        Assert.EndsWith("#gear", doc.QuerySelector("a.region-settings-link svg.btn-icon use")!.GetAttribute("href"));
+        Assert.EndsWith("#cpu", runs.QuerySelector("svg.btn-icon use")!.GetAttribute("href"));
         Assert.Same(row, delete.ParentElement);
         Assert.DoesNotContain(doc.QuerySelectorAll("p"), p => p.ChildElementCount == 0 && p.TextContent.Trim().Length == 0);
     }

@@ -24,7 +24,7 @@
     <link rel="stylesheet" href="/css/site.css">
     @await RenderSectionAsync("Head", required: false)
 </head>
-<body>
+<body class="@(ViewData["Wide"] switch { true => "page-wide", "full" => "page-full", _ => null })">
 <header class="navbar navbar-expand bg-body border-bottom shadow-sm">
     <div class="container flex-wrap gap-2">
         <strong class="navbar-brand grid-name me-auto">@gridName</strong>
@@ -87,6 +87,11 @@
                     <form method="post" action="/logout" asp-antiforgery="true" class="signout"><button type="submit" class="btn btn-link nav-link">Sign out</button></form>
                 }
             </nav>
+            @* The guest side as visitors see it; its header links back here while a staff member is signed in. Outside the <nav>: it is not a menu group. *@
+            @if (!enrolOnly && hasStaffPages && staffRole != DreamGrid.Launcher.Core.Security.StaffRole.None)
+            {
+                <a id="guest-side-link" class="btn btn-sm btn-outline-secondary" href="/home" icon="eye" title="Open the front page residents and visitors see">Guest view</a>
+            }
         }
     </div>
 </header>

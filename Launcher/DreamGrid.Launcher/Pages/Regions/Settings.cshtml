@@ -1,54 +1,68 @@
 @page "/regions/region/{id:guid}/settings/{tab?}"
 @model DreamGrid.Launcher.Pages.Regions.SettingsModel
 @using DreamGrid.Launcher.Core.Grid
+@using DreamGrid.Launcher.Navigation
 @{
     ViewData["Title"] = Model.Name + " settings";
+    ViewData["Wide"] = true;
     var isProgramTab = Model.Tab is "map" or "physics" or "scripts" or "permissions" or "cpu";
 }
-<nav aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="/regions/region/@Model.Id">@Model.Name</a></li><li class="breadcrumb-item active" aria-current="page">Settings</li></ol></nav>
-<h1>@Model.Name settings</h1>
+<nav aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="/regions">Regions</a></li><li class="breadcrumb-item"><a href="/regions/region/@Model.Id">@Model.Name</a></li><li class="breadcrumb-item active" aria-current="page">Settings</li></ol></nav>
+<div class="page-head">
+    <h1>@Model.Name settings<help-tip class="help-start">Pick a section on the left. Each section saves on its own. Some changes apply when the region restarts; the region's panel on the map says when one is waiting.</help-tip></h1>
+    <div class="page-actions">
+        <a class="btn btn-sm btn-outline-secondary" href="/regions?region=@Model.Id" icon="arrow-left">Back to the map</a>
+    </div>
+</div>
 
 @if (Model.Notice is not null)
 {
     <p class="notice alert alert-info py-2" role="status">@Model.Notice</p>
 }
 
-<ul class="nav nav-tabs mb-3">
-    @foreach (var (key, label) in SettingsModel.Tabs)
-    {
-        <li class="nav-item"><a class="nav-link @(key == Model.Tab ? "active" : "")" aria-current="@(key == Model.Tab ? "page" : null)" href="/regions/region/@Model.Id/settings/@key">@label</a></li>
-    }
-</ul>
+@* The sections as a list on the left, the open one in a panel beside it (one above the other on narrow screens). *@
+<div class="settings-columns">
+    <nav class="work-panel settings-nav" aria-label="Settings sections">
+        <ul class="nav settings-tabs flex-column">
+            @foreach (var (key, label) in SettingsModel.Tabs)
+            {
+                <li class="nav-item"><a class="nav-link @(key == Model.Tab ? "active" : "")" aria-current="@(key == Model.Tab ? "page" : null)" href="/regions/region/@Model.Id/settings/@key">@Html.Raw(ButtonIcons.Svg(SettingsModel.TabIcon(key)))@label</a></li>
+            }
+        </ul>
+    </nav>
+    <section class="work-panel settings-body" aria-label="@SettingsModel.Tabs.First(t => t.Key == Model.Tab).Label">
+        <h2 class="panel-title">@SettingsModel.Tabs.First(t => t.Key == Model.Tab).Label</h2>
+        @if (isProgramTab && Model.Sharing.Count > 1)
+        {
+            <p class="share-note alert alert-secondary py-2">@RegionAdvice.Join(Model.Sharing) share this setting because they run together.</p>
+        }
 
-@if (isProgramTab && Model.Sharing.Count > 1)
-{
-    <p class="share-note alert alert-secondary py-2">@RegionAdvice.Join(Model.Sharing) share this setting because they run together.</p>
-}
-
-@switch (Model.Tab)
-{
-    case "options":
-        <partial name="_SettingsOptions" model="Model" />
-        break;
-    case "map":
-        <partial name="_SettingsMap" model="Model" />
-        break;
-    case "physics":
-        <partial name="_SettingsPhysics" model="Model" />
-        break;
-    case "scripts":
-        <partial name="_SettingsScripts" model="Model" />
-        break;
-    case "permissions":
-        <partial name="_SettingsPermissions" model="Model" />
-        break;
-    case "access":
-        <partial name="_SettingsAccess" model="Model" />
-        break;
-    case "cpu":
-        <partial name="_SettingsCpu" model="Model" />
-        break;
-    default:
-        <partial name="_SettingsBasics" model="Model" />
-        break;
-}
+        @switch (Model.Tab)
+        {
+            case "options":
+                <partial name="_SettingsOptions" model="Model" />
+                break;
+            case "map":
+                <partial name="_SettingsMap" model="Model" />
+                break;
+            case "physics":
+                <partial name="_SettingsPhysics" model="Model" />
+                break;
+            case "scripts":
+                <partial name="_SettingsScripts" model="Model" />
+                break;
+            case "permissions":
+                <partial name="_SettingsPermissions" model="Model" />
+                break;
+            case "access":
+                <partial name="_SettingsAccess" model="Model" />
+                break;
+            case "cpu":
+                <partial name="_SettingsCpu" model="Model" />
+                break;
+            default:
+                <partial name="_SettingsBasics" model="Model" />
+                break;
+        }
+    </section>
+</div>

@@ -2,17 +2,33 @@
 @model DreamGrid.Launcher.Pages.Advanced.IndexModel
 @{
     ViewData["Title"] = "Settings";
+    ViewData["Wide"] = true;
+    var items = new List<(string Href, string Title, string Hint, string Icon)>
+    {
+        ("/advanced/plan", "Plan", "Your plan, hypergrid, and changing to another plan.", "flag"),
+        ("/advanced/network", "Network", "The address people connect to, and the ports.", "link"),
+        ("/advanced/database", "Database", "The database connection and its passwords.", "key"),
+        ("/advanced/regions", "Region defaults", "The physics engine and scripts regions use unless you choose for them.", "land"),
+    };
+    foreach (var module in Model.ModulePages)
+        items.Add(("/advanced/module/" + Uri.EscapeDataString(module.ModuleId), module.Title, "", "gear"));
+    items.Add(("/logs", "Logs", "What the launcher, Robust and your region wrote.", "news"));
 }
 <h1>Settings</h1>
 <p class="text-body-secondary">Most worlds never need these. A change here applies when your world restarts.</p>
-<div class="menu list-group shadow-sm">
-    <div class="list-group-item list-group-item-action"><a class="fw-semibold stretched-link text-decoration-none" href="/advanced/plan">Plan</a><span class="hint form-text d-block m-0">Your plan, hypergrid, and changing to another plan.</span></div>
-    <div class="list-group-item list-group-item-action"><a class="fw-semibold stretched-link text-decoration-none" href="/advanced/network">Network</a><span class="hint form-text d-block m-0">The address people connect to, and the ports.</span></div>
-    <div class="list-group-item list-group-item-action"><a class="fw-semibold stretched-link text-decoration-none" href="/advanced/database">Database</a><span class="hint form-text d-block m-0">The database connection and its passwords.</span></div>
-    <div class="list-group-item list-group-item-action"><a class="fw-semibold stretched-link text-decoration-none" href="/advanced/regions">Region defaults</a><span class="hint form-text d-block m-0">The physics engine and scripts regions use unless you choose for them.</span></div>
-    @foreach (var module in Model.ModulePages)
+@* One card per settings page, three across on a wide screen. *@
+<div class="menu settings-hub">
+    @foreach (var (href, title, hint, icon) in items)
     {
-        <div class="list-group-item list-group-item-action"><a class="fw-semibold stretched-link text-decoration-none" href="/advanced/module/@Uri.EscapeDataString(module.ModuleId)">@module.Title</a></div>
+        <div class="work-panel hub-card position-relative">
+            <svg class="hub-icon" aria-hidden="true" focusable="false"><use href="/img/icons.svg#@icon"></use></svg>
+            <div>
+                <a class="fw-semibold stretched-link text-decoration-none" href="@href">@title</a>
+                @if (hint != "")
+                {
+                    <span class="hint form-text d-block m-0">@hint</span>
+                }
+            </div>
+        </div>
     }
-    <div class="list-group-item list-group-item-action"><a class="fw-semibold stretched-link text-decoration-none" href="/logs">Logs</a><span class="hint form-text d-block m-0">What the launcher, Robust and your region wrote.</span></div>
 </div>
