@@ -9,42 +9,47 @@ namespace GridGate.ModelImport.Tests;
 
 public class GltfReaderTests
 {
-    private static readonly ImportLimits Limits = new(
+    internal static readonly ImportLimits Limits = new(
         MaxPartSize: 256, MinPartSize: 0.001, MaxPhysicalPartSize: 10, MaxLinksetParts: 0,
         MaxUploadBytes: 64L * 1024 * 1024, MaxImageSide: 8192, MaxTextureSide: 1024,
         MaxTriangles: 2_000_000, MaxNodes: 512, HeavyTriangles: 200_000);
 
-    private static string ModelPath(string name) => Path.Combine(AppContext.BaseDirectory, "Models", name);
+    internal static string ModelPath(string name) => Path.Combine(AppContext.BaseDirectory, "Models", name);
 
-    private static ReadResult Read(string name)
+    internal static ReadResult Read(string name, ImportLimits? limits = null)
     {
         using var s = File.OpenRead(ModelPath(name));
-        return GltfReader.Read(s, name, Limits);
+        return GltfReader.Read(s, name, limits ?? Limits);
     }
 
     // A test that needs a model from fetch-models.sh skips when it was not fetched.
-    private static ReadResult ReadDownloaded(string relative)
+    internal static ReadResult ReadDownloaded(string relative, ImportLimits? limits = null)
     {
         var path = Path.Combine("downloaded", relative);
         if (!File.Exists(ModelPath(path)))
             Assert.Skip($"{relative} is not downloaded; run tests/GridGate.ModelImport.Tests/fetch-models.sh");
-        return Read(path);
+        return Read(path, limits);
     }
 
     private static int TriangleCount(ImportModel m) => m.Parts.Sum(p => p.Mesh.Faces.Sum(f => f.Triangles.Length / 3));
 
     // A one-triangle glTF with its buffer embedded, vertex 0 at (0,1,0); nodeExtras is added to the node's JSON.
-    private static byte[] TriangleGltf(string nodeExtras)
+    internal static byte[] TriangleGltf(string nodeExtras) => GltfJson("[{\"mesh\":0" + nodeExtras + "}]", "[0]");
+
+    // A glTF whose mesh 0 is one triangle (vertex 0 at (0,1,0)). nodes is the JSON array of nodes; sceneNodes the scene's root
+    // node indices; bufferUri the buffer's uri (embedded by default); top is extra top-level JSON, starting with a comma.
+    internal static byte[] GltfJson(string nodes, string sceneNodes, string? bufferUri = null, string top = "")
     {
         var floats = new float[] { 0, 1, 0, 1, 0, 0, 0, 0, 1 };
         var bytes = new byte[floats.Length * 4];
         Buffer.BlockCopy(floats, 0, bytes, 0, bytes.Length);
-        var json = "{\"asset\":{\"version\":\"2.0\"},\"scene\":0,\"scenes\":[{\"nodes\":[0]}],"
-            + "\"nodes\":[{\"mesh\":0" + nodeExtras + "}],"
+        bufferUri ??= "data:application/octet-stream;base64," + Convert.ToBase64String(bytes);
+        var json = "{\"asset\":{\"version\":\"2.0\"},\"scene\":0,\"scenes\":[{\"nodes\":" + sceneNodes + "}],"
+            + "\"nodes\":" + nodes + ","
             + "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0}}]}],"
             + "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\",\"min\":[0,0,0],\"max\":[1,1,1]}],"
             + "\"bufferViews\":[{\"buffer\":0,\"byteLength\":36}],"
-            + "\"buffers\":[{\"byteLength\":36,\"uri\":\"data:application/octet-stream;base64," + Convert.ToBase64String(bytes) + "\"}]}";
+            + "\"buffers\":[{\"byteLength\":36,\"uri\":\"" + bufferUri + "\"}]" + top + "}";
         return Encoding.UTF8.GetBytes(json);
     }
 
@@ -159,7 +164,9 @@ public class GltfReaderTests
         using var s = new MemoryStream(Encoding.ASCII.GetBytes("this is not a model"));
         var r = GltfReader.Read(s, "x.glb", Limits);
         Assert.Null(r.Model);
-        Assert.Contains(r.Findings, f => f.Kind == FindingKind.Blocking);
+        var f = Assert.Single(r.Findings);
+        Assert.Equal("bad-file", f.Code);
+        Assert.Equal(FindingKind.Blocking, f.Kind);
     }
 
     // ---- Models from fetch-models.sh ----
@@ -185,7 +192,9 @@ public class GltfReaderTests
     [Fact]
     public void NodePerformanceTest_gives_one_part_per_mesh_node()
     {
-        var m = ReadDownloaded("NodePerformanceTest.glb").Model!;
+        // The model has more nodes than the 512 cap: refused with the cap, read with a higher one.
+        Assert.Equal("too-large-file", Assert.Single(ReadDownloaded("NodePerformanceTest.glb").Findings).Code);
+        var m = ReadDownloaded("NodePerformanceTest.glb", Limits with { MaxNodes = 1_000_000 }).Model!;
         Assert.True(m.Parts.Count > 1);
         Assert.Equal(0, m.RootPart);
     }
@@ -195,13 +204,44 @@ public class GltfReaderTests
     {
         var m = ReadDownloaded("NegativeScaleTest.glb").Model!;
         Assert.NotEmpty(m.Parts);
+        // The reader keeps a mirror as a negative Scale component (it does not bake it), so a later stage can report it as inside-out.
+        Assert.Contains(m.Parts, p => p.Scale.X < 0 || p.Scale.Y < 0 || p.Scale.Z < 0);
+        Assert.Contains(m.Parts, p => p.Scale.X > 0 && p.Scale.Y > 0 && p.Scale.Z > 0); // and the positive ones are left alone
     }
 
     [Fact]
-    public void MeshPrimitiveModes_reads_only_the_triangle_primitives()
+    public void MeshPrimitiveModes_reads_triangles_strips_and_fans_and_reports_lines_and_points()
     {
+        var path = Path.Combine("downloaded", "MeshPrimitiveModes", "MeshPrimitiveModes.gltf");
         var m = ReadDownloaded(Path.Combine("MeshPrimitiveModes", "MeshPrimitiveModes.gltf")).Model!;
-        Assert.NotEmpty(m.Parts);
-        Assert.All(m.Parts.SelectMany(p => p.Mesh.Faces), f => Assert.True(f.Triangles.Length % 3 == 0));
+
+        // The expected count, worked out from SharpGLTF's accessors alone: a list gives n/3 triangles, a strip or fan n-2.
+        var root = SharpGLTF.Schema2.ModelRoot.Load(ModelPath(path));
+        long expected = 0;
+        bool anyLines = false, anyPoints = false;
+        void Visit(SharpGLTF.Schema2.Node node)
+        {
+            if (node.Mesh != null)
+                foreach (var prim in node.Mesh.Primitives)
+                {
+                    long n = prim.IndexAccessor?.Count ?? prim.GetVertexAccessor("POSITION").Count;
+                    switch (prim.DrawPrimitiveType)
+                    {
+                        case SharpGLTF.Schema2.PrimitiveType.TRIANGLES: expected += n / 3; break;
+                        case SharpGLTF.Schema2.PrimitiveType.TRIANGLE_STRIP:
+                        case SharpGLTF.Schema2.PrimitiveType.TRIANGLE_FAN: expected += n - 2; break;
+                        case SharpGLTF.Schema2.PrimitiveType.POINTS: anyPoints = true; break;
+                        default: anyLines = true; break;
+                    }
+                }
+            foreach (var c in node.VisualChildren) Visit(c);
+        }
+        foreach (var n in (root.DefaultScene ?? root.LogicalScenes[0]).VisualChildren) Visit(n);
+
+        Assert.True(expected > 0);
+        Assert.True(anyLines && anyPoints, "the model is expected to hold lines and points");
+        Assert.Equal(expected, TriangleCount(m));
+        Assert.Contains("lines", m.Dropped);
+        Assert.Contains("points", m.Dropped);
     }
 }

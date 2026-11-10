@@ -23,6 +23,10 @@ fetch_gltf() {
     curl -fsSL -o "$dir/$out.gltf" "$BASE/$name/$variant/$name.gltf"
     grep -o '"uri"[[:space:]]*:[[:space:]]*"[^"]*"' "$dir/$out.gltf" | sed 's/.*:[[:space:]]*"\(.*\)"/\1/' | grep -v '^data:' | sort -u |
     while read -r uri; do
+        # The uris come from a downloaded file: nothing that climbs out of the folder, is absolute, or names a scheme.
+        case "$uri" in
+            *..*|/*|\\*|*%2[eE]*|[A-Za-z]*:*) echo "Refusing unsafe uri in $out.gltf: $uri" >&2; exit 1 ;;
+        esac
         mkdir -p "$dir/$(dirname "$uri")"
         curl -fsSL -o "$dir/$uri" "$BASE/$name/$variant/$uri"
     done
