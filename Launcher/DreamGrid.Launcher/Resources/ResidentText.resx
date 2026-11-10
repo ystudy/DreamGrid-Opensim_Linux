@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <!-- The English words of the resident web pages. Keys are Page.Thing; words shared by several pages are Common.Thing. -->
+  <data name="Layout.BackToStaff" xml:space="preserve"><value>Back to staff pages</value></data>
+  <data name="Layout.Help" xml:space="preserve"><value>Ask for help</value></data>
+  <data name="Layout.Language" xml:space="preserve"><value>Language</value></data>
+  <data name="Layout.ChangeLanguage" xml:space="preserve"><value>Change language</value></data>
+</root>

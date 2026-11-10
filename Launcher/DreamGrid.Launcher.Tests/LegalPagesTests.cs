@@ -207,7 +207,7 @@ public sealed class LegalPagesTests
             Assert.Equal(HttpStatusCode.OK, r.StatusCode);
             var page = new HtmlParser().ParseDocument(await r.Content.ReadAsStringAsync(Ct));
             Assert.Contains("This grid isn't open for sign-ups yet.", page.QuerySelector("main")!.TextContent);
-            Assert.Empty(page.QuerySelectorAll("form"));
+            Assert.Empty(page.QuerySelectorAll("main form"));
         }
     }
 

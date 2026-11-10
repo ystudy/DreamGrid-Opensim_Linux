@@ -16,6 +16,7 @@ public static class SiteFacts
         ("dg-af", "Protects forms from being sent by other websites."),
         ("dg-notice", "Carries a one-time message to the next page after a form was sent."),
         ("dg-ticket", "Opens the one support ticket a private link was used for. It lasts 8 hours from its last use."),
+        ("dg-lang", "Remembers the language a visitor picked for the guest pages. It lasts a year."),
     ];
 
     /// <summary>What the software stores about people, and where.</summary>

@@ -1,0 +1,49 @@
+using DreamGrid.Launcher.Core;
+using DreamGrid.Launcher.Core.Settings;
+using DreamGrid.Launcher.Guests;
+using DreamGrid.Launcher.Resident;
+using DreamGrid.Launcher.Security;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.RazorPages;
+
+namespace DreamGrid.Launcher.Pages;
+
+/// <summary>
+/// The language picker's target: remembers the language a visitor chose (in the <c>dg-lang</c> cookie, and for a signed-in guest
+/// also in <see cref="ResidentLanguages"/>) and goes back to the page they were on. A POST only (the antiforgery token is
+/// required); anyone may use it. The way back is a path on this site, never another address.
+/// </summary>
+public sealed class LanguageModel(Func<LauncherSettings> settings, ResidentLanguages saved) : PageModel
+{
+    private static readonly TimeSpan CookieLife = TimeSpan.FromDays(365);
+
+    public IActionResult OnGet() => StatusCode(StatusCodes.Status405MethodNotAllowed);
+
+    public async Task<IActionResult> OnPostAsync(string? code, string? returnUrl)
+    {
+        var offered = settings().Languages.OfferedOrDefault().Where(Core.Languages.HasCulture).ToList();
+        if (Core.Languages.Match(code, offered) is not { } chosen)
+            return BadRequest();
+
+        Response.Cookies.Append(LanguagePick.Cookie, chosen, new CookieOptions
+        {
+            MaxAge = CookieLife,
+            HttpOnly = true,
+            SameSite = SameSiteMode.Lax,
+            Secure = Request.IsHttps,
+            IsEssential = true,
+            Path = "/",
+        });
+        if ((await HttpContext.AuthenticateAsync(AuthSchemes.Guest)).Principal is { } who && GuestSignIn.Read(who)?.Principal is { } id)
+            saved.Set(id, chosen);
+
+        Response.Headers.Location = Safe(returnUrl);
+        return StatusCode(StatusCodes.Status303SeeOther);
+    }
+
+    private string Safe(string? url) =>
+        url is { Length: > 0 } && Url.IsLocalUrl(url) && !url.StartsWith("//", StringComparison.Ordinal) && !url.StartsWith("/\\", StringComparison.Ordinal)
+            ? url
+            : "/";
+}

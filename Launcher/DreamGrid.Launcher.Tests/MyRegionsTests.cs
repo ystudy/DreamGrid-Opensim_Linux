@@ -206,7 +206,7 @@ public sealed class MyRegionsTests : IAsyncLifetime
         var page = await DocAsync(client, "/guest/regions");
         using var r = await RestartAsync(client, SunsetId);
 
-        Assert.Equal("Start this region", page.QuerySelector("button[type=submit]")!.TextContent.Trim());
+        Assert.Equal("Start this region", page.QuerySelector("main button[type=submit]")!.TextContent.Trim());
         Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
         Assert.True(await WaitForCallAsync($"RegionPower Start {SunsetId}"));
     }
@@ -227,7 +227,7 @@ public sealed class MyRegionsTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Redirect, second.StatusCode);
         var page = await DocAsync(client, "/guest/regions");
         Assert.Contains($"This region was restarted a few minutes ago. Try again after {tryAgain} (UTC).", Text(page));
-        Assert.True(page.QuerySelector("button[type=submit]")!.HasAttribute("disabled"));
+        Assert.True(page.QuerySelector("main button[type=submit]")!.HasAttribute("disabled"));
         Assert.Single(_f.Grid.Snapshot(), c => c.StartsWith("RegionPower"));
         Assert.Equal(["ok", "refused"], Audit("region-restart").Select(e => e.GetProperty("result").GetString()));
 
@@ -287,7 +287,7 @@ public sealed class MyRegionsTests : IAsyncLifetime
         using var r = await RestartAsync(client, HomeId);
 
         Assert.Contains("This region runs with regions that aren't yours. To restart it, contact the grid's staff.", Text(page));
-        Assert.True(page.QuerySelector("button[type=submit]")!.HasAttribute("disabled"));
+        Assert.True(page.QuerySelector("main button[type=submit]")!.HasAttribute("disabled"));
         Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
         AssertAudit(Assert.Single(Audit("region-restart")), "Home", "refused");
         Assert.DoesNotContain(_f.Grid.Snapshot(), c => c.StartsWith("RegionPower"));

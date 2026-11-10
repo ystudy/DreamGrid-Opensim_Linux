@@ -140,6 +140,20 @@ public sealed class SiteFactsTests
             Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
         }
 
+        // dg-lang: a visitor picks a language.
+        await using (var f = AfterSetup())
+        {
+            var client = Client(f, seen);
+            var form = new Dictionary<string, string>
+            {
+                ["code"] = "de",
+                ["returnUrl"] = "/",
+                ["__RequestVerificationToken"] = await TokenAsync(client, "/support"),
+            };
+            using var r = await client.PostAsync("/language", new FormUrlEncodedContent(form), Ct);
+            Assert.Equal(HttpStatusCode.SeeOther, r.StatusCode);
+        }
+
         var listed = SiteFacts.Cookies.Select(c => c.Name).ToHashSet(StringComparer.Ordinal);
         Assert.Empty(seen.Except(listed)); // every cookie the site set is listed
         Assert.Empty(listed.Except(seen)); // and every listed cookie was seen
