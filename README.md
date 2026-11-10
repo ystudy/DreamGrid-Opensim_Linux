@@ -121,6 +121,9 @@ your avatar's name and password.
 
 See [BUILDING.md](BUILDING.md). The GridGate website and the launcher are in
 `Launcher/`; the installers are in `setup/` (see [setup/README.md](setup/README.md)).
+For how releases are numbered and which OpenSimulator code they are built on, see
+[VERSIONING.md](VERSIONING.md); for taking updates from OpenSimulator, see
+[MERGING.md](MERGING.md).
 
 ## Bug reports
 

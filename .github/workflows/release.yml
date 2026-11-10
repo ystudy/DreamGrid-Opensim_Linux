@@ -34,7 +34,13 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
+      opensim: ${{ steps.opensim.outputs.opensim }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: Version.txt
+          sparse-checkout-cone-mode: false
+
       # A tag must be v<major>.<minor>.<patch>, optionally with a pre-release suffix (v1.2.3-rc1); anything else fails
       # here, before it can reach a release.
       - name: Version from the tag, else 0.0.0-dev+<sha>
@@ -53,6 +59,29 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "DreamGrid $version"
+
+      # Version.txt's first line is "GridGate <version> (OpenSimulator <base>)"; see VERSIONING.md. Every run checks its
+      # form. A tag must also match its GridGate number, ignoring the tag's pre-release suffix (v0.1.0-rc1 can be
+      # tagged while Version.txt says 0.1.0). The OpenSimulator part goes at the top of the release notes.
+      - name: OpenSimulator base from Version.txt
+        id: opensim
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          line=$(head -n 1 Version.txt | tr -d '\r')
+          if ! [[ $line =~ ^GridGate\ ([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?)\ \((OpenSimulator\ [^()]+)\)$ ]]; then
+            echo "::error file=Version.txt::Version.txt must start with 'GridGate <major>.<minor>.<patch> (OpenSimulator <base>)', not '$line'."
+            exit 1
+          fi
+          file_version=${BASH_REMATCH[1]}
+          opensim=${BASH_REMATCH[3]}
+          if [ "$REF_TYPE" = tag ] && [ "$file_version" != "$VERSION" ] && [ "$file_version" != "${VERSION%%-*}" ]; then
+            echo "::error file=Version.txt::Tag $GITHUB_REF_NAME does not match Version.txt (GridGate $file_version). Update Version.txt first; see VERSIONING.md."
+            exit 1
+          fi
+          echo "opensim=$opensim" >> "$GITHUB_OUTPUT"
+          echo "GridGate $VERSION ($opensim)"
 
   package-linux:
     needs: version
@@ -301,6 +330,7 @@ jobs:
       contents: write
     env:
       VERSION: ${{ needs.version.outputs.version }}
+      OPENSIM: ${{ needs.version.outputs.opensim }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -336,6 +366,8 @@ jobs:
                kind="" ;;
           esac
           cat > "$RUNNER_TEMP/notes.md" <<EOF
+          GridGate $VERSION ($OPENSIM)
+
           DreamGrid $VERSION
           $kind
 
