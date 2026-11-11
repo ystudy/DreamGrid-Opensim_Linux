@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using GridGate.ModelImport.Model;
 using OpenMetaverse;
@@ -59,7 +60,7 @@ public static class ObjectAssetBuilder
                 RezzerID = owner,
                 GroupID = UUID.Zero,
                 CreationDate = now,
-                Name = isRoot ? options.ItemName : $"{options.ItemName} #{group!.Parts.Length}",
+                Name = isRoot ? options.ItemName : ChildName(options.ItemName, group!.Parts.Length),
                 Description = string.Empty,
                 BaseMask = (uint)PermissionMask.All | (uint)PermissionMask.Export,
                 OwnerMask = (uint)PermissionMask.All | (uint)PermissionMask.Export,
@@ -102,7 +103,22 @@ public static class ObjectAssetBuilder
         return (uint)(mask | PermissionMask.Move);
     }
 
-    // One face per mesh face: the material's base colour (alpha kept for blend and mask, 1 for opaque) and its texture, if any.
+    /// <summary>A prim name holds at most 63 characters (OpenSim cuts longer ones).</summary>
+    public const int MaxPrimName = 63;
+
+    // "{item} #{n}", with the item name cut so the whole fits in MaxPrimName. A cut never keeps half of a surrogate pair.
+    private static string ChildName(string item, int n)
+    {
+        var suffix = " #" + n.ToString(CultureInfo.InvariantCulture);
+        int keep = MaxPrimName - suffix.Length;
+        if (item.Length > keep)
+            item = item[..(char.IsHighSurrogate(item[keep - 1]) ? keep - 1 : keep)];
+        return item + suffix;
+    }
+
+    // One face per mesh face: the material's base colour and its texture, if any. glTF's colour factor is linear and a face
+    // colour is sRGB, so red, green and blue are converted; alpha is kept for blend only (opaque and mask are drawn solid: a
+    // mask cuts by the picture's alpha, never by the colour's).
     private static Primitive.TextureEntry TextureEntry(ImportMesh mesh, IReadOnlyList<ImportMaterial> materials,
         IReadOnlyDictionary<int, Guid> textureIdByImage)
     {
@@ -112,10 +128,10 @@ public static class ObjectAssetBuilder
             int m = mesh.Faces[f].Material;
             var material = m >= 0 && m < materials.Count ? materials[m] : null;
             var colour = material?.BaseColour ?? NVector4.One;
-            float alpha = material == null || material.Alpha == AlphaMode.Opaque ? 1 : colour.W;
+            float alpha = material?.Alpha != AlphaMode.Blend ? 1 : colour.W;
 
             var face = te.CreateFace((uint)f);
-            face.RGBA = new Color4(Clamp(colour.X), Clamp(colour.Y), Clamp(colour.Z), Clamp(alpha));
+            face.RGBA = new Color4(Srgb(Clamp(colour.X)), Srgb(Clamp(colour.Y)), Srgb(Clamp(colour.Z)), Clamp(alpha));
             if (material?.BaseColourImage is int image && textureIdByImage.TryGetValue(image, out var texture))
                 face.TextureID = new UUID(texture);
         }
@@ -123,4 +139,8 @@ public static class ObjectAssetBuilder
     }
 
     private static float Clamp(float v) => float.IsNaN(v) ? 1 : Math.Clamp(v, 0, 1);
+
+    /// <summary>A linear colour channel (0..1) as sRGB, by the sRGB transfer function.</summary>
+    internal static float Srgb(float linear) =>
+        linear <= 0.0031308f ? linear * 12.92f : 1.055f * MathF.Pow(linear, 1 / 2.4f) - 0.055f;
 }

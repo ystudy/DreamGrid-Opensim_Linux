@@ -5,9 +5,12 @@ using System.Text.Json.Serialization;
 
 namespace GridGate.ModelImport;
 
-/// <summary>The region's limits, as the launcher passes them to the converter.</summary>
+/// <summary>
+/// The region's limits, as the launcher passes them to the converter. MaxAssetBytes caps the total size of the assets one
+/// conversion writes (textures, meshes and the object together).
+/// </summary>
 public sealed record ImportLimits(double MaxPartSize, double MinPartSize, double MaxPhysicalPartSize, int MaxLinksetParts /* 0 = none */,
-    long MaxUploadBytes, int MaxImageSide, int MaxTextureSide, int MaxTriangles, int MaxNodes, int HeavyTriangles);
+    long MaxUploadBytes, int MaxImageSide, int MaxTextureSide, int MaxTriangles, int MaxNodes, int HeavyTriangles, long MaxAssetBytes);
 
 public sealed record NextOwner(bool Copy, bool Modify, bool Transfer);
 

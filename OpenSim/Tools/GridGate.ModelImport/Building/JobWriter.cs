@@ -13,7 +13,7 @@ namespace GridGate.ModelImport.Building;
 
 /// <summary>
 /// One conversion: reads the model, checks it, builds every asset and writes the job folder. report.json is always written;
-/// assets/&lt;id&gt;.bin and manifest.json only when nothing blocks. Nothing is written outside the job folder, and the report and
+/// assets/&lt;id&gt;.bin and manifest.json only when nothing blocks, the assets' total size included. Nothing is written outside the job folder, and the report and
 /// manifest appear whole or not at all (written under a temporary name, then renamed); the manifest goes first, the report last.
 /// </summary>
 public static class JobWriter
@@ -112,6 +112,19 @@ public static class JobWriter
         var xml = ObjectAssetBuilder.Build(model, meshIds, textureIdByImage, options, limits);
         assets.Add((Asset(objectId, 6, item), new UTF8Encoding(false).GetBytes(xml)));
 
+        // The assets together, before anything is written: over the cap, the report says so and nothing else is written.
+        var summary = check.Summary with { Textures = textureIdByImage.Count };
+        if (assets.Sum(a => (long)a.Bytes.Length) > limits.MaxAssetBytes)
+        {
+            findings.Add(new Finding("too-large-file", FindingKind.Blocking, new Dictionary<string, string>
+            {
+                ["what"] = "assets",
+                ["limit"] = limits.MaxAssetBytes.ToString(CultureInfo.InvariantCulture),
+            }));
+            WriteJson(outDir, "report.json", new ImportReport(1, true, summary, findings));
+            return;
+        }
+
         var assetDir = Path.Combine(outDir, AssetFolder);
         Directory.CreateDirectory(assetDir);
         foreach (var (asset, bytes) in assets)
@@ -121,7 +134,6 @@ public static class JobWriter
         var manifestItem = new ManifestItem(objectId, item, description, ObjectAssetBuilder.NextOwnerMask(options.NextOwner), options.UploaderId);
         WriteJson(outDir, "manifest.json", new ImportManifest(1, assets.Select(a => a.Asset).ToList(), manifestItem));
 
-        var summary = check.Summary with { Textures = textureIdByImage.Count };
         WriteJson(outDir, "report.json", new ImportReport(1, false, summary, findings));
     }
 

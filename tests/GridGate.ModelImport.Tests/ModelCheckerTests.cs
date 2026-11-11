@@ -315,6 +315,34 @@ public class ModelCheckerTests
     }
 
     [Fact]
+    public void Vertex_colours_are_a_risky_finding()
+    {
+        var r = Check(GltfReaderTests.Read("BoxVertexColors.glb").Model!);
+        Assert.Equal(FindingKind.Risky, Find(r, "vertex-colours-ignored")!.Kind);
+        Assert.False(r.Blocked);
+        Assert.Null(Find(Check(GltfReaderTests.Read("Box.glb").Model!), "vertex-colours-ignored"));
+    }
+
+    [Fact]
+    public void Other_texture_coordinates_are_a_risky_finding()
+    {
+        var r = Check(Model(new[] { Part("A", Triangle(1)) }, dropped: new[] { "texture-coords" }));
+        Assert.Equal(FindingKind.Risky, Find(r, "texture-coords-ignored")!.Kind);
+    }
+
+    [Fact]
+    public void A_used_double_sided_material_is_a_risky_finding()
+    {
+        var materials = new[] { Plain(), new ImportMaterial("leaf", Vector4.One, null, AlphaMode.Opaque, 0.5f, true) };
+        var used = Find(Check(Model(new[] { Part("A", Triangle(1), Triangle(1, material: 1)) }, materials)), "double-sided-ignored")!;
+        Assert.Equal(FindingKind.Risky, used.Kind);
+        Assert.Equal("leaf", used.Values["material"]);
+        Assert.Equal("1", used.Values["materials"]);
+        // A double-sided material no face uses changes nothing.
+        Assert.Null(Find(Check(Model(new[] { Part("A", Triangle(1)) }, materials)), "double-sided-ignored"));
+    }
+
+    [Fact]
     public void Summary_counts_what_is_left()
     {
         var r = Check(Model(new[] { Part("A", Triangle(2), Triangle(2)) }));

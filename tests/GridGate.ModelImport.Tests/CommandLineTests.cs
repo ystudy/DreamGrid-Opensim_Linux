@@ -79,6 +79,24 @@ public sealed class CommandLineTests : IDisposable
     }
 
     [Fact]
+    public void Assets_over_the_cap_block_and_write_nothing_else()
+    {
+        var limits = Path.Combine(_dir, "limits.json");
+        var json = JsonSerializer.Deserialize<ImportLimits>(File.ReadAllText(Fixture("limits.json")), ContractJson.Options)! with { MaxAssetBytes = 100 };
+        File.WriteAllText(limits, JsonSerializer.Serialize(json, ContractJson.Options));
+
+        Assert.Equal(0, Check(GltfReaderTests.ModelPath("BoxTextured.glb"), limits: limits));
+        var report = ReadJson<ImportReport>("report.json");
+        Assert.True(report.Blocked);
+        var f = Assert.Single(report.Findings, f => f.Kind == FindingKind.Blocking);
+        Assert.Equal("too-large-file", f.Code);
+        Assert.Equal("assets", f.Values["what"]);
+        Assert.Equal("100", f.Values["limit"]);
+        Assert.False(Directory.Exists(Path.Combine(_out, "assets")));
+        Assert.Equal(new[] { "report.json" }, Directory.GetFiles(_out).Select(Path.GetFileName).ToArray());
+    }
+
+    [Fact]
     public void Unreadable_model_writes_a_blocked_report()
     {
         var input = Path.Combine(_dir, "junk.glb");

@@ -107,6 +107,14 @@ public static class ModelChecker
             && model.Materials[f.Material].BaseColourImage != null);
         if (noUv > 0) findings.Add(Make("no-uv", FindingKind.Risky, ("faces", Num(noUv))));
 
+        // What a prim cannot show is said plainly: vertex colours, a second UV set or a moved picture, and back faces.
+        if (model.Dropped.Contains("vertex-colours")) findings.Add(Make("vertex-colours-ignored", FindingKind.Risky));
+        if (model.Dropped.Contains("texture-coords")) findings.Add(Make("texture-coords-ignored", FindingKind.Risky));
+        var doubleSided = split.SelectMany(p => p.Mesh.Faces).Select(f => f.Material).Distinct()
+            .Where(m => m >= 0 && m < model.Materials.Count && model.Materials[m].DoubleSided).OrderBy(m => m).ToList();
+        if (doubleSided.Count > 0)
+            findings.Add(Make("double-sided-ignored", FindingKind.Risky, ("material", model.Materials[doubleSided[0]].Name), ("materials", Num(doubleSided.Count))));
+
         if (model.Skeleton != null)
             findings.Add(Make("skin-ignored", FindingKind.Risky, ("joints", Num(model.Skeleton.Joints.Count))));
 

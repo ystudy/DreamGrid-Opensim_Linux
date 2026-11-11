@@ -18,15 +18,18 @@ public sealed record ReadResult(ImportModel? Model, IReadOnlyList<Finding> Findi
 
 /// <summary>
 /// Reads a glTF or GLB into the middle model: one part per node with a mesh, one face per triangle primitive.
-/// Everything is converted from glTF's Y-up to Z-up. The file is only ever read from the stream it is given;
+/// Everything is converted from glTF's Y-up to Z-up: for a part without a skin the turn goes into its vertices, so the part's
+/// rotation is the node's own turn seen in Z-up (none for a node that isn't turned). A skinned part keeps glTF's axes in its
+/// vertices, which the skin's matrices are made for, and carries the turn in its rotation. The file is only ever read from the stream it is given;
 /// a reference to an outside file is refused before anything is read.
 /// </summary>
 public static class GltfReader
 {
     // glTF Y-up to Z-up: a +90 degree turn about X, (x, y, z) -> (x, -z, y). System.Numerics matrices act on row vectors,
-    // so a node's Z-up world matrix is its glTF world matrix followed by this turn.
-    private static readonly Matrix4x4 YUpToZUp = Matrix4x4.CreateRotationX(MathF.PI / 2f);
-    private static readonly Matrix4x4 ZUpToYUp = Matrix4x4.CreateRotationX(-MathF.PI / 2f);
+    // so a node's Z-up world matrix is its glTF world matrix followed by this turn. Written out exactly (CreateRotationX leaves
+    // cos 90 degrees as a tiny non-zero), so an unturned node comes out with exactly no rotation.
+    private static readonly Matrix4x4 YUpToZUp = new(1, 0, 0, 0, 0, 0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1);
+    private static readonly Matrix4x4 ZUpToYUp = Matrix4x4.Transpose(YUpToZUp);
 
     private static readonly string[] CompressionExtensions = { "KHR_draco_mesh_compression", "EXT_meshopt_compression", "KHR_meshopt_compression" };
 
@@ -204,7 +207,7 @@ public static class GltfReader
         var materials = new MaterialTable(root, findings);
         var skin = root.LogicalSkins.FirstOrDefault();
         var parts = new List<ImportPart>();
-        bool morphs = false, cameras = false, lines = false, points = false;
+        bool morphs = false, cameras = false, lines = false, points = false, colours = false, otherCoords = false;
 
         foreach (var node in Walk(scene))
         {
@@ -228,13 +231,27 @@ public static class GltfReader
                         break;
                     default: // TRIANGLES, TRIANGLE_STRIP, TRIANGLE_FAN: all become triangle lists
                         var face = ReadFace(prim, materials);
-                        if (face != null) faces.Add(face);
+                        if (face == null) break;
+                        faces.Add(face);
+                        if (prim.GetVertexAccessor("COLOR_0") != null) colours = true;
+                        if (UsesOtherTextureCoordinates(prim.Material)) otherCoords = true;
                         break;
                 }
             }
             if (faces.Count == 0) continue;
 
-            var world = node.WorldMatrix * YUpToZUp;
+            // Skinned: glTF-axis vertices, and the turn in the part's matrix. Otherwise the turn goes into the vertices and the part's
+            // matrix is the node's world matrix seen in Z-up (turned back, the node's matrix, turned again).
+            Matrix4x4 world;
+            if (node.Skin != null)
+            {
+                world = node.WorldMatrix * YUpToZUp;
+            }
+            else
+            {
+                faces = faces.Select(f => Bake(f, YUpToZUp)).ToList();
+                world = ZUpToYUp * node.WorldMatrix * YUpToZUp;
+            }
             var name = string.IsNullOrEmpty(node.Name) ? (string.IsNullOrEmpty(mesh.Name) ? "Part" + (parts.Count + 1) : mesh.Name) : node.Name;
             if (DecomposesCleanly(world, out var scale, out var rotation, out var translation))
             {
@@ -255,6 +272,8 @@ public static class GltfReader
         if (UsesLights(root)) dropped.Add("lights");
         if (lines) dropped.Add("lines");
         if (points) dropped.Add("points");
+        if (colours) dropped.Add("vertex-colours");
+        if (otherCoords) dropped.Add("texture-coords");
 
         return new ImportModel(parts, 0, materials.Materials, materials.Images, skin != null ? ReadSkeleton(skin) : null, dropped);
     }
@@ -296,6 +315,14 @@ public static class GltfReader
         }).ToArray();
         var triangles = m.GetDeterminant() < 0 ? Winding.Reversed(face.Triangles) : face.Triangles;
         return face with { Positions = positions, Normals = normals, Triangles = triangles };
+    }
+
+    // A base colour picture placed by a second UV set or moved by KHR_texture_transform: only TEXCOORD_0, as it is, is used.
+    private static bool UsesOtherTextureCoordinates(Material? m)
+    {
+        var channel = m?.FindChannel("BaseColor");
+        if (channel?.Texture == null) return false;
+        return channel.Value.TextureCoordinate != 0 || channel.Value.TextureTransform != null;
     }
 
     private static bool UsesLights(ModelRoot root) =>

@@ -12,7 +12,7 @@ public class GltfReaderTests
     internal static readonly ImportLimits Limits = new(
         MaxPartSize: 256, MinPartSize: 0.001, MaxPhysicalPartSize: 10, MaxLinksetParts: 0,
         MaxUploadBytes: 64L * 1024 * 1024, MaxImageSide: 8192, MaxTextureSide: 1024,
-        MaxTriangles: 2_000_000, MaxNodes: 512, HeavyTriangles: 200_000);
+        MaxTriangles: 2_000_000, MaxNodes: 512, HeavyTriangles: 200_000, MaxAssetBytes: 64L * 1024 * 1024);
 
     internal static string ModelPath(string name) => Path.Combine(AppContext.BaseDirectory, "Models", name);
 
@@ -69,7 +69,9 @@ public class GltfReaderTests
         var r = GltfReader.Read(s, "triangle.gltf", Limits);
         var part = r.Model!.Parts[0];
         var face = part.Mesh.Faces[0];
-        Assert.Equal(new Vector3(0, 1, 0), face.Positions[0]); // vertices stay in the part's own frame
+        // The turn to Z-up is in the vertices; the node has no turn of its own, so neither has the part.
+        AssertNear(new Vector3(0, 0, 1), face.Positions[0]);
+        Assert.Equal(Quaternion.Identity, part.Rotation);
         var world = part.Position + Vector3.Transform(face.Positions[0] * part.Scale, part.Rotation);
         Assert.Equal(1f, world.X, 4);
         Assert.Equal(0f, world.Y, 4);
@@ -81,10 +83,87 @@ public class GltfReaderTests
     {
         using var s = new MemoryStream(TriangleGltf(""));
         var part = GltfReader.Read(s, "triangle.gltf", Limits).Model!.Parts[0];
-        var up = part.Position + Vector3.Transform(new Vector3(0, 1, 0) * part.Scale, part.Rotation);
+        var up = part.Position + Vector3.Transform(part.Mesh.Faces[0].Positions[0] * part.Scale, part.Rotation); // glTF (0,1,0)
         Assert.Equal(0f, up.X, 4);
         Assert.Equal(0f, up.Y, 4);
         Assert.Equal(1f, up.Z, 4);
+    }
+
+    [Fact]
+    public void Unrotated_box_has_no_rotation_and_its_height_on_z()
+    {
+        // Box.glb's root node turns the box; with that turn taken away and the box stretched along glTF's up (Y) instead, the part
+        // has no rotation and its height, 2, is along Z: the prim stands upright without a turn.
+        var root = ModelRoot.Load(ModelPath("Box.glb"));
+        root.DefaultScene.VisualChildren.First().LocalMatrix = Matrix4x4.CreateScale(1, 2, 1);
+        using var glb = new MemoryStream();
+        root.WriteGLB(glb);
+        glb.Position = 0;
+        var part = Assert.Single(GltfReader.Read(glb, "box.glb", Limits).Model!.Parts);
+
+        Assert.Equal(Quaternion.Identity, part.Rotation);
+        var place = Building.UnitMesh.Placement(part, Limits.MinPartSize);
+        AssertNear(new Vector3(1, 1, 2), place.Scale);
+    }
+
+    [Fact]
+    public void A_turned_node_gives_its_own_turn_in_z_up()
+    {
+        // A node turned 90 degrees about glTF Y (up) is turned 90 degrees about Z on the grid.
+        var s = MathF.Sin(MathF.PI / 4).ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+        using var stream = new MemoryStream(TriangleGltf(",\"rotation\":[0," + s + ",0," + s + "]"));
+        var part = GltfReader.Read(stream, "triangle.gltf", Limits).Model!.Parts[0];
+        var expected = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, MathF.PI / 2);
+        Assert.InRange(MathF.Abs(Quaternion.Dot(expected, part.Rotation)), 1 - 1e-4f, 1 + 1e-4f);
+        // Vertex glTF (1,0,0) turned about glTF Y goes to glTF (0,0,-1), which is (0,1,0) in Z-up.
+        var world = part.Position + Vector3.Transform(part.Mesh.Faces[0].Positions[1] * part.Scale, part.Rotation);
+        AssertNear(new Vector3(0, 1, 0), world);
+    }
+
+    [Fact]
+    public void Skinned_part_keeps_glTF_axes_and_the_turn_in_its_rotation()
+    {
+        // Fox's mesh node is not turned; the part carries the 90 degree turn about X and its vertices are as the file has them.
+        var part = Read("Fox.glb").Model!.Parts.Single();
+        var turn = Quaternion.CreateFromAxisAngle(Vector3.UnitX, MathF.PI / 2);
+        Assert.InRange(MathF.Abs(Quaternion.Dot(turn, part.Rotation)), 1 - 1e-4f, 1 + 1e-4f);
+        var first = ModelRoot.Load(ModelPath("Fox.glb")).LogicalMeshes[0].Primitives[0].GetVertexAccessor("POSITION").AsVector3Array()[0];
+        Assert.Equal(first, part.Mesh.Faces[0].Positions[0]);
+    }
+
+    [Fact]
+    public void FlightHelmet_vertices_land_where_glTF_puts_them()
+    {
+        // Every vertex, through its part's scale, rotation and position, is its glTF world position turned to Z-up.
+        var path = ModelPath(Path.Combine("downloaded", "FlightHelmet", "FlightHelmet.gltf"));
+        if (!File.Exists(path)) Assert.Skip("FlightHelmet is not downloaded; run tests/GridGate.ModelImport.Tests/fetch-models.sh");
+        var root = ModelRoot.Load(path);
+        using var glb = new MemoryStream();
+        root.WriteGLB(glb);
+        glb.Position = 0;
+        var model = GltfReader.Read(glb, "FlightHelmet.glb", Limits).Model!;
+
+        var turn = Matrix4x4.CreateRotationX(MathF.PI / 2);
+        var nodes = root.LogicalNodes.Where(n => n.Mesh != null).ToList();
+        Assert.Equal(nodes.Count, model.Parts.Count);
+        foreach (var part in model.Parts)
+        {
+            var node = Assert.Single(nodes, n => n.Name == part.Name);
+            var expected = node.Mesh.Primitives.SelectMany(p => p.GetVertexAccessor("POSITION").AsVector3Array())
+                .Select(v => Vector3.Transform(v, node.WorldMatrix * turn)).ToArray();
+            var actual = part.Mesh.Faces.SelectMany(f => f.Positions)
+                .Select(v => part.Position + Vector3.Transform(v * part.Scale, part.Rotation)).ToArray();
+            Assert.Equal(expected.Length, actual.Length);
+            for (int i = 0; i < expected.Length; i++)
+                Assert.True(Vector3.Distance(expected[i], actual[i]) < 1e-4f, $"{part.Name} vertex {i}: {expected[i]} vs {actual[i]}");
+        }
+    }
+
+    private static void AssertNear(Vector3 expected, Vector3 actual)
+    {
+        Assert.Equal(expected.X, actual.X, 1e-4f);
+        Assert.Equal(expected.Y, actual.Y, 1e-4f);
+        Assert.Equal(expected.Z, actual.Z, 1e-4f);
     }
 
     [Fact]
@@ -156,6 +235,37 @@ public class GltfReaderTests
     public void Vertex_colour_box_reads()
     {
         Assert.Equal(12, TriangleCount(Read("BoxVertexColors.glb").Model!));
+    }
+
+    [Fact]
+    public void Vertex_colours_are_listed_as_dropped()
+    {
+        Assert.Contains("vertex-colours", Read("BoxVertexColors.glb").Model!.Dropped);
+    }
+
+    // A one-pixel PNG.
+    private const string Pixel = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==";
+
+    // The triangle with a material whose base colour picture is textureInfo (JSON object).
+    private static byte[] TexturedTriangle(string textureInfo, string extensionsUsed = "") => GltfJson("[{\"mesh\":0}]", "[0]",
+        top: ",\"materials\":[{\"pbrMetallicRoughness\":{\"baseColorTexture\":" + textureInfo + "}}],\"textures\":[{\"source\":0}],"
+            + "\"images\":[{\"uri\":\"data:image/png;base64," + Pixel + "\"}]" + extensionsUsed,
+        primitiveExtra: ",\"material\":0");
+
+    [Theory]
+    [InlineData("{\"index\":0,\"texCoord\":1}", "")]
+    [InlineData("{\"index\":0,\"extensions\":{\"KHR_texture_transform\":{\"offset\":[0.5,0]}}}", ",\"extensionsUsed\":[\"KHR_texture_transform\"]")]
+    public void Other_texture_coordinates_are_listed_as_dropped(string textureInfo, string extensionsUsed)
+    {
+        using var s = new MemoryStream(TexturedTriangle(textureInfo, extensionsUsed));
+        Assert.Contains("texture-coords", GltfReader.Read(s, "t.gltf", Limits).Model!.Dropped);
+    }
+
+    [Fact]
+    public void The_first_texture_coordinates_drop_nothing()
+    {
+        using var s = new MemoryStream(TexturedTriangle("{\"index\":0}"));
+        Assert.Empty(GltfReader.Read(s, "t.gltf", Limits).Model!.Dropped);
     }
 
     [Fact]

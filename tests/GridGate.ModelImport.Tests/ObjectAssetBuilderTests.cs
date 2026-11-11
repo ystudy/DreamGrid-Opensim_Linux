@@ -113,8 +113,7 @@ public class ObjectAssetBuilderTests
     {
         var model = Checked(GltfReaderTests.Read("Box.glb"));
         var g = Build(model, options: Options(new NextOwner(false, false, false)));
-        var mask = Assert.Single(g.Parts).NextOwnerMask;
-        Assert.Equal((uint)PermissionMask.Transfer, mask & (uint)(PermissionMask.Copy | PermissionMask.Modify | PermissionMask.Transfer));
+        Assert.Equal((uint)(PermissionMask.Move | PermissionMask.Transfer), Assert.Single(g.Parts).NextOwnerMask);
     }
 
     [Fact]
@@ -219,6 +218,52 @@ public class ObjectAssetBuilderTests
         Assert.Equal(Primitive.TextureEntry.WHITE_TEXTURE, broken.TextureID);
         Assert.InRange(broken.RGBA.G, 1 - step, 1);
         Assert.InRange(broken.RGBA.R, 0, step);
+    }
+
+    private static Primitive.TextureEntryFace OnlyFace(ImportMaterial material)
+    {
+        var g = Build(Model(new[] { Part("p", NVector3.Zero, NQuaternion.Identity, BoxFace(new(-0.5f), new(0.5f))) }, new[] { material }));
+        var shape = Assert.Single(g.Parts).Shape;
+        return new Primitive.TextureEntry(shape.TextureEntry, 0, shape.TextureEntry.Length).GetFace(0);
+    }
+
+    [Fact]
+    public void Mask_material_is_drawn_fully_opaque()
+    {
+        // A mask cuts pixels by the picture's alpha; the colour's own alpha does not make the face see-through.
+        var face = OnlyFace(new ImportMaterial("leaves", new NVector4(1, 1, 1, 0.3f), null, AlphaMode.Mask, 0.5f, false));
+        Assert.InRange(face.RGBA.A, 1 - 1 / 255f, 1);
+    }
+
+    [Fact]
+    public void Base_colour_is_turned_from_linear_to_srgb()
+    {
+        // glTF's baseColorFactor is linear; a viewer's face colour is sRGB. Linear 0.214 is sRGB 0.5. Alpha is not converted.
+        var face = OnlyFace(new ImportMaterial("grey glass", new NVector4(0.214f, 0.214f, 0.214f, 0.5f), null, AlphaMode.Blend, 0.5f, false));
+        Assert.InRange(face.RGBA.R, 0.5f - 2 / 255f, 0.5f + 2 / 255f);
+        Assert.InRange(face.RGBA.G, 0.5f - 2 / 255f, 0.5f + 2 / 255f);
+        Assert.InRange(face.RGBA.B, 0.5f - 2 / 255f, 0.5f + 2 / 255f);
+        Assert.InRange(face.RGBA.A, 0.5f - 1 / 255f, 0.5f + 1 / 255f);
+    }
+
+    [Fact]
+    public void Child_names_fit_in_63_characters()
+    {
+        var parts = Enumerable.Range(0, 12).Select(i => Part("p" + i, new NVector3(i * 2, 0, 0), NQuaternion.Identity, BoxFace(new(-0.5f), new(0.5f)))).ToArray();
+        var options = Options() with { ItemName = new string('a', 63) };
+        var prims = ByLink(Build(Model(parts), options: options));
+        Assert.Equal(new string('a', 63), prims[0].Name);
+        for (int k = 1; k < prims.Length; k++)
+        {
+            Assert.True(prims[k].Name.Length <= 63, prims[k].Name);
+            Assert.EndsWith($" #{k}", prims[k].Name);
+        }
+        Assert.Equal(new string('a', 59) + " #11", prims[11].Name);
+
+        // A cut never keeps half of a character made of two UTF-16 units (here at 59 and 60, where " #1" cuts at 60).
+        var name = new string('a', 59) + char.ConvertFromUtf32(0x1F600) + new string('a', 10);
+        var cut = ByLink(Build(Model(parts[..2]), options: options with { ItemName = name }));
+        Assert.Equal(new string('a', 59) + " #1", cut[1].Name);
     }
 
     private static Vector3 ToOmv(NVector3 v) => new(v.X, v.Y, v.Z);
