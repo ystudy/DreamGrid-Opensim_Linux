@@ -79,4 +79,41 @@ public sealed class TicketStoreTests : IDisposable
         Assert.False(TicketLinks.Opens(t, links[0], Now + TimeSpan.FromMinutes(10)));
         Assert.All(links.Skip(1), l => Assert.True(TicketLinks.Opens(t, l, Now + TimeSpan.FromMinutes(10))));
     }
+
+    [Fact]
+    public void Old_ticket_files_without_Language_still_load()
+    {
+        var id = Guid.NewGuid();
+        Directory.CreateDirectory(_root);
+        // A ticket file as written before tickets kept their language: no "language" property at all.
+        File.WriteAllText(Path.Combine(_root, id + ".json"), $$"""
+            {
+              "id": "{{id}}",
+              "number": "T-0007",
+              "state": "Open",
+              "category": "technical",
+              "subject": "Old ticket",
+              "sender": { "account": null, "name": "Bea Example", "email": "bea@example.com" },
+              "created": "2026-11-05T12:00:00+00:00",
+              "confirmed": "2026-11-05T12:00:00+00:00",
+              "closedAt": null,
+              "messages": [ { "at": "2026-11-05T12:00:00+00:00", "staff": null, "staffName": null, "text": "Help", "note": false } ],
+              "links": [],
+              "urgent": false
+            }
+            """);
+
+        var t = Assert.IsType<Ticket>(new TicketStore(_root).Get(id));
+
+        Assert.Equal("T-0007", t.Number);
+        Assert.Null(t.Language);
+    }
+
+    [Fact]
+    public void A_tickets_language_survives_a_restart()
+    {
+        var id = Guid.NewGuid();
+        new TicketStore(_root).Create(_ => true, (_, n) => Build(id, n) with { Language = "es" });
+        Assert.Equal("es", new TicketStore(_root).All().Single().Language);
+    }
 }

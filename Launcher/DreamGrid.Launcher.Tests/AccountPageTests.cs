@@ -1,6 +1,7 @@
 using System.Net;
 using AngleSharp.Html.Dom;
 using AngleSharp.Html.Parser;
+using DreamGrid.Launcher.Core;
 using DreamGrid.Launcher.Core.Email;
 using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Core.Settings;
@@ -98,6 +99,77 @@ public sealed class AccountPageTests
         var token = tokens.Issue(AccountChanges.Purpose, AnnId, AccountChanges.LinkLifetime);
         f.Services.GetRequiredService<Core.Guests.PendingEmailChanges>().Set(AnnId, "ann.new@example.com", token);
         return token;
+    }
+
+    private static async Task<HttpResponseMessage> PostLanguageAsync(HttpClient client, string code)
+    {
+        var page = await PageAsync(client, "/guest/account");
+        return await client.PostAsync("/guest/account?handler=Language", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["language"] = code, ["__RequestVerificationToken"] = Token(page, "form#change-language"),
+        }), Ct);
+    }
+
+    private static string? SelectedLanguage(IHtmlDocument page) =>
+        page.QuerySelector("form#change-language select option[selected]")?.GetAttribute("value");
+
+    [Fact]
+    public async Task Account_page_shows_the_saved_language_selected()
+    {
+        await using var f = Factory();
+        f.Services.GetRequiredService<ResidentLanguages>().Set(AnnId, "fr");
+        var page = await PageAsync(await SignedInAsync(f), "/guest/account");
+        Assert.Equal("fr", SelectedLanguage(page));
+        Assert.Contains("Français", page.QuerySelectorAll("form#change-language option").Select(o => o.TextContent));
+    }
+
+    [Fact]
+    public async Task Account_page_without_a_saved_language_shows_the_page_language_selected()
+    {
+        await using var f = Factory();
+        var client = await SignedInAsync(f);
+        using var req = new HttpRequestMessage(HttpMethod.Get, "/guest/account");
+        req.Headers.Add("Cookie", "dg-lang=de");
+        using var r = await client.SendAsync(req, Ct);
+        var page = new HtmlParser().ParseDocument(await r.Content.ReadAsStringAsync(Ct));
+        Assert.Equal("de", SelectedLanguage(page));
+    }
+
+    [Fact]
+    public async Task Changing_language_on_the_account_page_saves_it_and_sets_the_cookie()
+    {
+        await using var f = Factory();
+        var client = await SignedInAsync(f);
+        using var r = await PostLanguageAsync(client, "es");
+        Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
+        Assert.Equal("/guest/account", new Uri(new Uri("http://localhost"), r.Headers.Location!).AbsolutePath);
+        Assert.Equal("es", f.Services.GetRequiredService<ResidentLanguages>().Get(AnnId));
+        var cookie = Assert.Single(r.Headers.GetValues("Set-Cookie"), h => h.StartsWith("dg-lang=es", StringComparison.Ordinal));
+        Assert.Contains("max-age=31536000", cookie, StringComparison.OrdinalIgnoreCase);
+        // The page now renders in the new language.
+        var page = await PageAsync(client, "/guest/account");
+        Assert.Equal("es", page.DocumentElement.GetAttribute("lang"));
+        Assert.Equal("es", SelectedLanguage(page));
+    }
+
+    [Fact]
+    public async Task Account_language_post_refuses_an_unknown_code()
+    {
+        await using var f = Factory();
+        var client = await SignedInAsync(f);
+        using var r = await PostLanguageAsync(client, "xx");
+        Assert.Equal(HttpStatusCode.BadRequest, r.StatusCode);
+        Assert.Null(f.Services.GetRequiredService<ResidentLanguages>().Get(AnnId));
+        Assert.DoesNotContain(r.Headers.TryGetValues("Set-Cookie", out var c) ? c : [], h => h.StartsWith("dg-lang=", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Account_language_post_needs_sign_in()
+    {
+        await using var f = Factory();
+        using var r = await Client(f).PostAsync("/guest/account?handler=Language", new FormUrlEncodedContent(new Dictionary<string, string> { ["language"] = "es" }), Ct);
+        Assert.NotEqual(HttpStatusCode.OK, r.StatusCode);
+        Assert.Null(f.Services.GetRequiredService<ResidentLanguages>().Get(AnnId));
     }
 
     [Fact]

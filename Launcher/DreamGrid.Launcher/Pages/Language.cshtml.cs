@@ -16,8 +16,6 @@ namespace DreamGrid.Launcher.Pages;
 /// </summary>
 public sealed class LanguageModel(Func<LauncherSettings> settings, ResidentLanguages saved) : PageModel
 {
-    private static readonly TimeSpan CookieLife = TimeSpan.FromDays(365);
-
     public IActionResult OnGet() => StatusCode(StatusCodes.Status405MethodNotAllowed);
 
     public async Task<IActionResult> OnPostAsync(string? code, string? returnUrl)
@@ -26,15 +24,7 @@ public sealed class LanguageModel(Func<LauncherSettings> settings, ResidentLangu
         if (Core.Languages.Match(code, offered) is not { } chosen)
             return BadRequest();
 
-        Response.Cookies.Append(LanguagePick.Cookie, chosen, new CookieOptions
-        {
-            MaxAge = CookieLife,
-            HttpOnly = true,
-            SameSite = SameSiteMode.Lax,
-            Secure = Request.IsHttps,
-            IsEssential = true,
-            Path = "/",
-        });
+        LanguagePick.SetCookie(HttpContext, chosen);
         if ((await HttpContext.AuthenticateAsync(AuthSchemes.Guest)).Principal is { } who && GuestSignIn.Read(who)?.Principal is { } id)
             saved.Set(id, chosen);
 

@@ -1,4 +1,3 @@
-using DreamGrid.Launcher.Email;
 using DreamGrid.Launcher.Guests;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -9,7 +8,7 @@ namespace DreamGrid.Launcher.Pages.Support;
 /// The confirmation link: a ticket from someone not signed in goes to staff and opens for them. Opening the link shows a button
 /// rather than confirming at once, so a mail scanner that follows links can't send the ticket.
 /// </summary>
-public sealed class ConfirmModel(SupportTickets tickets, TicketCookie cookie, EmailLanguage emailLanguage) : PageModel
+public sealed class ConfirmModel(SupportTickets tickets, TicketCookie cookie) : PageModel
 {
     [BindProperty(SupportsGet = true)] public string? Token { get; set; }
 
@@ -19,7 +18,7 @@ public sealed class ConfirmModel(SupportTickets tickets, TicketCookie cookie, Em
 
     public IActionResult OnPost()
     {
-        if (tickets.Confirm(Token, emailLanguage.ForRequest(HttpContext)) is not { } t)
+        if (tickets.Confirm(Token) is not { } t)
         {
             Failed = true;
             return Page();

@@ -34,6 +34,18 @@ else
         <p><a href="/guest/regions">@T["Regions.Title"]</a></p>
     }
 
+    <h2>@T["Account.Language"]</h2>
+    <form id="change-language" method="post" asp-page-handler="Language" class="mb-4">
+        <label class="form-label" for="account-language">@T["Account.LanguageLabel"]</label>
+        <select class="form-select mb-3 w-auto" id="account-language" name="language">
+            @foreach (var (code, name) in Model.LanguageChoices)
+            {
+                <option value="@code" selected="@(code == Model.SelectedLanguage)">@name</option>
+            }
+        </select>
+        <button type="submit" class="btn btn-primary">@T["Account.SaveLanguage"]</button>
+    </form>
+
     <h2>@T["Common.ChangePassword"]</h2>
     <form id="change-password" method="post" asp-page-handler="Password" class="mb-4">
         @if (Model.PasswordError is not null)

@@ -191,6 +191,9 @@
   <data name="Account.NoEmailAddress" xml:space="preserve"><value>Sin dirección de correo electrónico</value></data>
   <data name="Account.Role" xml:space="preserve"><value>Rol</value></data>
   <data name="Account.Made" xml:space="preserve"><value>Cuenta creada</value></data>
+  <data name="Account.Language" xml:space="preserve"><value>Idioma</value></data>
+  <data name="Account.LanguageLabel" xml:space="preserve"><value>Idioma de las páginas y los correos</value></data>
+  <data name="Account.SaveLanguage" xml:space="preserve"><value>Guardar idioma</value></data>
   <data name="Account.RoleOwner" xml:space="preserve"><value>Propietario</value></data>
   <data name="Account.RoleAdmin" xml:space="preserve"><value>Administrador</value></data>
   <data name="Account.RoleSupervisor" xml:space="preserve"><value>Supervisor</value></data>

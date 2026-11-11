@@ -1,5 +1,6 @@
 using DreamGrid.Launcher.Core;
 using DreamGrid.Launcher.Core.Settings;
+using DreamGrid.Launcher.Core.Tickets;
 using DreamGrid.Launcher.Resident;
 using Microsoft.AspNetCore.Http;
 
@@ -23,6 +24,13 @@ public sealed class EmailLanguage(Func<LauncherSettings> settings, ResidentLangu
 
     /// <summary>The language the resident page of this request is in (<see cref="ResidentLanguageFilter.Current"/>), if offered; the default when it is not or no resident page ran.</summary>
     public string ForRequest(HttpContext ctx) => Pick(ResidentLanguageFilter.Picked(ctx));
+
+    /// <summary>
+    /// The language an email about <paramref name="ticket"/> to its sender goes out in: the language the ticket was sent in when the grid
+    /// still offers it, else the saved language of the account that sent it, else the default.
+    /// </summary>
+    public string ForTicket(Ticket ticket) =>
+        Pick(ticket.Language, ticket.Sender.Account is { } account ? saved.Get(account) : null);
 
     private string Pick(string? tag, string? fallback = null)
     {

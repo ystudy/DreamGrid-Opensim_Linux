@@ -14,6 +14,20 @@ public static class LanguagePick
 
     private const int MostAcceptEntries = 10;
 
+    private static readonly TimeSpan CookieLife = TimeSpan.FromDays(365);
+
+    /// <summary>Remembers <paramref name="code"/> (already matched against the offered list) in the language cookie, for a year.</summary>
+    public static void SetCookie(HttpContext ctx, string code) =>
+        ctx.Response.Cookies.Append(Cookie, code, new CookieOptions
+        {
+            MaxAge = CookieLife,
+            HttpOnly = true,
+            SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Lax,
+            Secure = ctx.Request.IsHttps,
+            IsEssential = true,
+            Path = "/",
+        });
+
     /// <summary>
     /// The offered language for this request. The welcome page uses only the <c>lang=</c> query, then the default. Other pages use
     /// the cookie, then the signed-in guest's saved language, then the browser's Accept-Language (highest q first), then the default.

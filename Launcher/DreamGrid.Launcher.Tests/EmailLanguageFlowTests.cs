@@ -4,6 +4,7 @@ using DreamGrid.Launcher.Core.Email;
 using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Core.Tickets;
+using DreamGrid.Launcher.Email;
 using DreamGrid.Launcher.Guests;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -115,10 +116,10 @@ public sealed class EmailLanguageFlowTests
         Assert.DoesNotContain("hours", sent.Text);
     }
 
-    private static Ticket AddTicket(SignUpsTests.Rig rig, Guid? account) =>
+    private static Ticket AddTicket(SignUpsTests.Rig rig, Guid? account, string? language = null) =>
         rig.F.Services.GetRequiredService<TicketStore>().Create(_ => true, (id, n) => new Ticket(id, n, TicketState.Open, TicketCategories.Technical,
             "Region won't start", new TicketSender(account, "Ann Smith", "ann@example.com"), DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null,
-            [new TicketMessage(DateTimeOffset.UtcNow, null, null, "It doesn't start.")], []))!;
+            [new TicketMessage(DateTimeOffset.UtcNow, null, null, "It doesn't start.")], [], Language: language))!;
 
     [Fact]
     public async Task Staff_reply_to_a_ticket_of_an_account_goes_in_the_residents_saved_language()
@@ -143,5 +144,45 @@ public sealed class EmailLanguageFlowTests
         rig.F.Services.GetRequiredService<SupportTickets>().TellGuestStaffReplied(AddTicket(rig, null));
 
         Assert.Equal("Deutsch ticket-staff-reply", Assert.Single(await SignUpsTests.SentAsync(rig, 1)).Email.Subject);
+    }
+
+    [Fact]
+    public async Task Ticket_staff_reply_email_is_in_the_tickets_language()
+    {
+        await using var rig = SignUpsTests.Factory();
+        GermanWording(rig, EmailTemplates.TicketStaffReply);
+
+        rig.F.Services.GetRequiredService<SupportTickets>().TellGuestStaffReplied(AddTicket(rig, null, "de"));
+
+        Assert.Equal("Deutsch ticket-staff-reply", Assert.Single(await SignUpsTests.SentAsync(rig, 1)).Email.Subject);
+    }
+
+    [Fact]
+    public async Task Ticket_language_beats_the_residents_saved_language()
+    {
+        await using var rig = SignUpsTests.Factory();
+        GermanWording(rig, EmailTemplates.TicketStaffReply);
+        var ann = Id(rig, "Ann");
+        Choose(rig, ann, "fr");
+
+        rig.F.Services.GetRequiredService<SupportTickets>().TellGuestStaffReplied(AddTicket(rig, ann, "de"));
+
+        Assert.Equal("Deutsch ticket-staff-reply", Assert.Single(await SignUpsTests.SentAsync(rig, 1)).Email.Subject);
+    }
+
+    [Fact]
+    public async Task Ticket_language_the_grid_no_longer_offers_falls_back_to_the_residents_language_then_the_default()
+    {
+        await using var rig = SignUpsTests.Factory();
+        GermanWording(rig, EmailTemplates.TicketStaffReply);
+        var ann = Id(rig, "Ann");
+        Choose(rig, ann, "de");
+        rig.F.Store.Save(rig.F.Store.LoadOrCreate() is var s ? s with { Languages = s.Languages with { Offered = ["en", "de"] } } : null!);
+        var lang = rig.F.Services.GetRequiredService<EmailLanguage>();
+
+        Assert.Equal("de", lang.ForTicket(AddTicket(rig, ann, "ru")));
+        Assert.Equal("en", lang.ForTicket(AddTicket(rig, null, "ru")));
+        Assert.Equal("en", lang.ForTicket(AddTicket(rig, null)));
+        Assert.Equal("de", lang.ForTicket(AddTicket(rig, null, "de")));
     }
 }

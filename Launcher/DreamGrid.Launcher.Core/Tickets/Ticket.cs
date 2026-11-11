@@ -60,7 +60,8 @@ public sealed record Ticket(
     Guid? TakenBy = null,
     string? TakenByName = null,
     bool Urgent = false,
-    string? TakedownCase = null)
+    string? TakedownCase = null,
+    string? Language = null)
 {
     /// <summary>Open or waiting: what counts against a sender's open tickets.</summary>
     public bool IsActive => State is TicketState.Open or TicketState.Waiting;

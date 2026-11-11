@@ -191,6 +191,9 @@
   <data name="Account.NoEmailAddress" xml:space="preserve"><value>Нет адреса электронной почты</value></data>
   <data name="Account.Role" xml:space="preserve"><value>Роль</value></data>
   <data name="Account.Made" xml:space="preserve"><value>Учётная запись создана</value></data>
+  <data name="Account.Language" xml:space="preserve"><value>Язык</value></data>
+  <data name="Account.LanguageLabel" xml:space="preserve"><value>Язык страниц и писем</value></data>
+  <data name="Account.SaveLanguage" xml:space="preserve"><value>Сохранить язык</value></data>
   <data name="Account.RoleOwner" xml:space="preserve"><value>Владелец</value></data>
   <data name="Account.RoleAdmin" xml:space="preserve"><value>Администратор</value></data>
   <data name="Account.RoleSupervisor" xml:space="preserve"><value>Супервайзер</value></data>

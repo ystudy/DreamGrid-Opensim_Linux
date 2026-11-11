@@ -49,7 +49,7 @@ public sealed record SignUpLimits(ResetLimits Counts);
 /// </summary>
 public sealed class SignUps(Func<LauncherSettings> settings, IGridController grid, IRobustClient robust, IStaffDirectory directory,
     IAccountRemover remover, IRobustPasswords passwords, SignUpBoard pending, SignUpLimits limits, EmailTokens tokens,
-    EmailSender sender, EmailLanguage emailLanguage, TermsAcceptances terms, SignUpLock gate, AuditLog audit, GroupsAdmin groups, HeldNames heldNames, ILogger<SignUps> log)
+    EmailSender sender, EmailLanguage emailLanguage, ResidentLanguages residentLanguages, TermsAcceptances terms, SignUpLock gate, AuditLog audit, GroupsAdmin groups, HeldNames heldNames, ILogger<SignUps> log)
 {
     public const string Purpose = "confirm-signup";
     public static readonly TimeSpan LinkLifetime = TimeSpan.FromHours(24);
@@ -156,6 +156,9 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
             return new(SignUpOutcome.Busy);
         }
 
+        // The language of the page they signed up from is theirs from the start, in every mode. An address already on the grid made a
+        // decoy that is never shown or approved, so it gets none.
+        if (owner is null) residentLanguages.Set(account.PrincipalId, language);
         if (LegalPages.Get(s, LegalPages.Terms, s.Languages.Default) is { } t) terms.Accept(account.PrincipalId, t.Version, ip?.ToString());
         if (owner is not null)
         {

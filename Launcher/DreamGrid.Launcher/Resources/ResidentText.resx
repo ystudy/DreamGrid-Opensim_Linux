@@ -190,6 +190,9 @@
   <data name="Account.NoEmailAddress" xml:space="preserve"><value>No email address</value></data>
   <data name="Account.Role" xml:space="preserve"><value>Role</value></data>
   <data name="Account.Made" xml:space="preserve"><value>Account made</value></data>
+  <data name="Account.Language" xml:space="preserve"><value>Language</value></data>
+  <data name="Account.LanguageLabel" xml:space="preserve"><value>Language for pages and emails</value></data>
+  <data name="Account.SaveLanguage" xml:space="preserve"><value>Save language</value></data>
   <data name="Account.RoleOwner" xml:space="preserve"><value>Owner</value></data>
   <data name="Account.RoleAdmin" xml:space="preserve"><value>Admin</value></data>
   <data name="Account.RoleSupervisor" xml:space="preserve"><value>Supervisor</value></data>

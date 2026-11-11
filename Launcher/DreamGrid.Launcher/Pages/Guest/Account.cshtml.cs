@@ -1,9 +1,11 @@
 using DreamGrid.Launcher.Email;
 using System.Globalization;
+using DreamGrid.Launcher.Core;
 using DreamGrid.Launcher.Core.OpenSim;
 using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Guests;
+using DreamGrid.Launcher.Resident;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Localization;
@@ -17,7 +19,7 @@ namespace DreamGrid.Launcher.Pages.Guest;
 /// the new stamp, so it stays signed in while every other session ends.
 /// </summary>
 public sealed class AccountModel(AccountChanges changes, IRobustClient robust, Func<LauncherSettings> settings, RegionRights rights,
-    ResidentTwoFactor residents, EmailLanguage emailLanguage, ILogger<AccountModel> log, IStringLocalizer<ResidentText> t) : PageModel
+    ResidentTwoFactor residents, EmailLanguage emailLanguage, ResidentLanguages languages, ILogger<AccountModel> log, IStringLocalizer<ResidentText> t) : PageModel
 {
     [BindProperty] public string? Current { get; set; }
     [BindProperty] public string? Code { get; set; }
@@ -32,6 +34,12 @@ public sealed class AccountModel(AccountChanges changes, IRobustClient robust, F
     public bool EmailChangeAvailable { get; private set; }
     public bool TwoFactorLink { get; private set; }
     public bool OwnsRegions { get; private set; }
+
+    /// <summary>The languages to choose from, as code and the language's own name.</summary>
+    public IReadOnlyList<(string Code, string Name)> LanguageChoices { get; private set; } = [];
+
+    /// <summary>The language shown selected: the one saved for this account, else the one this page is in.</summary>
+    public string SelectedLanguage { get; private set; } = Core.Languages.English;
 
     /// <summary>Shown when the account can't be read: no forms then.</summary>
     public string? Unavailable { get; private set; }
@@ -79,6 +87,17 @@ public sealed class AccountModel(AccountChanges changes, IRobustClient robust, F
         return Page();
     }
 
+    public Task<IActionResult> OnPostLanguageAsync(string? language)
+    {
+        if (GuestSignIn.Read(User) is not { } guest) return Task.FromResult<IActionResult>(Challenge());
+        var offered = settings().Languages.OfferedOrDefault().Where(Core.Languages.HasCulture).ToList();
+        if (Core.Languages.Match(language, offered) is not { } chosen) return Task.FromResult<IActionResult>(BadRequest());
+        languages.Set(guest.Principal, chosen);
+        LanguagePick.SetCookie(HttpContext, chosen);
+        // Back to the page, so it is drawn in the new language (this request's page was picked before the choice).
+        return Task.FromResult<IActionResult>(RedirectToPage());
+    }
+
     private async Task LoadAsync(Guid principal, CancellationToken ct)
     {
         var s = settings();
@@ -108,5 +127,8 @@ public sealed class AccountModel(AccountChanges changes, IRobustClient robust, F
         EmailChangeAvailable = changes.EmailChangeAvailable();
         TwoFactorLink = ResidentTwoFactor.PageShown(s, residents.Store.StateOf(principal));
         OwnsRegions = rights.OwnedBy(principal).Count > 0;
+        var offered = s.Languages.OfferedOrDefault().Where(Core.Languages.HasCulture).ToList();
+        LanguageChoices = [.. offered.Select(c => (c, Core.Languages.NativeName(c)))];
+        SelectedLanguage = Core.Languages.Match(languages.Get(principal), offered) ?? ResidentLanguageFilter.Current(HttpContext);
     }
 }
