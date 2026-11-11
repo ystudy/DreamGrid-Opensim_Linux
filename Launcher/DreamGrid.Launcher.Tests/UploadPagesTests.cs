@@ -563,6 +563,10 @@ public sealed class UploadPagesTests : IAsyncLifetime
     [InlineData("two-objects")]
     [InlineData("creator")]
     [InlineData("too-large")]
+    [InlineData("input")]
+    [InlineData("report")]
+    [InlineData("name")]
+    [InlineData("mask")]
     public async Task Bad_manifest_writes_nothing(string fault)
     {
         Allow();
@@ -575,6 +579,88 @@ public sealed class UploadPagesTests : IAsyncLifetime
         Assert.Contains("That didn't work, nothing was charged", Text(await DocAsync(r)));
         Assert.Empty(_calls);
         Assert.False(Directory.Exists(JobDir(job)));
+    }
+
+    [Fact]
+    public async Task A_new_upload_deletes_the_guests_other_unfinished_jobs()
+    {
+        Allow();
+        _converter.Report = GoodCastle();
+        using var client = await GuestAsync();
+        var finished = await UploadedJobAsync(client, itemName: "Castle");
+        File.WriteAllText(Path.Combine(JobDir(finished), "done"), "");
+        var first = await UploadedJobAsync(client, itemName: "Castle");
+        var stranger = Path.GetFileName(Jobs.Create(Guid.NewGuid()));
+
+        var second = await UploadedJobAsync(client, itemName: "Castle");
+
+        Assert.False(Directory.Exists(JobDir(first)));
+        Assert.True(Directory.Exists(JobDir(second)));
+        Assert.True(Directory.Exists(JobDir(finished)));
+        Assert.True(Directory.Exists(JobDir(stranger)));
+        Assert.Equal(new[] { finished, second }.Order(StringComparer.Ordinal), Jobs.JobsOf(TestAuth.GuestId).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public async Task Posts_without_the_token_are_refused()
+    {
+        Allow();
+        _converter.Report = GoodCastle();
+        using var client = await GuestAsync();
+        var job = await UploadedJobAsync(client, itemName: "Castle");
+        _converter.Seen.Clear();
+
+        using (var r = await client.PostAsync("/guest/upload",
+            new MultipartFormDataContent { { new ByteArrayContent("glTF"u8.ToArray()), "File", "castle.glb" } }, Ct))
+            Assert.Equal(HttpStatusCode.BadRequest, r.StatusCode);
+        foreach (var handler in new[] { "Rescale", "Make" })
+        {
+            using var r = await client.PostAsync($"/guest/upload/{job}?handler={handler}", new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["ItemName"] = "Castle", ["ScalePercent"] = "50", ["Copy"] = "true", ["Modify"] = "true", ["Transfer"] = "true",
+            }), Ct);
+            Assert.Equal(HttpStatusCode.BadRequest, r.StatusCode);
+        }
+        Assert.Empty(_converter.Seen);
+        Assert.Empty(_calls);
+        Assert.True(Directory.Exists(JobDir(job)));
+    }
+
+    [Fact]
+    public async Task Rescale_leaves_a_job_that_is_being_made_alone()
+    {
+        Allow();
+        _converter.Report = GoodCastle();
+        using var client = await GuestAsync();
+        var job = await UploadedJobAsync(client, itemName: "Castle");
+        var fields = await MakeFieldsAsync(client);
+        fields["ScalePercent"] = "50";
+        File.WriteAllText(Path.Combine(JobDir(job), "done"), "");
+        _converter.Seen.Clear();
+
+        using var r = await client.PostAsync($"/guest/upload/{job}?handler=Rescale", new FormUrlEncodedContent(fields), Ct);
+        Assert.Contains("This upload is already finished", Text(await DocAsync(r)));
+        Assert.Empty(_converter.Seen);
+        Assert.True(Directory.Exists(JobDir(job)));
+    }
+
+    [Fact]
+    public async Task Rescale_refuses_once_make_has_marked_the_job()
+    {
+        // The marker can appear after the page read the job: the work itself must refuse too.
+        Allow();
+        _converter.Report = GoodCastle();
+        using var client = await GuestAsync();
+        var job = await UploadedJobAsync(client, itemName: "Castle");
+        File.WriteAllText(Path.Combine(JobDir(job), "done"), "");
+        var uploads = _f.Services.GetRequiredService<DreamGrid.Launcher.ModelImport.ModelUploads>();
+        var options = _converter.Seen[0] with { ScalePercent = 50 };
+
+        var result = await uploads.CheckAgainAsync(TestAuth.GuestId, job, options, Ct);
+
+        Assert.Equal(DreamGrid.Launcher.ModelImport.CheckStatus.Finished, result.Status);
+        Assert.Single(_converter.Seen);
+        Assert.True(Directory.Exists(JobDir(job)));
     }
 
     // ---- the Limits page ----
@@ -631,7 +717,13 @@ public sealed class UploadPagesTests : IAsyncLifetime
             var assets = new List<ManifestAsset>
             {
                 new(TextureId, Fault == "type" ? 20 : 0, options.ItemName + " texture 1", $"assets/{TextureId}.bin"),
-                new(MeshId, 49, options.ItemName + " mesh 1", Fault == "outside" ? "../../escape.bin" : $"assets/{MeshId}.bin"),
+                new(MeshId, 49, options.ItemName + " mesh 1", Fault switch
+                {
+                    "outside" => "../../escape.bin",
+                    "input" => "input.glb",
+                    "report" => "report.json",
+                    _ => $"assets/{MeshId}.bin",
+                }),
                 new(ObjectId, 6, options.ItemName, $"assets/{ObjectId}.bin"),
             };
             if (Fault == "two-objects") assets.Insert(0, new ManifestAsset(SecondObjectId, 6, "Another", $"assets/{SecondObjectId}.bin"));
@@ -642,10 +734,19 @@ public sealed class UploadPagesTests : IAsyncLifetime
                 await File.WriteAllBytesAsync(Path.Combine(jobDir, a.File), bytes, ct);
             }
             var creator = Fault == "creator" ? Guid.NewGuid() : options.UploaderId;
-            var item = new ManifestItem(ObjectId, options.ItemName, $"Uploaded from {options.FileName} on 2026-11-10", 0x8e000, creator);
+            var name = Fault == "name" ? "Something else" : options.ItemName;
+            var mask = Fault == "mask" ? Mask(options.NextOwner with { Transfer = !options.NextOwner.Transfer }) : Mask(options.NextOwner);
+            var item = new ManifestItem(ObjectId, name, $"Uploaded from {options.FileName} on 2026-11-10", mask, creator);
             await File.WriteAllTextAsync(Path.Combine(jobDir, "manifest.json"),
                 JsonSerializer.Serialize(new ImportManifest(1, assets, item), ContractJson.Options), ct);
         }
+    }
+
+    /// <summary>The converter's next-owner mask: Copy 0x8000, Modify 0x4000, Transfer 0x2000 (Transfer when none), always Move 0x80000.</summary>
+    private static uint Mask(NextOwner next)
+    {
+        uint m = (next.Copy ? 0x8000u : 0) | (next.Modify ? 0x4000u : 0) | (next.Transfer ? 0x2000u : 0);
+        return (m == 0 ? 0x2000u : m) | 0x80000u;
     }
 
     private sealed class FakeAssets(ConcurrentQueue<string> calls) : IRobustAssets

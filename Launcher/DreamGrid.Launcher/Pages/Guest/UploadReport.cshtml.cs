@@ -119,6 +119,11 @@ public sealed class UploadReportModel(ModelUploads uploads) : PageModel
             Notice = notice;
             return Redirect("/guest/upload/" + result.JobId);
         }
+        if (result.Status == CheckStatus.Finished)
+        {
+            AlreadyFinished = true;
+            return Page();
+        }
         Error = result.Status == CheckStatus.Busy ? UploadModel.Busy : UploadModel.Unreadable;
         return uploads.Read(Guest, job.Id) is { } still ? Show(still) : Page();
     }

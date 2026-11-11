@@ -43,6 +43,14 @@ public sealed partial class ImportJobs(LauncherPaths paths, TimeProvider time)
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return false; }
     }
 
+    /// <summary>The ids of every job folder whose owner file names <paramref name="guest"/>.</summary>
+    public IReadOnlyList<string> JobsOf(Guid guest)
+    {
+        if (!Directory.Exists(paths.Uploads)) return [];
+        return Directory.EnumerateDirectories(paths.Uploads).Select(Path.GetFileName).OfType<string>()
+            .Where(id => Owns(guest, id)).ToList();
+    }
+
     public void Delete(string jobId)
     {
         if (!JobId().IsMatch(jobId)) return;

@@ -27,6 +27,22 @@ public sealed class ImportJobsTests : IDisposable
     }
 
     [Fact]
+    public void Jobs_of_a_guest_are_theirs_only()
+    {
+        var jobs = new ImportJobs(Paths, _time);
+        var guest = Guid.NewGuid();
+        var a = Path.GetFileName(jobs.Create(guest));
+        var b = Path.GetFileName(jobs.Create(guest));
+        jobs.Create(Guid.NewGuid());
+        Directory.CreateDirectory(Path.Combine(Paths.Uploads, "not-a-job"));
+        File.WriteAllText(Path.Combine(Paths.Uploads, "not-a-job", "owner"), guest.ToString("D"));
+        Directory.CreateDirectory(Path.Combine(Paths.Uploads, new string('c', 32)));
+
+        Assert.Equal(new[] { a, b }.Order(StringComparer.Ordinal), jobs.JobsOf(guest).Order(StringComparer.Ordinal));
+        Assert.Empty(new ImportJobs(new LauncherPaths(Path.Combine(_root, "none"), _root, null), _time).JobsOf(guest));
+    }
+
+    [Fact]
     public void Only_one_slot()
     {
         var jobs = new ImportJobs(Paths, _time);

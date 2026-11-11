@@ -48,7 +48,7 @@ public static class FindingText
                 $"Above {N("threshold", "200000")}, the simpler versions shown from far away may look lumpy or have holes.",
                 "In Blender, add a Decimate modifier to lower the number of triangles."),
             "too-big" => new(
-                v.ContainsKey("side") ? $"{Get("part", item)} is {N("side", "")} m on its longest side" : $"{Get("part", item)} is too big",
+                v.TryGetValue("side", out var side) && !string.IsNullOrWhiteSpace(side) ? $"{Get("part", item)} is {N("side", "")} m on its longest side" : $"{Get("part", item)} is too big",
                 $"Parts on this grid can be at most {N("limit", "256")} m, so every region can hold them.",
                 "In Blender, scale the model down (S), apply the scale (Ctrl+A), then export again. Or choose a smaller size here."),
             "too-small" => new(

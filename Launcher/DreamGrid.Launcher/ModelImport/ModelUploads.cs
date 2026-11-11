@@ -13,7 +13,8 @@ namespace DreamGrid.Launcher.ModelImport;
 /// <summary>A checked upload as the report page shows it: the options it was checked with and the converter's report.</summary>
 public sealed record UploadJob(string Id, ImportOptions Options, ImportReport Report, bool Finished);
 
-public enum CheckStatus { Checked, Busy, Unreadable }
+/// <summary><see cref="Finished"/>: the job is being made or was made, so it isn't checked again.</summary>
+public enum CheckStatus { Checked, Busy, Unreadable, Finished }
 
 /// <summary><see cref="JobId"/> is set when <see cref="Status"/> is <see cref="CheckStatus.Checked"/>.</summary>
 public sealed record CheckResult(CheckStatus Status, string? JobId);
@@ -46,6 +47,13 @@ public sealed class ModelUploads(ImportJobs jobs, LauncherPaths paths, IModelCon
     private const string ManifestFile = "manifest.json";
     private const string DoneFile = "done";
     private const string InputName = "input";
+    private const string AssetFolder = "assets";
+
+    // OpenSim's PermissionMask bits (OpenSim/Framework/Util.cs); the launcher can't reference OpenSim.
+    private const uint TransferBit = 1 << 13;
+    private const uint ModifyBit = 1 << 14;
+    private const uint CopyBit = 1 << 15;
+    private const uint MoveBit = 1 << 19;
 
     // OpenMetaverse's asset types for a texture, an object and a mesh: the only kinds an upload makes.
     private const int TextureType = 0;
@@ -71,9 +79,12 @@ public sealed class ModelUploads(ImportJobs jobs, LauncherPaths paths, IModelCon
         return s;
     }
 
-    /// <summary>Saves <paramref name="upload"/> as <c>input&lt;extension&gt;</c> in a new job and checks it.</summary>
+    /// <summary>
+    /// Saves <paramref name="upload"/> as <c>input&lt;extension&gt;</c> in a new job and checks it. The guest's other unfinished jobs
+    /// (no <c>done</c> marker) are deleted first: one job per guest at a time.
+    /// </summary>
     public Task<CheckResult> CheckNewAsync(Guid guest, Stream upload, string extension, ImportOptions options, CancellationToken ct) =>
-        CheckAsync(guest, options, async dir =>
+        CheckAsync(guest, options, replaceOthers: true, async dir =>
         {
             var input = Path.Combine(dir, InputName + extension);
             await using var file = new FileStream(input, FileMode.CreateNew, FileAccess.Write);
@@ -86,15 +97,24 @@ public sealed class ModelUploads(ImportJobs jobs, LauncherPaths paths, IModelCon
     {
         if (!jobs.Owns(guest, oldJob)) return new CheckResult(CheckStatus.Unreadable, null);
         var oldDir = JobDir(oldJob);
+        var oldDone = Path.Combine(oldDir, DoneFile);
+        if (File.Exists(oldDone)) return new CheckResult(CheckStatus.Finished, null);
         var oldInput = Directory.Exists(oldDir) ? Directory.EnumerateFiles(oldDir, InputName + ".*").FirstOrDefault() : null;
         if (oldInput is null) return new CheckResult(CheckStatus.Unreadable, null);
-        var result = await CheckAsync(guest, options, dir =>
+        var result = await CheckAsync(guest, options, replaceOthers: false, dir =>
         {
             var input = Path.Combine(dir, Path.GetFileName(oldInput));
             File.Copy(oldInput, input);
             return Task.FromResult(input);
         }, ct);
-        if (result.Status == CheckStatus.Checked) jobs.Delete(oldJob);
+        if (result.Status != CheckStatus.Checked) return result;
+        // Make may have marked the old job while this check ran: then it is Make's, and the new job goes instead.
+        if (File.Exists(oldDone))
+        {
+            jobs.Delete(result.JobId!);
+            return new CheckResult(CheckStatus.Finished, null);
+        }
+        jobs.Delete(oldJob);
         return result;
     }
 
@@ -128,7 +148,7 @@ public sealed class ModelUploads(ImportJobs jobs, LauncherPaths paths, IModelCon
         if (job.Report.Blocked) return new MakeResult(MakeStatus.Blocked);
 
         var dir = JobDir(jobId);
-        var manifest = CheckedManifest(dir, who.Id, out var problem);
+        var manifest = CheckedManifest(dir, who.Id, job.Options, out var problem);
         if (manifest is null)
         {
             log.LogError("Model import: the upload {Job} was not made: {Problem}", jobId, problem);
@@ -176,13 +196,21 @@ public sealed class ModelUploads(ImportJobs jobs, LauncherPaths paths, IModelCon
         }
     }
 
-    /// <summary>Runs the check in a new job under the conversion slot, which is left whatever happens.</summary>
-    private async Task<CheckResult> CheckAsync(Guid guest, ImportOptions options, Func<string, Task<string>> save, CancellationToken ct)
+    /// <summary>
+    /// Runs the check in a new job under the conversion slot, which is left whatever happens. With <paramref name="replaceOthers"/>
+    /// the guest's unfinished jobs are deleted before the new one is made.
+    /// </summary>
+    private async Task<CheckResult> CheckAsync(Guid guest, ImportOptions options, bool replaceOthers, Func<string, Task<string>> save,
+        CancellationToken ct)
     {
         if (!jobs.TryEnterSlot()) return new CheckResult(CheckStatus.Busy, null);
         string? jobId = null;
         try
         {
+            if (replaceOthers)
+                foreach (var other in jobs.JobsOf(guest))
+                    if (!File.Exists(Path.Combine(JobDir(other), DoneFile)))
+                        jobs.Delete(other);
             var dir = jobs.Create(guest);
             jobId = Path.GetFileName(dir);
             var input = await save(dir);
@@ -206,10 +234,10 @@ public sealed class ModelUploads(ImportJobs jobs, LauncherPaths paths, IModelCon
     }
 
     /// <summary>
-    /// The manifest when it is sound: only textures, meshes and one object; every file inside the job folder and there; at most
+    /// The manifest when it is sound: only textures, meshes and one object; every file inside the job's assets folder and there; at most
     /// 64 MB in all; the item points at the object, is made by this guest, and its name and description fit Robust's columns.
     /// </summary>
-    private static ImportManifest? CheckedManifest(string dir, Guid guest, out string problem)
+    private static ImportManifest? CheckedManifest(string dir, Guid guest, ImportOptions options, out string problem)
     {
         var manifest = Load<ImportManifest>(Path.Combine(dir, ManifestFile));
         if (manifest?.Assets is not { Count: > 0 } assets || manifest.Item is not { } item)
@@ -217,14 +245,14 @@ public sealed class ModelUploads(ImportJobs jobs, LauncherPaths paths, IModelCon
             problem = "the manifest is missing or empty";
             return null;
         }
-        var root = Path.GetFullPath(dir) + Path.DirectorySeparatorChar;
+        var root = Path.GetFullPath(Path.Combine(dir, AssetFolder)) + Path.DirectorySeparatorChar;
         long total = 0;
         foreach (var a in assets)
         {
             if (a.Type is not (TextureType or MeshType or ObjectType)) { problem = $"asset {a.Id} has type {a.Type}"; return null; }
             if (a.Id == Guid.Empty || string.IsNullOrEmpty(a.File)) { problem = "an asset has no id or file"; return null; }
             var full = Path.GetFullPath(Path.Combine(dir, a.File));
-            if (!full.StartsWith(root, StringComparison.Ordinal)) { problem = $"asset {a.Id} is outside the job folder"; return null; }
+            if (!full.StartsWith(root, StringComparison.Ordinal)) { problem = $"asset {a.Id} is outside the assets folder"; return null; }
             if (!File.Exists(full)) { problem = $"asset {a.Id} has no file"; return null; }
             total += new FileInfo(full).Length;
         }
@@ -236,9 +264,18 @@ public sealed class ModelUploads(ImportJobs jobs, LauncherPaths paths, IModelCon
             : item.AssetId != objects[0].Id ? "the item doesn't point at the object"
             : item.CreatorId != guest ? "the item's creator isn't the uploader"
             : string.IsNullOrWhiteSpace(item.Name) || item.Name.Length > MaxNameLength ? "the item's name is empty or too long"
+            : item.Name != options.ItemName ? "the item's name isn't the one the guest was shown"
+            : item.NextOwnerMask != NextOwnerMask(options.NextOwner) ? "the item's next-owner permissions aren't the ones the guest was shown"
             : item.Description is null || item.Description.Length > MaxDescriptionLength ? "the item's description is too long"
             : "";
         return problem.Length == 0 ? manifest : null;
+    }
+
+    /// <summary>The mask the converter writes for <paramref name="next"/> (ObjectAssetBuilder.NextOwnerMask): none ticked means Transfer; Move always.</summary>
+    private static uint NextOwnerMask(NextOwner next)
+    {
+        var mask = (next.Copy ? CopyBit : 0) | (next.Modify ? ModifyBit : 0) | (next.Transfer ? TransferBit : 0);
+        return (mask == 0 ? TransferBit : mask) | MoveBit;
     }
 
     private void Remember(string jobId, Guid guest, string itemName, ImportReport report)

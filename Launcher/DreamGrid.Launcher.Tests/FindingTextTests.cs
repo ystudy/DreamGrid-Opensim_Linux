@@ -48,6 +48,18 @@ public sealed class FindingTextTests
         Assert.Contains("Castle", line.Title);
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("  ")]
+    [InlineData(null)]
+    public void Too_big_without_a_side_uses_the_plain_words(string? side)
+    {
+        var values = new Dictionary<string, string> { ["part"] = "Tower", ["limit"] = "256" };
+        if (side is not null) values["side"] = side;
+        var line = FindingText.Of(new Finding("too-big", FindingKind.Blocking, values), "Castle");
+        Assert.Equal("Tower is too big", line.Title);
+    }
+
     [Fact]
     public void Values_are_put_into_the_words()
     {
