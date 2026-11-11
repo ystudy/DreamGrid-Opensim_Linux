@@ -27,7 +27,7 @@ public sealed class GuestPagesHubTests
     {
         await using var f = Factory();
         var page = await PageAsync(await StaffAsync(f, "owner"), "/guest-pages");
-        Assert.Equal(["/splash", "/security/legal", "/security/bots", "/security/email", "/advanced/password-reset"],
+        Assert.Equal(["/splash", "/security/legal", "/security/wording", "/security/bots", "/security/email", "/advanced/password-reset"],
             page.QuerySelectorAll("main .list-group a").Select(a => a.GetAttribute("href")));
     }
 
