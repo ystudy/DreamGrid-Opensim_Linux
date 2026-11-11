@@ -397,3 +397,5 @@ header .signout { margin: 0; }
 
 /* The owner's own words on a resident page keep their paragraph breaks (plan 16b). */
 .tone-text { white-space: pre-line; }
+/* The English beside a translation box (Languages, translate page): line breaks as in the email. */
+.language-english { white-space: pre-line; }

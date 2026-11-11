@@ -14,7 +14,8 @@ namespace DreamGrid.Launcher.Pages.Security;
 /// <summary>
 /// The owner's page for the wording of the guest pages (OwnerPolicy; <c>/security/wording</c>; 404 where there is no guest side).
 /// One language at a time (<c>?lang=</c>, from <see cref="OfferedLanguages.All"/>): a row per <see cref="ToneText.Keys"/> entry with the
-/// built-in text beside a box for the owner's own. Saving text equal to the built-in drops the override. Stored keys that are no longer
+/// built-in text beside a box for the owner's own. Saving text equal to the built-in drops the override, and saving an empty box
+/// puts the original back (audited as a reset). Stored keys that are no longer
 /// tone keys are listed and can be deleted. Saving and resetting are audited (<c>page-wording-saved</c>, <c>page-wording-reset</c>,
 /// <c>page-wording-deleted</c>) with the target <c>lang/key</c> and never the text.
 /// </summary>
@@ -51,11 +52,9 @@ public sealed class WordingModel(IGridController grid, Func<LauncherSettings> se
             Fill(code, key, $"That is too long. Keep it to {MaxLength:N0} characters or fewer.");
             return Page();
         }
+        // An empty box means the original wording, as the page says: the same as "Put the original back".
         if (text.Length == 0)
-        {
-            Fill(code, key, "Type some wording, or use \"Put the original back\".");
-            return Page();
-        }
+            return OnPostReset(code, key);
         var builtIn = BuiltIn(code, key);
         string? stored = text == builtIn ? null : text;
         grid.UpdateSettings(s => s with { Wording = Store(s.Wording, code, key, stored) }, writeConfig: false);

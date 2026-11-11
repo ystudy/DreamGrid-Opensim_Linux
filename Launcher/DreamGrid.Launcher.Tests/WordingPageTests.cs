@@ -138,6 +138,25 @@ public sealed class WordingPageTests
     }
 
     [Fact]
+    public async Task Empty_save_puts_the_original_back()
+    {
+        await using var f = Factory(new() { ["en"] = new() { ["Home.Title"] = "Mine", ["Support.Title"] = "Keep" } });
+        var owner = await OwnerAsync(f);
+        using (var r = await PostAsync(owner, "Save", new() { ["lang"] = "en", ["key"] = "Home.Title", ["Text"] = "  \r\n " }))
+            Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
+        Assert.False(Stored(f)["en"].ContainsKey("Home.Title"));
+        Assert.Equal("Keep", Stored(f)["en"]["Support.Title"]);
+        var log = Audit(f);
+        Assert.Contains("page-wording-reset", log);
+        Assert.DoesNotContain("page-wording-saved", log);
+
+        // With nothing saved, an empty box changes nothing and is still fine.
+        using (var r = await PostAsync(owner, "Save", new() { ["lang"] = "fr", ["key"] = "Home.Title", ["Text"] = "" }, "fr"))
+            Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
+        Assert.False(Stored(f).ContainsKey("fr"));
+    }
+
+    [Fact]
     public async Task Too_long_is_refused()
     {
         await using var f = Factory();
