@@ -195,6 +195,26 @@ public sealed class LanguagePickerTests
         Assert.Equal("de", f.Services.GetRequiredService<ResidentLanguages>().Get(TestAuth.GuestId));
     }
 
+    // The German and Russian satellite assemblies load in the web app: the page words are translated, not only lang="de".
+    [Fact]
+    public async Task Sign_in_page_in_German_has_the_German_title()
+    {
+        await using var f = Make();
+        var page = await GetAsync(Client(f), "/guest/sign-in", "de");
+        Assert.Equal("Anmelden", page.QuerySelector("h1")!.TextContent.Trim());
+        Assert.StartsWith("Anmelden", page.Title);
+    }
+
+    [Fact]
+    public async Task Forgot_password_page_in_Russian_is_in_Cyrillic()
+    {
+        await using var f = Make();
+        var page = await GetAsync(Client(f), "/guest/forgot-password", "ru");
+        var title = page.QuerySelector("h1")!.TextContent.Trim();
+        Assert.Equal("Забыли пароль", title);
+        Assert.Matches(@"\p{IsCyrillic}", title);
+    }
+
     [Fact]
     public async Task Picker_needs_the_antiforgery_token()
     {

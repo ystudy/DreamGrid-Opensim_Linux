@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This translation was drafted by AI and has not been checked by a native speaker.
+     Corrections from native speakers are welcome: see docs/languages.md. -->
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="confirm-email.Subject" xml:space="preserve"><value>Bestätigen Sie Ihre E-Mail-Adresse für {GridName}</value></data>
+  <data name="confirm-email.Body" xml:space="preserve"><value>Hallo {AvatarName},
+
+bitte bestätigen Sie Ihre E-Mail-Adresse für {GridName}:
+
+{Link}
+
+Der Link funktioniert einmal, {ExpiresIn} lang. Wenn Sie sich nicht registriert haben, können Sie diese E-Mail ignorieren.</value></data>
+  <data name="reset-password.Subject" xml:space="preserve"><value>Setzen Sie Ihr Passwort für {GridName} zurück</value></data>
+  <data name="reset-password.Body" xml:space="preserve"><value>Hallo {AvatarName},
+
+jemand hat angefordert, Ihr Passwort für {GridName} zurückzusetzen. Um ein neues zu wählen, öffnen Sie diesen Link:
+
+{Link}
+
+Der Link funktioniert einmal, {ExpiresIn} lang. Wenn Sie das nicht waren, ignorieren Sie diese E-Mail: Ihr Passwort bleibt unverändert.</value></data>
+  <data name="account-approved.Subject" xml:space="preserve"><value>Willkommen bei {GridName}</value></data>
+  <data name="account-approved.Body" xml:space="preserve"><value>Hallo {AvatarName},
+
+Ihr Konto bei {GridName} ist bereit. Sie können sich jetzt anmelden:
+
+{Link}</value></data>
+  <data name="password-changed.Subject" xml:space="preserve"><value>Ihr Passwort für {GridName} wurde geändert</value></data>
+  <data name="password-changed.Body" xml:space="preserve"><value>Hallo {AvatarName},
+
+Ihr Passwort für {GridName} wurde gerade geändert, und Sie wurden überall abgemeldet.
+
+Wenn Sie das nicht waren, wenden Sie sich sofort an den Betreiber des Grids.</value></data>
+  <data name="already-have-account.Subject" xml:space="preserve"><value>Jemand wollte sich bei {GridName} registrieren</value></data>
+  <data name="already-have-account.Body" xml:space="preserve"><value>Hallo {AvatarName},
+
+jemand wollte sich mit dieser E-Mail-Adresse bei {GridName} registrieren. Wenn Sie das waren: Sie haben bereits einen Avatar, {AvatarName}.
+
+Passwort vergessen? Hier können Sie ein neues wählen:
+
+{Link}
+
+Wenn Sie das nicht waren, können Sie diese E-Mail ignorieren.</value></data>
+  <data name="confirm-new-email.Subject" xml:space="preserve"><value>Bestätigen Sie Ihre neue E-Mail-Adresse</value></data>
+  <data name="confirm-new-email.Body" xml:space="preserve"><value>Hallo {AvatarName},
+
+bestätigen Sie Ihre neue E-Mail-Adresse für {AvatarName} bei {GridName}:
+
+{Link}
+
+Der Link funktioniert einmal, {ExpiresIn} lang. Wenn Sie das nicht angefordert haben, ignorieren Sie diese E-Mail.</value></data>
+  <data name="email-change-notice.Subject" xml:space="preserve"><value>Ihre E-Mail-Adresse bei {GridName}</value></data>
+  <data name="email-change-notice.Body" xml:space="preserve"><value>Hallo {AvatarName},
+
+jemand hat angefordert, die E-Mail-Adresse für {AvatarName} bei {GridName} zu ändern. Wenn Sie das waren, müssen Sie nichts tun.
+
+Wenn nicht, ändern Sie jetzt Ihr Passwort:
+
+{Link}</value></data>
+  <data name="signup-denied.Subject" xml:space="preserve"><value>Ihre Registrierung bei {GridName}</value></data>
+  <data name="signup-denied.Body" xml:space="preserve"><value>Hallo {AvatarName},
+
+Ihre Registrierung bei {GridName} wurde nicht freigeschaltet.
+
+{Note}</value></data>
+  <data name="name-changed.Subject" xml:space="preserve"><value>Ihr Name bei {GridName} wurde geändert</value></data>
+  <data name="name-changed.Body" xml:space="preserve"><value>Hallo {AvatarName},
+
+das Team von {GridName} hat den Namen Ihres Avatars von {OldName} in {AvatarName} geändert. Melden Sie sich ab jetzt mit dem neuen Namen an. Ihre Freunde, Gruppen, Ihr Inventar und Ihre Regionen bleiben, wie sie waren.
+
+Wenn Sie das nicht angefordert haben, wenden Sie sich an den Betreiber des Grids.</value></data>
+  <data name="email-changed-by-staff.Subject" xml:space="preserve"><value>Ihre E-Mail-Adresse bei {GridName} wurde geändert</value></data>
+  <data name="email-changed-by-staff.Body" xml:space="preserve"><value>Hallo {AvatarName},
+
+das Team von {GridName} hat die E-Mail-Adresse für {AvatarName} geändert, daher kommen E-Mails des Grids nicht mehr hier an.
+
+Wenn Sie das nicht angefordert haben, wenden Sie sich an den Betreiber des Grids und wählen Sie ein neues Passwort:
+
+{Link}</value></data>
+  <data name="email-set-by-staff.Subject" xml:space="preserve"><value>Ihre E-Mail-Adresse bei {GridName}</value></data>
+  <data name="email-set-by-staff.Body" xml:space="preserve"><value>Hallo {AvatarName},
+
+das Team von {GridName} hat diese Adresse als E-Mail-Adresse für {AvatarName} eingetragen. Passwort-Zurücksetzungen und Mitteilungen des Grids kommen ab jetzt hier an.
+
+Wenn Sie {AvatarName} nicht kennen, können Sie diese E-Mail ignorieren.</value></data>
+  <data name="staff-reset-password.Subject" xml:space="preserve"><value>Wählen Sie ein neues Passwort für {GridName}</value></data>
+  <data name="staff-reset-password.Body" xml:space="preserve"><value>Hallo {AvatarName},
+
+das Team von {GridName} hat Ihnen diesen Link gesendet, um ein neues Passwort zu wählen:
+
+{Link}
+
+Der Link funktioniert einmal, {ExpiresIn} lang. Wenn Sie das neue Passwort festlegen, wird die Zwei-Faktor-Anmeldung für Ihr Konto ausgeschaltet; Sie können sie auf Ihrer Kontoseite wieder einschalten. Wenn Sie das Team nicht darum gebeten haben, ignorieren Sie diese E-Mail: Es ändert sich nichts.</value></data>
+  <data name="takedown-removed.Subject" xml:space="preserve"><value>Objekte aus Ihrem Inventar bei {GridName} entfernt</value></data>
+  <data name="takedown-removed.Body" xml:space="preserve"><value>Hallo {AvatarName},
+
+das Team von {GridName} hat nach einer Meldung ({Reason}) diese Objekte aus Ihrem Inventar entfernt: {Items}
+
+Die Fallnummer lautet {CaseNumber}. Wenn Sie glauben, dass dies ein Fehler ist, antworten Sie auf diese E-Mail und geben Sie die Fallnummer an.</value></data>
+  <data name="takedown-restored.Subject" xml:space="preserve"><value>Objekte wieder in Ihrem Inventar bei {GridName}</value></data>
+  <data name="takedown-restored.Body" xml:space="preserve"><value>Hallo {AvatarName},
+
+das Team von {GridName} hat diese Objekte wieder in Ihr Inventar gelegt: {Items}
+
+Die Fallnummer lautet {CaseNumber}.</value></data>
+  <data name="ticket-confirm.Subject" xml:space="preserve"><value>Bestätigen Sie Ihr Support-Ticket bei {GridName}</value></data>
+  <data name="ticket-confirm.Body" xml:space="preserve"><value>Hallo {Name},
+
+Sie (oder jemand, der diese Adresse verwendet) haben ein Support-Ticket an {GridName} gesendet: „{Subject}“. Um es an das Team zu senden, öffnen Sie diesen Link innerhalb von 24 Stunden:
+
+{Link}
+
+Wenn Sie es nicht gesendet haben, ignorieren Sie diese E-Mail, und das Ticket wird gelöscht.</value></data>
+  <data name="ticket-access.Subject" xml:space="preserve"><value>Ihr Support-Ticket {TicketNumber} bei {GridName}</value></data>
+  <data name="ticket-access.Body" xml:space="preserve"><value>Hallo {Name},
+
+Ihr Ticket {TicketNumber} („{Subject}“) liegt beim Team von {GridName}. Hier lesen Sie die Antworten und antworten selbst:
+
+{Link}
+
+Der Link funktioniert 30 Tage lang. Halten Sie ihn privat: Jeder, der ihn hat, kann Ihr Ticket lesen.</value></data>
+  <data name="ticket-staff-reply.Subject" xml:space="preserve"><value>Das Team von {GridName} hat auf Ihr Ticket {TicketNumber} geantwortet</value></data>
+  <data name="ticket-staff-reply.Body" xml:space="preserve"><value>Hallo {Name},
+
+das Team hat auf Ihr Ticket {TicketNumber} („{Subject}“) geantwortet. Hier lesen Sie die Antwort und antworten selbst:
+
+{Link}
+
+Der Link funktioniert 30 Tage lang. Halten Sie ihn privat: Jeder, der ihn hat, kann Ihr Ticket lesen.</value></data>
+  <data name="ExpiresIn.30m" xml:space="preserve"><value>30 Minuten</value></data>
+  <data name="ExpiresIn.24h" xml:space="preserve"><value>24 Stunden</value></data>
+  <data name="Reason.Copyright" xml:space="preserve"><value>Urheberrecht (DMCA)</value></data>
+  <data name="Reason.Illegal" xml:space="preserve"><value>Illegale Inhalte</value></data>
+  <data name="Reason.Rules" xml:space="preserve"><value>Verstoß gegen die Regeln des Grids</value></data>
+  <data name="Reason.Other" xml:space="preserve"><value>Sonstiges</value></data>
+</root>

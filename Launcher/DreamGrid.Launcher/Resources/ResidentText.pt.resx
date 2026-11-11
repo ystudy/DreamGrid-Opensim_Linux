@@ -1,0 +1,303 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This translation was drafted by AI and has not been checked by a native speaker.
+     Corrections from native speakers are welcome: see docs/languages.md. -->
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="Layout.BackToStaff" xml:space="preserve"><value>Voltar às páginas da equipe</value></data>
+  <data name="Layout.Help" xml:space="preserve"><value>Pedir ajuda</value></data>
+  <data name="Layout.Language" xml:space="preserve"><value>Idioma</value></data>
+  <data name="Layout.ChangeLanguage" xml:space="preserve"><value>Mudar idioma</value></data>
+  <data name="Common.SignIn" xml:space="preserve"><value>Entrar</value></data>
+  <data name="SignIn.Intro" xml:space="preserve"><value>Use o nome e a senha do seu avatar.</value></data>
+  <data name="Common.AvatarName" xml:space="preserve"><value>Nome do avatar</value></data>
+  <data name="Common.NamePlaceholder" xml:space="preserve"><value>Nome Sobrenome</value></data>
+  <data name="Common.Password" xml:space="preserve"><value>Senha</value></data>
+  <data name="SignIn.ResendLink" xml:space="preserve"><value>Enviar o link de novo</value></data>
+  <data name="Common.ForgotPasswordLink" xml:space="preserve"><value>Esqueceu a senha?</value></data>
+  <data name="SignIn.CantSignIn" xml:space="preserve"><value>Não consegue entrar? Peça ajuda</value></data>
+  <data name="Common.CreateAccount" xml:space="preserve"><value>Criar uma conta</value></data>
+  <data name="SignIn.WrongNameOrPassword" xml:space="preserve"><value>Nome ou senha incorretos.</value></data>
+  <data name="Common.TooManyAttempts" xml:space="preserve"><value>Tentativas demais. Tente de novo em alguns minutos.</value></data>
+  <data name="SignIn.ConfirmFirst" xml:space="preserve"><value>Confirme seu e-mail primeiro. Ou aguarde a aprovação da equipe.</value></data>
+  <data name="SignIn.WaitForStaff" xml:space="preserve"><value>Sua conta está aguardando a aprovação da equipe do grid.</value></data>
+  <data name="Common.ServiceDown" xml:space="preserve"><value>O serviço de login do grid não está funcionando agora. Tente mais tarde.</value></data>
+  <data name="Common.WrongCode" xml:space="preserve"><value>Esse código não está certo. Tente de novo.</value></data>
+  <data name="SignIn.CodeUnknown" xml:space="preserve"><value>O login em duas etapas não pode ser verificado agora. Fale com o dono do grid.</value></data>
+  <data name="SignIn.SaveFailed" xml:space="preserve"><value>Não foi possível salvar o arquivo do login em duas etapas. Tente de novo.</value></data>
+  <data name="SignIn.Code" xml:space="preserve"><value>Código</value></data>
+  <data name="Common.BackToSignIn" xml:space="preserve"><value>Voltar para o login</value></data>
+  <data name="SignInCode.Title" xml:space="preserve"><value>Código de duas etapas</value></data>
+  <data name="SignInCode.Intro" xml:space="preserve"><value>Digite o código de 6 dígitos do seu aplicativo autenticador. Se você estiver sem o celular, digite um dos seus códigos de backup.</value></data>
+  <data name="SignInCode.StartAgain" xml:space="preserve"><value>Começar de novo</value></data>
+  <data name="Common.TwoFactorSignIn" xml:space="preserve"><value>Login em duas etapas</value></data>
+  <data name="TwoFactor.Intro" xml:space="preserve"><value>Com o login em duas etapas, para entrar neste site e para redefinir sua senha você precisa de um código de um aplicativo autenticador no celular, além da sua senha ou do seu e-mail.</value></data>
+  <data name="TwoFactor.IsOn" xml:space="preserve"><value>O login em duas etapas está ativado.</value></data>
+  <data name="TwoFactor.IsOff" xml:space="preserve"><value>O login em duas etapas está desativado.</value></data>
+  <data name="TwoFactor.BackupCodes" xml:space="preserve"><value>Seus códigos de backup</value></data>
+  <data name="TwoFactor.BackupCodesIntro" xml:space="preserve"><value>Cada código funciona uma vez, quando você estiver sem o celular. Guarde-os em um lugar seguro. Eles não serão mostrados de novo.</value></data>
+  <data name="Common.Continue" xml:space="preserve"><value>Continuar</value></data>
+  <data name="TwoFactor.TurnItOn" xml:space="preserve"><value>Ativar</value></data>
+  <data name="TwoFactor.ScanIntro" xml:space="preserve"><value>Escaneie este código com um aplicativo autenticador no celular e depois digite o código de 6 dígitos que o aplicativo mostrar.</value></data>
+  <data name="TwoFactor.QrLabel" xml:space="preserve"><value>Código QR para o seu aplicativo autenticador</value></data>
+  <data name="TwoFactor.CantScan" xml:space="preserve"><value>Não consegue escanear? Digite esta chave no aplicativo:</value></data>
+  <data name="TwoFactor.TurnOn" xml:space="preserve"><value>Ativar</value></data>
+  <data name="TwoFactor.NewCodes" xml:space="preserve"><value>Novos códigos de backup</value></data>
+  <data name="TwoFactor.NewCodesIntro" xml:space="preserve"><value>Isso substitui todos os seus códigos de backup. Digite um código do seu aplicativo autenticador.</value></data>
+  <data name="TwoFactor.TurnOff" xml:space="preserve"><value>Desativar</value></data>
+  <data name="TwoFactor.TurnOffIntro" xml:space="preserve"><value>Digite um código do seu aplicativo autenticador ou um código de backup.</value></data>
+  <data name="Common.BackToAccount" xml:space="preserve"><value>Voltar para a sua conta</value></data>
+  <data name="TwoFactor.StartedAgain" xml:space="preserve"><value>A configuração recomeçou. Escaneie o novo código abaixo.</value></data>
+  <data name="TwoFactor.StartedElsewhere" xml:space="preserve"><value>A configuração foi recomeçada em outro lugar. Escaneie o novo código abaixo.</value></data>
+  <data name="ForgotPassword.Title" xml:space="preserve"><value>Esqueci a senha</value></data>
+  <data name="ForgotPassword.Off" xml:space="preserve"><value>A redefinição de senha não está ativada neste grid. Fale com o dono do grid.</value></data>
+  <data name="ForgotPassword.Reply" xml:space="preserve"><value>Se esse nome e esse e-mail corresponderem a uma conta, enviamos um link. Ele funciona uma vez, por 30 minutos. Verifique sua pasta de spam.</value></data>
+  <data name="ForgotPassword.Intro" xml:space="preserve"><value>Digite o nome do seu avatar e o endereço de e-mail da sua conta. Vamos enviar por e-mail um link para você escolher uma nova senha.</value></data>
+  <data name="Common.Email" xml:space="preserve"><value>E-mail</value></data>
+  <data name="Common.SendLink" xml:space="preserve"><value>Enviar o link</value></data>
+  <data name="Common.BotFailed" xml:space="preserve"><value>O formulário não conseguiu verificar que você é uma pessoa. Tente de novo.</value></data>
+  <data name="ResetPassword.Title" xml:space="preserve"><value>Escolha uma nova senha</value></data>
+  <data name="ResetPassword.Done" xml:space="preserve"><value>Sua senha foi alterada. Entre com a nova senha.</value></data>
+  <data name="ResetPassword.Expired" xml:space="preserve"><value>Este link expirou ou já foi usado. Peça um novo.</value></data>
+  <data name="ResetPassword.AskNew" xml:space="preserve"><value>Pedir um novo link</value></data>
+  <data name="ResetPassword.Intro" xml:space="preserve"><value>Para {0}. Use pelo menos {1} caracteres.</value></data>
+  <data name="Common.CodeLabel" xml:space="preserve"><value>Código do seu aplicativo autenticador ou um código de backup</value></data>
+  <data name="Common.NewPassword" xml:space="preserve"><value>Nova senha</value></data>
+  <data name="Common.NewPasswordAgain" xml:space="preserve"><value>Repita a nova senha</value></data>
+  <data name="Common.ChangePassword" xml:space="preserve"><value>Alterar senha</value></data>
+  <data name="ResetPassword.WrongCode" xml:space="preserve"><value>Esse código não está certo. Tente de novo ou use um código de backup.</value></data>
+  <data name="Common.PasswordWriteFailed" xml:space="preserve"><value>Não foi possível alterar a senha agora. Tente de novo em alguns minutos.</value></data>
+  <data name="Password.Mismatch" xml:space="preserve"><value>Digite a mesma senha duas vezes.</value></data>
+  <data name="Password.TooShort" xml:space="preserve"><value>Use pelo menos {0} caracteres.</value></data>
+  <data name="Password.TooCommon" xml:space="preserve"><value>Essa senha é comum demais. Escolha outra.</value></data>
+  <data name="Password.IsName" xml:space="preserve"><value>Não use o nome do seu avatar como senha.</value></data>
+  <data name="Confirm.Title" xml:space="preserve"><value>Confirme seu e-mail</value></data>
+  <data name="Common.SignUpBusy" xml:space="preserve"><value>O cadastro não está funcionando agora. Tente de novo em alguns minutos.</value></data>
+  <data name="Confirm.AlreadyApproved" xml:space="preserve"><value>Você já foi aprovado.</value></data>
+  <data name="Confirm.SignInLink" xml:space="preserve"><value>Entrar.</value></data>
+  <data name="Confirm.Expired" xml:space="preserve"><value>Este link expirou ou já foi usado.</value></data>
+  <data name="Confirm.SignUpAgain" xml:space="preserve"><value>Cadastrar-se de novo</value></data>
+  <data name="Confirm.SignInForNewLink" xml:space="preserve"><value>Entre para pedir um novo link</value></data>
+  <data name="ConfirmEmail.Title" xml:space="preserve"><value>Confirme seu novo e-mail</value></data>
+  <data name="ConfirmEmail.Done" xml:space="preserve"><value>Seu endereço de e-mail agora é {0}.</value></data>
+  <data name="ConfirmEmail.Taken" xml:space="preserve"><value>Esse endereço já é usado por outro avatar neste grid.</value></data>
+  <data name="ConfirmEmail.Busy" xml:space="preserve"><value>Não foi possível alterar seu e-mail agora. Tente de novo em alguns minutos.</value></data>
+  <data name="ConfirmEmail.Expired" xml:space="preserve"><value>Este link expirou ou já foi usado.</value></data>
+  <data name="ConfirmEmail.ToAccount" xml:space="preserve"><value>Ir para a sua conta</value></data>
+  <data name="Common.HowToConnect" xml:space="preserve"><value>Como se conectar</value></data>
+  <data name="Connect.Heading" xml:space="preserve"><value>Como se conectar a {0}</value></data>
+  <data name="Connect.Choose" xml:space="preserve"><value>Escolha um visualizador e depois adicione {0} no Grid Manager dele.</value></data>
+  <data name="Connect.Approved" xml:space="preserve"><value>Você foi aprovado. Entre como {0}.</value></data>
+  <data name="Connect.Recommended" xml:space="preserve"><value>Recomendado</value></data>
+  <data name="Connect.FirestormSystems" xml:space="preserve"><value>Windows, macOS e Linux</value></data>
+  <data name="Connect.Download" xml:space="preserve"><value>Baixar</value></data>
+  <data name="Connect.FirestormNote" xml:space="preserve"><value>Na página do Firestorm, escolha o seu sistema e a versão para OpenSim, não a do Second Life.</value></data>
+  <data name="Connect.OtherViewers" xml:space="preserve"><value>Outros visualizadores</value></data>
+  <data name="Connect.AnyViewer" xml:space="preserve"><value>Qualquer visualizador para OpenSim funciona</value></data>
+  <data name="Connect.Website" xml:space="preserve"><value>Site</value></data>
+  <data name="Connect.OthersNote" xml:space="preserve"><value>Os links levam ao site de cada visualizador. Este grid não hospeda visualizadores.</value></data>
+  <data name="Connect.GridSettings" xml:space="preserve"><value>Dados para o Grid Manager</value></data>
+  <data name="Connect.LoginUri" xml:space="preserve"><value>URI de login</value></data>
+  <data name="Connect.GridName" xml:space="preserve"><value>Nome do grid</value></data>
+  <data name="Connect.LoginPage" xml:space="preserve"><value>Página de login</value></data>
+  <data name="Connect.Account" xml:space="preserve"><value>Conta</value></data>
+  <data name="Connect.Password" xml:space="preserve"><value>Senha</value></data>
+  <data name="Connect.Copy" xml:space="preserve"><value>Copiar</value></data>
+  <data name="Connect.Copied" xml:space="preserve"><value>Copiado</value></data>
+  <data name="Connect.CopySelected" xml:space="preserve"><value>Selecionado: pressione Ctrl+C</value></data>
+  <data name="Connect.SettingsNote" xml:space="preserve"><value>A maioria dos visualizadores preenche o resto sozinha assim que você informa a URI de login.</value></data>
+  <data name="Connect.Steps" xml:space="preserve"><value>Passos no Firestorm</value></data>
+  <data name="Connect.Step1" xml:space="preserve"><value>Abra Preferências, depois OpenSim, depois Grid Manager.</value></data>
+  <data name="Connect.Step2" xml:space="preserve"><value>Em “Adicionar novo grid”, cole a URI de login e clique em Aplicar:</value></data>
+  <data name="Connect.Step3" xml:space="preserve"><value>Na tela de login, escolha {0} na lista de grids.</value></data>
+  <data name="Connect.Step4Named" xml:space="preserve"><value>Entre como {0} com a sua senha.</value></data>
+  <data name="Connect.Step4" xml:space="preserve"><value>Entre com o nome e o sobrenome do seu avatar e a sua senha.</value></data>
+  <data name="Connect.Help" xml:space="preserve"><value>Ajuda</value></data>
+  <data name="Connect.FirestormHelp" xml:space="preserve"><value>As páginas de ajuda do Firestorm</value></data>
+  <data name="Connect.MakeAccount" xml:space="preserve"><value>Criar uma conta</value></data>
+  <data name="Connect.ForgotPassword" xml:space="preserve"><value>Esqueceu a senha</value></data>
+  <data name="Connect.AskStaff" xml:space="preserve"><value>Pedir ajuda à equipe do grid</value></data>
+  <data name="Legal.Terms" xml:space="preserve"><value>Termos</value></data>
+  <data name="Legal.Contact" xml:space="preserve"><value>Contato</value></data>
+  <data name="Connect.NoSupport" xml:space="preserve"><value>{0} não oferece suporte técnico para visualizadores.</value></data>
+  <data name="Legal.Privacy" xml:space="preserve"><value>Privacidade</value></data>
+  <data name="Legal.Cookies" xml:space="preserve"><value>Cookies</value></data>
+  <data name="Home.Title" xml:space="preserve"><value>Boas-vindas</value></data>
+  <data name="Home.Intro" xml:space="preserve"><value>Boas-vindas! Entre com o seu avatar para ver como se conectar, ou crie uma conta para participar.</value></data>
+  <data name="Home.SignInIntro" xml:space="preserve"><value>Já tem um avatar aqui? Use o nome e a senha dele.</value></data>
+  <data name="Home.NewHere" xml:space="preserve"><value>É novo aqui? Crie um avatar para participar de {0} e do seu mundo.</value></data>
+  <data name="Home.AboutGrid" xml:space="preserve"><value>Sobre este grid</value></data>
+  <data name="Home.StaffSignIn" xml:space="preserve"><value>Login da equipe</value></data>
+  <data name="SignUp.Closed" xml:space="preserve"><value>Este grid ainda não está aberto para cadastros.</value></data>
+  <data name="SignUp.SignInIfAccount" xml:space="preserve"><value>{0} se você já tem uma conta.</value></data>
+  <data name="SignUp.CheckEmail" xml:space="preserve"><value>Confira seu e-mail. Enviamos um link para confirmar sua conta. Ele funciona uma vez, por 24 horas. Verifique sua pasta de spam.</value></data>
+  <data name="SignUp.CantFindEmail" xml:space="preserve"><value>Não encontrou o e-mail? A equipe também pode aprovar você.</value></data>
+  <data name="SignUp.SendAgain" xml:space="preserve"><value>Enviar de novo</value></data>
+  <data name="SignUp.WaitingForStaff" xml:space="preserve"><value>Obrigado. A equipe do grid vai analisar o seu cadastro. Depois de aprovado, você pode entrar aqui com o nome e a senha que acabou de escolher.</value></data>
+  <data name="SignUp.Intro" xml:space="preserve"><value>Escolha um nome para o seu avatar e uma senha. Você vai usá-los para entrar em {0}.</value></data>
+  <data name="SignUp.FirstName" xml:space="preserve"><value>Nome</value></data>
+  <data name="SignUp.LastName" xml:space="preserve"><value>Sobrenome</value></data>
+  <data name="SignUp.PasswordAgain" xml:space="preserve"><value>Repita a senha</value></data>
+  <data name="SignUp.AcceptTerms" xml:space="preserve"><value>Aceito os {0} e o {1}.</value></data>
+  <data name="SignUp.TermsOfService" xml:space="preserve"><value>Termos de Serviço</value></data>
+  <data name="SignUp.PrivacyNotice" xml:space="preserve"><value>Aviso de Privacidade</value></data>
+  <data name="SignUp.CreateAvatar" xml:space="preserve"><value>Criar meu avatar</value></data>
+  <data name="SignUp.AddressLimit" xml:space="preserve"><value>Cadastros demais a partir do seu endereço. Tente de novo daqui a uma hora.</value></data>
+  <data name="SignUp.TermsProblem" xml:space="preserve"><value>Marque a caixa para aceitar os Termos de Serviço e o Aviso de Privacidade.</value></data>
+  <data name="SignUp.NameMissing" xml:space="preserve"><value>Digite um nome e um sobrenome.</value></data>
+  <data name="SignUp.NameTooLong" xml:space="preserve"><value>Cada nome pode ter no máximo {0} caracteres.</value></data>
+  <data name="SignUp.NameBadCharacters" xml:space="preserve"><value>Use no nome apenas letras de A a Z, dígitos e hifens.</value></data>
+  <data name="SignUp.NameTaken" xml:space="preserve"><value>Esse nome já está em uso. Tente outro.</value></data>
+  <data name="SignUp.EmailMissing" xml:space="preserve"><value>Digite o seu endereço de e-mail.</value></data>
+  <data name="SignUp.EmailTooLong" xml:space="preserve"><value>Use um endereço de e-mail com no máximo {0} caracteres.</value></data>
+  <data name="SignUp.EmailBadShape" xml:space="preserve"><value>Isso não parece um endereço de e-mail.</value></data>
+  <data name="Guest.Title" xml:space="preserve"><value>Sua conta</value></data>
+  <data name="Guest.SignedInAs" xml:space="preserve"><value>Você entrou como {0}.</value></data>
+  <data name="Guest.ConnectHeading" xml:space="preserve"><value>Conectar com o Firestorm</value></data>
+  <data name="Guest.Step1" xml:space="preserve"><value>Instale o Firestorm para OpenSim a partir de {0}.</value></data>
+  <data name="Guest.Step2" xml:space="preserve"><value>No Firestorm, abra Preferências, depois OpenSim, depois Grid Manager.</value></data>
+  <data name="Guest.Step3" xml:space="preserve"><value>Cole {0} e clique em Aplicar.</value></data>
+  <data name="Guest.Step4" xml:space="preserve"><value>Escolha {0} na tela de login e entre com o nome e a senha do seu avatar.</value></data>
+  <data name="Guest.SignOut" xml:space="preserve"><value>Sair</value></data>
+  <data name="Terms.Version" xml:space="preserve"><value>Versão {0}</value></data>
+  <data name="Terms.Accepted" xml:space="preserve"><value>Você aceitou esta versão.</value></data>
+  <data name="Terms.Accept" xml:space="preserve"><value>Aceito estes termos</value></data>
+  <data name="Terms.Changed" xml:space="preserve"><value>Os termos mudaram enquanto você lia. Leia a nova versão.</value></data>
+  <data name="Regions.Title" xml:space="preserve"><value>Minhas regiões</value></data>
+  <data name="Regions.None" xml:space="preserve"><value>Você não tem nenhuma região.</value></data>
+  <data name="Regions.RestartInWorld" xml:space="preserve"><value>Reinícios normais são feitos in-world, pela janela Região/Propriedade do visualizador.</value></data>
+  <data name="Regions.State" xml:space="preserve"><value>Estado desta região: {0}.</value></data>
+  <data name="Regions.PeopleHere" xml:space="preserve"><value>Pessoas aqui agora: {0}</value></data>
+  <data name="Regions.Unknown" xml:space="preserve"><value>desconhecido</value></data>
+  <data name="Regions.NotRunning" xml:space="preserve"><value>não está em execução</value></data>
+  <data name="Regions.LastStarted" xml:space="preserve"><value>Último início: {0} (UTC)</value></data>
+  <data name="Regions.Start" xml:space="preserve"><value>Iniciar esta região</value></data>
+  <data name="Regions.Restart" xml:space="preserve"><value>Reiniciar esta região</value></data>
+  <data name="Regions.SharedProgram" xml:space="preserve"><value>Esta região roda junto com regiões que não são suas. Para reiniciá-la, fale com a equipe do grid.</value></data>
+  <data name="Regions.RestartedRecently" xml:space="preserve"><value>Esta região foi reiniciada há poucos minutos. Tente de novo depois das {0} (UTC).</value></data>
+  <data name="Regions.NoRestartNeeded" xml:space="preserve"><value>{0} não precisa ser reiniciada.</value></data>
+  <data name="Regions.Restarting" xml:space="preserve"><value>Reiniciando {0}. Pode levar um ou dois minutos.</value></data>
+  <data name="Regions.StateRunning" xml:space="preserve"><value>em execução</value></data>
+  <data name="Regions.StateStopped" xml:space="preserve"><value>parada</value></data>
+  <data name="Regions.StateStarting" xml:space="preserve"><value>iniciando</value></data>
+  <data name="Regions.StateStopping" xml:space="preserve"><value>parando</value></data>
+  <data name="Regions.StateFailed" xml:space="preserve"><value>não responde</value></data>
+  <data name="Regions.StateParked" xml:space="preserve"><value>em espera</value></data>
+  <data name="Account.Title" xml:space="preserve"><value>Configurações da conta</value></data>
+  <data name="Account.Details" xml:space="preserve"><value>Seus dados</value></data>
+  <data name="Account.EmailAddress" xml:space="preserve"><value>Endereço de e-mail</value></data>
+  <data name="Account.NoEmailAddress" xml:space="preserve"><value>Nenhum endereço de e-mail</value></data>
+  <data name="Account.Role" xml:space="preserve"><value>Função</value></data>
+  <data name="Account.Made" xml:space="preserve"><value>Conta criada</value></data>
+  <data name="Account.RoleOwner" xml:space="preserve"><value>Dono</value></data>
+  <data name="Account.RoleAdmin" xml:space="preserve"><value>Administrador</value></data>
+  <data name="Account.RoleSupervisor" xml:space="preserve"><value>Supervisor</value></data>
+  <data name="Account.RoleResident" xml:space="preserve"><value>Residente</value></data>
+  <data name="Account.CurrentPassword" xml:space="preserve"><value>Senha atual</value></data>
+  <data name="Account.ChangeEmail" xml:space="preserve"><value>Alterar e-mail</value></data>
+  <data name="Account.NewEmail" xml:space="preserve"><value>Novo endereço de e-mail</value></data>
+  <data name="Account.NoEmail" xml:space="preserve"><value>Para alterar o seu e-mail, o envio de e-mails do grid precisa estar configurado. Fale com o dono do grid.</value></data>
+  <data name="Account.PasswordDone" xml:space="preserve"><value>Sua senha foi alterada.</value></data>
+  <data name="Account.AskReply" xml:space="preserve"><value>Enviamos um link para o novo endereço. Seu e-mail continua o mesmo até você abri-lo. Ele funciona uma vez, por 24 horas.</value></data>
+  <data name="Account.WrongCurrent" xml:space="preserve"><value>Essa não é a sua senha atual.</value></data>
+  <data name="Account.SamePassword" xml:space="preserve"><value>Escolha uma senha que você não estava usando.</value></data>
+  <data name="Account.SameAddress" xml:space="preserve"><value>Esse já é o seu endereço de e-mail.</value></data>
+  <data name="Bots.LeaveEmpty" xml:space="preserve"><value>Deixe isto em branco</value></data>
+  <data name="Bots.NeedsJs" xml:space="preserve"><value>Este formulário precisa de JavaScript para comprovar que você não é um robô.</value></data>
+  <data name="Bots.PictureAlt" xml:space="preserve"><value>Imagem com letras; se não conseguir vê-la, responda à pergunta abaixo</value></data>
+  <data name="Bots.TypeLetters" xml:space="preserve"><value>Digite as letras</value></data>
+  <data name="Bots.Question" xml:space="preserve"><value>Quanto é {0} mais {1}?</value></data>
+  <data name="Bots.DigitsWork" xml:space="preserve"><value>Você pode digitar a resposta em algarismos, por exemplo 11.</value></data>
+  <data name="Bots.EitherOne" xml:space="preserve"><value>Responda a qualquer uma das duas.</value></data>
+  <data name="Bots.Number1" xml:space="preserve"><value>um</value></data>
+  <data name="Bots.Number2" xml:space="preserve"><value>dois</value></data>
+  <data name="Bots.Number3" xml:space="preserve"><value>três</value></data>
+  <data name="Bots.Number4" xml:space="preserve"><value>quatro</value></data>
+  <data name="Bots.Number5" xml:space="preserve"><value>cinco</value></data>
+  <data name="Bots.Number6" xml:space="preserve"><value>seis</value></data>
+  <data name="Bots.Number7" xml:space="preserve"><value>sete</value></data>
+  <data name="Bots.Number8" xml:space="preserve"><value>oito</value></data>
+  <data name="Bots.Number9" xml:space="preserve"><value>nove</value></data>
+  <data name="Legal.ShownInDefault" xml:space="preserve"><value>Esta página é exibida neste idioma: {0}.</value></data>
+  <data name="Legal.VersionSaved" xml:space="preserve"><value>Versão {0}, {1}</value></data>
+  <data name="Legal.NavLabel" xml:space="preserve"><value>Páginas legais</value></data>
+  <data name="Welcome.Online" xml:space="preserve"><value>Online</value></data>
+  <data name="Welcome.Offline" xml:space="preserve"><value>Offline</value></data>
+  <data name="Welcome.OnePersonOnline" xml:space="preserve"><value>Online agora: 1</value></data>
+  <data name="Welcome.PeopleOnline" xml:space="preserve"><value>Online agora: {0}</value></data>
+  <data name="Welcome.OneRegion" xml:space="preserve"><value>Regiões: 1</value></data>
+  <data name="Welcome.Regions" xml:space="preserve"><value>Regiões: {0}</value></data>
+  <data name="Welcome.StatusUnavailable" xml:space="preserve"><value>Status indisponível</value></data>
+  <data name="Welcome.Picture" xml:space="preserve"><value>Imagem</value></data>
+  <data name="Welcome.ForgotPassword" xml:space="preserve"><value>Esqueci a senha</value></data>
+  <data name="Welcome.AboutGrid" xml:space="preserve"><value>Sobre este grid</value></data>
+  <data name="Support.Title" xml:space="preserve"><value>Pedir ajuda</value></data>
+  <data name="Support.CheckEmail" xml:space="preserve"><value>Confira seu e-mail. Enviamos um link para mandar o seu chamado à equipe. Ele funciona por 24 horas. Verifique sua pasta de spam.</value></data>
+  <data name="Support.StartAnother" xml:space="preserve"><value>Abrir outro chamado</value></data>
+  <data name="Support.StartNew" xml:space="preserve"><value>Abrir um novo chamado</value></data>
+  <data name="Support.Intro" xml:space="preserve"><value>Envie um chamado à equipe do grid. Você vai receber por e-mail um link privado para ler as respostas e responder.</value></data>
+  <data name="Support.YourTickets" xml:space="preserve"><value>Seus chamados</value></data>
+  <data name="Support.EmailOff" xml:space="preserve"><value>Entre para enviar um chamado. Este grid ainda não consegue enviar e-mails, então não consegue verificar um endereço.</value></data>
+  <data name="Support.From" xml:space="preserve"><value>De {0}. Vamos responder no e-mail da sua conta.</value></data>
+  <data name="Support.NameLabel" xml:space="preserve"><value>Seu nome ou nome do avatar</value></data>
+  <data name="Support.EmailLabel" xml:space="preserve"><value>Seu e-mail</value></data>
+  <data name="Support.CategoryLabel" xml:space="preserve"><value>Do que se trata?</value></data>
+  <data name="Support.ChooseOne" xml:space="preserve"><value>Escolha uma opção</value></data>
+  <data name="Support.CategoryAccounts" xml:space="preserve"><value>Contas e login</value></data>
+  <data name="Support.CategoryLand" xml:space="preserve"><value>Terrenos e regiões</value></data>
+  <data name="Support.CategoryAbuse" xml:space="preserve"><value>Denunciar abuso</value></data>
+  <data name="Support.CategoryTechnical" xml:space="preserve"><value>Problema técnico</value></data>
+  <data name="Support.CategoryOther" xml:space="preserve"><value>Outro assunto</value></data>
+  <data name="Support.SubjectLabel" xml:space="preserve"><value>Assunto</value></data>
+  <data name="Support.MessageLabel" xml:space="preserve"><value>Mensagem</value></data>
+  <data name="Support.MessageHelp" xml:space="preserve"><value>Conte o que aconteceu, quando, e os nomes dos avatares ou regiões envolvidos.</value></data>
+  <data name="Support.EvidenceLabel" xml:space="preserve"><value>Link de evidência (opcional)</value></data>
+  <data name="Support.EvidenceHelp" xml:space="preserve"><value>Um endereço web, por exemplo uma imagem que você enviou. A equipe o vê como texto.</value></data>
+  <data name="Support.LogsLabel" xml:space="preserve"><value>Logs (opcional)</value></data>
+  <data name="Support.Send" xml:space="preserve"><value>Enviar chamado</value></data>
+  <data name="Support.NoPasswords" xml:space="preserve"><value>A equipe vai ler isto. Não coloque senhas aqui.</value></data>
+  <data name="Support.LostLink" xml:space="preserve"><value>Perdeu o link do seu chamado?</value></data>
+  <data name="Support.ConfirmTitle" xml:space="preserve"><value>Enviar o seu chamado</value></data>
+  <data name="Support.ConfirmFailed" xml:space="preserve"><value>Este link não funciona mais. Ele funciona uma vez, por 24 horas. {0}.</value></data>
+  <data name="Support.ConfirmIntro" xml:space="preserve"><value>Clique no botão para enviar o seu chamado à equipe do grid.</value></data>
+  <data name="Support.ConfirmButton" xml:space="preserve"><value>Enviar meu chamado</value></data>
+  <data name="Support.LostTitle" xml:space="preserve"><value>Perdeu o link do chamado</value></data>
+  <data name="Support.LostHeading" xml:space="preserve"><value>Perdeu o link do chamado?</value></data>
+  <data name="Support.LostSent" xml:space="preserve"><value>Se houver chamados para esse endereço, enviamos os links deles. Verifique sua pasta de spam.</value></data>
+  <data name="Support.LostIntro" xml:space="preserve"><value>Informe o endereço de e-mail do qual você enviou o chamado, e enviaremos um novo link.</value></data>
+  <data name="Support.SendNewLink" xml:space="preserve"><value>Enviar um novo link</value></data>
+  <data name="Support.TicketTitle" xml:space="preserve"><value>{0}: {1}</value></data>
+  <data name="Support.YourTicket" xml:space="preserve"><value>Seu chamado</value></data>
+  <data name="Support.RanOutTitle" xml:space="preserve"><value>Este link expirou</value></data>
+  <data name="Support.RanOutText" xml:space="preserve"><value>Os links de um chamado funcionam por 30 dias. Podemos enviar um novo para você.</value></data>
+  <data name="Support.Back" xml:space="preserve"><value>‹ Pedir ajuda</value></data>
+  <data name="Support.You" xml:space="preserve"><value>Você</value></data>
+  <data name="Support.FromStaff" xml:space="preserve"><value>Equipe ({0})</value></data>
+  <data name="Support.StaffName" xml:space="preserve"><value>equipe</value></data>
+  <data name="Support.EvidenceSent" xml:space="preserve"><value>Link de evidência que você enviou: {0}</value></data>
+  <data name="Support.ReplyLabel" xml:space="preserve"><value>Sua resposta</value></data>
+  <data name="Support.SendReply" xml:space="preserve"><value>Enviar resposta</value></data>
+  <data name="Support.ClosedForGood" xml:space="preserve"><value>Este chamado está encerrado. Abra um novo chamado.</value></data>
+  <data name="Support.StateOpen" xml:space="preserve"><value>Aberto</value></data>
+  <data name="Support.StateWaiting" xml:space="preserve"><value>Aguardando você</value></data>
+  <data name="Support.StateClosed" xml:space="preserve"><value>Encerrado</value></data>
+  <data name="Support.StateUnsent" xml:space="preserve"><value>Ainda não enviado</value></data>
+  <data name="Support.TooManyReplies" xml:space="preserve"><value>Respostas demais por enquanto. Tente de novo daqui a pouco.</value></data>
+  <data name="Support.ReplySent" xml:space="preserve"><value>Sua resposta foi enviada à equipe.</value></data>
+  <data name="Support.TooManyOpen" xml:space="preserve"><value>Você já tem o número máximo de chamados abertos ({0}). Responda em um deles.</value></data>
+  <data name="Support.Full" xml:space="preserve"><value>O grid não está aceitando novos chamados agora. Tente mais tarde.</value></data>
+  <data name="Support.Busy" xml:space="preserve"><value>Não foi possível salvar o seu chamado. Tente de novo em alguns minutos.</value></data>
+  <data name="Support.TooLong" xml:space="preserve"><value>Este chamado está longo demais. Abra um novo chamado.</value></data>
+  <data name="Support.ReplyShort" xml:space="preserve"><value>Escreva pelo menos {0} caracteres.</value></data>
+  <data name="Support.ReplyLong" xml:space="preserve"><value>Use menos de {0:N0} caracteres.</value></data>
+  <data name="Support.NameProblem" xml:space="preserve"><value>Escreva o seu nome, com até {0} caracteres.</value></data>
+  <data name="Support.EmailProblem" xml:space="preserve"><value>Escreva o endereço de e-mail para o qual devemos responder.</value></data>
+  <data name="Support.CategoryProblem" xml:space="preserve"><value>Escolha do que se trata o seu chamado.</value></data>
+  <data name="Support.SubjectProblem" xml:space="preserve"><value>Escreva um assunto de {0} a {1} caracteres.</value></data>
+  <data name="Support.MessageShort" xml:space="preserve"><value>Escreva pelo menos {0} caracteres sobre o problema.</value></data>
+  <data name="Support.MessageLong" xml:space="preserve"><value>A mensagem deve ter menos de {0:N0} caracteres.</value></data>
+  <data name="Support.EvidenceProblem" xml:space="preserve"><value>O link de evidência deve ser um único endereço web começando com https:// ou http://.</value></data>
+  <data name="Support.LogsProblem" xml:space="preserve"><value>Os logs devem ter menos de {0:N0} caracteres.</value></data>
+</root>

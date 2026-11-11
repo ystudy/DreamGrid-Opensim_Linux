@@ -25,6 +25,22 @@ public sealed partial class PasswordResetTests
     [Fact]
     public async Task Forgot_password_from_a_German_page_sends_German()
     {
+        await using var rig = Factory();
+        var client = Client(rig);
+        client.DefaultRequestHeaders.Add("Cookie", "dg-lang=de");
+        await AskAsync(client, "Ann Smith", "ann@example.com");
+
+        var sent = Assert.Single(await SentAsync(rig, 1));
+        Assert.Equal(EmailTemplates.Render(EmailTemplates.ResetPassword, EmailTemplates.Default(EmailTemplates.ResetPassword, "de"),
+            new Dictionary<string, string> { ["GridName"] = "Avalon" }).Subject, sent.Email.Subject);
+        Assert.Contains("Passwort", sent.Email.Subject);
+        Assert.Contains("30 Minuten", sent.Email.Text);
+        Assert.DoesNotContain("minutes", sent.Email.Text);
+    }
+
+    [Fact]
+    public async Task Forgot_password_from_a_German_page_uses_the_owners_German_wording()
+    {
         await using var rig = Factory(also: GermanWording);
         var client = Client(rig);
         client.DefaultRequestHeaders.AcceptLanguage.ParseAdd("de");
@@ -32,7 +48,7 @@ public sealed partial class PasswordResetTests
 
         var sent = Assert.Single(await SentAsync(rig, 1));
         Assert.Equal("Passwort zuruecksetzen fuer Avalon", sent.Email.Subject);
-        Assert.Contains("30 minutes", sent.Email.Text);
+        Assert.Contains("30 Minuten", sent.Email.Text);
     }
 
     [Fact]

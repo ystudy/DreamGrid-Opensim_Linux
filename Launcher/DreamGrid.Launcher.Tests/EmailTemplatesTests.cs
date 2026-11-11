@@ -122,6 +122,16 @@ public sealed class EmailTemplatesTests
     }
 
     [Fact]
+    public void Default_in_German_is_German()
+    {
+        var de = EmailTemplates.Default("confirm-email", "de");
+        Assert.Contains("E-Mail", de.Subject);
+        Assert.NotEqual(EmailTemplates.Default("confirm-email", "en"), de);
+        Assert.Empty(EmailTemplates.MissingWords("confirm-email", de.Subject, de.Body));
+        Assert.Equal("24 Stunden", EmailTemplates.Words("ExpiresIn.24h", "de"));
+    }
+
+    [Fact]
     public void Owner_wording_in_the_language_is_used()
     {
         var mine = new EmailTemplateText("Meins", "Meins {Link} {ExpiresIn}", Saved);

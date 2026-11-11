@@ -1,0 +1,303 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This translation was drafted by AI and has not been checked by a native speaker.
+     Corrections from native speakers are welcome: see docs/languages.md. -->
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="Layout.BackToStaff" xml:space="preserve"><value>Назад к страницам администрации</value></data>
+  <data name="Layout.Help" xml:space="preserve"><value>Обратиться за помощью</value></data>
+  <data name="Layout.Language" xml:space="preserve"><value>Язык</value></data>
+  <data name="Layout.ChangeLanguage" xml:space="preserve"><value>Сменить язык</value></data>
+  <data name="Common.SignIn" xml:space="preserve"><value>Войти</value></data>
+  <data name="SignIn.Intro" xml:space="preserve"><value>Используйте имя и пароль вашего аватара.</value></data>
+  <data name="Common.AvatarName" xml:space="preserve"><value>Имя аватара</value></data>
+  <data name="Common.NamePlaceholder" xml:space="preserve"><value>Имя Фамилия</value></data>
+  <data name="Common.Password" xml:space="preserve"><value>Пароль</value></data>
+  <data name="SignIn.ResendLink" xml:space="preserve"><value>Отправить ссылку ещё раз</value></data>
+  <data name="Common.ForgotPasswordLink" xml:space="preserve"><value>Забыли пароль?</value></data>
+  <data name="SignIn.CantSignIn" xml:space="preserve"><value>Не получается войти? Обратитесь за помощью</value></data>
+  <data name="Common.CreateAccount" xml:space="preserve"><value>Создать учётную запись</value></data>
+  <data name="SignIn.WrongNameOrPassword" xml:space="preserve"><value>Неверное имя или пароль.</value></data>
+  <data name="Common.TooManyAttempts" xml:space="preserve"><value>Слишком много попыток. Попробуйте ещё раз через несколько минут.</value></data>
+  <data name="SignIn.ConfirmFirst" xml:space="preserve"><value>Сначала подтвердите адрес электронной почты. Или дождитесь одобрения администрации.</value></data>
+  <data name="SignIn.WaitForStaff" xml:space="preserve"><value>Ваша учётная запись ждёт одобрения администрации грида.</value></data>
+  <data name="Common.ServiceDown" xml:space="preserve"><value>Служба входа грида сейчас не работает. Попробуйте позже.</value></data>
+  <data name="Common.WrongCode" xml:space="preserve"><value>Неверный код. Попробуйте ещё раз.</value></data>
+  <data name="SignIn.CodeUnknown" xml:space="preserve"><value>Двухфакторный вход сейчас невозможно проверить. Свяжитесь с владельцем грида.</value></data>
+  <data name="SignIn.SaveFailed" xml:space="preserve"><value>Не удалось сохранить файл двухфакторного входа. Попробуйте ещё раз.</value></data>
+  <data name="SignIn.Code" xml:space="preserve"><value>Код</value></data>
+  <data name="Common.BackToSignIn" xml:space="preserve"><value>Назад ко входу</value></data>
+  <data name="SignInCode.Title" xml:space="preserve"><value>Двухфакторный код</value></data>
+  <data name="SignInCode.Intro" xml:space="preserve"><value>Введите 6-значный код из приложения-аутентификатора. Если телефона нет под рукой, введите один из резервных кодов.</value></data>
+  <data name="SignInCode.StartAgain" xml:space="preserve"><value>Начать заново</value></data>
+  <data name="Common.TwoFactorSignIn" xml:space="preserve"><value>Двухфакторный вход</value></data>
+  <data name="TwoFactor.Intro" xml:space="preserve"><value>С двухфакторным входом для входа на этот сайт и для сброса пароля нужен код из приложения-аутентификатора на вашем телефоне, а также пароль или адрес электронной почты.</value></data>
+  <data name="TwoFactor.IsOn" xml:space="preserve"><value>Двухфакторный вход включён.</value></data>
+  <data name="TwoFactor.IsOff" xml:space="preserve"><value>Двухфакторный вход выключен.</value></data>
+  <data name="TwoFactor.BackupCodes" xml:space="preserve"><value>Ваши резервные коды</value></data>
+  <data name="TwoFactor.BackupCodesIntro" xml:space="preserve"><value>Каждый код срабатывает один раз, когда у вас нет телефона. Храните их в надёжном месте. Больше они показаны не будут.</value></data>
+  <data name="Common.Continue" xml:space="preserve"><value>Продолжить</value></data>
+  <data name="TwoFactor.TurnItOn" xml:space="preserve"><value>Включить</value></data>
+  <data name="TwoFactor.ScanIntro" xml:space="preserve"><value>Отсканируйте этот код приложением-аутентификатором на телефоне, затем введите 6-значный код, который покажет приложение.</value></data>
+  <data name="TwoFactor.QrLabel" xml:space="preserve"><value>QR-код для приложения-аутентификатора</value></data>
+  <data name="TwoFactor.CantScan" xml:space="preserve"><value>Не получается отсканировать? Введите в приложении этот ключ:</value></data>
+  <data name="TwoFactor.TurnOn" xml:space="preserve"><value>Включить</value></data>
+  <data name="TwoFactor.NewCodes" xml:space="preserve"><value>Новые резервные коды</value></data>
+  <data name="TwoFactor.NewCodesIntro" xml:space="preserve"><value>Это заменит все ваши резервные коды. Введите код из приложения-аутентификатора.</value></data>
+  <data name="TwoFactor.TurnOff" xml:space="preserve"><value>Выключить</value></data>
+  <data name="TwoFactor.TurnOffIntro" xml:space="preserve"><value>Введите код из приложения-аутентификатора или резервный код.</value></data>
+  <data name="Common.BackToAccount" xml:space="preserve"><value>Назад к учётной записи</value></data>
+  <data name="TwoFactor.StartedAgain" xml:space="preserve"><value>Настройка начата заново. Отсканируйте новый код ниже.</value></data>
+  <data name="TwoFactor.StartedElsewhere" xml:space="preserve"><value>Настройка была начата заново в другом месте. Отсканируйте новый код ниже.</value></data>
+  <data name="ForgotPassword.Title" xml:space="preserve"><value>Забыли пароль</value></data>
+  <data name="ForgotPassword.Off" xml:space="preserve"><value>Сброс пароля в этом гриде не включён. Свяжитесь с владельцем грида.</value></data>
+  <data name="ForgotPassword.Reply" xml:space="preserve"><value>Если это имя и адрес электронной почты соответствуют учётной записи, мы отправили ссылку. Она срабатывает один раз и действует 30 минут. Проверьте папку «Спам».</value></data>
+  <data name="ForgotPassword.Intro" xml:space="preserve"><value>Введите имя аватара и адрес электронной почты вашей учётной записи. Мы пришлём письмо со ссылкой для выбора нового пароля.</value></data>
+  <data name="Common.Email" xml:space="preserve"><value>Эл. почта</value></data>
+  <data name="Common.SendLink" xml:space="preserve"><value>Отправить ссылку</value></data>
+  <data name="Common.BotFailed" xml:space="preserve"><value>Форме не удалось проверить, что вы человек. Попробуйте ещё раз.</value></data>
+  <data name="ResetPassword.Title" xml:space="preserve"><value>Выберите новый пароль</value></data>
+  <data name="ResetPassword.Done" xml:space="preserve"><value>Пароль изменён. Войдите с новым паролем.</value></data>
+  <data name="ResetPassword.Expired" xml:space="preserve"><value>Срок действия ссылки истёк, или она уже использована. Запросите новую.</value></data>
+  <data name="ResetPassword.AskNew" xml:space="preserve"><value>Запросить новую ссылку</value></data>
+  <data name="ResetPassword.Intro" xml:space="preserve"><value>Для {0}. Минимум символов: {1}.</value></data>
+  <data name="Common.CodeLabel" xml:space="preserve"><value>Код из приложения-аутентификатора или резервный код</value></data>
+  <data name="Common.NewPassword" xml:space="preserve"><value>Новый пароль</value></data>
+  <data name="Common.NewPasswordAgain" xml:space="preserve"><value>Новый пароль ещё раз</value></data>
+  <data name="Common.ChangePassword" xml:space="preserve"><value>Сменить пароль</value></data>
+  <data name="ResetPassword.WrongCode" xml:space="preserve"><value>Неверный код. Попробуйте ещё раз или используйте резервный код.</value></data>
+  <data name="Common.PasswordWriteFailed" xml:space="preserve"><value>Сейчас не удалось сменить пароль. Попробуйте ещё раз через несколько минут.</value></data>
+  <data name="Password.Mismatch" xml:space="preserve"><value>Введите один и тот же пароль дважды.</value></data>
+  <data name="Password.TooShort" xml:space="preserve"><value>Минимум символов в пароле: {0}.</value></data>
+  <data name="Password.TooCommon" xml:space="preserve"><value>Этот пароль слишком распространён. Выберите другой.</value></data>
+  <data name="Password.IsName" xml:space="preserve"><value>Не используйте имя аватара в качестве пароля.</value></data>
+  <data name="Confirm.Title" xml:space="preserve"><value>Подтвердите адрес электронной почты</value></data>
+  <data name="Common.SignUpBusy" xml:space="preserve"><value>Регистрация сейчас не работает. Попробуйте ещё раз через несколько минут.</value></data>
+  <data name="Confirm.AlreadyApproved" xml:space="preserve"><value>Вы уже одобрены.</value></data>
+  <data name="Confirm.SignInLink" xml:space="preserve"><value>Войти.</value></data>
+  <data name="Confirm.Expired" xml:space="preserve"><value>Срок действия ссылки истёк, или она уже использована.</value></data>
+  <data name="Confirm.SignUpAgain" xml:space="preserve"><value>Зарегистрироваться заново</value></data>
+  <data name="Confirm.SignInForNewLink" xml:space="preserve"><value>Войдите, чтобы запросить новую ссылку</value></data>
+  <data name="ConfirmEmail.Title" xml:space="preserve"><value>Подтвердите новый адрес электронной почты</value></data>
+  <data name="ConfirmEmail.Done" xml:space="preserve"><value>Ваш адрес электронной почты теперь {0}.</value></data>
+  <data name="ConfirmEmail.Taken" xml:space="preserve"><value>Этот адрес уже использует другой аватар в этом гриде.</value></data>
+  <data name="ConfirmEmail.Busy" xml:space="preserve"><value>Сейчас не удалось сменить адрес электронной почты. Попробуйте ещё раз через несколько минут.</value></data>
+  <data name="ConfirmEmail.Expired" xml:space="preserve"><value>Срок действия ссылки истёк, или она уже использована.</value></data>
+  <data name="ConfirmEmail.ToAccount" xml:space="preserve"><value>Перейти к учётной записи</value></data>
+  <data name="Common.HowToConnect" xml:space="preserve"><value>Как подключиться</value></data>
+  <data name="Connect.Heading" xml:space="preserve"><value>Как подключиться к {0}</value></data>
+  <data name="Connect.Choose" xml:space="preserve"><value>Выберите вьюер, затем добавьте {0} в его менеджере гридов.</value></data>
+  <data name="Connect.Approved" xml:space="preserve"><value>Вы одобрены. Войдите как {0}.</value></data>
+  <data name="Connect.Recommended" xml:space="preserve"><value>Рекомендуется</value></data>
+  <data name="Connect.FirestormSystems" xml:space="preserve"><value>Windows, macOS и Linux</value></data>
+  <data name="Connect.Download" xml:space="preserve"><value>Скачать</value></data>
+  <data name="Connect.FirestormNote" xml:space="preserve"><value>На странице Firestorm выберите свою систему и версию для OpenSim, а не для Second Life.</value></data>
+  <data name="Connect.OtherViewers" xml:space="preserve"><value>Другие вьюеры</value></data>
+  <data name="Connect.AnyViewer" xml:space="preserve"><value>Подойдёт любой вьюер для OpenSim</value></data>
+  <data name="Connect.Website" xml:space="preserve"><value>Сайт</value></data>
+  <data name="Connect.OthersNote" xml:space="preserve"><value>Ссылки ведут на собственные сайты вьюеров. Этот грид не размещает вьюеры у себя.</value></data>
+  <data name="Connect.GridSettings" xml:space="preserve"><value>Настройки для менеджера гридов</value></data>
+  <data name="Connect.LoginUri" xml:space="preserve"><value>Login URI</value></data>
+  <data name="Connect.GridName" xml:space="preserve"><value>Название грида</value></data>
+  <data name="Connect.LoginPage" xml:space="preserve"><value>Страница входа</value></data>
+  <data name="Connect.Account" xml:space="preserve"><value>Учётная запись</value></data>
+  <data name="Connect.Password" xml:space="preserve"><value>Пароль</value></data>
+  <data name="Connect.Copy" xml:space="preserve"><value>Копировать</value></data>
+  <data name="Connect.Copied" xml:space="preserve"><value>Скопировано</value></data>
+  <data name="Connect.CopySelected" xml:space="preserve"><value>Выделено: нажмите Ctrl+C</value></data>
+  <data name="Connect.SettingsNote" xml:space="preserve"><value>Большинство вьюеров заполняют остальное сами, когда вы укажете Login URI.</value></data>
+  <data name="Connect.Steps" xml:space="preserve"><value>Шаги в Firestorm</value></data>
+  <data name="Connect.Step1" xml:space="preserve"><value>Откройте «Настройки», затем «OpenSim», затем «Менеджер гридов».</value></data>
+  <data name="Connect.Step2" xml:space="preserve"><value>В разделе «Добавить новый грид» вставьте Login URI и нажмите «Применить»:</value></data>
+  <data name="Connect.Step3" xml:space="preserve"><value>На экране входа выберите {0} в списке гридов.</value></data>
+  <data name="Connect.Step4Named" xml:space="preserve"><value>Войдите как {0} со своим паролем.</value></data>
+  <data name="Connect.Step4" xml:space="preserve"><value>Войдите с именем и фамилией своего аватара и своим паролем.</value></data>
+  <data name="Connect.Help" xml:space="preserve"><value>Помощь</value></data>
+  <data name="Connect.FirestormHelp" xml:space="preserve"><value>Справочные страницы Firestorm</value></data>
+  <data name="Connect.MakeAccount" xml:space="preserve"><value>Создать учётную запись</value></data>
+  <data name="Connect.ForgotPassword" xml:space="preserve"><value>Забыли пароль</value></data>
+  <data name="Connect.AskStaff" xml:space="preserve"><value>Обратиться за помощью к администрации грида</value></data>
+  <data name="Legal.Terms" xml:space="preserve"><value>Условия</value></data>
+  <data name="Legal.Contact" xml:space="preserve"><value>Контакты</value></data>
+  <data name="Connect.NoSupport" xml:space="preserve"><value>{0} не оказывает техническую поддержку по вьюерам.</value></data>
+  <data name="Legal.Privacy" xml:space="preserve"><value>Конфиденциальность</value></data>
+  <data name="Legal.Cookies" xml:space="preserve"><value>Cookie</value></data>
+  <data name="Home.Title" xml:space="preserve"><value>Добро пожаловать</value></data>
+  <data name="Home.Intro" xml:space="preserve"><value>Добро пожаловать. Войдите под своим аватаром, чтобы узнать, как подключиться, или создайте учётную запись, чтобы присоединиться.</value></data>
+  <data name="Home.SignInIntro" xml:space="preserve"><value>Уже есть аватар здесь? Используйте его имя и пароль.</value></data>
+  <data name="Home.NewHere" xml:space="preserve"><value>Впервые здесь? Создайте аватар, чтобы присоединиться к {0} и его миру.</value></data>
+  <data name="Home.AboutGrid" xml:space="preserve"><value>Об этом гриде</value></data>
+  <data name="Home.StaffSignIn" xml:space="preserve"><value>Вход для администрации</value></data>
+  <data name="SignUp.Closed" xml:space="preserve"><value>Регистрация в этом гриде пока закрыта.</value></data>
+  <data name="SignUp.SignInIfAccount" xml:space="preserve"><value>{0}, если у вас уже есть учётная запись.</value></data>
+  <data name="SignUp.CheckEmail" xml:space="preserve"><value>Проверьте почту. Мы отправили ссылку для подтверждения учётной записи. Она срабатывает один раз и действует 24 часа. Проверьте папку «Спам».</value></data>
+  <data name="SignUp.CantFindEmail" xml:space="preserve"><value>Не можете найти письмо? Администрация тоже может вас одобрить.</value></data>
+  <data name="SignUp.SendAgain" xml:space="preserve"><value>Отправить ещё раз</value></data>
+  <data name="SignUp.WaitingForStaff" xml:space="preserve"><value>Спасибо. Администрация грида рассмотрит вашу заявку на регистрацию. Когда вас одобрят, вы сможете войти здесь с только что выбранными именем и паролем.</value></data>
+  <data name="SignUp.Intro" xml:space="preserve"><value>Выберите имя для аватара и пароль. С ними вы будете входить в {0}.</value></data>
+  <data name="SignUp.FirstName" xml:space="preserve"><value>Имя</value></data>
+  <data name="SignUp.LastName" xml:space="preserve"><value>Фамилия</value></data>
+  <data name="SignUp.PasswordAgain" xml:space="preserve"><value>Пароль ещё раз</value></data>
+  <data name="SignUp.AcceptTerms" xml:space="preserve"><value>Я принимаю {0} и {1}.</value></data>
+  <data name="SignUp.TermsOfService" xml:space="preserve"><value>Условия обслуживания</value></data>
+  <data name="SignUp.PrivacyNotice" xml:space="preserve"><value>Уведомление о конфиденциальности</value></data>
+  <data name="SignUp.CreateAvatar" xml:space="preserve"><value>Создать аватар</value></data>
+  <data name="SignUp.AddressLimit" xml:space="preserve"><value>Слишком много регистраций с вашего адреса. Попробуйте ещё раз через час.</value></data>
+  <data name="SignUp.TermsProblem" xml:space="preserve"><value>Отметьте флажок, чтобы принять Условия обслуживания и Уведомление о конфиденциальности.</value></data>
+  <data name="SignUp.NameMissing" xml:space="preserve"><value>Введите имя и фамилию.</value></data>
+  <data name="SignUp.NameTooLong" xml:space="preserve"><value>Максимум символов в имени и в фамилии (в каждом): {0}.</value></data>
+  <data name="SignUp.NameBadCharacters" xml:space="preserve"><value>Используйте в имени только латинские буквы от A до Z, цифры и дефисы.</value></data>
+  <data name="SignUp.NameTaken" xml:space="preserve"><value>Это имя занято. Попробуйте другое.</value></data>
+  <data name="SignUp.EmailMissing" xml:space="preserve"><value>Введите адрес электронной почты.</value></data>
+  <data name="SignUp.EmailTooLong" xml:space="preserve"><value>Максимум символов в адресе электронной почты: {0}.</value></data>
+  <data name="SignUp.EmailBadShape" xml:space="preserve"><value>Это не похоже на адрес электронной почты.</value></data>
+  <data name="Guest.Title" xml:space="preserve"><value>Ваша учётная запись</value></data>
+  <data name="Guest.SignedInAs" xml:space="preserve"><value>Вы вошли как {0}.</value></data>
+  <data name="Guest.ConnectHeading" xml:space="preserve"><value>Подключение через Firestorm</value></data>
+  <data name="Guest.Step1" xml:space="preserve"><value>Установите Firestorm для OpenSim с сайта {0}.</value></data>
+  <data name="Guest.Step2" xml:space="preserve"><value>В Firestorm откройте «Настройки», затем «OpenSim», затем «Менеджер гридов».</value></data>
+  <data name="Guest.Step3" xml:space="preserve"><value>Вставьте {0} и нажмите «Применить».</value></data>
+  <data name="Guest.Step4" xml:space="preserve"><value>Выберите {0} на экране входа и войдите с именем аватара и паролем.</value></data>
+  <data name="Guest.SignOut" xml:space="preserve"><value>Выйти</value></data>
+  <data name="Terms.Version" xml:space="preserve"><value>Версия {0}</value></data>
+  <data name="Terms.Accepted" xml:space="preserve"><value>Вы приняли эту версию.</value></data>
+  <data name="Terms.Accept" xml:space="preserve"><value>Я принимаю эти условия</value></data>
+  <data name="Terms.Changed" xml:space="preserve"><value>Условия изменились, пока вы их читали. Прочитайте новую версию.</value></data>
+  <data name="Regions.Title" xml:space="preserve"><value>Мои регионы</value></data>
+  <data name="Regions.None" xml:space="preserve"><value>У вас нет регионов.</value></data>
+  <data name="Regions.RestartInWorld" xml:space="preserve"><value>Обычный перезапуск делается в мире, через окно «Регион/Землевладение» во вьюере.</value></data>
+  <data name="Regions.State" xml:space="preserve"><value>Состояние региона: {0}.</value></data>
+  <data name="Regions.PeopleHere" xml:space="preserve"><value>Сейчас здесь: {0}</value></data>
+  <data name="Regions.Unknown" xml:space="preserve"><value>неизвестно</value></data>
+  <data name="Regions.NotRunning" xml:space="preserve"><value>не запущен</value></data>
+  <data name="Regions.LastStarted" xml:space="preserve"><value>Последний запуск: {0} (UTC)</value></data>
+  <data name="Regions.Start" xml:space="preserve"><value>Запустить регион</value></data>
+  <data name="Regions.Restart" xml:space="preserve"><value>Перезапустить регион</value></data>
+  <data name="Regions.SharedProgram" xml:space="preserve"><value>Этот регион работает вместе с чужими регионами. Чтобы перезапустить его, свяжитесь с администрацией грида.</value></data>
+  <data name="Regions.RestartedRecently" xml:space="preserve"><value>Этот регион перезапускали несколько минут назад. Попробуйте ещё раз после {0} (UTC).</value></data>
+  <data name="Regions.NoRestartNeeded" xml:space="preserve"><value>Регион {0} не нуждается в перезапуске.</value></data>
+  <data name="Regions.Restarting" xml:space="preserve"><value>Перезапуск региона {0}. Это может занять минуту-другую.</value></data>
+  <data name="Regions.StateRunning" xml:space="preserve"><value>работает</value></data>
+  <data name="Regions.StateStopped" xml:space="preserve"><value>остановлен</value></data>
+  <data name="Regions.StateStarting" xml:space="preserve"><value>запускается</value></data>
+  <data name="Regions.StateStopping" xml:space="preserve"><value>останавливается</value></data>
+  <data name="Regions.StateFailed" xml:space="preserve"><value>не отвечает</value></data>
+  <data name="Regions.StateParked" xml:space="preserve"><value>в режиме ожидания</value></data>
+  <data name="Account.Title" xml:space="preserve"><value>Настройки учётной записи</value></data>
+  <data name="Account.Details" xml:space="preserve"><value>Ваши данные</value></data>
+  <data name="Account.EmailAddress" xml:space="preserve"><value>Адрес электронной почты</value></data>
+  <data name="Account.NoEmailAddress" xml:space="preserve"><value>Нет адреса электронной почты</value></data>
+  <data name="Account.Role" xml:space="preserve"><value>Роль</value></data>
+  <data name="Account.Made" xml:space="preserve"><value>Учётная запись создана</value></data>
+  <data name="Account.RoleOwner" xml:space="preserve"><value>Владелец</value></data>
+  <data name="Account.RoleAdmin" xml:space="preserve"><value>Администратор</value></data>
+  <data name="Account.RoleSupervisor" xml:space="preserve"><value>Супервайзер</value></data>
+  <data name="Account.RoleResident" xml:space="preserve"><value>Резидент</value></data>
+  <data name="Account.CurrentPassword" xml:space="preserve"><value>Текущий пароль</value></data>
+  <data name="Account.ChangeEmail" xml:space="preserve"><value>Сменить почту</value></data>
+  <data name="Account.NewEmail" xml:space="preserve"><value>Новый адрес электронной почты</value></data>
+  <data name="Account.NoEmail" xml:space="preserve"><value>Чтобы сменить адрес электронной почты, в гриде должна быть настроена отправка писем. Обратитесь к владельцу грида.</value></data>
+  <data name="Account.PasswordDone" xml:space="preserve"><value>Пароль изменён.</value></data>
+  <data name="Account.AskReply" xml:space="preserve"><value>Мы отправили ссылку на новый адрес. Ваш адрес не изменится, пока вы её не откроете. Она срабатывает один раз и действует 24 часа.</value></data>
+  <data name="Account.WrongCurrent" xml:space="preserve"><value>Это не ваш текущий пароль.</value></data>
+  <data name="Account.SamePassword" xml:space="preserve"><value>Выберите пароль, который вы ещё не использовали.</value></data>
+  <data name="Account.SameAddress" xml:space="preserve"><value>Это уже ваш адрес электронной почты.</value></data>
+  <data name="Bots.LeaveEmpty" xml:space="preserve"><value>Оставьте это поле пустым</value></data>
+  <data name="Bots.NeedsJs" xml:space="preserve"><value>Этой форме нужен JavaScript, чтобы убедиться, что вы не бот.</value></data>
+  <data name="Bots.PictureAlt" xml:space="preserve"><value>Картинка с буквами; если вы её не видите, ответьте на вопрос ниже</value></data>
+  <data name="Bots.TypeLetters" xml:space="preserve"><value>Введите буквы</value></data>
+  <data name="Bots.Question" xml:space="preserve"><value>Сколько будет {0} плюс {1}?</value></data>
+  <data name="Bots.DigitsWork" xml:space="preserve"><value>Ответ можно ввести цифрами, например 11.</value></data>
+  <data name="Bots.EitherOne" xml:space="preserve"><value>Ответьте на любой из двух.</value></data>
+  <data name="Bots.Number1" xml:space="preserve"><value>один</value></data>
+  <data name="Bots.Number2" xml:space="preserve"><value>два</value></data>
+  <data name="Bots.Number3" xml:space="preserve"><value>три</value></data>
+  <data name="Bots.Number4" xml:space="preserve"><value>четыре</value></data>
+  <data name="Bots.Number5" xml:space="preserve"><value>пять</value></data>
+  <data name="Bots.Number6" xml:space="preserve"><value>шесть</value></data>
+  <data name="Bots.Number7" xml:space="preserve"><value>семь</value></data>
+  <data name="Bots.Number8" xml:space="preserve"><value>восемь</value></data>
+  <data name="Bots.Number9" xml:space="preserve"><value>девять</value></data>
+  <data name="Legal.ShownInDefault" xml:space="preserve"><value>Эта страница показана на языке: {0}.</value></data>
+  <data name="Legal.VersionSaved" xml:space="preserve"><value>Версия {0}, {1}</value></data>
+  <data name="Legal.NavLabel" xml:space="preserve"><value>Правовые страницы</value></data>
+  <data name="Welcome.Online" xml:space="preserve"><value>В сети</value></data>
+  <data name="Welcome.Offline" xml:space="preserve"><value>Не в сети</value></data>
+  <data name="Welcome.OnePersonOnline" xml:space="preserve"><value>Сейчас в мире: 1</value></data>
+  <data name="Welcome.PeopleOnline" xml:space="preserve"><value>Сейчас в мире: {0}</value></data>
+  <data name="Welcome.OneRegion" xml:space="preserve"><value>Регионы: 1</value></data>
+  <data name="Welcome.Regions" xml:space="preserve"><value>Регионы: {0}</value></data>
+  <data name="Welcome.StatusUnavailable" xml:space="preserve"><value>Состояние недоступно</value></data>
+  <data name="Welcome.Picture" xml:space="preserve"><value>Изображение</value></data>
+  <data name="Welcome.ForgotPassword" xml:space="preserve"><value>Забыли пароль</value></data>
+  <data name="Welcome.AboutGrid" xml:space="preserve"><value>Об этом гриде</value></data>
+  <data name="Support.Title" xml:space="preserve"><value>Обратиться за помощью</value></data>
+  <data name="Support.CheckEmail" xml:space="preserve"><value>Проверьте почту. Мы отправили ссылку, чтобы передать ваше обращение администрации. Она действует 24 часа. Проверьте папку «Спам».</value></data>
+  <data name="Support.StartAnother" xml:space="preserve"><value>Создать ещё одно обращение</value></data>
+  <data name="Support.StartNew" xml:space="preserve"><value>Создать новое обращение</value></data>
+  <data name="Support.Intro" xml:space="preserve"><value>Отправьте обращение администрации грида. Вы получите по почте личную ссылку, чтобы читать ответы и отвечать.</value></data>
+  <data name="Support.YourTickets" xml:space="preserve"><value>Ваши обращения</value></data>
+  <data name="Support.EmailOff" xml:space="preserve"><value>Войдите, чтобы отправить обращение. Этот грид пока не может отправлять письма, поэтому не может проверить адрес.</value></data>
+  <data name="Support.From" xml:space="preserve"><value>От {0}. Мы ответим на адрес электронной почты вашей учётной записи.</value></data>
+  <data name="Support.NameLabel" xml:space="preserve"><value>Ваше имя или имя аватара</value></data>
+  <data name="Support.EmailLabel" xml:space="preserve"><value>Ваша эл. почта</value></data>
+  <data name="Support.CategoryLabel" xml:space="preserve"><value>О чём обращение?</value></data>
+  <data name="Support.ChooseOne" xml:space="preserve"><value>Выберите вариант</value></data>
+  <data name="Support.CategoryAccounts" xml:space="preserve"><value>Учётные записи и вход</value></data>
+  <data name="Support.CategoryLand" xml:space="preserve"><value>Земля и регионы</value></data>
+  <data name="Support.CategoryAbuse" xml:space="preserve"><value>Сообщить о нарушении</value></data>
+  <data name="Support.CategoryTechnical" xml:space="preserve"><value>Техническая проблема</value></data>
+  <data name="Support.CategoryOther" xml:space="preserve"><value>Другое</value></data>
+  <data name="Support.SubjectLabel" xml:space="preserve"><value>Тема</value></data>
+  <data name="Support.MessageLabel" xml:space="preserve"><value>Сообщение</value></data>
+  <data name="Support.MessageHelp" xml:space="preserve"><value>Опишите, что случилось, когда, и имена причастных аватаров или регионов.</value></data>
+  <data name="Support.EvidenceLabel" xml:space="preserve"><value>Ссылка на доказательства (необязательно)</value></data>
+  <data name="Support.EvidenceHelp" xml:space="preserve"><value>Один веб-адрес, например загруженная вами картинка. Администрация увидит его как текст.</value></data>
+  <data name="Support.LogsLabel" xml:space="preserve"><value>Журналы (необязательно)</value></data>
+  <data name="Support.Send" xml:space="preserve"><value>Отправить обращение</value></data>
+  <data name="Support.NoPasswords" xml:space="preserve"><value>Это прочитает администрация. Не пишите сюда пароли.</value></data>
+  <data name="Support.LostLink" xml:space="preserve"><value>Потеряли ссылку на обращение?</value></data>
+  <data name="Support.ConfirmTitle" xml:space="preserve"><value>Отправка обращения</value></data>
+  <data name="Support.ConfirmFailed" xml:space="preserve"><value>Эта ссылка больше не работает. Она срабатывает один раз и действует 24 часа. {0}.</value></data>
+  <data name="Support.ConfirmIntro" xml:space="preserve"><value>Нажмите кнопку, чтобы отправить обращение администрации грида.</value></data>
+  <data name="Support.ConfirmButton" xml:space="preserve"><value>Отправить обращение</value></data>
+  <data name="Support.LostTitle" xml:space="preserve"><value>Потеряна ссылка на обращение</value></data>
+  <data name="Support.LostHeading" xml:space="preserve"><value>Потеряли ссылку на обращение?</value></data>
+  <data name="Support.LostSent" xml:space="preserve"><value>Если есть обращения с этого адреса, мы отправили ссылки на них. Проверьте папку «Спам».</value></data>
+  <data name="Support.LostIntro" xml:space="preserve"><value>Укажите адрес электронной почты, с которого вы отправили обращение, и мы пришлём новую ссылку.</value></data>
+  <data name="Support.SendNewLink" xml:space="preserve"><value>Прислать новую ссылку</value></data>
+  <data name="Support.TicketTitle" xml:space="preserve"><value>{0}: {1}</value></data>
+  <data name="Support.YourTicket" xml:space="preserve"><value>Ваше обращение</value></data>
+  <data name="Support.RanOutTitle" xml:space="preserve"><value>Срок действия ссылки истёк</value></data>
+  <data name="Support.RanOutText" xml:space="preserve"><value>Ссылки на обращение действуют 30 дней. Мы можем прислать вам новую.</value></data>
+  <data name="Support.Back" xml:space="preserve"><value>‹ Обратиться за помощью</value></data>
+  <data name="Support.You" xml:space="preserve"><value>Вы</value></data>
+  <data name="Support.FromStaff" xml:space="preserve"><value>Администрация ({0})</value></data>
+  <data name="Support.StaffName" xml:space="preserve"><value>администрация</value></data>
+  <data name="Support.EvidenceSent" xml:space="preserve"><value>Ссылка на доказательства, которую вы отправили: {0}</value></data>
+  <data name="Support.ReplyLabel" xml:space="preserve"><value>Ваш ответ</value></data>
+  <data name="Support.SendReply" xml:space="preserve"><value>Отправить ответ</value></data>
+  <data name="Support.ClosedForGood" xml:space="preserve"><value>Это обращение закрыто. Создайте новое обращение.</value></data>
+  <data name="Support.StateOpen" xml:space="preserve"><value>Открыто</value></data>
+  <data name="Support.StateWaiting" xml:space="preserve"><value>Ждёт вашего ответа</value></data>
+  <data name="Support.StateClosed" xml:space="preserve"><value>Закрыто</value></data>
+  <data name="Support.StateUnsent" xml:space="preserve"><value>Ещё не отправлено</value></data>
+  <data name="Support.TooManyReplies" xml:space="preserve"><value>Пока слишком много ответов. Попробуйте ещё раз чуть позже.</value></data>
+  <data name="Support.ReplySent" xml:space="preserve"><value>Ваш ответ передан администрации.</value></data>
+  <data name="Support.TooManyOpen" xml:space="preserve"><value>У вас уже максимальное число открытых обращений ({0}). Ответьте в одном из них.</value></data>
+  <data name="Support.Full" xml:space="preserve"><value>Грид сейчас не принимает новые обращения. Попробуйте позже.</value></data>
+  <data name="Support.Busy" xml:space="preserve"><value>Не удалось сохранить обращение. Попробуйте ещё раз через несколько минут.</value></data>
+  <data name="Support.TooLong" xml:space="preserve"><value>Это обращение слишком длинное. Создайте новое обращение.</value></data>
+  <data name="Support.ReplyShort" xml:space="preserve"><value>Напишите ответ. Минимум символов: {0}.</value></data>
+  <data name="Support.ReplyLong" xml:space="preserve"><value>Сократите ответ: символов должно быть меньше {0:N0}.</value></data>
+  <data name="Support.NameProblem" xml:space="preserve"><value>Укажите своё имя. Максимум символов: {0}.</value></data>
+  <data name="Support.EmailProblem" xml:space="preserve"><value>Укажите адрес электронной почты, на который нам ответить.</value></data>
+  <data name="Support.CategoryProblem" xml:space="preserve"><value>Выберите, о чём ваше обращение.</value></data>
+  <data name="Support.SubjectProblem" xml:space="preserve"><value>Напишите тему. Длина в символах: от {0} до {1}.</value></data>
+  <data name="Support.MessageShort" xml:space="preserve"><value>Опишите проблему. Минимум символов: {0}.</value></data>
+  <data name="Support.MessageLong" xml:space="preserve"><value>Сократите сообщение: символов должно быть меньше {0:N0}.</value></data>
+  <data name="Support.EvidenceProblem" xml:space="preserve"><value>Ссылка на доказательства должна быть одним веб-адресом, начинающимся с https:// или http://.</value></data>
+  <data name="Support.LogsProblem" xml:space="preserve"><value>Сократите журналы: символов должно быть меньше {0:N0}.</value></data>
+</root>

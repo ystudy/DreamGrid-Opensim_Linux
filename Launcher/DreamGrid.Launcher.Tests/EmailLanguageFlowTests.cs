@@ -102,6 +102,19 @@ public sealed class EmailLanguageFlowTests
         Assert.Equal("Deutsch signup-denied", (await SignUpsTests.SentAsync(rig, 2))[1].Email.Subject);
     }
 
+    [Fact]
+    public async Task Sign_up_confirmation_says_24_Stunden_in_German()
+    {
+        await using var rig = SignUpsTests.Factory();
+
+        await rig.SignUps.SubmitAsync(SignUpsTests.Form(), Caller, Ct, "de");
+
+        var sent = Assert.Single(await SignUpsTests.SentAsync(rig, 1)).Email;
+        Assert.Contains("E-Mail", sent.Subject);
+        Assert.Contains("24 Stunden", sent.Text);
+        Assert.DoesNotContain("hours", sent.Text);
+    }
+
     private static Ticket AddTicket(SignUpsTests.Rig rig, Guid? account) =>
         rig.F.Services.GetRequiredService<TicketStore>().Create(_ => true, (id, n) => new Ticket(id, n, TicketState.Open, TicketCategories.Technical,
             "Region won't start", new TicketSender(account, "Ann Smith", "ann@example.com"), DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null,

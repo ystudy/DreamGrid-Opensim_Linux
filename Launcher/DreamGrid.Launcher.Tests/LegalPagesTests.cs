@@ -347,7 +347,8 @@ public sealed class LegalPagesTests
 
         var page = await TermsAsync(f, "de");
 
-        Assert.Equal("This page is shown in English.", page.QuerySelector("main [role=note]")!.TextContent.Trim());
+        // The note is in the reader's language (German); the language it names is given in its own name.
+        Assert.Equal("Diese Seite wird in folgender Sprache angezeigt: English.", page.QuerySelector("main [role=note]")!.TextContent.Trim());
         Assert.Contains("Test terms.", page.QuerySelector("main article")!.TextContent);
     }
 
