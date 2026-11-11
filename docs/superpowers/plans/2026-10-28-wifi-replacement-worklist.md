@@ -57,18 +57,19 @@ Legend: **[S]** security requirement, **[X]** cross-platform note, **[?]** decis
 - [x] SMTP settings page: host, port, TLS mode, user, password, sender address, and a "send test email" button. (`/security/email`: provider cards and Other server.)
 - [x] **[S]** Store the SMTP password encrypted with data protection. It is never shown back in a page (write-only field).
 - [x] **[X]** Use MailKit (works the same on Windows and Debian) rather than `System.Net.Mail`.
-- [ ] Email templates are localised (see 1.5), in plain text and HTML. (Plain text and HTML done, editable at `/security/email/wording`; English only until 1.5, stored by language already.)
+- [x] Email templates are localised (see 1.5), in plain text and HTML. (Plain text and HTML done, editable at `/security/email/wording`; built in for en, de, es, fr, pt and ru by plan 16a. The per-language editor arrives in plan 16b.)
 - [x] Every feature that needs email is hidden or explains itself when SMTP isn't set up. (`EmailSender.IsReady`; the features in 2.1–2.3 use it.)
 
 ### 1.5 Languages (localisation)
-- [ ] Use ASP.NET Core localisation: `IStringLocalizer` and `IViewLocalizer` with `.resx` files per page or area, plus a shared resource for common words.
-- [ ] Choose the language from a cookie (the language picker in the header), then the browser's `Accept-Language`, then English.
-- [ ] Starting languages: **en, de, es, fr, pt, ru** (the ones Wifi had). Use Wifi's `.po` files as a first draft for translators, then remove them.
-- [ ] Dates, numbers and sizes use the chosen culture (`RegionAdvice.FileSize` and friends included).
-- [ ] Make the layout work right-to-left (`dir="rtl"`) so Arabic or Hebrew can be added later without a redesign.
-- [ ] A test that fails when a key is missing from any language file, or when a page has a hard-coded English string (a scan of `.cshtml` files).
+> Built in plan 16a (`docs/superpowers/plans/2026-11-10-plan16a-languages.md`, design `docs/superpowers/specs/2026-11-10-languages-design.md`): the six built-in languages for resident pages and emails. How it works, and how to correct or add a translation, is in `docs/languages.md`. Plan 16b will add the owner's tone text, the Languages page (languages on and off, the grid default), adding a new language without code, and the wording and legal editors per language. The ICU item waits for the check on Debian.
+- [x] Use ASP.NET Core localisation: `IStringLocalizer` and `IViewLocalizer` with `.resx` files per page or area, plus a shared resource for common words.
+- [x] Choose the language from a cookie (the language picker in the header), then the browser's `Accept-Language`, then English.
+- [x] Starting languages: **en, de, es, fr, pt, ru** (the ones Wifi had). Use Wifi's `.po` files as a first draft for translators, then remove them.
+- [x] Dates, numbers and sizes use the chosen culture (`RegionAdvice.FileSize` and friends included).
+- [x] Make the layout work right-to-left (`dir="rtl"`) so Arabic or Hebrew can be added later without a redesign.
+- [x] A test that fails when a key is missing from any language file, or when a page has a hard-coded English string (a scan of `.cshtml` files).
 - [ ] **[X]** Make sure `InvariantGlobalization` is **off** and ICU is present: `libicu72` on Debian 12, `libicu76` on Debian 13. Add it to the `.deb` dependencies and test the culture switch on both.
-- [ ] Contributor notes: how to add a language (copy the `.resx`, translate, add to the supported list).
+- [x] Contributor notes: how to add a language (copy the `.resx`, translate, add to the supported list).
 
 ## Phase 2 — Wifi features, rebuilt
 
@@ -97,7 +98,7 @@ Each item says what Wifi did, how v7 should do it better, and the security rules
 ### 2.4 Resident account page (Wifi: `useraccountform`)
 - [x] Change email (confirmed by a link sent to the **new** address, with a notice to the old one) and change password (asks for the current password). (Plan 10, `/guest/account`.)
 - [x] See their own details. (Plan 10.)
-- [ ] Choose language. Waits for 1.5 (plan 10 left it out: there is nothing to choose yet).
+- [x] Choose language. (Plan 16a: on the account page, saved in `<data>/guests/languages.json`.)
 - Decided: residents **cannot** delete their own account. Only an admin can (2.5).
 
 ### 2.5 Admin user management (Wifi: `userlist`, `usersearchform`, `usereditform`, `userdeleteform`)
