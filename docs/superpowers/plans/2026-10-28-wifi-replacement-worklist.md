@@ -298,3 +298,5 @@ Decided: build **all three**, each with its own switch. A (honeypot and rate lim
   - point it at [magicoli/opensim-helpers](https://github.com/magicoli/opensim-helpers), the maintained PHP helpers that work with OpenSimSearch (needs PHP on the host), or
   - have the v7 website provide the search service itself (no PHP; same on Windows and Debian). Recommendation, if search is wanted.
   - Either way: the search service reads only public data, is rate limited, and the region's `data_services` registration accepts only known simulators.
+  - What V7 has today (the four search pieces, what each covers, and a likely double-module problem on OSGrid): `docs/opensim-search-notes.md` (2026-11-06).
+- Ideas from jOpenSim, the old Joomla grid website: public grid status and regions pages, teleport buttons, a panorama, a resident's friends list, self-service privacy requests, simulator stats, money. Each part and where GridGate stands: `docs/jopensim-notes.md` (owner, 2026-11-06).
