@@ -154,6 +154,18 @@ public class MeshAssetWriterTests
         Assert.All(corners, c => Assert.True(c.Item1 is 0 or 65535 && c.Item2 is 0 or 65535 && c.Item3 is 0 or 65535));
     }
 
+    // A low-poly model must keep its shape at a distance: every triangle of a box carries its silhouette, so no detail level
+    // may drop one (seen in Firestorm: a box lost a side and the fox lost pieces a few metres away).
+    [Theory]
+    [InlineData("Box.glb")]
+    [InlineData("BoxTextured.glb")]
+    public void Low_poly_box_keeps_every_triangle_at_every_level(string model)
+    {
+        var asset = MeshAssetWriter.Write(SimplifierTests.FirstMesh(model), Plain);
+        foreach (var level in new[] { DetailLevel.Highest, DetailLevel.High, DetailLevel.Medium, DetailLevel.Low })
+            Assert.Equal(12, Triangles(Decode(asset, level)));
+    }
+
     private static ImportModel SkinnedModel(string name, bool downloaded)
     {
         var r = downloaded ? GltfReaderTests.ReadDownloaded(name) : GltfReaderTests.Read(name);

@@ -129,4 +129,74 @@ public class SimplifierTests
         // Generous: the converter has 2 minutes for everything and allows 2,000,000 triangles.
         Assert.True(sw.Elapsed < TimeSpan.FromSeconds(30), $"took {sw.Elapsed}");
     }
+
+    // Distance from p to triangle abc.
+    private static float DistanceToTriangle(Vector3 p, Vector3 a, Vector3 b, Vector3 c)
+    {
+        var ab = b - a; var ac = c - a; var ap = p - a;
+        float d1 = Vector3.Dot(ab, ap), d2 = Vector3.Dot(ac, ap);
+        if (d1 <= 0 && d2 <= 0) return Vector3.Distance(p, a);
+        var bp = p - b; float d3 = Vector3.Dot(ab, bp), d4 = Vector3.Dot(ac, bp);
+        if (d3 >= 0 && d4 <= d3) return Vector3.Distance(p, b);
+        float vc = d1 * d4 - d3 * d2;
+        if (vc <= 0 && d1 >= 0 && d3 <= 0) return Vector3.Distance(p, a + d1 / (d1 - d3) * ab);
+        var cp = p - c; float d5 = Vector3.Dot(ab, cp), d6 = Vector3.Dot(ac, cp);
+        if (d6 >= 0 && d5 <= d6) return Vector3.Distance(p, c);
+        float vb = d5 * d2 - d1 * d6;
+        if (vb <= 0 && d2 >= 0 && d6 <= 0) return Vector3.Distance(p, a + d2 / (d2 - d6) * ac);
+        float va = d3 * d6 - d5 * d4;
+        if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) return Vector3.Distance(p, b + (d4 - d3) / ((d4 - d3) + (d5 - d6)) * (c - b));
+        float denom = 1 / (va + vb + vc);
+        return Vector3.Distance(p, a + ab * (vb * denom) + ac * (vc * denom));
+    }
+
+    // The farthest any original vertex lies from the simplified surface.
+    private static float Deviation(ImportMesh original, ImportMesh simplified)
+    {
+        float worst = 0;
+        foreach (var p in original.Faces.SelectMany(f => f.Positions))
+        {
+            float best = float.MaxValue;
+            foreach (var f in simplified.Faces)
+                for (int t = 0; t + 2 < f.Triangles.Length; t += 3)
+                    best = Math.Min(best, DistanceToTriangle(p, f.Positions[f.Triangles[t]], f.Positions[f.Triangles[t + 1]], f.Positions[f.Triangles[t + 2]]));
+            worst = Math.Max(worst, best);
+        }
+        return worst;
+    }
+
+    private static float Diagonal(ImportMesh m)
+    {
+        var all = m.Faces.SelectMany(f => f.Positions).ToArray();
+        var lo = all.Aggregate(Vector3.Min); var hi = all.Aggregate(Vector3.Max);
+        return Vector3.Distance(lo, hi);
+    }
+
+    // The shape limit wins over the triangle goal: no level moves the surface by more than about its allowed share of the
+    // model's size, however few triangles the goal asks for.
+    [Theory]
+    [InlineData("Box.glb", 0.06, 0.02)]
+    [InlineData("Fox.glb", 0.06, 0.02)]
+    [InlineData("Fox.glb", 0.25, 0.01)]
+    [InlineData("Avocado.glb", 0.06, 0.02)]
+    public void No_level_moves_the_surface_more_than_its_limit(string model, double ratio, double maxError)
+    {
+        var mesh = FirstMesh(model);
+        var lower = Simplifier.Simplify(mesh, ratio, maxError);
+        var deviation = Deviation(mesh, lower);
+        _output.WriteLine($"{model} {ratio}: {Triangles(mesh)} -> {Triangles(lower)} triangles, deviation {deviation / Diagonal(mesh):P2} of the size");
+        // Quadric error estimates the distance, so allow it twice the limit.
+        Assert.True(deviation <= 2 * maxError * Diagonal(mesh), $"deviation {deviation / Diagonal(mesh):P2} over {2 * maxError:P0}");
+    }
+
+    // A flat dense grid has no shape to lose, so the triangle goal is still reached.
+    [Fact]
+    public void Flat_dense_mesh_still_reaches_the_triangle_goal()
+    {
+        var flat = Grid(40, 0);
+        var positions = flat.Positions.Select(p => new Vector3(p.X, p.Y, 0)).ToArray();
+        var mesh = new ImportMesh(new[] { flat with { Positions = positions } });
+        var lower = Simplifier.Simplify(mesh, 0.25, 0.01);
+        Assert.InRange(Triangles(lower), 1, (int)(Triangles(mesh) * 0.3));
+    }
 }

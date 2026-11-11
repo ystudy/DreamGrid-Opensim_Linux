@@ -20,8 +20,9 @@ public sealed record MeshAssetOptions(bool WriteSkin, ImportSkeleton? Skeleton);
 /// giving each block's offset, counted from the end of the header, and size; then the blocks, each a zlib stream (RFC 1950)
 /// of an LLSD-binary value.
 /// <list type="bullet">
-/// <item>high_lod, medium_lod, low_lod, lowest_lod: an array with one map per face. The lower levels are the mesh simplified to
-/// 50%, 25% and 6% of its triangles.</item>
+/// <item>high_lod, medium_lod, low_lod, lowest_lod: an array with one map per face. The lower levels aim at 50%, 25% and 6% of
+/// the triangles, but never move the surface by more than 0.5%, 1% and 2% of the mesh's size, so a low-poly mesh keeps its
+/// outline at a distance.</item>
 /// <item>physics_convex: the mesh's bounding box as 8 BoundingVerts with Min and Max.</item>
 /// <item>skin, when WriteSkin: joint_names, inverse_bind_matrix and bind_shape_matrix.</item>
 /// </list>
@@ -30,8 +31,10 @@ public sealed record MeshAssetOptions(bool WriteSkin, ImportSkeleton? Skeleton);
 /// </summary>
 public static class MeshAssetWriter
 {
-    // The detail levels below high and the share of the triangles each keeps.
-    private static readonly (string Name, double Ratio)[] LowerLevels = { ("medium_lod", 0.5), ("low_lod", 0.25), ("lowest_lod", 0.06) };
+    // The detail levels below high: the share of the triangles each aims at, and the most each may move the surface, as a share
+    // of the mesh's bounding-box diagonal. The shape limit wins over the triangle goal.
+    private static readonly (string Name, double Ratio, double MaxError)[] LowerLevels =
+        { ("medium_lod", 0.5, 0.005), ("low_lod", 0.25, 0.01), ("lowest_lod", 0.06, 0.02) };
 
     private const byte EndOfInfluences = 0xFF;
 
@@ -55,8 +58,8 @@ public static class MeshAssetWriter
         {
             ("high_lod", Compress(Faces(high, weights))),
         };
-        foreach (var (name, ratio) in LowerLevels)
-            blocks.Add((name, Compress(Faces(Simplifier.Simplify(high, ratio), weights))));
+        foreach (var (name, ratio, maxError) in LowerLevels)
+            blocks.Add((name, Compress(Faces(Simplifier.Simplify(high, ratio, maxError), weights))));
         blocks.Add(("physics_convex", Compress(BoundingBox(high))));
         if (options.WriteSkin) blocks.Add(("skin", Compress(Skin(options.Skeleton!))));
 

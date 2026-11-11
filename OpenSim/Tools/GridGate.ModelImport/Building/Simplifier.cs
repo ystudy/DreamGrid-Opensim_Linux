@@ -13,27 +13,45 @@ namespace GridGate.ModelImport.Building;
 /// edge is a border in the face's index list (the vertices there are duplicated); a border vertex only slides along the border,
 /// and border edges carry an extra plane that holds the border's shape. A vertex on an edge shared by more than two triangles
 /// never moves. A face never disappears: if it would, it keeps its original smallest triangle.
+/// <para>
+/// The triangle goal gives way to the shape: a collapse that would move the surface by more than maxError (a share of the
+/// mesh's bounding-box diagonal, measured as the quadric's mean distance) is never made. A low-poly mesh, where every triangle
+/// carries the outline, therefore keeps its triangles at every level instead of losing sides at a distance.
+/// </para>
 /// </summary>
 public static class Simplifier
 {
     // How strongly a border keeps its shape compared with the surface itself.
     private const double BorderWeight = 10.0;
 
-    /// <summary>The mesh with about ratio of each face's triangles (at least one each). A ratio of 1 or more returns the mesh.</summary>
-    public static ImportMesh Simplify(ImportMesh mesh, double ratio)
+    /// <summary>
+    /// The mesh with about ratio of each face's triangles (at least one each), but no collapse moves the surface by more than
+    /// maxError times the mesh's bounding-box diagonal. A ratio of 1 or more returns the mesh.
+    /// </summary>
+    public static ImportMesh Simplify(ImportMesh mesh, double ratio, double maxError = double.PositiveInfinity)
     {
         if (ratio >= 1) return mesh;
-        return new ImportMesh(mesh.Faces.Select(f => SimplifyFace(f, ratio)).ToArray());
+        double limit = double.IsPositiveInfinity(maxError) ? double.PositiveInfinity : maxError * Diagonal(mesh);
+        return new ImportMesh(mesh.Faces.Select(f => SimplifyFace(f, ratio, limit * limit)).ToArray());
     }
 
-    private static ImportFace SimplifyFace(ImportFace face, double ratio)
+    private static double Diagonal(ImportMesh mesh)
+    {
+        var lo = new Vector3(float.MaxValue);
+        var hi = new Vector3(float.MinValue);
+        foreach (var f in mesh.Faces)
+            foreach (var p in f.Positions) { lo = Vector3.Min(lo, p); hi = Vector3.Max(hi, p); }
+        return lo.X <= hi.X ? Vector3.Distance(lo, hi) : 0;
+    }
+
+    private static ImportFace SimplifyFace(ImportFace face, double ratio, double maxSquaredError)
     {
         int triangles = face.Triangles.Length / 3;
         int target = Math.Max(1, (int)Math.Round(triangles * ratio));
         if (target >= triangles) return face;
 
         var collapse = new FaceCollapse(face);
-        collapse.Run(target);
+        collapse.Run(target, maxSquaredError);
         var kept = collapse.KeptTriangles();
         if (kept.Count == 0) kept = new List<int>(SmallestTriangle(face));
         return Compact(face, kept);
@@ -89,6 +107,10 @@ public static class Simplifier
         private readonly bool[] _triDead;
         private readonly List<int>?[] _vertexTris; // alive triangles around each vertex
         private readonly double[] _q;              // 10 quadric coefficients per vertex
+        private readonly double[] _w;              // the summed weight of each vertex's planes
+        private readonly List<int>?[] _absorbed;   // original vertices that collapsed into each vertex (null: none yet)
+        private readonly double[] _ox, _oy, _oz;   // original positions, for the distance check
+        private double _maxSquaredError = double.PositiveInfinity;
         private readonly int[] _version;           // bumped whenever a vertex's best collapse may have changed
         private readonly bool[] _gone;             // collapsed into a neighbour
         private readonly bool[] _locked;           // on an edge shared by more than two triangles
@@ -111,6 +133,9 @@ public static class Simplifier
             _alive = triangleCount;
             _vertexTris = new List<int>?[n];
             _q = new double[n * 10];
+            _w = new double[n];
+            _absorbed = new List<int>?[n];
+            _ox = (double[])_x.Clone(); _oy = (double[])_y.Clone(); _oz = (double[])_z.Clone();
             _version = new int[n];
             _gone = new bool[n];
             _locked = new bool[n];
@@ -158,12 +183,15 @@ public static class Simplifier
             for (int v = 0; v < n; v++) Offer(v, check: false);
         }
 
-        public void Run(int target)
+        public void Run(int target, double maxSquaredError)
         {
-            while (_alive > target && _queue.TryDequeue(out var entry, out _))
+            _maxSquaredError = maxSquaredError;
+            while (_alive > target && _queue.TryDequeue(out var entry, out var priority))
             {
                 var (x, version, y) = entry;
                 if (_gone[x] || _version[x] != version) continue;
+                // The queue is ordered by the mean squared distance, so every later collapse is over the limit too.
+                if (priority.Cost > maxSquaredError) break;
                 if (CanCollapse(x, y)) Collapse(x, y);
                 // The cheapest neighbour would fold or pinch the surface; offer the cheapest one that does not.
                 else Offer(x, check: true);
@@ -199,11 +227,14 @@ public static class Simplifier
             _q[i + 4] += w * b * b; _q[i + 5] += w * b * c; _q[i + 6] += w * b * d;
             _q[i + 7] += w * c * c; _q[i + 8] += w * c * d;
             _q[i + 9] += w * d * d;
+            _w[v] += w;
         }
 
-        // The error of moving x onto y: both quadrics, at y's position.
+        // The error of moving x onto y: both quadrics at y's position, divided by their summed weight, so it is the mean squared
+        // distance from y to the planes x and y stand for (a length squared, comparable across the mesh).
         private double Cost(int x, int y)
         {
+            double weight = _w[x] + _w[y];
             double px = _x[y], py = _y[y], pz = _z[y];
             int i = x * 10, j = y * 10;
             double a2 = _q[i] + _q[j], ab = _q[i + 1] + _q[j + 1], ac = _q[i + 2] + _q[j + 2], ad = _q[i + 3] + _q[j + 3];
@@ -212,7 +243,8 @@ public static class Simplifier
             double e = a2 * px * px + 2 * ab * px * py + 2 * ac * px * pz + 2 * ad * px
                      + b2 * py * py + 2 * bc * py * pz + 2 * bd * py
                      + c2 * pz * pz + 2 * cd * pz + d2;
-            return double.IsNaN(e) ? double.MaxValue : Math.Max(0, e);
+            if (double.IsNaN(e)) return double.MaxValue;
+            return weight > 0 ? Math.Max(0, e) / weight : Math.Max(0, e);
         }
 
         private bool Contains(int t, int v) => _tris[t * 3] == v || _tris[t * 3 + 1] == v || _tris[t * 3 + 2] == v;
@@ -299,12 +331,90 @@ public static class Simplifier
                 if (after.Length <= 0) return false;
                 if (before.X * after.X + before.Y * after.Y + before.Z * after.Z <= 0) return false;
             }
+            return double.IsPositiveInfinity(_maxSquaredError) || StaysClose(x, y);
+        }
+
+        // The averaged quadric error hides thin parts (legs, ears), so the real distance is checked too: x itself and every
+        // original vertex already folded into x or y must stay within the limit of the triangles around y after the move.
+        private bool StaysClose(int x, int y)
+        {
+            bool Near(int p)
+            {
+                double best = double.MaxValue;
+                foreach (var list in new[] { _vertexTris[x]!, _vertexTris[y]! })
+                    foreach (var t in list)
+                    {
+                        if (Contains(t, x) && Contains(t, y)) continue; // removed by the collapse
+                        int a = _tris[t * 3], b = _tris[t * 3 + 1], c = _tris[t * 3 + 2];
+                        best = Math.Min(best, SquaredDistance(_ox[p], _oy[p], _oz[p], Corner(a, x, y), Corner(b, x, y), Corner(c, x, y)));
+                        if (best <= _maxSquaredError) return true;
+                    }
+                return best <= _maxSquaredError;
+            }
+
+            if (!Near(x)) return false;
+            foreach (var list in new[] { _absorbed[x], _absorbed[y] })
+                if (list != null)
+                    foreach (var p in list)
+                        if (!Near(p)) return false;
             return true;
+        }
+
+        // A corner's position after x moves onto y.
+        private (double X, double Y, double Z) Corner(int v, int x, int y) => v == x ? (_x[y], _y[y], _z[y]) : (_x[v], _y[v], _z[v]);
+
+        private static double SquaredDistance(double px, double py, double pz,
+            (double X, double Y, double Z) a, (double X, double Y, double Z) b, (double X, double Y, double Z) c)
+        {
+            // Closest point on triangle abc to p (Ericson, Real-Time Collision Detection, 5.1.5).
+            double abx = b.X - a.X, aby = b.Y - a.Y, abz = b.Z - a.Z;
+            double acx = c.X - a.X, acy = c.Y - a.Y, acz = c.Z - a.Z;
+            double apx = px - a.X, apy = py - a.Y, apz = pz - a.Z;
+            double d1 = abx * apx + aby * apy + abz * apz, d2 = acx * apx + acy * apy + acz * apz;
+            double qx, qy, qz;
+            if (d1 <= 0 && d2 <= 0) { qx = a.X; qy = a.Y; qz = a.Z; }
+            else
+            {
+                double bpx = px - b.X, bpy = py - b.Y, bpz = pz - b.Z;
+                double d3 = abx * bpx + aby * bpy + abz * bpz, d4 = acx * bpx + acy * bpy + acz * bpz;
+                double cpx = px - c.X, cpy = py - c.Y, cpz = pz - c.Z;
+                double d5 = abx * cpx + aby * cpy + abz * cpz, d6 = acx * cpx + acy * cpy + acz * cpz;
+                double vc = d1 * d4 - d3 * d2, vb = d5 * d2 - d1 * d6, va = d3 * d6 - d5 * d4;
+                if (d3 >= 0 && d4 <= d3) { qx = b.X; qy = b.Y; qz = b.Z; }
+                else if (d6 >= 0 && d5 <= d6) { qx = c.X; qy = c.Y; qz = c.Z; }
+                else if (vc <= 0 && d1 >= 0 && d3 <= 0) { double v = d1 / (d1 - d3); qx = a.X + v * abx; qy = a.Y + v * aby; qz = a.Z + v * abz; }
+                else if (vb <= 0 && d2 >= 0 && d6 <= 0) { double w = d2 / (d2 - d6); qx = a.X + w * acx; qy = a.Y + w * acy; qz = a.Z + w * acz; }
+                else if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0)
+                {
+                    double w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+                    qx = b.X + w * (c.X - b.X); qy = b.Y + w * (c.Y - b.Y); qz = b.Z + w * (c.Z - b.Z);
+                }
+                else
+                {
+                    double denom = va + vb + vc;
+                    if (denom == 0) { qx = a.X; qy = a.Y; qz = a.Z; }
+                    else
+                    {
+                        double v = vb / denom, w = vc / denom;
+                        qx = a.X + abx * v + acx * w; qy = a.Y + aby * v + acy * w; qz = a.Z + abz * v + acz * w;
+                    }
+                }
+            }
+            double dx = px - qx, dy = py - qy, dz = pz - qz;
+            return dx * dx + dy * dy + dz * dz;
         }
 
         private void Collapse(int x, int y)
         {
             for (int k = 0; k < 10; k++) _q[y * 10 + k] += _q[x * 10 + k];
+            _w[y] += _w[x];
+            if (!double.IsPositiveInfinity(_maxSquaredError))
+            {
+                var into = _absorbed[y] ??= new List<int>();
+                into.Add(x);
+                if (_absorbed[x] != null) into.AddRange(_absorbed[x]!);
+                _absorbed[x] = null;
+            }
 
             var yTris = _vertexTris[y]!;
             foreach (var t in _vertexTris[x]!)
