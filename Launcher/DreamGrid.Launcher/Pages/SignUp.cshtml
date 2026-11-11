@@ -29,7 +29,7 @@ else if (Model.WaitingForStaff)
 }
 else
 {
-    <p>@T["SignUp.Intro", Model.GridName]</p>
+    <p class="tone-text">@T["SignUp.Intro", Model.GridName]</p>
     @if (Model.Error is not null)
     {
         <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>

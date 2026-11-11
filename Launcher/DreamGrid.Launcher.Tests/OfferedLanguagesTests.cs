@@ -41,4 +41,13 @@ public sealed class OfferedLanguagesTests
         Assert.Equal(["en", "ar"], o.Current().ToList());
         Assert.Equal("ar", o.Default());
     }
+
+    [Fact]
+    public void A_listed_default_that_is_no_longer_added_is_dropped_whatever_its_case()
+    {
+        // "IT" is on the list as "it", so it is not a hand-edited default outside it; and no "it" file exists.
+        var o = For(new LanguageSettings { Offered = ["en", "it"], Default = "IT" });
+        Assert.Equal(["en"], o.Current().ToList());
+        Assert.Equal("en", o.Default());
+    }
 }

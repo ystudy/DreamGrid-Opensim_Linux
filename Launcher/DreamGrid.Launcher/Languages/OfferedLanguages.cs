@@ -19,7 +19,7 @@ public sealed class OfferedLanguages(Func<LauncherSettings> settings, OwnerLangu
         var addedNow = added.Codes();
         var listed = s.Offered ?? Languages.BuiltIn;
         return [.. s.OfferedOrDefault(addedNow)
-            .Where(c => Languages.HasCulture(c) && (IsBuiltIn(c) || addedNow.Contains(c) || !listed.Contains(c)))];
+            .Where(c => Languages.HasCulture(c) && (IsBuiltIn(c) || addedNow.Contains(c, StringComparer.OrdinalIgnoreCase) || !listed.Contains(c, StringComparer.OrdinalIgnoreCase)))];
     }
 
     /// <summary>The grid's default language when it is offered, else English.</summary>

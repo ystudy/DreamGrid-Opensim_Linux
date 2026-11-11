@@ -253,6 +253,13 @@ public sealed record LauncherSettings
     [AllowNull]
     public LanguageSettings Languages { get => _languages; init => _languages = value ?? new(); }
 
+    private static readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> NoWording = new Dictionary<string, IReadOnlyDictionary<string, string>>();
+    private IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> _wording = NoWording;
+
+    /// <summary>The owner's own wording for some resident-page texts: language code, then text key, then the text. A missing or null value reads as none.</summary>
+    [AllowNull]
+    public IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> Wording { get => _wording; init => _wording = value ?? NoWording; }
+
     private readonly BotSettings _bots = new();
 
     /// <summary>Bot protection for sign-up; a missing or null value reads as the defaults.</summary>

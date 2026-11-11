@@ -168,6 +168,10 @@ builder.Services.AddAuthorizationBuilder()
     .AddPolicy(AuthSchemes.GuestPolicy, p => p.AddAuthenticationSchemes(AuthSchemes.Guest).RequireRole(AuthSchemes.GuestRole))
     .SetFallbackPolicy(new AuthorizationPolicyBuilder().AddAuthenticationSchemes(AuthSchemes.Admin).RequireRole(AuthSchemes.AdminRole).Build());
 builder.Services.AddLocalization(o => o.ResourcesPath = "Resources");
+// Registered after AddLocalization so the closed generic wins over the framework's open one: the owner's tone text and added languages come first (plan 16b).
+builder.Services.AddSingleton<Microsoft.Extensions.Localization.IStringLocalizer<ResidentText>>(sp => new DreamGrid.Launcher.Resident.ResidentTextLocalizer(
+    sp.GetRequiredService<Microsoft.Extensions.Localization.IStringLocalizerFactory>(), sp.GetRequiredService<Func<LauncherSettings>>(),
+    sp.GetRequiredService<DreamGrid.Launcher.Core.OwnerLanguages>()));
 builder.Services.AddRazorPages(o =>
 {
     // Every page needs the admin role except these; the setup pages are guarded by SetupGate. A person's own pages under
