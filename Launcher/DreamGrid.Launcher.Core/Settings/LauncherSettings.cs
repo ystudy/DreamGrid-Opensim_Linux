@@ -171,10 +171,11 @@ public sealed record LanguageSettings
     public IReadOnlyList<string> Offered { get; init; } = Core.Languages.BuiltIn;
     public string Default { get; init; } = Core.Languages.English;
 
-    /// <summary>The offered languages that are known, always including the default; a missing list reads as all of them.</summary>
-    public IReadOnlyList<string> OfferedOrDefault()
+    /// <summary>The offered languages that are built in or among <c>added</c> (the owner's own), always including the default; a missing list reads as all of them.</summary>
+    public IReadOnlyList<string> OfferedOrDefault(IReadOnlyCollection<string>? added = null)
     {
-        var known = (Offered ?? Core.Languages.BuiltIn).Where(Core.Languages.BuiltIn.Contains).Distinct().ToList();
+        added ??= [];
+        var known = (Offered ?? Core.Languages.BuiltIn).Where(c => Core.Languages.BuiltIn.Contains(c) || added.Contains(c)).Distinct().ToList();
         if (!known.Contains(Default))
             known.Add(Default);
         return known;

@@ -40,5 +40,6 @@ public static class SiteFacts
             + "the language the ticket was sent in, and the private links (only as hashes), until a year after the ticket is closed", "tickets/<id>.json."),
         ("Which staff switched on the support ticket emails, by account id, with when their last one went out", "guests/ticket-notices.json."),
         ("The language each resident chose, by account id", "guests/languages.json."),
+        ("Languages the owner added, and their translations", "languages/<code>.json."),
     ];
 }
