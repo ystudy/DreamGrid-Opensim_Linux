@@ -22,10 +22,11 @@ public sealed class LanguagesPageTests
 
     private const string Page = "/security/languages";
 
-    private static LauncherFactory Factory(IReadOnlyList<string>? offered = null)
+    private static LauncherFactory Factory(IReadOnlyList<string>? offered = null, LegalSettings? legal = null)
     {
         var f = new LauncherFactory(s => s with
         {
+            Legal = legal ?? s.Legal,
             GridName = "Avalon",
             SetupToken = null,
             Plan = OwnerPlan.Local,
@@ -536,5 +537,246 @@ public sealed class LanguagesPageTests
         Assert.Equal("/security/languages", languages.Href);
         Assert.Equal(items.FindIndex(i => i.Text == "Page wording") + 1, items.IndexOf(languages));
         Assert.DoesNotContain("Languages", StaffMenu.For(StaffRole.Admin, s, true).SelectMany(g => g.Items).Select(i => i.Text));
+    }
+
+    // ---- choosing the offered languages and the default (Review Focus 4) ----
+
+    private static async Task<HttpResponseMessage> ChooseAsync(HttpClient client, IEnumerable<string> offered, string @default, bool confirm = false)
+    {
+        List<KeyValuePair<string, string>> form = [new("__RequestVerificationToken", await TokenAsync(client, Page)), new("default", @default)];
+        form.AddRange(offered.Select(c => new KeyValuePair<string, string>("offered", c)));
+        if (confirm) form.Add(new("confirm", "true"));
+        return await client.PostAsync($"{Page}?handler=Choose", new FormUrlEncodedContent(form), Ct);
+    }
+
+    private static LanguageSettings Saved(LauncherFactory f) => f.Store.LoadOrCreate().Languages;
+
+    /// <summary>The saved languages as one comparable string: the offered codes, then the default.</summary>
+    private static string Snapshot(LauncherFactory f) => string.Join(",", Saved(f).Offered) + " | " + Saved(f).Default;
+
+    /// <summary>The saved legal texts as one comparable string.</summary>
+    private static string LegalSnapshot(LauncherFactory f) => System.Text.Json.JsonSerializer.Serialize(f.Store.LoadOrCreate().Legal);
+
+    private static async Task<IHtmlDocument> HtmlAsync(HttpResponseMessage r)
+    {
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        return Parser.ParseDocument(await r.Content.ReadAsStringAsync(Ct));
+    }
+
+    private static readonly DateTimeOffset LegalSaved = new(2026, 10, 30, 9, 0, 0, TimeSpan.Zero);
+
+    /// <summary>Legal texts by language and page, each at the given version; the owner's tick is on.</summary>
+    private static LegalSettings Legal(params (string Language, string Page, int Version)[] texts) => new(
+        texts.GroupBy(t => t.Language).ToDictionary(g => g.Key,
+            g => (IReadOnlyDictionary<string, LegalText>)g.ToDictionary(t => t.Page, t => new LegalText($"Test {t.Language} {t.Page}.", t.Version, LegalSaved))),
+        true,
+        LegalSaved);
+
+    [Fact]
+    public async Task The_table_is_one_form_with_offered_and_default()
+    {
+        await using var f = Factory(["en", "de", "fr"]);
+        var page = await DocAsync(await OwnerAsync(f), Page);
+
+        var form = page.QuerySelector("form#choose")!;
+        Assert.Contains("handler=Choose", form.GetAttribute("action"));
+        var boxes = page.QuerySelectorAll("#languages input[name=offered][form=choose]").ToList();
+        Assert.Equal(Languages.BuiltIn, boxes.Select(b => b.GetAttribute("value")));
+        Assert.Equal(["en", "de", "fr"], boxes.Where(b => b.HasAttribute("checked")).Select(b => b.GetAttribute("value")));
+        var radios = page.QuerySelectorAll("#languages input[name=default][form=choose]").ToList();
+        Assert.Equal(["en"], radios.Where(r => r.HasAttribute("checked")).Select(r => r.GetAttribute("value")));
+        Assert.NotNull(page.QuerySelector("button[form=choose][type=submit]"));
+    }
+
+    [Fact]
+    public async Task Choosing_saves_and_audits()
+    {
+        await using var f = Factory();
+        var owner = await OwnerAsync(f);
+
+        using var r = await ChooseAsync(owner, ["en", "de", "fr"], "de");
+
+        Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
+        Assert.Equal(Page, r.Headers.Location!.OriginalString);
+        Assert.Equal(["en", "de", "fr"], Saved(f).Offered);
+        Assert.Equal("de", Saved(f).Default);
+        var audit = Audit(f);
+        Assert.Contains("languages-offered-changed", audit);
+        Assert.Contains("en,de,fr", audit);
+        Assert.Contains("language-default-changed", audit);
+        var target = audit.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(l => JsonDocument.Parse(l).RootElement)
+            .Single(e => e.GetProperty("action").GetString() == "language-default-changed").GetProperty("target").GetString();
+        Assert.Equal("en → de", target);
+        Assert.Contains("Saved.", (await DocAsync(owner, Page)).QuerySelector("[role=status]")!.TextContent);
+    }
+
+    [Theory]
+    [InlineData("xx", "en")]
+    [InlineData("../x", "en")]
+    [InlineData("it", "en")] // not added
+    [InlineData("en", "")]
+    [InlineData("en", "zz")]
+    public async Task A_code_not_on_the_list_is_400(string offered, string @default)
+    {
+        await using var f = Factory();
+        var before = Snapshot(f);
+
+        using var r = await ChooseAsync(await OwnerAsync(f), [offered], @default);
+
+        Assert.Equal(HttpStatusCode.BadRequest, r.StatusCode);
+        Assert.Equal(before, Snapshot(f));
+    }
+
+    [Fact]
+    public async Task Default_must_be_offered()
+    {
+        await using var f = Factory();
+        var before = Snapshot(f);
+
+        var page = await HtmlAsync(await ChooseAsync(await OwnerAsync(f), ["en", "fr"], "de"));
+
+        Assert.Equal("Turn on Deutsch before making it the default.", page.QuerySelector("[role=alert]")!.TextContent.Trim());
+        Assert.Equal(before, Snapshot(f));
+        Assert.DoesNotContain("languages-offered-changed", Audit(f));
+    }
+
+    [Fact]
+    public async Task Turning_off_the_default_is_refused()
+    {
+        await using var f = Factory();
+        var before = Snapshot(f);
+
+        var page = await HtmlAsync(await ChooseAsync(await OwnerAsync(f), ["de", "fr"], "en"));
+
+        Assert.Equal("Turn on English before making it the default.", page.QuerySelector("[role=alert]")!.TextContent.Trim());
+        Assert.Equal(before, Snapshot(f));
+    }
+
+    [Fact]
+    public async Task Incomplete_added_language_cannot_be_turned_on()
+    {
+        await using var f = Factory();
+        Add(f, "it", new() { ["Home.Title"] = "Benvenuto" });
+        var before = Snapshot(f);
+
+        var page = await HtmlAsync(await ChooseAsync(await OwnerAsync(f), ["en", "it"], "en"));
+
+        Assert.Equal($"Italiano still has {Catalog(f).Missing("it")} texts to translate.", page.QuerySelector("[role=alert]")!.TextContent.Trim());
+        Assert.Equal(before, Snapshot(f));
+    }
+
+    [Fact]
+    public async Task A_complete_added_language_can_be_turned_on()
+    {
+        await using var f = Factory();
+        var c = Catalog(f);
+        Add(f, "it", c.PageKeys().ToDictionary(k => k, c.English), c.EmailKeys().ToDictionary(k => k, c.EnglishEmail));
+
+        using var r = await ChooseAsync(await OwnerAsync(f), ["en", "it"], "en");
+
+        Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
+        Assert.Equal(["en", "it"], Saved(f).Offered);
+    }
+
+    [Fact]
+    public async Task Added_language_already_on_stays_on_with_new_keys()
+    {
+        // After an update adds texts the file lacks, Italian is still on: saving the list again keeps it on.
+        await using var f = Factory(["en", "de", "it"]);
+        Add(f, "it", new() { ["Home.Title"] = "Benvenuto" });
+        Assert.True(Catalog(f).Missing("it") > 0);
+
+        using var r = await ChooseAsync(await OwnerAsync(f), ["en", "it"], "en");
+
+        Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
+        Assert.Equal(["en", "it"], Saved(f).Offered);
+    }
+
+    [Fact]
+    public async Task New_default_needs_up_to_date_legal_pages()
+    {
+        await using var f = Factory(legal: Legal(("en", "terms", 3), ("en", "privacy", 2), ("en", "cookies", 1), ("de", "terms", 3), ("de", "privacy", 1)));
+        var before = Snapshot(f);
+
+        var page = await HtmlAsync(await ChooseAsync(await OwnerAsync(f), Languages.BuiltIn, "de"));
+
+        var alert = page.QuerySelector("[role=alert]")!;
+        Assert.StartsWith("Write the Terms, Privacy and Cookies pages in Deutsch first", alert.TextContent.Trim());
+        Assert.Equal("/security/legal?lang=de", alert.QuerySelector("a")!.GetAttribute("href"));
+        Assert.Equal(before, Snapshot(f));
+    }
+
+    [Fact]
+    public async Task Default_change_keeps_terms_acceptances()
+    {
+        await using var f = Factory(legal: Legal(("en", "terms", 3), ("en", "privacy", 1), ("en", "cookies", 1),
+            ("de", "terms", 3), ("de", "privacy", 1), ("de", "cookies", 1)));
+        f.Services.GetRequiredService<DreamGrid.Launcher.Guests.TermsAcceptances>().Accept(TestAuth.GuestId, 3, "203.0.113.9");
+        var before = LegalSnapshot(f);
+
+        using var r = await ChooseAsync(await OwnerAsync(f), Languages.BuiltIn, "de");
+
+        Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
+        Assert.Equal("de", Saved(f).Default);
+        Assert.Equal(before, LegalSnapshot(f)); // nothing renumbered
+        Assert.Equal(3, Core.Guests.LegalPages.Get(f.Store.LoadOrCreate(), "terms", "de")!.Version);
+        // The guest who accepted version 3 in English is not asked again.
+        var guest = f.CreateClient(new() { AllowAutoRedirect = false });
+        (await guest.GetAsync("/__test/guest-signin", Ct)).Dispose();
+        using var home = await guest.GetAsync("/guest", Ct);
+        Assert.Equal(HttpStatusCode.OK, home.StatusCode);
+    }
+
+    [Fact]
+    public async Task Turning_off_a_used_language_asks_first_and_then_residents_get_the_default()
+    {
+        await using var f = Factory();
+        var resident = Guid.NewGuid();
+        f.Services.GetRequiredService<ResidentLanguages>().Set(resident, "de");
+        var owner = await OwnerAsync(f);
+        Assert.Equal("de", await PageLanguageAsync(f, "de"));
+        var before = Snapshot(f);
+
+        var page = await HtmlAsync(await ChooseAsync(owner, ["en", "es", "fr", "pt", "ru"], "en"));
+
+        var confirm = page.QuerySelector("form#confirm-choose")!;
+        Assert.Contains("1 resident uses Deutsch. They will see English instead.", confirm.TextContent);
+        Assert.Equal(["en", "es", "fr", "pt", "ru"], confirm.QuerySelectorAll("input[name=offered]").Select(i => i.GetAttribute("value")));
+        Assert.Equal("en", confirm.QuerySelector("input[name=default]")!.GetAttribute("value"));
+        Assert.Equal("true", confirm.QuerySelector("input[name=confirm]")!.GetAttribute("value"));
+        Assert.Equal(before, Snapshot(f)); // nothing saved yet
+
+        using var r = await ChooseAsync(owner, ["en", "es", "fr", "pt", "ru"], "en", confirm: true);
+
+        Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
+        Assert.DoesNotContain("de", Saved(f).Offered);
+        // Their saved choice is kept, but the pages and the emails are in the default now.
+        Assert.Equal("de", f.Services.GetRequiredService<ResidentLanguages>().Get(resident));
+        Assert.Equal("en", await PageLanguageAsync(f, "de"));
+        var language = f.Services.GetRequiredService<DreamGrid.Launcher.Email.EmailLanguage>().ForResident(resident);
+        Assert.Equal("en", language);
+        var email = Core.Email.EmailTemplates.Current(f.Store.LoadOrCreate(), Core.Email.EmailTemplates.PasswordChanged, language, Store(f));
+        Assert.Equal(Core.Email.EmailTemplates.Default(Core.Email.EmailTemplates.PasswordChanged, "en").Subject, email.Subject);
+    }
+
+    [Fact]
+    public async Task Turning_off_an_unused_language_needs_no_confirmation()
+    {
+        await using var f = Factory();
+
+        using var r = await ChooseAsync(await OwnerAsync(f), ["en", "de"], "en");
+
+        Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
+        Assert.Equal(["en", "de"], Saved(f).Offered);
+    }
+
+    /// <summary>The <c>lang</c> of the front page for a visitor whose language cookie is <paramref name="cookie"/>.</summary>
+    private static async Task<string?> PageLanguageAsync(LauncherFactory f, string cookie)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/home");
+        request.Headers.Add("Cookie", "dg-lang=" + cookie);
+        using var r = await f.CreateClient(new() { AllowAutoRedirect = false }).SendAsync(request, Ct);
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        return Parser.ParseDocument(await r.Content.ReadAsStringAsync(Ct)).DocumentElement.GetAttribute("lang");
     }
 }

@@ -1,7 +1,9 @@
 using System.Globalization;
 using DreamGrid.Launcher.Core;
 using DreamGrid.Launcher.Core.Grid;
+using DreamGrid.Launcher.Core.Guests;
 using DreamGrid.Launcher.Core.Logs;
+using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Resident;
 using DreamGrid.Launcher.Security;
 using Microsoft.AspNetCore.Mvc;
@@ -16,9 +18,14 @@ namespace DreamGrid.Launcher.Pages.Security;
 /// deletes an added one that is not offered (with its page wording), after a confirmation that shows how many residents use it; their saved choice is left
 /// and falls back to the default. A language code only ever comes from <see cref="OwnerLanguages.CodeFor"/>. Audited as
 /// <c>language-added</c> and <c>language-deleted</c> with the target <c>code</c>.
+/// The Offered and Default columns are one form (<see cref="OnPostChoose"/>), checked in this order: every code is on the list (else
+/// 400); the default is offered; an added language being turned on has nothing left to translate (one already on stays on after an
+/// update adds texts); a new default has its legal pages at the source's versions (<see cref="LegalPages.UpToDate"/>), so nothing is
+/// renumbered and Terms acceptances stand; turning off a language residents chose asks first, with how many. Audited as
+/// <c>languages-offered-changed</c> (the code list) and <c>language-default-changed</c> (from → to).
 /// </summary>
-public sealed class LanguagesModel(IGridController grid, OwnerLanguages added, LanguageCatalog catalog, OfferedLanguages offered, ResidentLanguages residents,
-    AuditLog audit) : PageModel
+public sealed class LanguagesModel(IGridController grid, Func<LauncherSettings> settings, OwnerLanguages added, LanguageCatalog catalog,
+    OfferedLanguages offeredLanguages, ResidentLanguages residents, AuditLog audit) : PageModel
 {
     /// <summary>One language's row of the table.</summary>
     public sealed record Row(string Code, string Name, bool BuiltIn, bool Offered, bool Default, int Missing, int Residents);
@@ -33,6 +40,14 @@ public sealed class LanguagesModel(IGridController grid, OwnerLanguages added, L
     public IReadOnlyList<Row> Rows { get; private set; } = [];
 
     public IReadOnlyList<Choice> Choices { get; private set; } = [];
+
+    /// <summary>The language of the legal pages the owner must write first, for the link beside <see cref="Error"/>; null otherwise.</summary>
+    public string? LegalLanguage { get; private set; }
+
+    /// <summary>A choice of languages waiting for the owner to confirm that residents lose theirs: what was posted, and one line per language.</summary>
+    public sealed record PendingChoice(IReadOnlyList<string> Offered, string Default, IReadOnlyList<string> Lines);
+
+    public PendingChoice? ConfirmChoose { get; private set; }
 
     /// <summary>The added language waiting for the owner to confirm its deletion, or null.</summary>
     public Row? ConfirmDelete { get; private set; }
@@ -56,7 +71,7 @@ public sealed class LanguagesModel(IGridController grid, OwnerLanguages added, L
     {
         if (OwnerLanguages.CodeFor(code) is not { } name || added.Get(name) is null)
             return NotFound();
-        if (offered.Current().Contains(name, StringComparer.OrdinalIgnoreCase))
+        if (offeredLanguages.Current().Contains(name, StringComparer.OrdinalIgnoreCase))
             return Refuse($"{Languages.NativeName(name)} is offered to residents. Turn it off first, then delete it.");
         if (!confirm)
         {
@@ -75,6 +90,69 @@ public sealed class LanguagesModel(IGridController grid, OwnerLanguages added, L
         return Redirect("/security/languages");
     }
 
+    public IActionResult OnPostChoose(string[]? offered, string? @default, bool confirm)
+    {
+        // 1. Only codes on the list, in its order; anything else is not a form this page made.
+        var all = offeredLanguages.All();
+        string? Known(string? code) => all.FirstOrDefault(c => string.Equals(c, code, StringComparison.OrdinalIgnoreCase));
+        var wanted = new List<string>();
+        foreach (var code in offered ?? [])
+        {
+            if (Known(code) is not { } known) return BadRequest();
+            wanted.Add(known);
+        }
+        if (Known(@default) is not { } chosen) return BadRequest();
+        List<string> picked = [.. all.Where(wanted.Contains)];
+
+        // 2. The default is one of the offered.
+        if (!picked.Contains(chosen))
+            return Refuse($"Turn on {Languages.NativeName(chosen)} before making it the default.");
+
+        // 3. An added language is turned on only once it is fully translated; one already on stays on with new texts.
+        var before = offeredLanguages.Current();
+        foreach (var code in picked.Where(c => !offeredLanguages.IsBuiltIn(c) && !before.Contains(c, StringComparer.OrdinalIgnoreCase)))
+            if (catalog.Missing(code) is > 0 and var n)
+                return Refuse($"{Languages.NativeName(code)} still has {n} texts to translate.");
+
+        // 4. A new default must have its legal pages at the source's versions: the numbers carry over, so acceptances stand.
+        var s = settings();
+        var oldDefault = offeredLanguages.Default();
+        if (!string.Equals(chosen, oldDefault, StringComparison.OrdinalIgnoreCase) && Behind(s, chosen))
+        {
+            var refused = Refuse($"Write the Terms, Privacy and Cookies pages in {Languages.NativeName(chosen)} first");
+            LegalLanguage = chosen;
+            return refused;
+        }
+
+        // 5. Turning off a language residents chose asks first; their saved choice stays and reads as the default.
+        var lines = before.Where(c => !picked.Contains(c, StringComparer.OrdinalIgnoreCase))
+            .Select(c => (Code: c, Count: residents.CountUsing(c))).Where(c => c.Count > 0)
+            .Select(c => $"{(c.Count == 1 ? "1 resident uses" : $"{c.Count} residents use")} {Languages.NativeName(c.Code)}. They will see {Languages.NativeName(chosen)} instead.")
+            .ToList();
+        if (lines.Count > 0 && !confirm)
+        {
+            Fill();
+            ConfirmChoose = new PendingChoice(picked, chosen, lines);
+            return Page();
+        }
+
+        grid.UpdateSettings(x => x with { Languages = x.Languages with { Offered = picked, Default = chosen } }, writeConfig: false);
+        if (!before.SequenceEqual(picked, StringComparer.OrdinalIgnoreCase))
+            Write("languages-offered-changed", string.Join(",", picked));
+        if (!string.Equals(chosen, oldDefault, StringComparison.OrdinalIgnoreCase))
+            Write("language-default-changed", $"{oldDefault} → {chosen}");
+        Notice = "Saved.";
+        return Redirect("/security/languages");
+    }
+
+    /// <summary>
+    /// Whether <paramref name="language"/>'s legal pages hold back making it the default: while sign-up can open, any of Terms, Privacy
+    /// and Cookies missing or at another version than the source's; at any time, one it has at another version (it would become the
+    /// source with an older number).
+    /// </summary>
+    private static bool Behind(LauncherSettings s, string language) =>
+        LegalPages.UpToDate(s, language).Any(p => LegalPages.SignUpGateOpen(s) || LegalPages.Exact(s, p, language) is not null);
+
     private IActionResult Refuse(string error)
     {
         Fill();
@@ -84,11 +162,11 @@ public sealed class LanguagesModel(IGridController grid, OwnerLanguages added, L
 
     private void Fill()
     {
-        var current = offered.Current();
-        var standard = offered.Default();
-        Rows = [.. offered.All().Select(code => new Row(code, Languages.NativeName(code), offered.IsBuiltIn(code),
+        var current = offeredLanguages.Current();
+        var standard = offeredLanguages.Default();
+        Rows = [.. offeredLanguages.All().Select(code => new Row(code, Languages.NativeName(code), offeredLanguages.IsBuiltIn(code),
             current.Contains(code, StringComparer.OrdinalIgnoreCase), string.Equals(code, standard, StringComparison.OrdinalIgnoreCase),
-            offered.IsBuiltIn(code) ? 0 : catalog.Missing(code), residents.CountUsing(code)))];
+            offeredLanguages.IsBuiltIn(code) ? 0 : catalog.Missing(code), residents.CountUsing(code)))];
         var have = added.Codes();
         Choices = [.. AddableCultures.Value.Where(c => !have.Contains(c.Code, StringComparer.Ordinal))];
     }

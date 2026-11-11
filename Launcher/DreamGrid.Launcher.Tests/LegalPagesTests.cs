@@ -366,16 +366,77 @@ public sealed class LegalPagesTests
     }
 
     [Fact]
-    public void The_sign_up_gate_still_reads_English_only()
+    public void Sign_up_gate_uses_the_grid_default()
     {
-        // As before: Terms, Privacy and Cookies written in the default language "en" open the gate; German texts alone do not.
+        // The default language's texts are the source: German texts open the gate when German is the default, English ones don't.
         var german = new Dictionary<string, IReadOnlyDictionary<string, LegalText>>
         {
             ["de"] = new[] { "terms", "privacy", "cookies" }.ToDictionary(p => p, p => new LegalText("Test.", 1, Saved)),
         };
         var s = Settings(new LegalSettings(german, true, Saved)) with { Languages = new LanguageSettings { Default = "de" } };
 
-        Assert.False(LegalPages.SignUpGateOpen(s));
-        Assert.Equal(["terms", "privacy", "cookies"], LegalPages.Missing(s));
+        Assert.True(LegalPages.SignUpGateOpen(s));
+        Assert.Empty(LegalPages.Missing(s));
+
+        var english = Settings(Legal(true, "terms", "privacy", "cookies")) with { Languages = new LanguageSettings { Default = "de" } };
+        Assert.False(LegalPages.SignUpGateOpen(english));
+        Assert.Equal(["terms", "privacy", "cookies"], LegalPages.Missing(english));
+        Assert.True(LegalPages.SignUpGateOpen(english with { Languages = new LanguageSettings { Default = "en" } }));
+    }
+
+    // ---- legal versions: the default language is the source, a translation is shown only at the source's version ----
+
+    private static LauncherSettings Versions(string @default, params (string Language, string Page, int Version)[] texts) =>
+        Settings(new LegalSettings(
+            texts.GroupBy(t => t.Language).ToDictionary(g => g.Key,
+                g => (IReadOnlyDictionary<string, LegalText>)g.ToDictionary(t => t.Page, t => new LegalText($"Test {t.Language} {t.Page} v{t.Version}.", t.Version, Saved))),
+            true,
+            Saved)) with { Languages = new LanguageSettings { Default = @default } };
+
+    [Fact]
+    public void Legal_translation_hidden_when_source_is_newer()
+    {
+        var s = Versions("en", ("en", "terms", 4), ("de", "terms", 3), ("en", "privacy", 2), ("de", "privacy", 2));
+
+        // Terms: the German translation is behind, so a German reader gets the source.
+        Assert.Equal(("en", "Test en terms v4."), (LegalPages.Find(s, "terms", "de")!.Value.Language, LegalPages.Find(s, "terms", "de")!.Value.Text.Markdown));
+        // Privacy: up to date, so it is shown.
+        Assert.Equal(("de", "Test de privacy v2."), (LegalPages.Find(s, "privacy", "de")!.Value.Language, LegalPages.Find(s, "privacy", "de")!.Value.Text.Markdown));
+        // A translation of a page the source doesn't have is not shown either.
+        Assert.Null(LegalPages.Find(Versions("en", ("de", "cookies", 1)), "cookies", "de"));
+    }
+
+    [Fact]
+    public async Task Legal_translation_hidden_when_source_is_newer_on_the_page()
+    {
+        var s = Versions("en", ("en", "terms", 4), ("de", "terms", 3));
+        await using var f = Factory(s.Legal);
+
+        var german = await TermsAsync(f, "de");
+
+        Assert.Equal("Diese Seite wird in folgender Sprache angezeigt: English.", german.QuerySelector("main [role=note]")!.TextContent.Trim());
+        Assert.Contains("Test en terms v4.", german.QuerySelector("main article")!.TextContent);
+    }
+
+    [Fact]
+    public void UpToDate_lists_the_required_pages_missing_or_behind()
+    {
+        var s = Versions("en", ("en", "terms", 4), ("en", "privacy", 2), ("en", "cookies", 1), ("en", "contact", 5),
+            ("de", "terms", 4), ("de", "privacy", 1), ("fr", "terms", 4), ("fr", "privacy", 2), ("fr", "cookies", 1));
+
+        Assert.Equal(["privacy", "cookies"], LegalPages.UpToDate(s, "de"));
+        Assert.Empty(LegalPages.UpToDate(s, "fr")); // contact is optional
+        Assert.Empty(LegalPages.UpToDate(s, "en")); // the source itself
+        Assert.Equal(["terms", "privacy", "cookies"], LegalPages.UpToDate(s, "es"));
+    }
+
+    [Fact]
+    public void After_a_default_change_the_old_source_is_a_translation_at_the_same_version()
+    {
+        // The numbers carry over: English and German Terms both at 3, so German as the default shows English readers their own text.
+        var s = Versions("de", ("en", "terms", 3), ("de", "terms", 3));
+
+        Assert.Equal(3, LegalPages.Get(s, "terms", "de")!.Version);
+        Assert.Equal("en", LegalPages.Find(s, "terms", "en")!.Value.Language);
     }
 }

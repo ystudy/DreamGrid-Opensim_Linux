@@ -53,7 +53,7 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
 {
     public const string Purpose = "confirm-signup";
     public static readonly TimeSpan LinkLifetime = TimeSpan.FromHours(24);
-    /// <summary>The <c>EmailText</c> key of "24 hours", read in the email's language by <see cref="EmailTemplates.Words(string, string)"/>.</summary>
+    /// <summary>The <c>EmailText</c> key of "24 hours", read in the email's language by <see cref="EmailSender.Words"/>.</summary>
     public const string ExpiresIn = "ExpiresIn.24h";
     public const string ConfirmPath = "/guest/confirm";
     public const string NameTaken = "That name is taken. Try another.";
@@ -261,7 +261,7 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
         var link = $"{Site(s)}{ConfirmPath}?token={token}";
         var full = Full(account);
         var queued = sender.Queue(EmailTemplates.ConfirmEmail, language, email, full,
-            new Dictionary<string, string> { ["AvatarName"] = full, ["Link"] = link, ["ExpiresIn"] = EmailTemplates.Words(ExpiresIn, language) }, LinkLifetime);
+            new Dictionary<string, string> { ["AvatarName"] = full, ["Link"] = link, ["ExpiresIn"] = sender.Words(ExpiresIn, language) }, LinkLifetime);
         if (queued != QueueResult.Queued)
             log.LogWarning("Sign-up: the confirm email for first name {First} couldn't be queued: {Result}", LogText.Clean(account.FirstName, 32), queued);
     }

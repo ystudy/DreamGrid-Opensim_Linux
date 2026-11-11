@@ -39,7 +39,7 @@ public sealed class AccountChanges(Func<LauncherSettings> settings, IRobustClien
 {
     public const string Purpose = "change-email";
     public static readonly TimeSpan LinkLifetime = PendingEmailChanges.KeepFor;
-    /// <summary>The <c>EmailText</c> key of "24 hours", read in the email's language by <see cref="EmailTemplates.Words(string, string)"/>.</summary>
+    /// <summary>The <c>EmailText</c> key of "24 hours", read in the email's language by <see cref="EmailSender.Words"/>.</summary>
     public const string ExpiresIn = "ExpiresIn.24h";
     public const string ConfirmPath = "/guest/confirm-email";
 
@@ -133,7 +133,7 @@ public sealed class AccountChanges(Func<LauncherSettings> settings, IRobustClien
         var s = settings();
         var full = Full(a);
         var queued = sender.Queue(EmailTemplates.ConfirmNewEmail, language, email, full,
-            new Dictionary<string, string> { ["AvatarName"] = full, ["Link"] = $"{Site(s)}{ConfirmPath}?token={token}", ["ExpiresIn"] = EmailTemplates.Words(ExpiresIn, language) },
+            new Dictionary<string, string> { ["AvatarName"] = full, ["Link"] = $"{Site(s)}{ConfirmPath}?token={token}", ["ExpiresIn"] = sender.Words(ExpiresIn, language) },
             LinkLifetime);
         if (queued != QueueResult.Queued)
             log.LogWarning("Account: the new-address email for first name {First} couldn't be queued: {Result}", LogText.Clean(a.FirstName, 32), queued);

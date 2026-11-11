@@ -35,21 +35,58 @@
 
 <div class="row g-4">
 <div class="col-lg-8">
-<form id="legal-texts" method="post" action="/security/legal" asp-antiforgery="true">
+<nav id="legal-languages" aria-label="Language" class="mb-3">
+    <ul class="nav nav-pills flex-wrap">
+        @foreach (var choice in Model.Choices)
+        {
+            var current = string.Equals(choice.Code, Model.Language, StringComparison.OrdinalIgnoreCase);
+            var source = string.Equals(choice.Code, Model.Source, StringComparison.OrdinalIgnoreCase);
+            <li class="nav-item">
+                <a class="nav-link @(current ? "active" : "")" href="/security/legal?lang=@choice.Code" aria-current="@(current ? "page" : null)">@(choice.Name)@(source ? " (the source)" : "")@if (choice.OutOfDate)
+                    {
+                        <span class="badge text-bg-warning ms-1">out of date</span>
+                    }</a>
+            </li>
+        }
+    </ul>
+</nav>
+@if (Model.IsSource)
+{
+    <p id="legal-language-note" class="form-text">@DreamGrid.Launcher.Core.Languages.NativeName(Model.Language) is the grid's default language, so these
+        texts are the source. Saving a change gives it a new version, and translations show the source until they are updated.</p>
+}
+else
+{
+    <p id="legal-language-note" class="form-text">The @DreamGrid.Launcher.Core.Languages.NativeName(Model.Language) translation. A page is shown to readers
+        of @DreamGrid.Launcher.Core.Languages.NativeName(Model.Language) only while it matches the latest version in
+        @DreamGrid.Launcher.Core.Languages.NativeName(Model.Source); until then they see the @DreamGrid.Launcher.Core.Languages.NativeName(Model.Source) text.</p>
+}
+@if (Model.Error is not null)
+{
+    <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
+}
+<form id="legal-texts" method="post" action="/security/legal?lang=@Model.Language" asp-antiforgery="true">
+    <input type="hidden" name="lang" value="@Model.Language">
     @foreach (var id in LegalPages.All)
     {
         <div class="mb-3">
-            <label class="form-label" for="text-@id">@LegalPages.Title(id)@(id == LegalPages.Contact ? " (optional)" : "")</label>
+            <label class="form-label" for="text-@id">@LegalPages.Title(id)@(id == LegalPages.Contact ? " (optional)" : "")@if (Model.OutOfDate.Contains(id))
+                {
+                    <span class="out-of-date badge text-bg-warning ms-1">out of date</span>
+                }</label>
             <textarea class="form-control" id="text-@id" name="Texts[@id]" rows="10" autocomplete="off" spellcheck="true">
 @(Model.Texts.GetValueOrDefault(id))</textarea>
         </div>
     }
-    <div class="form-check mb-3">
-        <input class="form-check-input" type="checkbox" id="SmallFix" name="SmallFix" value="true">
-        <label class="form-check-label" for="SmallFix">Small fix only (a typo or a broken link): keep the version numbers, so nobody has to accept the Terms again</label>
-    </div>
-    <button type="submit" formaction="/security/legal?handler=Save" class="btn btn-primary">Save</button>
-    <button type="submit" formaction="/security/legal?handler=Preview" class="btn btn-outline-secondary">Preview</button>
+    @if (Model.IsSource)
+    {
+        <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" id="SmallFix" name="SmallFix" value="true">
+            <label class="form-check-label" for="SmallFix">Small fix only (a typo or a broken link): keep the version numbers, so nobody has to accept the Terms again</label>
+        </div>
+    }
+    <button type="submit" formaction="/security/legal?handler=Save&amp;lang=@Model.Language" class="btn btn-primary">Save</button>
+    <button type="submit" formaction="/security/legal?handler=Preview&amp;lang=@Model.Language" class="btn btn-outline-secondary">Preview</button>
 </form>
 
 <form id="legal-responsibility" class="mt-4" method="post" action="/security/legal?handler=Responsibility" asp-antiforgery="true">

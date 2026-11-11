@@ -187,4 +187,43 @@ public sealed class EmailLanguageFlowTests
         Assert.Equal("en", lang.ForTicket(AddTicket(rig, null)));
         Assert.Equal("de", lang.ForTicket(AddTicket(rig, null, "de")));
     }
+
+    /// <summary>Italian, added by the owner and offered, with only the confirm-email texts and "24 hours" translated.</summary>
+    private static void Italian(SignUpsTests.Rig rig)
+    {
+        rig.F.Services.GetRequiredService<OwnerLanguages>().Save(new OwnerLanguage("it", new Dictionary<string, string>(), new Dictionary<string, string>
+        {
+            ["confirm-email.Subject"] = "Conferma la tua email su {GridName}",
+            ["confirm-email.Body"] = "Ciao {AvatarName}, apri {Link} entro {ExpiresIn}.",
+            ["ExpiresIn.24h"] = "24 ore",
+        }, DateTimeOffset.UnixEpoch));
+        rig.F.Store.Save(rig.F.Store.LoadOrCreate() is var s ? s with { Languages = s.Languages with { Offered = ["en", "de", "it"] } } : null!);
+    }
+
+    [Fact]
+    public async Task Email_in_an_added_language_uses_its_file()
+    {
+        await using var rig = SignUpsTests.Factory();
+        Italian(rig);
+
+        await rig.SignUps.SubmitAsync(SignUpsTests.Form(), Caller, Ct, "it");
+
+        var sent = Assert.Single(await SignUpsTests.SentAsync(rig, 1)).Email;
+        Assert.Equal("Conferma la tua email su Avalon", sent.Subject);
+        Assert.Contains("Ciao Bea Example", sent.Text);
+        Assert.Contains("entro 24 ore.", sent.Text);
+    }
+
+    [Fact]
+    public async Task Email_in_an_added_language_falls_back_to_English_per_key()
+    {
+        await using var rig = SignUpsTests.Factory();
+        Italian(rig);
+        Choose(rig, Id(rig, "Ann"), "it");
+
+        // Italian has no already-have-account text: that email is in English, to the account's saved language.
+        await rig.SignUps.SubmitAsync(SignUpsTests.Form(email: "ann@example.com"), Caller, Ct, "en");
+
+        Assert.Equal("Someone tried to sign up on Avalon", Assert.Single(await SignUpsTests.SentAsync(rig, 1)).Email.Subject);
+    }
 }

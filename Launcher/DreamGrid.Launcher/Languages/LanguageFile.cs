@@ -94,56 +94,54 @@ public static partial class LanguageFile
 
     private static (OwnerLanguage?, IReadOnlyList<LanguageFileProblem>) ReadDocument(JsonElement root, string code, LanguageCatalog catalog, TimeProvider time)
     {
+        if (root.ValueKind != JsonValueKind.Object)
+            return Refused("", "The file is not a language file: it should be one JSON object with \"code\", \"page\" and \"email\".");
+
+        List<LanguageFileProblem> problems = [];
+        Dictionary<string, string> page = new(StringComparer.Ordinal);
+        Dictionary<string, string> email = new(StringComparer.Ordinal);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var hasCode = false;
+        foreach (var section in root.EnumerateObject())
         {
-            if (root.ValueKind != JsonValueKind.Object)
-                return Refused("", "The file is not a language file: it should be one JSON object with \"code\", \"page\" and \"email\".");
-
-            List<LanguageFileProblem> problems = [];
-            Dictionary<string, string> page = new(StringComparer.Ordinal);
-            Dictionary<string, string> email = new(StringComparer.Ordinal);
-            var seen = new HashSet<string>(StringComparer.Ordinal);
-            var hasCode = false;
-            foreach (var section in root.EnumerateObject())
+            if (!seen.Add(section.Name))
             {
-                if (!seen.Add(section.Name))
-                {
-                    problems.Add(new(section.Name, "This appears more than once in the file."));
-                    continue;
-                }
-                switch (section.Name)
-                {
-                    case "code":
-                        hasCode = true;
-                        if (section.Value.ValueKind != JsonValueKind.String || OwnerLanguages.CodeFor(section.Value.GetString()) != code)
-                            problems.Add(new("code", $"This file is not for {Named(code)}: its \"code\" should be \"{code}\"."));
-                        break;
-                    case "page":
-                        ReadSection(section.Value, "page", new HashSet<string>(catalog.PageKeys(), StringComparer.Ordinal), page, problems);
-                        break;
-                    case "email":
-                        ReadSection(section.Value, "email", new HashSet<string>(catalog.EmailKeys(), StringComparer.Ordinal), email, problems);
-                        break;
-                    case "english":
-                        break;
-                    default:
-                        problems.Add(new(section.Name, "A language file has only \"code\", \"page\", \"email\" and \"english\"."));
-                        break;
-                }
+                problems.Add(new(section.Name, "This appears more than once in the file."));
+                continue;
             }
-            if (!hasCode)
-                problems.Add(new("code", $"The file has no \"code\". It should be \"{code}\"."));
-
-            foreach (var (key, value) in page)
-                if (Check(catalog, Section.Page, key, value, null) is { } p)
-                    problems.Add(new(key, p));
-            foreach (var (key, value) in email)
-                if (Check(catalog, Section.Email, key, value, Pair(key) is { } other ? email.GetValueOrDefault(other) : null) is { } p)
-                    problems.Add(new(key, p));
-
-            return problems.Count > 0
-                ? (null, Capped(problems))
-                : (new OwnerLanguage(code, page, email, time.GetUtcNow()), problems);
+            switch (section.Name)
+            {
+                case "code":
+                    hasCode = true;
+                    if (section.Value.ValueKind != JsonValueKind.String || OwnerLanguages.CodeFor(section.Value.GetString()) != code)
+                        problems.Add(new("code", $"This file is not for {Named(code)}: its \"code\" should be \"{code}\"."));
+                    break;
+                case "page":
+                    ReadSection(section.Value, "page", new HashSet<string>(catalog.PageKeys(), StringComparer.Ordinal), page, problems);
+                    break;
+                case "email":
+                    ReadSection(section.Value, "email", new HashSet<string>(catalog.EmailKeys(), StringComparer.Ordinal), email, problems);
+                    break;
+                case "english":
+                    break;
+                default:
+                    problems.Add(new(section.Name, "A language file has only \"code\", \"page\", \"email\" and \"english\"."));
+                    break;
+            }
         }
+        if (!hasCode)
+            problems.Add(new("code", $"The file has no \"code\". It should be \"{code}\"."));
+
+        foreach (var (key, value) in page)
+            if (Check(catalog, Section.Page, key, value, null) is { } p)
+                problems.Add(new(key, p));
+        foreach (var (key, value) in email)
+            if (Check(catalog, Section.Email, key, value, Pair(key) is { } other ? email.GetValueOrDefault(other) : null) is { } p)
+                problems.Add(new(key, p));
+
+        return problems.Count > 0
+            ? (null, Capped(problems))
+            : (new OwnerLanguage(code, page, email, time.GetUtcNow()), problems);
     }
 
     /// <summary>The file for <paramref name="language"/>: every catalogue key, its text or <c>""</c>, and the English beside it; UTF-8 without a byte-order mark.</summary>
