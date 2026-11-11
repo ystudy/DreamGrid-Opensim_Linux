@@ -1,5 +1,6 @@
 using System.Globalization;
 using DreamGrid.Launcher.Core;
+using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.Logs;
 using DreamGrid.Launcher.Resident;
 using DreamGrid.Launcher.Security;
@@ -12,11 +13,11 @@ namespace DreamGrid.Launcher.Pages.Security;
 /// The owner's Languages page (OwnerPolicy; <c>/security/languages</c>; 404 where there is no guest side): every built-in and added
 /// language with whether it is offered and the default, what an added one still misses (linking to its translate page) and how many
 /// residents chose it. The owner adds a language from the cultures the system knows (an empty file, then its translate page) and
-/// deletes an added one that is not offered, after a confirmation that shows how many residents use it; their saved choice is left
+/// deletes an added one that is not offered (with its page wording), after a confirmation that shows how many residents use it; their saved choice is left
 /// and falls back to the default. A language code only ever comes from <see cref="OwnerLanguages.CodeFor"/>. Audited as
 /// <c>language-added</c> and <c>language-deleted</c> with the target <c>code</c>.
 /// </summary>
-public sealed class LanguagesModel(OwnerLanguages added, LanguageCatalog catalog, OfferedLanguages offered, ResidentLanguages residents,
+public sealed class LanguagesModel(IGridController grid, OwnerLanguages added, LanguageCatalog catalog, OfferedLanguages offered, ResidentLanguages residents,
     AuditLog audit) : PageModel
 {
     /// <summary>One language's row of the table.</summary>
@@ -65,6 +66,10 @@ public sealed class LanguagesModel(OwnerLanguages added, LanguageCatalog catalog
         }
         if (!added.Delete(name))
             return Refuse($"{Languages.NativeName(name)} could not be deleted. Try again in a moment.");
+        // All its translations go, the owner's page wording in it too, so adding it again starts empty.
+        grid.UpdateSettings(s => s.Wording.Keys.Any(k => string.Equals(k, name, StringComparison.OrdinalIgnoreCase))
+            ? s with { Wording = s.Wording.Where(l => !string.Equals(l.Key, name, StringComparison.OrdinalIgnoreCase)).ToDictionary(l => l.Key, l => l.Value, StringComparer.Ordinal) }
+            : s, writeConfig: false);
         Write("language-deleted", name);
         Notice = $"Deleted {Languages.NativeName(name)}.";
         return Redirect("/security/languages");

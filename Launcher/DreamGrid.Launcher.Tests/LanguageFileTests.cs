@@ -279,6 +279,57 @@ public sealed class LanguageFileTests : IDisposable
         Assert.Equal("Home.Title", Assert.Single(Read(json).Problems).Key);
     }
 
+    [Theory]
+    [InlineData("""{ "code": "it", "page": { "Home.Title": "Ciao \uD800" } }""")]
+    [InlineData("""{ "code": "it", "page": { "Home.\uDC00Title": "Ciao" } }""")]
+    [InlineData("""{ "code": "it", "x\uD800": 1 }""")]
+    [InlineData("""{ "code": "\uD800" }""")]
+    public void A_lone_surrogate_is_a_problem_not_a_crash(string json)
+    {
+        var (read, problems) = Read(json);
+        Assert.Null(read);
+        Assert.Contains("not valid text", Assert.Single(problems).Problem);
+    }
+
+    [Fact]
+    public void Escaped_braces_are_not_fill_ins()
+    {
+        // "{{0}}" shows as "{0}": it is not the fill-in, so the English's {0} is still missing.
+        Assert.NotNull(LanguageFile.Check(_catalog, LanguageFile.Section.Page, "Bots.Question", "{{0}} più {1}", null));
+        Assert.Null(LanguageFile.Check(_catalog, LanguageFile.Section.Page, "Bots.Question", "{{x}} {0} più {1}", null));
+        Assert.NotNull(LanguageFile.Check(_catalog, LanguageFile.Section.Email, "confirm-email.Subject", "Conferma {{GridName}}", null));
+    }
+
+    [Theory]
+    [InlineData("{0,999999} più {1}")]
+    [InlineData("{0,1000} più {1}")]
+    [InlineData("{ 0} più {1}")]
+    public void A_fill_in_GridGate_does_not_use_is_a_problem(string text) =>
+        Assert.NotNull(LanguageFile.Check(_catalog, LanguageFile.Section.Page, "Bots.Question", text, null));
+
+    [Fact]
+    public void A_bounded_alignment_is_fine() =>
+        Assert.Null(LanguageFile.Check(_catalog, LanguageFile.Section.Page, "Bots.Question", "{0,-10} più {1,3}", null));
+
+    [Fact]
+    public void Deep_nesting_is_refused()
+    {
+        var json = """{ "code": "it", "english": """ + new string('[', 20) + new string(']', 20) + " }";
+        var (read, problems) = Read(json);
+        Assert.Null(read);
+        Assert.Single(problems);
+    }
+
+    [Fact]
+    public void Problems_are_capped()
+    {
+        var keys = Enumerable.Range(0, 120).ToDictionary(i => $"No.Such.Key{i}", _ => "x");
+        var (read, problems) = Read(JsonSerializer.Serialize(new Dictionary<string, object> { ["code"] = "it", ["page"] = keys }));
+        Assert.Null(read);
+        Assert.Equal(LanguageFile.MaxProblems + 1, problems.Count);
+        Assert.Equal("... and 70 more.", problems[^1].Problem);
+    }
+
     [Fact]
     public void Check_tells_one_text_at_a_time()
     {

@@ -326,7 +326,12 @@ public sealed class LanguagesPageTests
         using (var bad = await UploadAsync(owner, "it", Encoding.UTF8.GetBytes("not json")))
             Assert.NotNull(Parser.ParseDocument(await bad.Content.ReadAsStringAsync(Ct)).QuerySelector("#upload-problems"));
         using (var big = await UploadAsync(owner, "it", new byte[LanguageFile.MaxBytes + 1]))
-            Assert.True(big.StatusCode is HttpStatusCode.OK or HttpStatusCode.BadRequest or HttpStatusCode.RequestEntityTooLarge, big.StatusCode.ToString());
+        {
+            Assert.Equal(HttpStatusCode.OK, big.StatusCode);
+            var problems = Parser.ParseDocument(await big.Content.ReadAsStringAsync(Ct)).QuerySelector("#upload-problems");
+            Assert.NotNull(problems);
+            Assert.Contains("1 MB", problems.TextContent);
+        }
         using (var other = await UploadAsync(owner, "it", FileOf(new { code = "es", page = new { Home_Title = "Hola" } })))
             Assert.NotNull(Parser.ParseDocument(await other.Content.ReadAsStringAsync(Ct)).QuerySelector("#upload-problems"));
         Assert.Equal("Ciao", Store(f).Get("it")!.Page["Home.Title"]);
@@ -423,6 +428,34 @@ public sealed class LanguagesPageTests
             Assert.Equal(HttpStatusCode.NotFound, r.StatusCode);
         using (var r = await PostAsync(owner, Page, "Delete", new() { ["code"] = "../it", ["confirm"] = "true" }))
             Assert.Equal(HttpStatusCode.NotFound, r.StatusCode);
+    }
+
+    [Fact]
+    public async Task Delete_takes_the_page_wording_too()
+    {
+        await using var f = Factory();
+        Add(f, "it");
+        f.Services.GetRequiredService<DreamGrid.Launcher.Core.Grid.IGridController>().UpdateSettings(s => s with
+        {
+            Wording = new Dictionary<string, IReadOnlyDictionary<string, string>>
+            {
+                ["IT"] = new Dictionary<string, string> { ["Home.Title"] = "Vecchio" },
+                ["de"] = new Dictionary<string, string> { ["Home.Title"] = "Bleibt" },
+            },
+        }, writeConfig: false);
+        var owner = await OwnerAsync(f);
+        using (var r = await PostAsync(owner, Page, "Delete", new() { ["code"] = "it", ["confirm"] = "true" }))
+            Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
+        var wording = f.Services.GetRequiredService<Func<LauncherSettings>>()().Wording;
+        Assert.DoesNotContain(wording.Keys, k => string.Equals(k, "it", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("Bleibt", wording["de"]["Home.Title"]);
+
+        // Added again, it starts empty: the old wording doesn't come back.
+        using (var r = await PostAsync(owner, Page, "Add", new() { ["code"] = "it" }))
+            Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
+        var page = await DocAsync(owner, "/security/wording?lang=it");
+        Assert.Equal("", page.QuerySelector("[data-key='Home.Title'] textarea")!.TextContent.Trim());
+        Assert.DoesNotContain(f.Services.GetRequiredService<Func<LauncherSettings>>()().Wording.Keys, k => string.Equals(k, "it", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

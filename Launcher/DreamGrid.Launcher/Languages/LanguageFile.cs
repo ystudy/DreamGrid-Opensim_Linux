@@ -64,6 +64,7 @@ public static partial class LanguageFile
         {
             return Refused("", "The file is not UTF-8 text. Save it as UTF-8 and upload it again.");
         }
+        // A UTF-8 byte-order mark (U+FEFF) at the start is allowed: some editors write one.
         if (text.Length > 0 && text[0] == '﻿')
             text = text[1..];
 
@@ -79,7 +80,21 @@ public static partial class LanguageFile
 
         using (doc)
         {
-            var root = doc.RootElement;
+            try
+            {
+                return ReadDocument(doc.RootElement, code, catalog, time);
+            }
+            catch (InvalidOperationException)
+            {
+                // A key or text holding half of a character pair (such as "\uD800") parses as JSON but can't be read as text.
+                return Refused("", "The file has a key or text that is not valid text (a broken \\u escape). Fix it and upload it again.");
+            }
+        }
+    }
+
+    private static (OwnerLanguage?, IReadOnlyList<LanguageFileProblem>) ReadDocument(JsonElement root, string code, LanguageCatalog catalog, TimeProvider time)
+    {
+        {
             if (root.ValueKind != JsonValueKind.Object)
                 return Refused("", "The file is not a language file: it should be one JSON object with \"code\", \"page\" and \"email\".");
 
@@ -103,10 +118,10 @@ public static partial class LanguageFile
                             problems.Add(new("code", $"This file is not for {Named(code)}: its \"code\" should be \"{code}\"."));
                         break;
                     case "page":
-                        ReadSection(section.Value, "page", catalog.PageKeys(), page, problems);
+                        ReadSection(section.Value, "page", new HashSet<string>(catalog.PageKeys(), StringComparer.Ordinal), page, problems);
                         break;
                     case "email":
-                        ReadSection(section.Value, "email", catalog.EmailKeys(), email, problems);
+                        ReadSection(section.Value, "email", new HashSet<string>(catalog.EmailKeys(), StringComparer.Ordinal), email, problems);
                         break;
                     case "english":
                         break;
@@ -126,7 +141,7 @@ public static partial class LanguageFile
                     problems.Add(new(key, p));
 
             return problems.Count > 0
-                ? (null, problems)
+                ? (null, Capped(problems))
                 : (new OwnerLanguage(code, page, email, time.GetUtcNow()), problems);
         }
     }
@@ -163,6 +178,8 @@ public static partial class LanguageFile
             return $"This is too long. Keep it to {MaxTextLength:N0} characters or fewer.";
         if (section == Section.Page)
         {
+            if (StrayFillIn(text) is { } stray)
+                return $"{stray} is not a fill-in GridGate can use. Write fill-ins as {{0}}, {{1}} and so on.";
             var english = catalog.English(key);
             var want = Indexes(english);
             var have = Indexes(text);
@@ -208,7 +225,14 @@ public static partial class LanguageFile
     /// <summary>A text as stored: line breaks as line feeds, no spaces around it.</summary>
     public static string Tidy(string text) => text.Replace("\r\n", "\n").Replace('\r', '\n').Trim();
 
-    private static void ReadSection(JsonElement value, string name, IReadOnlyList<string> keys, Dictionary<string, string> into, List<LanguageFileProblem> problems)
+    /// <summary>The most problems listed; past it, one more line says how many others there are.</summary>
+    public const int MaxProblems = 50;
+
+    private static IReadOnlyList<LanguageFileProblem> Capped(List<LanguageFileProblem> problems) =>
+        problems.Count <= MaxProblems ? problems
+        : [.. problems.Take(MaxProblems), new("", $"... and {problems.Count - MaxProblems:N0} more.")];
+
+    private static void ReadSection(JsonElement value, string name, HashSet<string> keys, Dictionary<string, string> into, List<LanguageFileProblem> problems)
     {
         if (value.ValueKind != JsonValueKind.Object)
         {
@@ -223,7 +247,7 @@ public static partial class LanguageFile
                 problems.Add(new(item.Name, "This key appears more than once."));
                 continue;
             }
-            if (!keys.Contains(item.Name, StringComparer.Ordinal))
+            if (!keys.Contains(item.Name))
             {
                 problems.Add(new(item.Name, $"GridGate has no {name} text with this key."));
                 continue;
@@ -245,11 +269,18 @@ public static partial class LanguageFile
         return $"Use the same fill-ins as the English ({List(want)}); this text has {List(have)}.";
     }
 
+    /// <summary>The text without escaped braces (<c>{{</c> and <c>}}</c>), which are not fill-ins.</summary>
+    private static string Unescaped(string text) => text.Replace("{{", "", StringComparison.Ordinal).Replace("}}", "", StringComparison.Ordinal);
+
+    /// <summary>A brace pair that starts with a digit but isn't an index fill-in GridGate accepts (such as <c>{0,999999}</c>), or null.</summary>
+    private static string? StrayFillIn(string text) =>
+        DigitBracePattern().Matches(Unescaped(text)).Select(m => m.Value).FirstOrDefault(t => !IndexPattern().IsMatch(t) || IndexPattern().Match(t).Length != t.Length);
+
     private static HashSet<int> Indexes(string text) =>
-        [.. IndexPattern().Matches(text).Select(m => int.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture))];
+        [.. IndexPattern().Matches(Unescaped(text)).Select(m => int.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture))];
 
     private static HashSet<string> Words(string text) =>
-        new(WordPattern().Matches(text).Select(m => m.Value), StringComparer.Ordinal);
+        new(WordPattern().Matches(Unescaped(text)).Select(m => m.Value), StringComparer.Ordinal);
 
     private static string Named(string code) => Languages.HasCulture(code) ? Languages.NativeName(code) : code;
 
@@ -265,8 +296,13 @@ public static partial class LanguageFile
         return buffer.ToArray();
     }
 
-    [GeneratedRegex(@"\{(\d{1,3})(?:,-?\d+)?(?::[^{}]*)?\}")]
+    // An index fill-in: {0}, {0:N0}, {0,-10}. The alignment has at most three digits, so {0,999999} is not one.
+    [GeneratedRegex(@"\{(\d{1,3})(?:,-?\d{1,3})?(?::[^{}]*)?\}")]
     private static partial Regex IndexPattern();
+
+    // Anything in braces that starts with a digit: an index fill-in or a mistaken one.
+    [GeneratedRegex(@"\{\s*\d[^{}]*\}")]
+    private static partial Regex DigitBracePattern();
 
     [GeneratedRegex(@"\{[A-Za-z]+\}")]
     private static partial Regex WordPattern();
