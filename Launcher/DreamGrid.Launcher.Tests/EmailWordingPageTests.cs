@@ -77,6 +77,34 @@ public sealed class EmailWordingPageTests
         Assert.Equal(Page, email.QuerySelector("#wording-link")?.GetAttribute("href"));
     }
 
+    // The owner's wording is stored under English and only English emails use it; the page says so, and says it again on a
+    // template the owner has changed.
+    [Fact]
+    public async Task Page_says_the_wording_is_for_English_emails_only()
+    {
+        await using var f = Factory();
+        var owner = await OwnerAsync(f);
+        var page = new HtmlParser().ParseDocument(await owner.GetStringAsync(Page, Ct));
+        var note = page.QuerySelector("#wording-language-note")!.TextContent;
+        Assert.Contains("This wording is used for emails in English.", note);
+        Assert.Contains("get GridGate's built-in wording in their language", note);
+        Assert.Empty(page.QuerySelectorAll(".other-languages-warning")); // nothing changed yet
+    }
+
+    [Fact]
+    public async Task Changed_template_warns_that_other_languages_do_not_see_it()
+    {
+        await using var f = Factory();
+        var owner = await OwnerAsync(f);
+        using (var r = await PostAsync(owner, "Save", EmailTemplates.ResetPassword,
+            new() { ["Subject"] = "New password for {GridName}", ["Body"] = "Use {Link} within {ExpiresIn}." }))
+            Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
+        var page = new HtmlParser().ParseDocument(await owner.GetStringAsync(Page, Ct));
+        var warning = Assert.Single(page.QuerySelectorAll(".other-languages-warning"));
+        Assert.Equal("Residents reading other languages won't see these changes.", warning.TextContent.Trim());
+        Assert.NotNull(page.QuerySelector("#tpl-reset-password .other-languages-warning"));
+    }
+
     [Fact]
     public async Task Save_refuses_missing_required_word()
     {

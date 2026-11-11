@@ -48,7 +48,9 @@ Emails to staff are always in English.
 
 Now:
 
-- Change the wording of emails at `/security/email/wording`. Wording is stored per language.
+- Change the wording of emails at `/security/email/wording`. Your wording is used for emails in English only. Residents who
+  read another language get GridGate's built-in wording in their language; the page says so, and warns on each email you have
+  changed. Writing your own wording in other languages comes in plan 16b.
 - Correct a translation in the code and send it to the project (see below).
 
 Coming in plan 16b (not built yet):

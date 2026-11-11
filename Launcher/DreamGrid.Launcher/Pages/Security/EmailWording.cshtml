@@ -6,6 +6,8 @@
 <h1>Email wording</h1>
 <p>The words the grid's emails use. Each one starts with wording that works as it is. Fill-in words in curly brackets are
     replaced when the email is sent. You can use simple formatting: <code>*italic*</code>, <code>**bold**</code> and lists.</p>
+<p id="wording-language-note" class="alert alert-info">This wording is used for emails in English. Residents who read another
+    language get GridGate's built-in wording in their language until you can write your own in it (coming in a later update).</p>
 <p><a href="/security/email">Back to Email</a></p>
 @if (Model.Notice is not null)
 {
@@ -16,6 +18,10 @@
 {
     <section id="tpl-@t.Id" class="card card-body mt-3">
         <h2 class="h4">@t.Title@(t.IsDefault ? "" : " (changed)")</h2>
+        @if (!t.IsDefault)
+        {
+            <p class="other-languages-warning alert alert-warning py-1 px-2 small">Residents reading other languages won't see these changes.</p>
+        }
         @if (t.Error is not null)
         {
             <div class="error alert alert-danger" role="alert">@t.Error</div>
