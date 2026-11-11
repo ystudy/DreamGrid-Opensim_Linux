@@ -1,7 +1,9 @@
+using System.Security.Claims;
 using DreamGrid.Launcher.Core;
 using DreamGrid.Launcher.Guests;
 using DreamGrid.Launcher.Resident;
 using DreamGrid.Launcher.Security;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -13,21 +15,52 @@ namespace DreamGrid.Launcher.Pages;
 /// also in <see cref="ResidentLanguages"/>) and goes back to the page they were on. A POST only (the antiforgery token is
 /// required); anyone may use it. The way back is a path on this site, never another address.
 /// </summary>
-public sealed class LanguageModel(OfferedLanguages offered, ResidentLanguages saved) : PageModel
+/// <remarks>
+/// The picker sits in the guest layout of every resident page, and its antiforgery token is the one that page made, for the
+/// page's own <c>HttpContext.User</c>: the guest on /guest/* (the Guest policy), the guest or nobody on /home (which sets it
+/// itself), and the default (staff) scheme's user elsewhere. This page has no policy, so the automatic check would compare the
+/// token with the staff scheme's user only and refuse a signed-in guest. Instead it checks the token itself against each user
+/// this browser's own cookies give (staff scheme, guest scheme, nobody); the cookie and form token pair is still required.
+/// </remarks>
+[IgnoreAntiforgeryToken]
+public sealed class LanguageModel(OfferedLanguages offered, ResidentLanguages saved, IAntiforgery antiforgery) : PageModel
 {
     public IActionResult OnGet() => StatusCode(StatusCodes.Status405MethodNotAllowed);
 
     public async Task<IActionResult> OnPostAsync(string? code, string? returnUrl)
     {
+        var guest = (await HttpContext.AuthenticateAsync(AuthSchemes.Guest)).Principal;
+        if (!await TokenIsValidAsync(guest))
+            return BadRequest();
+
         if (Core.Languages.Match(code, offered.Current()) is not { } chosen)
             return BadRequest();
 
         LanguagePick.SetCookie(HttpContext, chosen);
-        if ((await HttpContext.AuthenticateAsync(AuthSchemes.Guest)).Principal is { } who && GuestSignIn.Read(who)?.Principal is { } id)
+        if (guest is not null && GuestSignIn.Read(guest)?.Principal is { } id)
             saved.Set(id, chosen);
 
         Response.Headers.Location = Safe(returnUrl);
         return StatusCode(StatusCodes.Status303SeeOther);
+    }
+
+    private async Task<bool> TokenIsValidAsync(ClaimsPrincipal? guest)
+    {
+        var own = HttpContext.User;
+        try
+        {
+            foreach (var who in new[] { own, guest, new ClaimsPrincipal(new ClaimsIdentity()) })
+            {
+                if (who is null) continue;
+                HttpContext.User = who;
+                if (await antiforgery.IsRequestValidAsync(HttpContext)) return true;
+            }
+            return false;
+        }
+        finally
+        {
+            HttpContext.User = own;
+        }
     }
 
     private string Safe(string? url) =>

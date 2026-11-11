@@ -4,6 +4,7 @@ using AngleSharp.Html.Dom;
 using AngleSharp.Html.Parser;
 using DreamGrid.Launcher.Core;
 using DreamGrid.Launcher.Core.Settings;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -17,10 +18,12 @@ public sealed class LanguagePickerTests
 
     private const string Page = "/support";
 
-    private static LauncherFactory Make(Func<LanguageSettings, LanguageSettings>? languages = null)
+    private static LauncherFactory Make(Func<LanguageSettings, LanguageSettings>? languages = null, IPAddress? caller = null,
+        IReadOnlyList<string>? adminNetworks = null)
     {
         var f = new LauncherFactory(s => s with
         {
+            Security = adminNetworks is null ? s.Security : s.Security with { AdminNetworks = adminNetworks },
             GridName = "Avalon",
             SetupToken = null,
             Plan = OwnerPlan.Local,
@@ -29,7 +32,16 @@ public sealed class LanguagePickerTests
             Languages = languages is null ? s.Languages : languages(s.Languages),
         })
         {
-            Before = TestAuth.Apply,
+            Before = app =>
+            {
+                if (caller is not null)
+                    app.Use((ctx, next) =>
+                    {
+                        ctx.Connection.RemoteIpAddress = caller;
+                        return next(ctx);
+                    });
+                TestAuth.Apply(app);
+            },
         };
         TestAuth.AddStaff(f.Robust);
         return f;
@@ -47,14 +59,24 @@ public sealed class LanguagePickerTests
         return Parser.ParseDocument(await r.Content.ReadAsStringAsync(Ct));
     }
 
-    private static async Task<HttpResponseMessage> PostAsync(HttpClient c, string code, string? returnUrl, bool token = true)
+    private static async Task<HttpResponseMessage> PostAsync(HttpClient c, string code, string? returnUrl, bool token = true, string from = Page)
     {
-        var page = await GetAsync(c, Page);
         var form = new Dictionary<string, string> { ["code"] = code };
         if (returnUrl is not null) form["returnUrl"] = returnUrl;
-        if (token)
-            form["__RequestVerificationToken"] = page.QuerySelector("form[action='/language'] input[name=__RequestVerificationToken]")!.GetAttribute("value")!;
+        if (token) form["__RequestVerificationToken"] = await PickerTokenAsync(c, from);
         return await c.PostAsync("/language", new FormUrlEncodedContent(form), Ct);
+    }
+
+    /// <summary>The antiforgery token in the header picker of <paramref name="page"/>, as that page made it for this browser.</summary>
+    private static async Task<string> PickerTokenAsync(HttpClient c, string page) =>
+        (await GetAsync(c, page)).QuerySelector("form[action='/language'] input[name=__RequestVerificationToken]")!.GetAttribute("value")!;
+
+    private static async Task<HttpClient> GuestAsync(LauncherFactory f)
+    {
+        var c = Client(f);
+        using var s = await c.GetAsync("/__test/guest-signin", Ct);
+        Assert.Equal(HttpStatusCode.NoContent, s.StatusCode);
+        return c;
     }
 
     private static string[] SetCookies(HttpResponseMessage r) =>
@@ -182,6 +204,86 @@ public sealed class LanguagePickerTests
         using var r = await PostAsync(Client(f), "fr", returnUrl);
         Assert.Equal(HttpStatusCode.SeeOther, r.StatusCode);
         Assert.Equal("/", r.Headers.Location?.OriginalString);
+    }
+
+    // The picker's token is the one its page made, for that page's user: the guest on /guest/* (the Guest policy) and /home
+    // (which takes the guest itself). /language has no policy, so it must accept that token, not only one for the staff scheme.
+    [Theory]
+    [InlineData("/guest/account")]
+    [InlineData("/guest/connect")]
+    [InlineData("/home")]
+    [InlineData("/support")]
+    public async Task Picker_works_for_a_signed_in_guest_from_every_resident_page(string from)
+    {
+        await using var f = Make();
+        var c = await GuestAsync(f);
+        using var r = await PostAsync(c, "de", from, from: from);
+        Assert.Equal(HttpStatusCode.SeeOther, r.StatusCode);
+        Assert.Equal(from, r.Headers.Location?.OriginalString);
+        Assert.Contains("dg-lang=de", Assert.Single(SetCookies(r)));
+        Assert.Equal("de", f.Services.GetRequiredService<ResidentLanguages>().Get(TestAuth.GuestId));
+    }
+
+    [Fact]
+    public async Task Picker_works_for_staff_looking_at_the_front_page()
+    {
+        await using var f = Make();
+        var c = Client(f);
+        using (var s = await c.GetAsync("/__test/signin?role=admin", Ct)) Assert.Equal(HttpStatusCode.NoContent, s.StatusCode);
+        using var r = await PostAsync(c, "fr", "/home", from: "/home");
+        Assert.Equal(HttpStatusCode.SeeOther, r.StatusCode);
+        Assert.Contains("dg-lang=fr", Assert.Single(SetCookies(r)));
+    }
+
+    [Fact]
+    public async Task Picker_works_anonymously_from_the_support_page()
+    {
+        await using var f = Make();
+        using var r = await PostAsync(Client(f), "es", "/support", from: "/support");
+        Assert.Equal(HttpStatusCode.SeeOther, r.StatusCode);
+        Assert.Contains("dg-lang=es", Assert.Single(SetCookies(r)));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Picker_needs_the_token_for_a_signed_in_guest(bool guest)
+    {
+        await using var f = Make();
+        var c = guest ? await GuestAsync(f) : Client(f);
+        await GetAsync(c, "/home"); // the browser has its antiforgery cookie
+        using var r = await PostAsync(c, "de", "/", token: false);
+        Assert.Equal(HttpStatusCode.BadRequest, r.StatusCode);
+        Assert.Empty(SetCookies(r));
+        Assert.Null(f.Services.GetRequiredService<ResidentLanguages>().Get(TestAuth.GuestId));
+    }
+
+    [Theory]
+    [InlineData("/support", false)]
+    [InlineData("/home", true)]
+    [InlineData("/guest/account", true)]
+    public async Task Picker_refuses_a_token_from_another_browser(string from, bool guest)
+    {
+        await using var f = Make();
+        var other = guest ? await GuestAsync(f) : Client(f);
+        var token = await PickerTokenAsync(other, from);
+        var me = guest ? await GuestAsync(f) : Client(f);
+        await GetAsync(me, from); // my own antiforgery cookie, which the other browser's token is not paired with
+        var form = new Dictionary<string, string> { ["code"] = "de", ["returnUrl"] = "/", ["__RequestVerificationToken"] = token };
+        using var r = await me.PostAsync("/language", new FormUrlEncodedContent(form), Ct);
+        Assert.Equal(HttpStatusCode.BadRequest, r.StatusCode);
+        Assert.Empty(SetCookies(r));
+    }
+
+    [Fact]
+    public async Task Picker_works_from_outside_the_admin_networks()
+    {
+        await using var f = Make(caller: IPAddress.Parse("192.168.1.50"), adminNetworks: ["10.0.0.0/8"]);
+        var c = Client(f);
+        using (var staff = await c.GetAsync("/login", Ct)) Assert.Equal(HttpStatusCode.NotFound, staff.StatusCode); // the list is on
+        using var r = await PostAsync(c, "de", "/home", from: "/home");
+        Assert.Equal(HttpStatusCode.SeeOther, r.StatusCode);
+        Assert.Contains("dg-lang=de", Assert.Single(SetCookies(r)));
     }
 
     [Fact]
