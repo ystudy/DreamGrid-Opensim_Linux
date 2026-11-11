@@ -61,14 +61,14 @@ Legend: **[S]** security requirement, **[X]** cross-platform note, **[?]** decis
 - [x] Every feature that needs email is hidden or explains itself when SMTP isn't set up. (`EmailSender.IsReady`; the features in 2.1–2.3 use it.)
 
 ### 1.5 Languages (localisation)
-> Built in plan 16a (`docs/superpowers/plans/2026-11-10-plan16a-languages.md`, design `docs/superpowers/specs/2026-11-10-languages-design.md`): the six built-in languages for resident pages and emails. How it works, and how to correct or add a translation, is in `docs/languages.md`. Plan 16b will add the owner's tone text, the Languages page (languages on and off, the grid default), adding a new language without code, and the wording and legal editors per language. The ICU item waits for the check on Debian.
+> Built in plan 16a (`docs/superpowers/plans/2026-11-10-plan16a-languages.md`, design `docs/superpowers/specs/2026-11-10-languages-design.md`): the six built-in languages for resident pages and emails. How it works, and how to correct or add a translation, is in `docs/languages.md`. Plan 16b will add the owner's tone text, the Languages page (languages on and off, the grid default), adding a new language without code, and the wording and legal editors per language.
 - [x] Use ASP.NET Core localisation: `IStringLocalizer` and `IViewLocalizer` with `.resx` files per page or area, plus a shared resource for common words. (16a: `IStringLocalizer<ResidentText>` over one shared .resx per language; no `IViewLocalizer`)
 - [x] Choose the language from a cookie (the language picker in the header), then the browser's `Accept-Language`, then English.
 - [x] Starting languages: **en, de, es, fr, pt, ru** (the ones Wifi had). Use Wifi's `.po` files as a first draft for translators, then remove them. (Drafts were AI-made, not from the .po files; the .po files go with Wifi's removal in Phase 3.)
 - [x] Dates, numbers and sizes use the chosen culture (`RegionAdvice.FileSize` and friends included).
 - [x] Make the layout work right-to-left (`dir="rtl"`) so Arabic or Hebrew can be added later without a redesign.
 - [x] A test that fails when a key is missing from any language file, or when a page has a hard-coded English string (a scan of `.cshtml` files).
-- [ ] **[X]** Make sure `InvariantGlobalization` is **off** and ICU is present: `libicu72` on Debian 12, `libicu76` on Debian 13. Add it to the `.deb` dependencies and test the culture switch on both.
+- [x] **[X]** Make sure `InvariantGlobalization` is **off** and ICU is present: `libicu72` on Debian 12, `libicu76` on Debian 13. Add it to the `.deb` dependencies and test the culture switch on both. (`install.sh` installs the right ICU per release. 2026-11-11: release.yml run 42944379220 for `fd43ef5` passed the Debian 12 and 13 and Windows smoke runs; on the Debian 12 VM `/guest/sign-in` rendered in all six languages from the `dg-lang` cookie, `Accept-Language: fr-CA` gave French, a junk cookie gave English, `/welcome?lang=ru` gave Russian with `public, max-age=60` and ignored the cookie, the staff `/login` stayed English, and the picker POST set `dg-lang=ru` (303) and refused a POST without a token (400). Signed-in pages, emails and Firestorm are the owner's check.)
 - [x] Contributor notes: how to add a language (copy the `.resx`, translate, add to the supported list).
 
 ## Phase 2 — Wifi features, rebuilt
