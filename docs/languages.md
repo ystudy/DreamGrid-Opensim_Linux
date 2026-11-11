@@ -14,6 +14,8 @@ On resident pages GridGate looks for a language in this order. It uses the first
 4. The grid's default language.
 5. English.
 
+Only languages the grid offers can be picked. Today that is all six. In plan 16b the owner will choose.
+
 Two things work differently:
 
 - `/welcome` is the page the viewer shows at login. Its answers are cached for everyone, so it can't look at cookies or the browser. It uses only `?lang=` in the address (for example `/welcome?lang=fr`) and the grid's default language.

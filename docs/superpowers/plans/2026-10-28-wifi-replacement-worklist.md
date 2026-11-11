@@ -62,9 +62,9 @@ Legend: **[S]** security requirement, **[X]** cross-platform note, **[?]** decis
 
 ### 1.5 Languages (localisation)
 > Built in plan 16a (`docs/superpowers/plans/2026-11-10-plan16a-languages.md`, design `docs/superpowers/specs/2026-11-10-languages-design.md`): the six built-in languages for resident pages and emails. How it works, and how to correct or add a translation, is in `docs/languages.md`. Plan 16b will add the owner's tone text, the Languages page (languages on and off, the grid default), adding a new language without code, and the wording and legal editors per language. The ICU item waits for the check on Debian.
-- [x] Use ASP.NET Core localisation: `IStringLocalizer` and `IViewLocalizer` with `.resx` files per page or area, plus a shared resource for common words.
+- [x] Use ASP.NET Core localisation: `IStringLocalizer` and `IViewLocalizer` with `.resx` files per page or area, plus a shared resource for common words. (16a: `IStringLocalizer<ResidentText>` over one shared .resx per language; no `IViewLocalizer`)
 - [x] Choose the language from a cookie (the language picker in the header), then the browser's `Accept-Language`, then English.
-- [x] Starting languages: **en, de, es, fr, pt, ru** (the ones Wifi had). Use Wifi's `.po` files as a first draft for translators, then remove them.
+- [x] Starting languages: **en, de, es, fr, pt, ru** (the ones Wifi had). Use Wifi's `.po` files as a first draft for translators, then remove them. (Drafts were AI-made, not from the .po files; the .po files go with Wifi's removal in Phase 3.)
 - [x] Dates, numbers and sizes use the chosen culture (`RegionAdvice.FileSize` and friends included).
 - [x] Make the layout work right-to-left (`dir="rtl"`) so Arabic or Hebrew can be added later without a redesign.
 - [x] A test that fails when a key is missing from any language file, or when a page has a hard-coded English string (a scan of `.cshtml` files).
