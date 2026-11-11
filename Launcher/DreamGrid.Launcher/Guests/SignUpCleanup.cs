@@ -16,7 +16,7 @@ namespace DreamGrid.Launcher.Guests;
 /// is gone or no longer at level −1 is just taken off the list. A database or Robust that doesn't answer leaves the list as it was
 /// for the next run. Each deletion is audited as done by DreamGrid.
 /// </summary>
-public sealed class SignUpCleanup(SignUpBoard pending, IRobustClient robust, IAccountRemover remover, SignUpNotices notices, SignUpLock gate, AuditLog audit, TimeProvider time,
+public sealed class SignUpCleanup(SignUpBoard pending, IRobustClient robust, IAccountRemover remover, ResidentLanguages languages, SignUpNotices notices, SignUpLock gate, AuditLog audit, TimeProvider time,
     ILogger<SignUpCleanup> log) : BackgroundService
 {
     public static readonly TimeSpan Period = TimeSpan.FromHours(1);
@@ -65,6 +65,7 @@ public sealed class SignUpCleanup(SignUpBoard pending, IRobustClient robust, IAc
                 if (account is { UserLevel: -1 })
                 {
                     await remover.DeleteAsync(principal, ct);
+                    languages.Remove(principal);
                     audit.Write(new AuditEntry("DreamGrid", null, "system", null, "signup-expired",
                         LogText.Clean($"{account.FirstName} {account.LastName}", 64), "ok"));
                 }
@@ -85,7 +86,12 @@ public sealed class SignUpCleanup(SignUpBoard pending, IRobustClient robust, IAc
             {
                 if (pending.Get(entry.Principal) is not { Waiting: true }) continue;
                 var account = await robust.FindAccountByIdAsync(entry.Principal, ct);
-                if (account is not { UserLevel: -1 }) pending.Remove(entry.Principal);
+                if (account is not { UserLevel: -1 })
+                {
+                    pending.Remove(entry.Principal);
+                    // Gone from Robust (or no longer a waiting sign-up of ours): a language saved at sign-up has no owner left.
+                    if (account is null) languages.Remove(entry.Principal);
+                }
                 else if (entry.Name.Length == 0) pending.SetName(entry.Principal, $"{account.FirstName} {account.LastName}");
             }
             catch (Exception e) when (IsDown(e, ct))

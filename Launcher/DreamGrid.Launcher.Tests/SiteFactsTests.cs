@@ -182,4 +182,9 @@ public sealed class SiteFactsTests
     [InlineData("email/problems.json")]
     public void Every_file_that_holds_something_about_people_is_listed(string file) =>
         Assert.Contains(SiteFacts.Stored, s => s.Where.Contains(file, StringComparison.Ordinal));
+
+    [Fact]
+    public void The_ticket_line_says_a_ticket_keeps_the_language_it_was_sent_in() =>
+        Assert.Contains(SiteFacts.Stored, s => s.Where.Contains("tickets/<id>.json", StringComparison.Ordinal)
+            && s.What.Contains("language the ticket was sent in", StringComparison.Ordinal));
 }

@@ -101,6 +101,8 @@ public sealed class EmailLanguageFlowTests
 
         Assert.Equal(ApprovalResult.Done, r.Result);
         Assert.Equal("Deutsch signup-denied", (await SignUpsTests.SentAsync(rig, 2))[1].Email.Subject);
+        // The saved language goes with the denied account, after the email was worded.
+        Assert.Null(rig.F.Services.GetRequiredService<ResidentLanguages>().Get(bea));
     }
 
     [Fact]

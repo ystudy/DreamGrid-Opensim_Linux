@@ -39,7 +39,7 @@ public sealed record ApprovalOutcome(ApprovalResult Result, string? Message = nu
 /// <c>signup-denied</c>); the note never is.
 /// </summary>
 public sealed class SignUpApprovals(Func<LauncherSettings> settings, IGridController grid, IRobustClient robust, IAccountRemover remover,
-    IStaffDirectory directory, SignUpBoard board, SignUpLock gate, EmailSender sender, EmailLanguage emailLanguage, AuditLog audit, GroupsAdmin groups, ILogger<SignUpApprovals> log)
+    IStaffDirectory directory, SignUpBoard board, SignUpLock gate, EmailSender sender, EmailLanguage emailLanguage, ResidentLanguages languages, AuditLog audit, GroupsAdmin groups, ILogger<SignUpApprovals> log)
 {
     public const int NoteLimit = 500;
     public const string ApproveBusy = "Couldn't approve right now. Try again in a few minutes.";
@@ -102,6 +102,7 @@ public sealed class SignUpApprovals(Func<LauncherSettings> settings, IGridContro
                 log.LogWarning("Sign-up approval: {Principal} couldn't be deleted: {Message}", principal, e.InnerException?.Message ?? e.Message);
                 return new(ApprovalResult.Busy, DenyBusy);
             }
+            languages.Remove(principal);
             audit.Write(new AuditEntry(staffName, null, role.AuditName(), ip?.ToString(), "signup-denied", Full(account), "ok"));
             Finish(principal, SignUpState.Denied, staffName);
             if (sender.IsReady && account.Email.Trim().Length > 0)

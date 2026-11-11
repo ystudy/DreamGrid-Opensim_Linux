@@ -164,6 +164,23 @@ public sealed class AccountPageTests
     }
 
     [Fact]
+    public async Task Account_language_post_with_a_valid_token_but_not_signed_in_is_sent_to_sign_in()
+    {
+        await using var f = Factory();
+        var client = Client(f);
+        // A token from a page this browser can open (the sign-in page), so only the missing sign-in can refuse the post.
+        var token = Token(await PageAsync(client, "/guest/sign-in"));
+        using var r = await client.PostAsync("/guest/account?handler=Language", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["language"] = "es", ["__RequestVerificationToken"] = token,
+        }), Ct);
+        Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
+        Assert.Equal("/guest/sign-in", new Uri(new Uri("http://localhost"), r.Headers.Location!).AbsolutePath);
+        Assert.Null(f.Services.GetRequiredService<ResidentLanguages>().Get(AnnId));
+        Assert.DoesNotContain(r.Headers.TryGetValues("Set-Cookie", out var c) ? c : [], h => h.StartsWith("dg-lang=", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Account_language_post_needs_sign_in()
     {
         await using var f = Factory();

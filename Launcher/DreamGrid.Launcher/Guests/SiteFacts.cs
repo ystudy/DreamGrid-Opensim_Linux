@@ -37,7 +37,7 @@ public static class SiteFacts
         ("Emails waiting to be sent: the address and the message (encrypted), until sent or expired", "email/outbox.json."),
         ("Emails that couldn't be sent: when, which email, the avatar name and why, for 7 days", "email/problems.json."),
         ("Support tickets: the sender's name and email (and account id when signed in), the messages, any evidence link and logs, "
-            + "and the private links (only as hashes), until a year after the ticket is closed", "tickets/<id>.json."),
+            + "the language the ticket was sent in, and the private links (only as hashes), until a year after the ticket is closed", "tickets/<id>.json."),
         ("Which staff switched on the support ticket emails, by account id, with when their last one went out", "guests/ticket-notices.json."),
         ("The language each resident chose", "The data folder, guests/languages.json."),
     ];
