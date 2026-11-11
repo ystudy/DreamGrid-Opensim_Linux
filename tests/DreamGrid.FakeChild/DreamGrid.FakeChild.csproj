@@ -14,4 +14,9 @@
     <ProjectReference Include="..\..\Launcher\DreamGrid.Launcher.Core\DreamGrid.Launcher.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The import-ok mode answers with the shared fixture report. -->
+    <None Include="../fixtures/model-import/report.json" Link="report.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

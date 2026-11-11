@@ -8,6 +8,8 @@ using DreamGrid.Launcher.Core.Processes;
 //   --crash                       exit with code 3 after 200 ms
 //   --serve <port>                answer 200 on /health, exit on /quit, otherwise run until killed;
 //                                 every request writes one line to stdout and one to stderr
+//   --import-ok <outDir>          copy the shared fixture report.json into outDir and exit 0 (a converter that finished)
+//   --import-hang [pidfile]       write our PID to pidfile (if given), then sleep forever (a converter that never ends)
 //   --launch <port> <pidfile>     start "--serve <port>" through ManagedProcess (as the launcher would), then exit at once
 if (args.Length == 0) return 2;
 
@@ -19,6 +21,17 @@ switch (args[0])
 
     case "--serve" when args.Length >= 2:
         await Serve(int.Parse(args[1]));
+        return 0;
+
+    case "--import-ok" when args.Length >= 2:
+        Directory.CreateDirectory(args[1]);
+        File.Copy(Path.Combine(AppContext.BaseDirectory, "report.json"),
+            Path.Combine(args[1], "report.json"), overwrite: true);
+        return 0;
+
+    case "--import-hang":
+        if (args.Length >= 2) File.WriteAllText(args[1], Environment.ProcessId.ToString());
+        await Task.Delay(Timeout.Infinite);
         return 0;
 
     case "--launch" when args.Length >= 3:

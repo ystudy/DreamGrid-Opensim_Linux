@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "blocked": false,
+  "summary": {
+    "parts": 1,
+    "faces": 2,
+    "triangles": 480,
+    "textures": 1,
+    "sizeMetres": [
+      1.5,
+      1,
+      2
+    ],
+    "largestFitPercent": null
+  },
+  "findings": [
+    {
+      "code": "split-materials",
+      "kind": "safe",
+      "values": {}
+    }
+  ]
+}

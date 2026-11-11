@@ -1,0 +1,70 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Server-side glTF importer: reads a model, checks it and writes OpenSim assets. Run by the launcher as a separate process. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>GridGate.ModelImport</AssemblyName>
+    <RootNamespace>GridGate.ModelImport</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <Deterministic>true</Deterministic>
+    <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <EnableUnsafeBinaryFormatterSerialization>true</EnableUnsafeBinaryFormatterSerialization>
+    <UseCommonOutputDirectory>True</UseCommonOutputDirectory>
+    <AppendTargetFrameworkToOutputPath>False</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>False</AppendRuntimeIdentifierToOutputPath>
+    <OutputPath>..\..\..\bin\</OutputPath>
+    <NoWarn>CA1416,SYSLIB0011,SYSLIB0014,SYSLIB0039</NoWarn>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SharpGLTF.Core" Version="1.0.7" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Framework\OpenSim.Framework.csproj" />
+    <ProjectReference Include="..\..\Region\Framework\OpenSim.Region.Framework.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="OpenMetaverse">
+      <HintPath>$(DgRoot)bin\OpenMetaverse.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="OpenMetaverseTypes">
+      <HintPath>$(DgRoot)bin\OpenMetaverseTypes.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="OpenMetaverse.StructuredData">
+      <HintPath>$(DgRoot)bin\OpenMetaverse.StructuredData.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="OpenMetaverse.Rendering.Meshmerizer">
+      <HintPath>$(DgRoot)bin\OpenMetaverse.Rendering.Meshmerizer.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="System.Drawing.Common">
+      <HintPath>$(DgRoot)bin\System.Drawing.Common.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="log4net">
+      <HintPath>$(DgRoot)bin\log4net.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Nini">
+      <HintPath>$(DgRoot)bin\Nini.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!-- UseCommonOutputDirectory skips copying package assemblies, but the converter runs from bin/ and needs SharpGLTF.Core.dll beside it. -->
+  <Target Name="DeploySharpGltf" AfterTargets="Build">
+    <Copy SourceFiles="@(ReferenceCopyLocalPaths)" DestinationFolder="$(OutDir)"
+          Condition="'%(ReferenceCopyLocalPaths.Filename)' == 'SharpGLTF.Core' And '%(ReferenceCopyLocalPaths.Extension)' == '.dll'"
+          SkipUnchangedFiles="true" Retries="5" RetryDelayMilliseconds="200" />
+  </Target>
+
+</Project>

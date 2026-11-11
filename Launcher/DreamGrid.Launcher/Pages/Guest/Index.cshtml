@@ -21,6 +21,10 @@
 {
     <p><a href="/guest/regions">@T["Regions.Title"]</a></p>
 }
+@if (Model.UploadLink)
+{
+    <p><a href="/guest/upload">@T["Upload.Title"]</a></p>
+}
 @if (Model.TwoFactorLink)
 {
     <p><a href="/guest/two-factor">@T["Common.TwoFactorSignIn"]</a></p>

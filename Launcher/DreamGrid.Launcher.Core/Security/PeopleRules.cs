@@ -1,7 +1,7 @@
 namespace DreamGrid.Launcher.Core.Security;
 
 /// <summary>A task on the People list and a person's page.</summary>
-public enum PersonTask { Edit, ResetLink, SignOut, Suspend, Unsuspend, Delete, Inventory }
+public enum PersonTask { Edit, ResetLink, SignOut, Suspend, Unsuspend, Delete, Inventory, AllowUpload, StopUpload }
 
 /// <summary>
 /// What the rules need to know about a person: the role they are judged by (the higher of their current role and the one they
@@ -13,7 +13,8 @@ public sealed record PersonFacts(StaffRole Judged, bool IsOwner, bool IsActor, b
 /// <summary>
 /// Who may do which task to whom on the People pages. Suspend and unsuspend are <see cref="StaffChanges"/>'s rules. Everything
 /// else is for the owner and admins, on residents only: staff are changed on the Staff page first, nobody uses these tasks on
-/// themself, and the owner can't be changed. Delete needs the person suspended first. The pages draw a disabled icon with the
+/// themself, and the owner can't be changed. Delete needs the person suspended first. The upload right is the exception: the owner
+/// may switch it for anyone, admins for residents and themselves. The pages draw a disabled icon with the
 /// sentence as its reason, and ask again on every post.
 /// </summary>
 public static class PeopleRules
@@ -31,6 +32,7 @@ public static class PeopleRules
     /// <summary>Null when <paramref name="actor"/> may do <paramref name="task"/> to <paramref name="target"/>, else the sentence to show.</summary>
     public static string? Refusal(StaffRole actor, PersonFacts target, PersonTask task)
     {
+        if (task is PersonTask.AllowUpload or PersonTask.StopUpload) return UploadRefusal(actor, target);
         if (target.IsOwner) return StaffChanges.OwnerRefusal;
         if (target.Waiting) return Waiting;
         if (task is PersonTask.Suspend or PersonTask.Unsuspend)
@@ -47,5 +49,17 @@ public static class PeopleRules
             PersonTask.Delete when !target.Suspended => SuspendFirst,
             _ => null,
         };
+    }
+
+    // The upload right is not a change to the person's account: the owner may switch it for anyone, themself and staff included;
+    // an admin for residents and for themself. A sign-up still waiting has no account to give it to.
+    private static string? UploadRefusal(StaffRole actor, PersonFacts target)
+    {
+        if (target.Waiting) return Waiting;
+        if (actor == StaffRole.Owner) return null;
+        if (actor != StaffRole.Admin) return SupervisorOnly;
+        if (target.IsOwner) return StaffChanges.OwnerRefusal;
+        if (target.IsActor) return null;
+        return target.Judged != StaffRole.None ? OwnerChangesStaff : null;
     }
 }

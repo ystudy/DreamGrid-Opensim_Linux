@@ -1,0 +1,23 @@
+@page "/guest/upload/limits"
+@model DreamGrid.Launcher.Pages.Guest.UploadLimitsModel
+@{
+    ViewData["Title"] = T["UploadLimits.Title"].Value;
+}
+<h1>@T["UploadLimits.Title"]</h1>
+<p>@T["UploadLimits.Intro"]</p>
+@if (Model.JoinedRegionsUnchecked)
+{
+    <p class="joined-regions alert alert-info">@T["UploadLimits.JoinedRegions"]</p>
+}
+<table class="table limits">
+    <thead>
+        <tr><th scope="col">@T["UploadLimits.Limit"]</th><th scope="col">@T["UploadLimits.OnThisGrid"]</th><th scope="col">@T["UploadLimits.Why"]</th><th scope="col">@T["UploadLimits.InBlender"]</th></tr>
+    </thead>
+    <tbody>
+        @foreach (var limit in Model.Limits)
+        {
+            <tr><th scope="row">@limit.Name</th><td>@limit.Value</td><td>@limit.Why</td><td>@limit.Tip</td></tr>
+        }
+    </tbody>
+</table>
+<p><a href="/guest/upload">@T["Upload.Title"]</a></p>

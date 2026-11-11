@@ -45,6 +45,11 @@ public static class LauncherServices
             sp.GetRequiredService<IHttpClientFactory>().CreateClient("DreamGrid.Robust"),
             // Resolved per call: the controller itself depends on this client.
             () => sp.GetRequiredService<IGridController>().CurrentSettings()));
+        // Assets go up to 64 MB, so this client waits longer than the account lookups do.
+        services.AddHttpClient("DreamGrid.RobustAssets", c => c.Timeout = TimeSpan.FromMinutes(2));
+        services.AddSingleton<IRobustAssets>(sp => new RobustAssets(
+            sp.GetRequiredService<IHttpClientFactory>().CreateClient("DreamGrid.RobustAssets"),
+            () => sp.GetRequiredService<IGridController>().CurrentSettings()));
         services.AddHttpClient("DreamGrid.Join", c => c.Timeout = TimeSpan.FromSeconds(10));
         services.AddSingleton<IGridJoinClient>(sp => new GridJoinClient(sp.GetRequiredService<IHttpClientFactory>().CreateClient("DreamGrid.Join")));
         services.AddHttpClient("DreamGrid.OtherGrid", c => c.Timeout = TimeSpan.FromSeconds(10));

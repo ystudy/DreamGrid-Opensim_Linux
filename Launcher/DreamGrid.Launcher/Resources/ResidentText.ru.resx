@@ -303,4 +303,209 @@
   <data name="Support.MessageLong" xml:space="preserve"><value>Сократите сообщение: символов должно быть меньше {0:N0}.</value></data>
   <data name="Support.EvidenceProblem" xml:space="preserve"><value>Ссылка на доказательства должна быть одним веб-адресом, начинающимся с https:// или http://.</value></data>
   <data name="Support.LogsProblem" xml:space="preserve"><value>Сократите журналы: символов должно быть меньше {0:N0}.</value></data>
+  <data name="Upload.Title" xml:space="preserve"><value>Загрузить модель</value></data>
+  <data name="Upload.Intro" xml:space="preserve"><value>Загрузите один файл {0} (в Blender: «Файл» &gt; «Экспорт» &gt; «glTF 2.0», glTF Binary) или файл {1}, в котором есть всё. Сначала он проверяется, а потом вы решаете, создавать ли объект.</value></data>
+  <data name="Upload.File" xml:space="preserve"><value>Файл модели</value></data>
+  <data name="Upload.ItemNameOptional" xml:space="preserve"><value>Название объекта (необязательно)</value></data>
+  <data name="Upload.ItemNameHelp" xml:space="preserve"><value>Оставьте пустым, чтобы использовать имя файла.</value></data>
+  <data name="Upload.Check" xml:space="preserve"><value>Проверить модель</value></data>
+  <data name="Upload.ChooseFile" xml:space="preserve"><value>Выберите файл для загрузки.</value></data>
+  <data name="Upload.WrongType" xml:space="preserve"><value>Выберите файл .glb или .gltf. В Blender используйте «Файл» &gt; «Экспорт» &gt; «glTF 2.0».</value></data>
+  <data name="Upload.TooLarge" xml:space="preserve"><value>Файл больше {0} МБ.</value></data>
+  <data name="Upload.Busy" xml:space="preserve"><value>Загрузка сейчас занята, попробуйте ещё раз через минуту</value></data>
+  <data name="Upload.Unreadable" xml:space="preserve"><value>Не удалось прочитать этот файл</value></data>
+  <data name="Upload.Megabytes" xml:space="preserve"><value>{0} МБ</value></data>
+  <data name="UploadLimits.Title" xml:space="preserve"><value>Ограничения этого грида</value></data>
+  <data name="UploadLimits.Intro" xml:space="preserve"><value>Каждая модель проверяется по этим ограничениям, прежде чем её создать.</value></data>
+  <data name="UploadLimits.JoinedRegions" xml:space="preserve"><value>Это ограничения собственных регионов этого компьютера. Регионы на компьютерах, присоединившихся к гриду, не проверяются, и регион с более строгими настройками может не принять объект.</value></data>
+  <data name="UploadLimits.Limit" xml:space="preserve"><value>Ограничение</value></data>
+  <data name="UploadLimits.OnThisGrid" xml:space="preserve"><value>В этом гриде</value></data>
+  <data name="UploadLimits.Why" xml:space="preserve"><value>Почему</value></data>
+  <data name="UploadLimits.InBlender" xml:space="preserve"><value>В Blender</value></data>
+  <data name="UploadLimits.MetresSide" xml:space="preserve"><value>{0} м по стороне</value></data>
+  <data name="UploadLimits.PixelsSide" xml:space="preserve"><value>{0} пикс. по стороне</value></data>
+  <data name="UploadLimits.NoLimit" xml:space="preserve"><value>без ограничений</value></data>
+  <data name="UploadLimits.PartsCount.One" xml:space="preserve"><value>{0} часть</value></data>
+  <data name="UploadLimits.PartsCount.Few" xml:space="preserve"><value>{0} части</value></data>
+  <data name="UploadLimits.PartsCount.Other" xml:space="preserve"><value>{0} частей</value></data>
+  <data name="UploadLimits.FacesCount.One" xml:space="preserve"><value>{0} грань</value></data>
+  <data name="UploadLimits.FacesCount.Few" xml:space="preserve"><value>{0} грани</value></data>
+  <data name="UploadLimits.FacesCount.Other" xml:space="preserve"><value>{0} граней</value></data>
+  <data name="UploadLimits.LargestPart.Name" xml:space="preserve"><value>Самая большая часть</value></data>
+  <data name="UploadLimits.LargestPart.Why" xml:space="preserve"><value>Регионы не принимают части крупнее.</value></data>
+  <data name="UploadLimits.LargestPart.Tip" xml:space="preserve"><value>В Blender проверьте размер на панели N; уменьшите масштаб (S) и примените его (Ctrl+A).</value></data>
+  <data name="UploadLimits.LargestPhysical.Name" xml:space="preserve"><value>Самая большая физическая часть</value></data>
+  <data name="UploadLimits.LargestPhysical.Why" xml:space="preserve"><value>Части, которые движутся по законам физики, должны быть меньше, чтобы регион мог рассчитать столкновения.</value></data>
+  <data name="UploadLimits.LargestPhysical.Tip" xml:space="preserve"><value>В Blender разделите большую модель на объекты поменьше, если она должна быть физической.</value></data>
+  <data name="UploadLimits.SmallestPart.Name" xml:space="preserve"><value>Самая маленькая часть</value></data>
+  <data name="UploadLimits.SmallestPart.Why" xml:space="preserve"><value>Части поменьше создать нельзя, поэтому они пропускаются.</value></data>
+  <data name="UploadLimits.SmallestPart.Tip" xml:space="preserve"><value>В Blender присоедините крошечные детали к более крупной части (Ctrl+J).</value></data>
+  <data name="UploadLimits.Parts.Name" xml:space="preserve"><value>Частей в одном объекте</value></data>
+  <data name="UploadLimits.Parts.Why" xml:space="preserve"><value>Объект — это набор связанных частей; регионы могут ограничивать их число.</value></data>
+  <data name="UploadLimits.Parts.Tip" xml:space="preserve"><value>В Blender объедините объекты (Ctrl+J), чтобы частей было меньше.</value></data>
+  <data name="UploadLimits.Materials.Name" xml:space="preserve"><value>Материалов в одной части</value></data>
+  <data name="UploadLimits.Materials.Why" xml:space="preserve"><value>У каждой части не больше 8 граней, по одному материалу на грань. Лишние материалы автоматически выносятся в дополнительные связанные части.</value></data>
+  <data name="UploadLimits.Materials.Tip" xml:space="preserve"><value>В Blender объедините материалы с общим изображением или запеките их в один.</value></data>
+  <data name="UploadLimits.Points.Name" xml:space="preserve"><value>Точек в одной грани</value></data>
+  <data name="UploadLimits.Points.Why" xml:space="preserve"><value>Грани побольше разделяются автоматически.</value></data>
+  <data name="UploadLimits.Points.Tip" xml:space="preserve"><value>В Blender модификатор Decimate уменьшает число точек.</value></data>
+  <data name="UploadLimits.Picture.Name" xml:space="preserve"><value>Размер изображения</value></data>
+  <data name="UploadLimits.Picture.Why" xml:space="preserve"><value>Изображения приводятся к степени двойки не больше этого размера, чтобы грид быстро загружался.</value></data>
+  <data name="UploadLimits.Picture.Tip" xml:space="preserve"><value>В Blender сохраняйте изображения размером 1024 × 1024 или меньше.</value></data>
+  <data name="UploadLimits.Heavy.Name" xml:space="preserve"><value>Треугольников до «тяжёлой» модели</value></data>
+  <data name="UploadLimits.Heavy.Why" xml:space="preserve"><value>Выше этого упрощённые версии, которые видны издалека, могут выглядеть комковатыми или с дырами.</value></data>
+  <data name="UploadLimits.Heavy.Tip" xml:space="preserve"><value>В Blender добавьте модификатор Decimate.</value></data>
+  <data name="UploadLimits.Triangles.Name" xml:space="preserve"><value>Треугольников в одной загрузке</value></data>
+  <data name="UploadLimits.Triangles.Why" xml:space="preserve"><value>Больше этого грид не примет в одном объекте.</value></data>
+  <data name="UploadLimits.Triangles.Tip" xml:space="preserve"><value>В Blender добавьте модификатор Decimate.</value></data>
+  <data name="UploadLimits.Objects.Name" xml:space="preserve"><value>Объектов в одном файле</value></data>
+  <data name="UploadLimits.Objects.Why" xml:space="preserve"><value>Больше этого грид не примет в одном файле.</value></data>
+  <data name="UploadLimits.Objects.Tip" xml:space="preserve"><value>В Blender объедините объекты (Ctrl+J).</value></data>
+  <data name="UploadLimits.FileSize.Name" xml:space="preserve"><value>Размер файла</value></data>
+  <data name="UploadLimits.FileSize.Why" xml:space="preserve"><value>Самый большой файл, который принимает этот грид.</value></data>
+  <data name="UploadLimits.FileSize.Tip" xml:space="preserve"><value>В Blender используйте изображения поменьше; экспортируйте как glTF Binary (.glb).</value></data>
+  <data name="UploadLimits.PictureInFile.Name" xml:space="preserve"><value>Изображение внутри файла</value></data>
+  <data name="UploadLimits.PictureInFile.Why" xml:space="preserve"><value>Изображения крупнее вообще не читаются.</value></data>
+  <data name="UploadLimits.PictureInFile.Tip" xml:space="preserve"><value>В Blender уменьшите изображения перед экспортом.</value></data>
+  <data name="UploadReport.Title" xml:space="preserve"><value>Отчёт о проверке</value></data>
+  <data name="UploadReport.Made" xml:space="preserve"><value>Объект создан</value></data>
+  <data name="UploadReport.Done" xml:space="preserve"><value>{0} находится в вашем инвентаре, в папке «Uploads». Если вы в мире, выйдите и войдите снова, чтобы увидеть его.</value></data>
+  <data name="UploadReport.AlreadyFinished" xml:space="preserve"><value>Эта загрузка уже завершена.</value></data>
+  <data name="UploadReport.UploadAnother" xml:space="preserve"><value>Загрузить ещё</value></data>
+  <data name="UploadReport.MayLookWrong" xml:space="preserve"><value>{0} может выглядеть искажённым или неправильной формы.</value></data>
+  <data name="UploadReport.YouShouldCorrect" xml:space="preserve"><value>{0} Стоит исправить:</value></data>
+  <data name="UploadReport.Size" xml:space="preserve"><value>Размер, в процентах</value></data>
+  <data name="UploadReport.LargestFits" xml:space="preserve"><value>{0} % — наибольший размер, который подходит для этого грида.</value></data>
+  <data name="UploadReport.FixedForYou" xml:space="preserve"><value>Исправлено автоматически</value></data>
+  <data name="UploadReport.ItemName" xml:space="preserve"><value>Название объекта</value></data>
+  <data name="UploadReport.NextOwner" xml:space="preserve"><value>Следующий владелец может</value></data>
+  <data name="UploadReport.Copy" xml:space="preserve"><value>Копировать</value></data>
+  <data name="UploadReport.Modify" xml:space="preserve"><value>Изменять</value></data>
+  <data name="UploadReport.Transfer" xml:space="preserve"><value>Передавать</value></data>
+  <data name="UploadReport.CheckAgain" xml:space="preserve"><value>Проверить снова</value></data>
+  <data name="UploadReport.MakeItem" xml:space="preserve"><value>Создать объект</value></data>
+  <data name="UploadReport.DifferentFile" xml:space="preserve"><value>Загрузить другой файл</value></data>
+  <data name="UploadReport.NothingCharged" xml:space="preserve"><value>Не получилось, ничего не списано</value></data>
+  <data name="UploadReport.CheckedAgain" xml:space="preserve"><value>Мы проверили ещё раз с вашими изменениями. Просмотрите результат, затем создайте объект.</value></data>
+  <data name="UploadReport.NotAllowed" xml:space="preserve"><value>Сейчас эта загрузка не разрешена.</value></data>
+  <data name="UploadReport.ChooseSize" xml:space="preserve"><value>Выберите размер от {0} до {1} процентов.</value></data>
+  <data name="UploadReport.MustFix.One" xml:space="preserve"><value>{0} пункт нужно исправить до создания объекта</value></data>
+  <data name="UploadReport.MustFix.Few" xml:space="preserve"><value>{0} пункта нужно исправить до создания объекта</value></data>
+  <data name="UploadReport.MustFix.Other" xml:space="preserve"><value>{0} пунктов нужно исправить до создания объекта</value></data>
+  <data name="UploadReport.MayLookWrongCount.One" xml:space="preserve"><value>{0} пункт может выглядеть неправильно</value></data>
+  <data name="UploadReport.MayLookWrongCount.Few" xml:space="preserve"><value>{0} пункта могут выглядеть неправильно</value></data>
+  <data name="UploadReport.MayLookWrongCount.Other" xml:space="preserve"><value>{0} пунктов могут выглядеть неправильно</value></data>
+  <data name="UploadReport.WillBeFixed.One" xml:space="preserve"><value>{0} пункт будет исправлен автоматически</value></data>
+  <data name="UploadReport.WillBeFixed.Few" xml:space="preserve"><value>{0} пункта будут исправлены автоматически</value></data>
+  <data name="UploadReport.WillBeFixed.Other" xml:space="preserve"><value>{0} пунктов будут исправлены автоматически</value></data>
+  <data name="UploadReport.Checked" xml:space="preserve"><value>{0} проверен: {1}.</value></data>
+  <data name="UploadReport.NothingToChange" xml:space="preserve"><value>{0} проверен: ничего менять не нужно.</value></data>
+  <data name="UploadReport.ListSeparator" xml:space="preserve"><value>; </value></data>
+  <data name="Finding.Several" xml:space="preserve"><value>несколько</value></data>
+  <data name="Finding.InTheModel" xml:space="preserve"><value>в модели</value></data>
+  <data name="Finding.TheModel" xml:space="preserve"><value>Модель</value></data>
+  <data name="Finding.ItsSize" xml:space="preserve"><value>исходного размера</value></data>
+  <data name="Finding.AnotherKind" xml:space="preserve"><value>другого типа</value></data>
+  <data name="Finding.SomeFaces" xml:space="preserve"><value>Некоторые грани</value></data>
+  <data name="Finding.SomeParts" xml:space="preserve"><value>Некоторые части</value></data>
+  <data name="Finding.And" xml:space="preserve"><value>{0} и {1}</value></data>
+  <data name="Finding.What.Cameras" xml:space="preserve"><value>камеры</value></data>
+  <data name="Finding.What.Lights" xml:space="preserve"><value>источники света</value></data>
+  <data name="Finding.What.Lines" xml:space="preserve"><value>линии</value></data>
+  <data name="Finding.What.Points" xml:space="preserve"><value>точки</value></data>
+  <data name="Finding.SplitMaterials.Title" xml:space="preserve"><value>Разделено на связанные части: {0}</value></data>
+  <data name="Finding.SplitMaterials.Why" xml:space="preserve"><value>(материалов: {0}, по {1} на часть). Внешний вид от этого не изменится.</value></data>
+  <data name="Finding.SplitMaterials.Tip" xml:space="preserve"><value>В Blender объедините материалы с общим изображением или запеките их в один, чтобы осталась одна часть.</value></data>
+  <data name="Finding.SplitVertices.Title" xml:space="preserve"><value>Большие грани разделены на меньшие: {0}</value></data>
+  <data name="Finding.SplitVertices.Why" xml:space="preserve"><value>В грани может быть не больше {0} точек. Внешний вид от этого не изменится.</value></data>
+  <data name="Finding.SplitVertices.Tip" xml:space="preserve"><value>В Blender модификатор Decimate уменьшает число точек.</value></data>
+  <data name="Finding.TextureResized.Title" xml:space="preserve"><value>Изменён размер изображения {0}</value></data>
+  <data name="Finding.TextureResized.Why" xml:space="preserve"><value>Здесь размеры изображений — степени двойки (например, 512 или 1024). Внешний вид от этого не изменится.</value></data>
+  <data name="Finding.TextureResized.Tip" xml:space="preserve"><value>В Blender сохраняйте изображения размером, например, 512 × 512 или 1024 × 1024.</value></data>
+  <data name="Finding.TextureShrunk.Title" xml:space="preserve"><value>Изображение {0} уменьшено с {1} до {2} пикс.</value></data>
+  <data name="Finding.TextureShrunk.Why" xml:space="preserve"><value>В этом гриде изображения не больше 1024 пикселей по стороне, поэтому вблизи оно будет выглядеть мягче.</value></data>
+  <data name="Finding.TextureShrunk.Tip" xml:space="preserve"><value>В Blender запеките или сохраните изображение размером 1024 × 1024 или меньше, затем экспортируйте снова.</value></data>
+  <data name="Finding.TextureUnsupported.Title" xml:space="preserve"><value>Изображение {0} пропущено</value></data>
+  <data name="Finding.TextureUnsupported.Why" xml:space="preserve"><value>Можно использовать только изображения PNG и JPEG, а это — {0}. Его грани останутся без изображения.</value></data>
+  <data name="Finding.TextureUnsupported.Tip" xml:space="preserve"><value>В Blender сохраните изображение в PNG или JPEG, затем экспортируйте снова.</value></data>
+  <data name="Finding.HeavyMesh.Title" xml:space="preserve"><value>Треугольников в модели: {0}</value></data>
+  <data name="Finding.HeavyMesh.TitleNoCount" xml:space="preserve"><value>В модели очень много треугольников</value></data>
+  <data name="Finding.HeavyMesh.Why" xml:space="preserve"><value>Если их больше {0}, упрощённые версии, которые видны издалека, могут выглядеть комковатыми или с дырами.</value></data>
+  <data name="Finding.HeavyMesh.Tip" xml:space="preserve"><value>В Blender добавьте модификатор Decimate, чтобы уменьшить число треугольников.</value></data>
+  <data name="Finding.TooBig.Title" xml:space="preserve"><value>{0}: {1} м по самой длинной стороне</value></data>
+  <data name="Finding.TooBig.TitleNoSide" xml:space="preserve"><value>{0}: слишком большой размер</value></data>
+  <data name="Finding.TooBig.Why" xml:space="preserve"><value>В этом гриде части могут быть не больше {0} м, чтобы их принял любой регион.</value></data>
+  <data name="Finding.TooBig.Tip" xml:space="preserve"><value>В Blender уменьшите модель (S), примените масштаб (Ctrl+A), затем экспортируйте снова. Или выберите здесь размер поменьше.</value></data>
+  <data name="Finding.TooSmall.Title" xml:space="preserve"><value>Слишком маленькие части пропущены: {0} из {1}</value></data>
+  <data name="Finding.TooSmall.TitleNoCount" xml:space="preserve"><value>Некоторые части слишком малы и пропущены</value></data>
+  <data name="Finding.TooSmall.Why" xml:space="preserve"><value>Части должны быть не меньше {0} м по стороне.</value></data>
+  <data name="Finding.TooSmall.Tip" xml:space="preserve"><value>В Blender присоедините крошечные детали к более крупной части (Ctrl+J), затем экспортируйте снова.</value></data>
+  <data name="Finding.TooManyParts.Title" xml:space="preserve"><value>Частей в объекте: {0}</value></data>
+  <data name="Finding.TooManyParts.Why" xml:space="preserve"><value>Этот грид допускает не больше {0} частей в одном объекте.</value></data>
+  <data name="Finding.TooManyParts.WhyNoLimit" xml:space="preserve"><value>Этот грид ограничивает число частей в одном объекте.</value></data>
+  <data name="Finding.TooManyParts.Tip" xml:space="preserve"><value>В Blender объедините объекты (Ctrl+J) или используйте меньше материалов, затем экспортируйте снова.</value></data>
+  <data name="Finding.InsideOut.Title" xml:space="preserve"><value>{0}: возможно, вывернуто наизнанку</value></data>
+  <data name="Finding.InsideOut.Why" xml:space="preserve"><value>Оно было зеркально отражено, поэтому грани могут смотреть не в ту сторону и казаться прозрачными.</value></data>
+  <data name="Finding.InsideOut.Tip" xml:space="preserve"><value>В Blender примените масштаб (Ctrl+A), затем в режиме редактирования пересчитайте нормали (Shift+N).</value></data>
+  <data name="Finding.InsideOutMany.Title" xml:space="preserve"><value>{0}: возможно, вывернуто наизнанку (частей: {1})</value></data>
+  <data name="Finding.InsideOutMany.Why" xml:space="preserve"><value>Оно было зеркально отражено, поэтому грани могут смотреть не в ту сторону и казаться прозрачными.</value></data>
+  <data name="Finding.InsideOutMany.Tip" xml:space="preserve"><value>В Blender примените масштаб (Ctrl+A), затем в режиме редактирования пересчитайте нормали (Shift+N).</value></data>
+  <data name="Finding.NoUv.Title" xml:space="preserve"><value>Граней с изображением, но без UV-развёртки: {0}</value></data>
+  <data name="Finding.NoUv.Why" xml:space="preserve"><value>Без неё изображение нельзя разместить, и оно будет выглядеть размазанным.</value></data>
+  <data name="Finding.NoUv.Tip" xml:space="preserve"><value>В Blender сделайте развёртку меша в режиме редактирования (U), затем экспортируйте снова.</value></data>
+  <data name="Finding.DroppedAnimation.Title" xml:space="preserve"><value>Анимации пропущены</value></data>
+  <data name="Finding.DroppedAnimation.Why" xml:space="preserve"><value>Объекты здесь не воспроизводят анимации glTF. В неподвижном виде он будет выглядеть так же.</value></data>
+  <data name="Finding.DroppedAnimation.Tip" xml:space="preserve"><value>Исправлять нечего. При экспорте glTF в Blender можно снять флажок Animation.</value></data>
+  <data name="Finding.DroppedMorphs.Title" xml:space="preserve"><value>Ключи формы пропущены</value></data>
+  <data name="Finding.DroppedMorphs.Why" xml:space="preserve"><value>Объект создаётся в базовой форме.</value></data>
+  <data name="Finding.DroppedMorphs.Tip" xml:space="preserve"><value>В Blender примените нужный ключ формы перед экспортом или снимите флажок Shape Keys при экспорте glTF.</value></data>
+  <data name="Finding.DroppedExtras.Title" xml:space="preserve"><value>Пропущено: {0}</value></data>
+  <data name="Finding.DroppedExtras.Why" xml:space="preserve"><value>Объекты не могут их содержать. Внешний вид от этого не изменится.</value></data>
+  <data name="Finding.DroppedExtras.Tip" xml:space="preserve"><value>При экспорте glTF в Blender снимите флажки Cameras и Punctual Lights.</value></data>
+  <data name="Finding.VertexColours.Title" xml:space="preserve"><value>Цвета вершин модели пропущены</value></data>
+  <data name="Finding.VertexColours.Why" xml:space="preserve"><value>Здесь объекты получают цвет только от материала или изображения, поэтому он может выглядеть проще.</value></data>
+  <data name="Finding.VertexColours.Tip" xml:space="preserve"><value>В Blender запеките цвета вершин в изображение (Cycles: Bake, цвет Diffuse), затем экспортируйте снова.</value></data>
+  <data name="Finding.DoubleSided.Title" xml:space="preserve"><value>{0}: будет видно только с одной стороны</value></data>
+  <data name="Finding.DoubleSided.Why" xml:space="preserve"><value>Здесь грани рисуются только с лицевой стороны, поэтому тонкие части вроде листьев или ткани сзади могут казаться прозрачными.</value></data>
+  <data name="Finding.DoubleSided.Tip" xml:space="preserve"><value>В Blender придайте тонким частям толщину модификатором Solidify, затем экспортируйте снова.</value></data>
+  <data name="Finding.DoubleSidedMany.Title" xml:space="preserve"><value>{0}: будет видно только с одной стороны (материалов: {1})</value></data>
+  <data name="Finding.DoubleSidedMany.Why" xml:space="preserve"><value>Здесь грани рисуются только с лицевой стороны, поэтому тонкие части вроде листьев или ткани сзади могут казаться прозрачными.</value></data>
+  <data name="Finding.DoubleSidedMany.Tip" xml:space="preserve"><value>В Blender придайте тонким частям толщину модификатором Solidify, затем экспортируйте снова.</value></data>
+  <data name="Finding.TextureCoords.Title" xml:space="preserve"><value>Изображение может оказаться не на своём месте</value></data>
+  <data name="Finding.TextureCoords.Why" xml:space="preserve"><value>Используется только первая UV-развёртка модели как есть; вторая развёртка или сдвиг и масштаб изображения не учитываются.</value></data>
+  <data name="Finding.TextureCoords.Tip" xml:space="preserve"><value>В Blender назначьте изображение на первую UV-развёртку, перенесите сдвиг и масштаб в саму развёртку, затем экспортируйте снова.</value></data>
+  <data name="Finding.SkinIgnored.Title" xml:space="preserve"><value>Модель с ригом (костей: {0}), но создаётся как обычный объект</value></data>
+  <data name="Finding.SkinIgnored.Why" xml:space="preserve"><value>В этой версии она стоит в позе покоя, и её нельзя надеть.</value></data>
+  <data name="Finding.SkinIgnored.Tip" xml:space="preserve"><value>В Blender экспортируйте без арматуры, если нужен только объект.</value></data>
+  <data name="Finding.Compressed.Title" xml:space="preserve"><value>Файл сжат ({0})</value></data>
+  <data name="Finding.Compressed.Why" xml:space="preserve"><value>Сжатые модели здесь прочитать нельзя.</value></data>
+  <data name="Finding.Compressed.Tip" xml:space="preserve"><value>При экспорте glTF в Blender снимите флажок Compression, затем экспортируйте снова.</value></data>
+  <data name="Finding.ExternalFiles.Title" xml:space="preserve"><value>Файл использует отдельные файлы: {0}</value></data>
+  <data name="Finding.ExternalFiles.Why" xml:space="preserve"><value>Можно загрузить только один файл, в котором есть всё.</value></data>
+  <data name="Finding.ExternalFiles.Tip" xml:space="preserve"><value>При экспорте glTF в Blender выберите glTF Binary (.glb).</value></data>
+  <data name="Finding.NotTriangles.Title" xml:space="preserve"><value>Пропущено: {0}</value></data>
+  <data name="Finding.NotTriangles.Why" xml:space="preserve"><value>В объект можно превратить только грани.</value></data>
+  <data name="Finding.NotTriangles.Tip" xml:space="preserve"><value>В Blender придайте линиям толщину (модификатор Skin или Solidify) или преобразуйте кривые в меш.</value></data>
+  <data name="Finding.BadFile.Title" xml:space="preserve"><value>Не удалось прочитать этот файл</value></data>
+  <data name="Finding.BadFile.Why" xml:space="preserve"><value>Это не читаемый файл glTF 2.0.</value></data>
+  <data name="Finding.BadFile.NoMesh" xml:space="preserve"><value>В файле нет меша.</value></data>
+  <data name="Finding.BadFile.Tip" xml:space="preserve"><value>В Blender используйте «Файл» &gt; «Экспорт» &gt; «glTF 2.0» и выберите glTF Binary (.glb).</value></data>
+  <data name="Finding.Unknown.Title" xml:space="preserve"><value>В модели что-то стоит проверить</value></data>
+  <data name="Finding.Unknown.Why" xml:space="preserve"><value>Проверка нашла то, что эта страница пока не умеет описать.</value></data>
+  <data name="Finding.Unknown.Tip" xml:space="preserve"><value>В Blender проверьте модель и экспортируйте её снова как glTF Binary (.glb).</value></data>
+  <data name="Finding.TooLarge.Image.Title" xml:space="preserve"><value>Размер изображения: {0} пикс.</value></data>
+  <data name="Finding.TooLarge.Image.Why" xml:space="preserve"><value>Изображения в загрузке могут быть не больше {1} пикселей по стороне.</value></data>
+  <data name="Finding.TooLarge.Image.Tip" xml:space="preserve"><value>В Blender сохраните изображение размером 1024 × 1024 или меньше, затем экспортируйте снова.</value></data>
+  <data name="Finding.TooLarge.Triangles.Title" xml:space="preserve"><value>В модели больше {0} треугольников</value></data>
+  <data name="Finding.TooLarge.Triangles.Why" xml:space="preserve"><value>Это больше, чем грид примет в одном объекте.</value></data>
+  <data name="Finding.TooLarge.Triangles.Tip" xml:space="preserve"><value>В Blender добавьте модификатор Decimate, чтобы уменьшить число треугольников.</value></data>
+  <data name="Finding.TooLarge.Nodes.Title" xml:space="preserve"><value>В модели больше {0} объектов</value></data>
+  <data name="Finding.TooLarge.Nodes.Why" xml:space="preserve"><value>Это больше, чем грид примет в одном объекте.</value></data>
+  <data name="Finding.TooLarge.Nodes.Tip" xml:space="preserve"><value>В Blender объедините объекты (Ctrl+J), затем экспортируйте снова.</value></data>
+  <data name="Finding.TooLarge.Assets.Title" xml:space="preserve"><value>Готовый объект занял бы больше {0}</value></data>
+  <data name="Finding.TooLarge.Assets.Why" xml:space="preserve"><value>Его изображения и формы вместе больше, чем грид принимает для одного объекта.</value></data>
+  <data name="Finding.TooLarge.Assets.Tip" xml:space="preserve"><value>В Blender используйте меньше изображений или изображения поменьше и модификатор Decimate, затем экспортируйте снова.</value></data>
+  <data name="Finding.TooLarge.Upload.Title" xml:space="preserve"><value>Файл больше {0}</value></data>
+  <data name="Finding.TooLarge.Upload.Why" xml:space="preserve"><value>Это самый большой файл, который принимает грид.</value></data>
+  <data name="Finding.TooLarge.Upload.Tip" xml:space="preserve"><value>В Blender используйте изображения поменьше и модификатор Decimate, затем экспортируйте снова.</value></data>
 </root>

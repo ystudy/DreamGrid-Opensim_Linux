@@ -9,6 +9,7 @@ using DreamGrid.Launcher.Core.Groups;
 using DreamGrid.Launcher.Core.Guests;
 using DreamGrid.Launcher.Core.Logs;
 using DreamGrid.Launcher.Endpoints;
+using DreamGrid.Launcher.Core.ModelImport;
 using DreamGrid.Launcher.Core.Modules;
 using DreamGrid.Launcher.Core.OpenSim;
 using DreamGrid.Launcher.Core.Settings;
@@ -22,6 +23,7 @@ using DreamGrid.Launcher.Splash;
 using DreamGrid.Launcher.Email;
 using DreamGrid.Launcher.Groups;
 using DreamGrid.Launcher.Guests;
+using DreamGrid.Launcher.ModelImport;
 using DreamGrid.Launcher.Resident;
 using DreamGrid.Launcher.Setup;
 using Microsoft.AspNetCore.Authentication;
@@ -281,6 +283,8 @@ builder.Services.AddSingleton(sp => new HeldNames(Path.Combine(paths.Guests, "he
 builder.Services.AddSingleton<IRobustNames>(sp => new RobustNames(sp.GetRequiredService<Func<LauncherSettings>>()));
 builder.Services.AddSingleton(sp => new RegionRights(Path.Combine(paths.Guests, "region-rights.json"), sp.GetRequiredService<TimeProvider>(),
     sp.GetRequiredService<ILogger<RegionRights>>()));
+builder.Services.AddSingleton(sp => new UploadRights(Path.Combine(paths.Guests, "upload-rights.json"), sp.GetRequiredService<TimeProvider>(),
+    sp.GetRequiredService<ILogger<UploadRights>>()));
 builder.Services.AddSingleton(sp => new EmailTokens(Path.Combine(paths.Guests, "email-tokens.json"), sp.GetRequiredService<TimeProvider>(),
     sp.GetRequiredService<ILogger<EmailTokens>>()));
 builder.Services.AddSingleton(sp => new ResetLimits(sp.GetRequiredService<TimeProvider>(), Path.Combine(paths.Guests, "reset-limits.json"),
@@ -391,6 +395,12 @@ builder.Services.AddHostedService<RegionEstateSync>();
 // Deletes sign-ups nobody confirmed; after GridHostedService too.
 builder.Services.AddSingleton<SignUpCleanup>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<SignUpCleanup>());
+builder.Services.AddSingleton(sp => new ImportJobs(paths, sp.GetRequiredService<TimeProvider>()));
+builder.Services.AddSingleton<IModelConverter>(sp => new ModelConverter(paths, sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<ModelConverter>>()));
+builder.Services.AddHostedService<ImportJobSweep>();
+// The payment hook for Make the item: free in the proof of concept.
+builder.Services.AddSingleton<IUploadCharge, FreeUploads>();
+builder.Services.AddSingleton<ModelUploads>();
 builder.Services.AddSingleton<TicketSweep>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<TicketSweep>());
 // Registered after GridHostedService, so it stops first: running work is awaited before the controller detaches.

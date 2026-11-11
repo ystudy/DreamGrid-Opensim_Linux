@@ -70,6 +70,43 @@ public sealed class PeopleRulesTests
     }
 
     [Fact]
+    public void The_owner_switches_uploads_for_anyone_including_themself()
+    {
+        var owner = Resident() with { IsOwner = true, IsActor = true, Judged = StaffRole.Owner };
+        foreach (var task in new[] { PersonTask.AllowUpload, PersonTask.StopUpload })
+        {
+            Assert.Null(PeopleRules.Refusal(StaffRole.Owner, owner, task));
+            Assert.Null(PeopleRules.Refusal(StaffRole.Owner, Resident(), task));
+            Assert.Null(PeopleRules.Refusal(StaffRole.Owner, Resident() with { Judged = StaffRole.Admin }, task));
+            Assert.Null(PeopleRules.Refusal(StaffRole.Owner, Resident() with { Judged = StaffRole.Supervisor }, task));
+            Assert.Null(PeopleRules.Refusal(StaffRole.Owner, Resident(suspended: true), task));
+            Assert.Equal(PeopleRules.Waiting, PeopleRules.Refusal(StaffRole.Owner, Resident() with { Waiting = true }, task));
+        }
+        // Other tasks on the owner are still refused.
+        Assert.Equal(StaffChanges.OwnerRefusal, PeopleRules.Refusal(StaffRole.Owner, owner, PersonTask.Edit));
+    }
+
+    [Fact]
+    public void Admins_switch_uploads_for_residents_and_themselves()
+    {
+        var self = Resident() with { IsActor = true, Judged = StaffRole.Admin };
+        foreach (var task in new[] { PersonTask.AllowUpload, PersonTask.StopUpload })
+        {
+            Assert.Null(PeopleRules.Refusal(StaffRole.Admin, Resident(), task));
+            Assert.Null(PeopleRules.Refusal(StaffRole.Admin, self, task));
+            Assert.Equal(PeopleRules.OwnerChangesStaff, PeopleRules.Refusal(StaffRole.Admin, Resident() with { Judged = StaffRole.Admin }, task));
+            Assert.Equal(PeopleRules.OwnerChangesStaff, PeopleRules.Refusal(StaffRole.Admin, Resident() with { Judged = StaffRole.Supervisor }, task));
+            Assert.Equal(StaffChanges.OwnerRefusal,
+                PeopleRules.Refusal(StaffRole.Admin, Resident() with { IsOwner = true, Judged = StaffRole.Owner }, task));
+            Assert.Equal(PeopleRules.SupervisorOnly, PeopleRules.Refusal(StaffRole.Supervisor, Resident(), task));
+            Assert.Equal(PeopleRules.SupervisorOnly,
+                PeopleRules.Refusal(StaffRole.Supervisor, Resident() with { IsActor = true, Judged = StaffRole.Supervisor }, task));
+        }
+        // Other tasks on themself are still refused.
+        Assert.Equal(PeopleRules.Self, PeopleRules.Refusal(StaffRole.Admin, self, PersonTask.Edit));
+    }
+
+    [Fact]
     public void Inventory_is_for_the_owner_and_admins_on_residents()
     {
         Assert.Null(PeopleRules.Refusal(StaffRole.Admin, Resident(), PersonTask.Inventory));

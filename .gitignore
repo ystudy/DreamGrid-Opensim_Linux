@@ -146,3 +146,6 @@ bin/config-addon-robust/Wifi.ini
 
 # ThirdParty/ubODE keeps its patches for opensim-libs in the repository
 !ThirdParty/ubODE/*.patch
+
+# glTF test models fetched by tests/GridGate.ModelImport.Tests/fetch-models.sh
+tests/GridGate.ModelImport.Tests/Models/downloaded/

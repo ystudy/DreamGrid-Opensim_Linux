@@ -31,6 +31,12 @@ public sealed class PersonModel(PeopleActions people, RegionRights rights, Func<
     public (int Named, int NamedOpen, int Copies)? Takedowns { get; private set; }
     public string? HeldBy { get; private set; }
 
+    /// <summary>Whether the person may upload models.</summary>
+    public bool MayUpload { get; private set; }
+
+    /// <summary>The task the "May upload models" button posts, or null when this staff member may not change it (the state still shows).</summary>
+    public PersonTask? UploadTask { get; private set; }
+
     public TaskIcons Icons => TaskIcons.For(people, User, Person!, $"/people/{Person!.Row.Account.PrincipalId}?handler=Task", words: true);
 
     public static string When(DateTimeOffset? at) =>
@@ -59,6 +65,9 @@ public sealed class PersonModel(PeopleActions people, RegionRights rights, Func<
         Person = person;
         Error ??= problem;
         if (Person is null) return false;
+        MayUpload = people.MayUpload(id);
+        var uploadTask = MayUpload ? PersonTask.StopUpload : PersonTask.AllowUpload;
+        UploadTask = people.Refusal(User, Person, uploadTask) is null ? uploadTask : null;
         var s = settings();
         var owned = rights.OwnedBy(id).Select(r => r.Region).ToHashSet();
         Regions = [.. s.Regions.Where(r => r.DeletedAt is null && owned.Contains(r.Uuid)).Select(r => r.Name).Order(StringComparer.OrdinalIgnoreCase)];

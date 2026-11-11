@@ -303,4 +303,209 @@
   <data name="Support.MessageLong" xml:space="preserve"><value>Le message doit faire moins de {0:N0} caractères.</value></data>
   <data name="Support.EvidenceProblem" xml:space="preserve"><value>Le lien vers une preuve doit être une seule adresse web commençant par https:// ou http://.</value></data>
   <data name="Support.LogsProblem" xml:space="preserve"><value>Les journaux doivent faire moins de {0:N0} caractères.</value></data>
+  <data name="Upload.Title" xml:space="preserve"><value>Importer un modèle</value></data>
+  <data name="Upload.Intro" xml:space="preserve"><value>Importez un fichier {0} (dans Blender : Fichier &gt; Exporter &gt; glTF 2.0, glTF Binary) ou un fichier {1} qui contient tout. Il est d’abord vérifié, puis vous décidez de créer l’objet ou non.</value></data>
+  <data name="Upload.File" xml:space="preserve"><value>Fichier du modèle</value></data>
+  <data name="Upload.ItemNameOptional" xml:space="preserve"><value>Nom de l’objet (facultatif)</value></data>
+  <data name="Upload.ItemNameHelp" xml:space="preserve"><value>Laissez vide pour utiliser le nom du fichier.</value></data>
+  <data name="Upload.Check" xml:space="preserve"><value>Vérifier le modèle</value></data>
+  <data name="Upload.ChooseFile" xml:space="preserve"><value>Choisissez un fichier à importer.</value></data>
+  <data name="Upload.WrongType" xml:space="preserve"><value>Choisissez un fichier .glb ou .gltf. Dans Blender, utilisez Fichier &gt; Exporter &gt; glTF 2.0.</value></data>
+  <data name="Upload.TooLarge" xml:space="preserve"><value>Le fichier dépasse {0} Mo.</value></data>
+  <data name="Upload.Busy" xml:space="preserve"><value>L’importation est occupée, réessayez dans une minute</value></data>
+  <data name="Upload.Unreadable" xml:space="preserve"><value>Nous n’avons pas pu lire ce fichier</value></data>
+  <data name="Upload.Megabytes" xml:space="preserve"><value>{0} Mo</value></data>
+  <data name="UploadLimits.Title" xml:space="preserve"><value>Limites de cette grille</value></data>
+  <data name="UploadLimits.Intro" xml:space="preserve"><value>Chaque modèle est vérifié selon ces limites avant d’être créé.</value></data>
+  <data name="UploadLimits.JoinedRegions" xml:space="preserve"><value>Ce sont les limites des régions propres à cet ordinateur. Les régions des ordinateurs qui ont rejoint la grille ne sont pas vérifiées, et l’une d’elles, avec des réglages plus stricts, pourrait refuser l’objet.</value></data>
+  <data name="UploadLimits.Limit" xml:space="preserve"><value>Limite</value></data>
+  <data name="UploadLimits.OnThisGrid" xml:space="preserve"><value>Sur cette grille</value></data>
+  <data name="UploadLimits.Why" xml:space="preserve"><value>Pourquoi</value></data>
+  <data name="UploadLimits.InBlender" xml:space="preserve"><value>Dans Blender</value></data>
+  <data name="UploadLimits.MetresSide" xml:space="preserve"><value>{0} m de côté</value></data>
+  <data name="UploadLimits.PixelsSide" xml:space="preserve"><value>{0} px de côté</value></data>
+  <data name="UploadLimits.NoLimit" xml:space="preserve"><value>aucune limite</value></data>
+  <data name="UploadLimits.PartsCount.One" xml:space="preserve"><value>{0} partie</value></data>
+  <data name="UploadLimits.PartsCount.Few" xml:space="preserve"><value>{0} parties</value></data>
+  <data name="UploadLimits.PartsCount.Other" xml:space="preserve"><value>{0} parties</value></data>
+  <data name="UploadLimits.FacesCount.One" xml:space="preserve"><value>{0} face</value></data>
+  <data name="UploadLimits.FacesCount.Few" xml:space="preserve"><value>{0} faces</value></data>
+  <data name="UploadLimits.FacesCount.Other" xml:space="preserve"><value>{0} faces</value></data>
+  <data name="UploadLimits.LargestPart.Name" xml:space="preserve"><value>Plus grande partie</value></data>
+  <data name="UploadLimits.LargestPart.Why" xml:space="preserve"><value>Les régions refusent les parties plus grandes.</value></data>
+  <data name="UploadLimits.LargestPart.Tip" xml:space="preserve"><value>Dans Blender, vérifiez la taille dans le panneau N ; réduisez l’échelle (S) et appliquez-la (Ctrl+A).</value></data>
+  <data name="UploadLimits.LargestPhysical.Name" xml:space="preserve"><value>Plus grande partie physique</value></data>
+  <data name="UploadLimits.LargestPhysical.Why" xml:space="preserve"><value>Les parties qui bougent avec la physique doivent être plus petites, pour que la région puisse calculer les collisions.</value></data>
+  <data name="UploadLimits.LargestPhysical.Tip" xml:space="preserve"><value>Dans Blender, découpez un grand modèle en objets plus petits s’il doit être physique.</value></data>
+  <data name="UploadLimits.SmallestPart.Name" xml:space="preserve"><value>Plus petite partie</value></data>
+  <data name="UploadLimits.SmallestPart.Why" xml:space="preserve"><value>Les parties plus petites ne peuvent pas être créées, elles sont donc omises.</value></data>
+  <data name="UploadLimits.SmallestPart.Tip" xml:space="preserve"><value>Dans Blender, joignez les petits morceaux à une partie plus grande (Ctrl+J).</value></data>
+  <data name="UploadLimits.Parts.Name" xml:space="preserve"><value>Parties dans un objet</value></data>
+  <data name="UploadLimits.Parts.Why" xml:space="preserve"><value>Un objet est un ensemble de parties liées ; les régions peuvent en limiter le nombre.</value></data>
+  <data name="UploadLimits.Parts.Tip" xml:space="preserve"><value>Dans Blender, joignez des objets (Ctrl+J) pour utiliser moins de parties.</value></data>
+  <data name="UploadLimits.Materials.Name" xml:space="preserve"><value>Matériaux dans une partie</value></data>
+  <data name="UploadLimits.Materials.Why" xml:space="preserve"><value>Chaque partie a au plus 8 faces, avec un matériau chacune. Les matériaux en trop sont répartis pour vous dans des parties liées supplémentaires.</value></data>
+  <data name="UploadLimits.Materials.Tip" xml:space="preserve"><value>Dans Blender, fusionnez les matériaux qui partagent une image, ou cuisez-les en un seul.</value></data>
+  <data name="UploadLimits.Points.Name" xml:space="preserve"><value>Points dans une face</value></data>
+  <data name="UploadLimits.Points.Why" xml:space="preserve"><value>Les faces plus grandes sont découpées pour vous.</value></data>
+  <data name="UploadLimits.Points.Tip" xml:space="preserve"><value>Dans Blender, un modificateur Decimate réduit le nombre de points.</value></data>
+  <data name="UploadLimits.Picture.Name" xml:space="preserve"><value>Taille d’image</value></data>
+  <data name="UploadLimits.Picture.Why" xml:space="preserve"><value>Les images sont redimensionnées à une puissance de deux, sans dépasser cette taille, pour que la grille se charge vite.</value></data>
+  <data name="UploadLimits.Picture.Tip" xml:space="preserve"><value>Dans Blender, enregistrez les images en 1024 × 1024 ou moins.</value></data>
+  <data name="UploadLimits.Heavy.Name" xml:space="preserve"><value>Triangles avant que ce soit lourd</value></data>
+  <data name="UploadLimits.Heavy.Why" xml:space="preserve"><value>Au-delà, les versions simplifiées affichées de loin peuvent paraître bosselées ou avoir des trous.</value></data>
+  <data name="UploadLimits.Heavy.Tip" xml:space="preserve"><value>Dans Blender, ajoutez un modificateur Decimate.</value></data>
+  <data name="UploadLimits.Triangles.Name" xml:space="preserve"><value>Triangles dans une importation</value></data>
+  <data name="UploadLimits.Triangles.Why" xml:space="preserve"><value>Le maximum que cette grille accepte pour un objet.</value></data>
+  <data name="UploadLimits.Triangles.Tip" xml:space="preserve"><value>Dans Blender, ajoutez un modificateur Decimate.</value></data>
+  <data name="UploadLimits.Objects.Name" xml:space="preserve"><value>Objets dans un fichier</value></data>
+  <data name="UploadLimits.Objects.Why" xml:space="preserve"><value>Le maximum que cette grille accepte dans un fichier.</value></data>
+  <data name="UploadLimits.Objects.Tip" xml:space="preserve"><value>Dans Blender, joignez des objets (Ctrl+J).</value></data>
+  <data name="UploadLimits.FileSize.Name" xml:space="preserve"><value>Taille du fichier</value></data>
+  <data name="UploadLimits.FileSize.Why" xml:space="preserve"><value>Le plus gros fichier que cette grille accepte.</value></data>
+  <data name="UploadLimits.FileSize.Tip" xml:space="preserve"><value>Dans Blender, utilisez des images plus petites ; exportez en glTF Binary (.glb).</value></data>
+  <data name="UploadLimits.PictureInFile.Name" xml:space="preserve"><value>Image dans le fichier</value></data>
+  <data name="UploadLimits.PictureInFile.Why" xml:space="preserve"><value>Les images plus grandes ne sont pas lues du tout.</value></data>
+  <data name="UploadLimits.PictureInFile.Tip" xml:space="preserve"><value>Dans Blender, réduisez les images avant l’exportation.</value></data>
+  <data name="UploadReport.Title" xml:space="preserve"><value>Rapport de vérification</value></data>
+  <data name="UploadReport.Made" xml:space="preserve"><value>Objet créé</value></data>
+  <data name="UploadReport.Done" xml:space="preserve"><value>{0} est dans votre inventaire, dans le dossier « Uploads ». Si vous êtes connecté, déconnectez-vous puis reconnectez-vous pour le voir.</value></data>
+  <data name="UploadReport.AlreadyFinished" xml:space="preserve"><value>Cette importation est déjà terminée.</value></data>
+  <data name="UploadReport.UploadAnother" xml:space="preserve"><value>En importer un autre</value></data>
+  <data name="UploadReport.MayLookWrong" xml:space="preserve"><value>{0} peut paraître déformé ou mal formé.</value></data>
+  <data name="UploadReport.YouShouldCorrect" xml:space="preserve"><value>{0} Vous devriez corriger :</value></data>
+  <data name="UploadReport.Size" xml:space="preserve"><value>Taille, en pourcentage</value></data>
+  <data name="UploadReport.LargestFits" xml:space="preserve"><value>{0} % est la plus grande taille acceptée par cette grille.</value></data>
+  <data name="UploadReport.FixedForYou" xml:space="preserve"><value>Corrigé pour vous</value></data>
+  <data name="UploadReport.ItemName" xml:space="preserve"><value>Nom de l’objet</value></data>
+  <data name="UploadReport.NextOwner" xml:space="preserve"><value>Le prochain propriétaire peut</value></data>
+  <data name="UploadReport.Copy" xml:space="preserve"><value>Copier</value></data>
+  <data name="UploadReport.Modify" xml:space="preserve"><value>Modifier</value></data>
+  <data name="UploadReport.Transfer" xml:space="preserve"><value>Transférer</value></data>
+  <data name="UploadReport.CheckAgain" xml:space="preserve"><value>Vérifier à nouveau</value></data>
+  <data name="UploadReport.MakeItem" xml:space="preserve"><value>Créer l’objet</value></data>
+  <data name="UploadReport.DifferentFile" xml:space="preserve"><value>Importer un autre fichier</value></data>
+  <data name="UploadReport.NothingCharged" xml:space="preserve"><value>Cela n’a pas fonctionné, rien n’a été facturé</value></data>
+  <data name="UploadReport.CheckedAgain" xml:space="preserve"><value>Nous l’avons vérifié à nouveau avec vos modifications. Relisez-le, puis créez l’objet.</value></data>
+  <data name="UploadReport.NotAllowed" xml:space="preserve"><value>Cette importation n’est pas autorisée pour le moment.</value></data>
+  <data name="UploadReport.ChooseSize" xml:space="preserve"><value>Choisissez une taille de {0} à {1} pour cent.</value></data>
+  <data name="UploadReport.MustFix.One" xml:space="preserve"><value>{0} point doit être corrigé avant de pouvoir créer l’objet</value></data>
+  <data name="UploadReport.MustFix.Few" xml:space="preserve"><value>{0} points doivent être corrigés avant de pouvoir créer l’objet</value></data>
+  <data name="UploadReport.MustFix.Other" xml:space="preserve"><value>{0} points doivent être corrigés avant de pouvoir créer l’objet</value></data>
+  <data name="UploadReport.MayLookWrongCount.One" xml:space="preserve"><value>{0} point peut paraître incorrect</value></data>
+  <data name="UploadReport.MayLookWrongCount.Few" xml:space="preserve"><value>{0} points peuvent paraître incorrects</value></data>
+  <data name="UploadReport.MayLookWrongCount.Other" xml:space="preserve"><value>{0} points peuvent paraître incorrects</value></data>
+  <data name="UploadReport.WillBeFixed.One" xml:space="preserve"><value>{0} point sera corrigé pour vous</value></data>
+  <data name="UploadReport.WillBeFixed.Few" xml:space="preserve"><value>{0} points seront corrigés pour vous</value></data>
+  <data name="UploadReport.WillBeFixed.Other" xml:space="preserve"><value>{0} points seront corrigés pour vous</value></data>
+  <data name="UploadReport.Checked" xml:space="preserve"><value>{0} a été vérifié : {1}.</value></data>
+  <data name="UploadReport.NothingToChange" xml:space="preserve"><value>{0} a été vérifié : rien à changer.</value></data>
+  <data name="UploadReport.ListSeparator" xml:space="preserve"><value>, </value></data>
+  <data name="Finding.Several" xml:space="preserve"><value>plusieurs</value></data>
+  <data name="Finding.InTheModel" xml:space="preserve"><value>du modèle</value></data>
+  <data name="Finding.TheModel" xml:space="preserve"><value>Le modèle</value></data>
+  <data name="Finding.ItsSize" xml:space="preserve"><value>sa taille</value></data>
+  <data name="Finding.AnotherKind" xml:space="preserve"><value>d’un autre type</value></data>
+  <data name="Finding.SomeFaces" xml:space="preserve"><value>Certaines faces</value></data>
+  <data name="Finding.SomeParts" xml:space="preserve"><value>Certaines parties</value></data>
+  <data name="Finding.And" xml:space="preserve"><value>{0} et {1}</value></data>
+  <data name="Finding.What.Cameras" xml:space="preserve"><value>caméras</value></data>
+  <data name="Finding.What.Lights" xml:space="preserve"><value>lumières</value></data>
+  <data name="Finding.What.Lines" xml:space="preserve"><value>lignes</value></data>
+  <data name="Finding.What.Points" xml:space="preserve"><value>points</value></data>
+  <data name="Finding.SplitMaterials.Title" xml:space="preserve"><value>Découpé en {0} parties liées</value></data>
+  <data name="Finding.SplitMaterials.Why" xml:space="preserve"><value>({0} matériaux, {1} par partie). Cela ne change pas son apparence.</value></data>
+  <data name="Finding.SplitMaterials.Tip" xml:space="preserve"><value>Dans Blender, fusionnez les matériaux qui partagent une image, ou cuisez-les en un seul, pour garder une seule partie.</value></data>
+  <data name="Finding.SplitVertices.Title" xml:space="preserve"><value>{0} grandes faces découpées en plus petites</value></data>
+  <data name="Finding.SplitVertices.Why" xml:space="preserve"><value>Une face peut contenir au plus {0} points. Cela ne change pas son apparence.</value></data>
+  <data name="Finding.SplitVertices.Tip" xml:space="preserve"><value>Dans Blender, un modificateur Decimate réduit le nombre de points.</value></data>
+  <data name="Finding.TextureResized.Title" xml:space="preserve"><value>L’image {0} a été redimensionnée</value></data>
+  <data name="Finding.TextureResized.Why" xml:space="preserve"><value>Ici, les images ont des tailles en puissances de deux (comme 512 ou 1024). Cela ne change pas son apparence.</value></data>
+  <data name="Finding.TextureResized.Tip" xml:space="preserve"><value>Dans Blender, enregistrez les images en tailles comme 512 × 512 ou 1024 × 1024.</value></data>
+  <data name="Finding.TextureShrunk.Title" xml:space="preserve"><value>L’image {0} a été réduite, de {1} à {2} pixels</value></data>
+  <data name="Finding.TextureShrunk.Why" xml:space="preserve"><value>Sur cette grille, les images font au plus 1024 pixels de côté ; elle paraîtra donc moins nette de près.</value></data>
+  <data name="Finding.TextureShrunk.Tip" xml:space="preserve"><value>Dans Blender, cuisez ou enregistrez l’image en 1024 × 1024 ou moins, puis exportez à nouveau.</value></data>
+  <data name="Finding.TextureUnsupported.Title" xml:space="preserve"><value>L’image {0} a été omise</value></data>
+  <data name="Finding.TextureUnsupported.Why" xml:space="preserve"><value>Seules les images PNG et JPEG peuvent être utilisées, et celle-ci est {0}. Ses faces n’auront pas d’image.</value></data>
+  <data name="Finding.TextureUnsupported.Tip" xml:space="preserve"><value>Dans Blender, enregistrez l’image en PNG ou JPEG, puis exportez à nouveau.</value></data>
+  <data name="Finding.HeavyMesh.Title" xml:space="preserve"><value>Le modèle a {0} triangles</value></data>
+  <data name="Finding.HeavyMesh.TitleNoCount" xml:space="preserve"><value>Le modèle a énormément de triangles</value></data>
+  <data name="Finding.HeavyMesh.Why" xml:space="preserve"><value>Au-delà de {0}, les versions simplifiées affichées de loin peuvent paraître bosselées ou avoir des trous.</value></data>
+  <data name="Finding.HeavyMesh.Tip" xml:space="preserve"><value>Dans Blender, ajoutez un modificateur Decimate pour réduire le nombre de triangles.</value></data>
+  <data name="Finding.TooBig.Title" xml:space="preserve"><value>{0} mesure {1} m sur son plus grand côté</value></data>
+  <data name="Finding.TooBig.TitleNoSide" xml:space="preserve"><value>{0} est trop grand</value></data>
+  <data name="Finding.TooBig.Why" xml:space="preserve"><value>Sur cette grille, les parties font au plus {0} m, pour que chaque région puisse les accueillir.</value></data>
+  <data name="Finding.TooBig.Tip" xml:space="preserve"><value>Dans Blender, réduisez l’échelle du modèle (S), appliquez-la (Ctrl+A), puis exportez à nouveau. Ou choisissez ici une taille plus petite.</value></data>
+  <data name="Finding.TooSmall.Title" xml:space="preserve"><value>{0} parties sur {1} sont trop petites et ont été omises</value></data>
+  <data name="Finding.TooSmall.TitleNoCount" xml:space="preserve"><value>Certaines parties sont trop petites et ont été omises</value></data>
+  <data name="Finding.TooSmall.Why" xml:space="preserve"><value>Les parties doivent faire au moins {0} m de côté.</value></data>
+  <data name="Finding.TooSmall.Tip" xml:space="preserve"><value>Dans Blender, joignez les petits morceaux à une partie plus grande (Ctrl+J), puis exportez à nouveau.</value></data>
+  <data name="Finding.TooManyParts.Title" xml:space="preserve"><value>L’objet a {0} parties</value></data>
+  <data name="Finding.TooManyParts.Why" xml:space="preserve"><value>Cette grille autorise {0} parties dans un objet.</value></data>
+  <data name="Finding.TooManyParts.WhyNoLimit" xml:space="preserve"><value>Cette grille limite le nombre de parties dans un objet.</value></data>
+  <data name="Finding.TooManyParts.Tip" xml:space="preserve"><value>Dans Blender, joignez des objets (Ctrl+J) ou utilisez moins de matériaux, puis exportez à nouveau.</value></data>
+  <data name="Finding.InsideOut.Title" xml:space="preserve"><value>{0} est peut-être à l’envers</value></data>
+  <data name="Finding.InsideOut.Why" xml:space="preserve"><value>Il a été mis en miroir : ses faces peuvent pointer du mauvais côté et paraître transparentes.</value></data>
+  <data name="Finding.InsideOut.Tip" xml:space="preserve"><value>Dans Blender, appliquez l’échelle (Ctrl+A), puis en mode Édition recalculez les normales (Maj+N).</value></data>
+  <data name="Finding.InsideOutMany.Title" xml:space="preserve"><value>{0} est peut-être à l’envers ({1} parties)</value></data>
+  <data name="Finding.InsideOutMany.Why" xml:space="preserve"><value>Il a été mis en miroir : ses faces peuvent pointer du mauvais côté et paraître transparentes.</value></data>
+  <data name="Finding.InsideOutMany.Tip" xml:space="preserve"><value>Dans Blender, appliquez l’échelle (Ctrl+A), puis en mode Édition recalculez les normales (Maj+N).</value></data>
+  <data name="Finding.NoUv.Title" xml:space="preserve"><value>{0} faces ont une image mais pas de carte UV</value></data>
+  <data name="Finding.NoUv.Why" xml:space="preserve"><value>Sans elle, l’image ne peut pas être placée et paraîtra étalée.</value></data>
+  <data name="Finding.NoUv.Tip" xml:space="preserve"><value>Dans Blender, dépliez le maillage en mode Édition (U), puis exportez à nouveau.</value></data>
+  <data name="Finding.DroppedAnimation.Title" xml:space="preserve"><value>Les animations ont été omises</value></data>
+  <data name="Finding.DroppedAnimation.Why" xml:space="preserve"><value>Ici, les objets ne peuvent pas jouer d’animations glTF. Cela ne change pas son apparence à l’arrêt.</value></data>
+  <data name="Finding.DroppedAnimation.Tip" xml:space="preserve"><value>Rien à corriger. Dans l’export glTF de Blender, vous pouvez décocher Animation.</value></data>
+  <data name="Finding.DroppedMorphs.Title" xml:space="preserve"><value>Les shape keys ont été omises</value></data>
+  <data name="Finding.DroppedMorphs.Why" xml:space="preserve"><value>L’objet est créé dans sa forme de base.</value></data>
+  <data name="Finding.DroppedMorphs.Tip" xml:space="preserve"><value>Dans Blender, appliquez la shape key voulue avant d’exporter, ou décochez Shape Keys dans l’export glTF.</value></data>
+  <data name="Finding.DroppedExtras.Title" xml:space="preserve"><value>Omis : {0}</value></data>
+  <data name="Finding.DroppedExtras.Why" xml:space="preserve"><value>Les objets ne peuvent pas les contenir. Cela ne change pas son apparence.</value></data>
+  <data name="Finding.DroppedExtras.Tip" xml:space="preserve"><value>Dans l’export glTF de Blender, décochez Cameras et Punctual Lights.</value></data>
+  <data name="Finding.VertexColours.Title" xml:space="preserve"><value>Les couleurs de sommets du modèle ont été omises</value></data>
+  <data name="Finding.VertexColours.Why" xml:space="preserve"><value>Ici, les objets ne prennent la couleur que d’un matériau ou d’une image ; il peut donc paraître plus terne.</value></data>
+  <data name="Finding.VertexColours.Tip" xml:space="preserve"><value>Dans Blender, cuisez les couleurs de sommets dans une image (Cycles : Bake, couleur Diffuse), puis exportez à nouveau.</value></data>
+  <data name="Finding.DoubleSided.Title" xml:space="preserve"><value>{0} : visible d’un seul côté</value></data>
+  <data name="Finding.DoubleSided.Why" xml:space="preserve"><value>Ici, les objets n’affichent une face que de devant ; les parties fines comme les feuilles ou le tissu peuvent paraître transparentes de dos.</value></data>
+  <data name="Finding.DoubleSided.Tip" xml:space="preserve"><value>Dans Blender, donnez de l’épaisseur aux parties fines avec un modificateur Solidify, puis exportez à nouveau.</value></data>
+  <data name="Finding.DoubleSidedMany.Title" xml:space="preserve"><value>{0} : visible d’un seul côté ({1} matériaux)</value></data>
+  <data name="Finding.DoubleSidedMany.Why" xml:space="preserve"><value>Ici, les objets n’affichent une face que de devant ; les parties fines comme les feuilles ou le tissu peuvent paraître transparentes de dos.</value></data>
+  <data name="Finding.DoubleSidedMany.Tip" xml:space="preserve"><value>Dans Blender, donnez de l’épaisseur aux parties fines avec un modificateur Solidify, puis exportez à nouveau.</value></data>
+  <data name="Finding.TextureCoords.Title" xml:space="preserve"><value>Une image est peut-être mal placée</value></data>
+  <data name="Finding.TextureCoords.Why" xml:space="preserve"><value>Seule la première carte UV du modèle est utilisée, telle quelle ; une deuxième carte UV ou une image déplacée ou mise à l’échelle ne l’est pas.</value></data>
+  <data name="Finding.TextureCoords.Tip" xml:space="preserve"><value>Dans Blender, placez l’image sur la première carte UV, appliquez tout décalage ou échelle aux UV, puis exportez à nouveau.</value></data>
+  <data name="Finding.SkinIgnored.Title" xml:space="preserve"><value>Le modèle est riggé ({0} os), mais il est créé comme un objet simple</value></data>
+  <data name="Finding.SkinIgnored.Why" xml:space="preserve"><value>Dans cette version, il reste dans sa pose de repos et ne peut pas être porté.</value></data>
+  <data name="Finding.SkinIgnored.Tip" xml:space="preserve"><value>Dans Blender, exportez sans l’armature si vous ne voulez que l’objet.</value></data>
+  <data name="Finding.Compressed.Title" xml:space="preserve"><value>Le fichier est compressé ({0})</value></data>
+  <data name="Finding.Compressed.Why" xml:space="preserve"><value>Les modèles compressés ne peuvent pas être lus ici.</value></data>
+  <data name="Finding.Compressed.Tip" xml:space="preserve"><value>Dans l’export glTF de Blender, décochez Compression, puis exportez à nouveau.</value></data>
+  <data name="Finding.ExternalFiles.Title" xml:space="preserve"><value>Le fichier utilise {0} fichiers séparés</value></data>
+  <data name="Finding.ExternalFiles.Why" xml:space="preserve"><value>Un seul fichier peut être importé, et il doit tout contenir.</value></data>
+  <data name="Finding.ExternalFiles.Tip" xml:space="preserve"><value>Dans l’export glTF de Blender, choisissez glTF Binary (.glb).</value></data>
+  <data name="Finding.NotTriangles.Title" xml:space="preserve"><value>Omis : {0}</value></data>
+  <data name="Finding.NotTriangles.Why" xml:space="preserve"><value>Seules les faces peuvent devenir un objet.</value></data>
+  <data name="Finding.NotTriangles.Tip" xml:space="preserve"><value>Dans Blender, donnez de l’épaisseur aux lignes (modificateur Skin ou Solidify) ou convertissez les courbes en maillage.</value></data>
+  <data name="Finding.BadFile.Title" xml:space="preserve"><value>Nous n’avons pas pu lire ce fichier</value></data>
+  <data name="Finding.BadFile.Why" xml:space="preserve"><value>Ce n’est pas un fichier glTF 2.0 lisible.</value></data>
+  <data name="Finding.BadFile.NoMesh" xml:space="preserve"><value>Le fichier ne contient aucun maillage.</value></data>
+  <data name="Finding.BadFile.Tip" xml:space="preserve"><value>Dans Blender, utilisez Fichier &gt; Exporter &gt; glTF 2.0 et choisissez glTF Binary (.glb).</value></data>
+  <data name="Finding.Unknown.Title" xml:space="preserve"><value>Quelque chose dans le modèle mérite un coup d’œil</value></data>
+  <data name="Finding.Unknown.Why" xml:space="preserve"><value>La vérification a trouvé quelque chose que cette page ne sait pas encore décrire.</value></data>
+  <data name="Finding.Unknown.Tip" xml:space="preserve"><value>Dans Blender, vérifiez le modèle et exportez-le à nouveau en glTF Binary (.glb).</value></data>
+  <data name="Finding.TooLarge.Image.Title" xml:space="preserve"><value>Une image fait {0} pixels</value></data>
+  <data name="Finding.TooLarge.Image.Why" xml:space="preserve"><value>Les images d’une importation font au plus {1} pixels de côté.</value></data>
+  <data name="Finding.TooLarge.Image.Tip" xml:space="preserve"><value>Dans Blender, enregistrez l’image en 1024 × 1024 ou moins, puis exportez à nouveau.</value></data>
+  <data name="Finding.TooLarge.Triangles.Title" xml:space="preserve"><value>Le modèle a plus de {0} triangles</value></data>
+  <data name="Finding.TooLarge.Triangles.Why" xml:space="preserve"><value>C’est plus que ce que cette grille accepte pour un objet.</value></data>
+  <data name="Finding.TooLarge.Triangles.Tip" xml:space="preserve"><value>Dans Blender, ajoutez un modificateur Decimate pour réduire le nombre de triangles.</value></data>
+  <data name="Finding.TooLarge.Nodes.Title" xml:space="preserve"><value>Le modèle a plus de {0} objets</value></data>
+  <data name="Finding.TooLarge.Nodes.Why" xml:space="preserve"><value>C’est plus que ce que cette grille accepte pour un objet.</value></data>
+  <data name="Finding.TooLarge.Nodes.Tip" xml:space="preserve"><value>Dans Blender, joignez des objets (Ctrl+J), puis exportez à nouveau.</value></data>
+  <data name="Finding.TooLarge.Assets.Title" xml:space="preserve"><value>L’objet fini dépasserait {0}</value></data>
+  <data name="Finding.TooLarge.Assets.Why" xml:space="preserve"><value>Ses images et ses formes ensemble dépassent ce que cette grille accepte pour un objet.</value></data>
+  <data name="Finding.TooLarge.Assets.Tip" xml:space="preserve"><value>Dans Blender, utilisez moins d’images ou des images plus petites et un modificateur Decimate, puis exportez à nouveau.</value></data>
+  <data name="Finding.TooLarge.Upload.Title" xml:space="preserve"><value>Le fichier dépasse {0}</value></data>
+  <data name="Finding.TooLarge.Upload.Why" xml:space="preserve"><value>C’est le plus gros fichier que cette grille accepte.</value></data>
+  <data name="Finding.TooLarge.Upload.Tip" xml:space="preserve"><value>Dans Blender, utilisez des images plus petites et un modificateur Decimate, puis exportez à nouveau.</value></data>
 </root>

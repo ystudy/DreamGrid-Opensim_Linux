@@ -29,7 +29,7 @@ public sealed record PersonView(PersonRow Row, PersonFacts Facts, RoleView Role)
 public sealed class PeopleActions(IPeopleDirectory people, StaffActions staff, Func<LauncherSettings> settings, SignUpBoard pending,
     EmailSender sender, IRobustClient robust, IRobustNames names, IRobustEmails emails, IStaffDirectory directory, HeldNames held,
     PasswordResets resets, StaffSessions sessions, GuestStamps stamps, IGridController grid, IAccountRemover remover, IEstateRemover estates,
-    RegionRights rights, AccountHolds holds, SuspendedStore suspended, EmailTokens tokens, PendingEmailChanges emailChanges, AuditLog audit,
+    RegionRights rights, UploadRights uploads, AccountHolds holds, SuspendedStore suspended, EmailTokens tokens, PendingEmailChanges emailChanges, AuditLog audit,
     ResidentLanguages languages, EmailLanguage emailLanguage, ILogger<PeopleActions> log)
 {
     public const string OnHold = "This account is on hold.";
@@ -213,8 +213,32 @@ public sealed class PeopleActions(IPeopleDirectory people, StaffActions staff, F
         PersonTask.SignOut => SignOutAsync(actor, ip, principal, ct),
         PersonTask.Suspend => SuspendAsync(actor, ip, principal, ct),
         PersonTask.Unsuspend => UnsuspendAsync(actor, ip, principal, ct),
+        PersonTask.AllowUpload => UploadRightAsync(actor, ip, principal, true, ct),
+        PersonTask.StopUpload => UploadRightAsync(actor, ip, principal, false, ct),
         _ => Task.FromResult(new ChangeOutcome(false, "Use the page for that.")),
     };
+
+    /// <summary>Whether the person may upload models.</summary>
+    public bool MayUpload(Guid principal) => uploads.Has(principal);
+
+    /// <summary>Switches the person's right to upload models on or off. Already as asked is not a change: no audit line.</summary>
+    private async Task<ChangeOutcome> UploadRightAsync(ClaimsPrincipal actor, string? ip, Guid principal, bool allow, CancellationToken ct)
+    {
+        var (person, problem) = await LookAsync(actor, principal, ct);
+        if (person is null) return new(false, problem ?? Gone);
+        var name = person.FullName;
+        if (Refusal(actor, person, allow ? PersonTask.AllowUpload : PersonTask.StopUpload) is { } refusal)
+        {
+            Write(actor, ip, "upload-right-changed", LogText.Clean(name, 64), "refused");
+            return new(false, refusal);
+        }
+        if (uploads.Has(principal) == allow)
+            return new(true, allow ? $"{name} may already upload models." : $"{name} could not upload models already.");
+        if (allow) uploads.Grant(principal, name);
+        else uploads.Remove(principal);
+        Write(actor, ip, "upload-right-changed", $"{LogText.Clean(name, 64)}: {(allow ? "off -> on" : "on -> off")}", "ok");
+        return new(true, allow ? $"{name} may upload models now." : $"{name} may not upload models any more.");
+    }
 
     public Task<ChangeOutcome> SuspendAsync(ClaimsPrincipal actor, string? ip, Guid principal, CancellationToken ct) =>
         SuspensionAsync(actor, ip, principal, StaffChange.Suspend, ct);

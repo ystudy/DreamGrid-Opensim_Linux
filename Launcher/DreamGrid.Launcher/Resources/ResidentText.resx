@@ -303,4 +303,209 @@
   <data name="Support.MessageLong" xml:space="preserve"><value>Keep the message under {0:N0} characters.</value></data>
   <data name="Support.EvidenceProblem" xml:space="preserve"><value>The evidence link must be one web address starting with https:// or http://.</value></data>
   <data name="Support.LogsProblem" xml:space="preserve"><value>Keep the logs under {0:N0} characters.</value></data>
+  <data name="Upload.Title" xml:space="preserve"><value>Upload a model</value></data>
+  <data name="Upload.Intro" xml:space="preserve"><value>Upload one {0} file (in Blender: File &gt; Export &gt; glTF 2.0, glTF Binary), or a {1} file with everything inside it. It is checked first, and you decide whether to make the item.</value></data>
+  <data name="Upload.File" xml:space="preserve"><value>Model file</value></data>
+  <data name="Upload.ItemNameOptional" xml:space="preserve"><value>Item name (optional)</value></data>
+  <data name="Upload.ItemNameHelp" xml:space="preserve"><value>Leave it empty to use the file's name.</value></data>
+  <data name="Upload.Check" xml:space="preserve"><value>Check the model</value></data>
+  <data name="Upload.ChooseFile" xml:space="preserve"><value>Choose a file to upload.</value></data>
+  <data name="Upload.WrongType" xml:space="preserve"><value>Choose a .glb or .gltf file. In Blender, use File &gt; Export &gt; glTF 2.0.</value></data>
+  <data name="Upload.TooLarge" xml:space="preserve"><value>The file is larger than {0} MB.</value></data>
+  <data name="Upload.Busy" xml:space="preserve"><value>The uploader is busy, try again in a minute</value></data>
+  <data name="Upload.Unreadable" xml:space="preserve"><value>We couldn't read this file</value></data>
+  <data name="Upload.Megabytes" xml:space="preserve"><value>{0} MB</value></data>
+  <data name="UploadLimits.Title" xml:space="preserve"><value>Limits on this grid</value></data>
+  <data name="UploadLimits.Intro" xml:space="preserve"><value>Every model is checked against these before it is made.</value></data>
+  <data name="UploadLimits.JoinedRegions" xml:space="preserve"><value>These are the limits of this computer's own regions. Regions on computers that joined the grid aren't checked, and one with stricter settings could refuse the item.</value></data>
+  <data name="UploadLimits.Limit" xml:space="preserve"><value>Limit</value></data>
+  <data name="UploadLimits.OnThisGrid" xml:space="preserve"><value>On this grid</value></data>
+  <data name="UploadLimits.Why" xml:space="preserve"><value>Why</value></data>
+  <data name="UploadLimits.InBlender" xml:space="preserve"><value>In Blender</value></data>
+  <data name="UploadLimits.MetresSide" xml:space="preserve"><value>{0} m on a side</value></data>
+  <data name="UploadLimits.PixelsSide" xml:space="preserve"><value>{0} px on a side</value></data>
+  <data name="UploadLimits.NoLimit" xml:space="preserve"><value>no limit</value></data>
+  <data name="UploadLimits.PartsCount.One" xml:space="preserve"><value>{0} part</value></data>
+  <data name="UploadLimits.PartsCount.Few" xml:space="preserve"><value>{0} parts</value></data>
+  <data name="UploadLimits.PartsCount.Other" xml:space="preserve"><value>{0} parts</value></data>
+  <data name="UploadLimits.FacesCount.One" xml:space="preserve"><value>{0} face</value></data>
+  <data name="UploadLimits.FacesCount.Few" xml:space="preserve"><value>{0} faces</value></data>
+  <data name="UploadLimits.FacesCount.Other" xml:space="preserve"><value>{0} faces</value></data>
+  <data name="UploadLimits.LargestPart.Name" xml:space="preserve"><value>Largest part</value></data>
+  <data name="UploadLimits.LargestPart.Why" xml:space="preserve"><value>Regions refuse parts larger than this.</value></data>
+  <data name="UploadLimits.LargestPart.Tip" xml:space="preserve"><value>In Blender, check the size in the N panel; scale down (S) and apply the scale (Ctrl+A).</value></data>
+  <data name="UploadLimits.LargestPhysical.Name" xml:space="preserve"><value>Largest physical part</value></data>
+  <data name="UploadLimits.LargestPhysical.Why" xml:space="preserve"><value>Parts that move with physics must be smaller, so the region can work out collisions.</value></data>
+  <data name="UploadLimits.LargestPhysical.Tip" xml:space="preserve"><value>In Blender, split a large model into smaller objects if it should be physical.</value></data>
+  <data name="UploadLimits.SmallestPart.Name" xml:space="preserve"><value>Smallest part</value></data>
+  <data name="UploadLimits.SmallestPart.Why" xml:space="preserve"><value>Smaller parts can't be made, so they are left out.</value></data>
+  <data name="UploadLimits.SmallestPart.Tip" xml:space="preserve"><value>In Blender, join tiny pieces to a larger part (Ctrl+J).</value></data>
+  <data name="UploadLimits.Parts.Name" xml:space="preserve"><value>Parts in one item</value></data>
+  <data name="UploadLimits.Parts.Why" xml:space="preserve"><value>An item is a set of linked parts; regions can limit how many.</value></data>
+  <data name="UploadLimits.Parts.Tip" xml:space="preserve"><value>In Blender, join objects (Ctrl+J) to use fewer parts.</value></data>
+  <data name="UploadLimits.Materials.Name" xml:space="preserve"><value>Materials in one part</value></data>
+  <data name="UploadLimits.Materials.Why" xml:space="preserve"><value>Each part has at most 8 faces, one material each. More materials are split into extra linked parts for you.</value></data>
+  <data name="UploadLimits.Materials.Tip" xml:space="preserve"><value>In Blender, join materials that share a picture, or bake them into one.</value></data>
+  <data name="UploadLimits.Points.Name" xml:space="preserve"><value>Points in one face</value></data>
+  <data name="UploadLimits.Points.Why" xml:space="preserve"><value>Larger faces are split for you.</value></data>
+  <data name="UploadLimits.Points.Tip" xml:space="preserve"><value>In Blender, a Decimate modifier lowers the number of points.</value></data>
+  <data name="UploadLimits.Picture.Name" xml:space="preserve"><value>Picture size</value></data>
+  <data name="UploadLimits.Picture.Why" xml:space="preserve"><value>Pictures are resized to a power of two no larger than this, to keep the grid quick to load.</value></data>
+  <data name="UploadLimits.Picture.Tip" xml:space="preserve"><value>In Blender, save pictures at 1024 × 1024 or smaller.</value></data>
+  <data name="UploadLimits.Heavy.Name" xml:space="preserve"><value>Triangles before it gets heavy</value></data>
+  <data name="UploadLimits.Heavy.Why" xml:space="preserve"><value>Above this, the simpler versions shown from far away may look lumpy or have holes.</value></data>
+  <data name="UploadLimits.Heavy.Tip" xml:space="preserve"><value>In Blender, add a Decimate modifier.</value></data>
+  <data name="UploadLimits.Triangles.Name" xml:space="preserve"><value>Triangles in one upload</value></data>
+  <data name="UploadLimits.Triangles.Why" xml:space="preserve"><value>The most this grid can take in one item.</value></data>
+  <data name="UploadLimits.Triangles.Tip" xml:space="preserve"><value>In Blender, add a Decimate modifier.</value></data>
+  <data name="UploadLimits.Objects.Name" xml:space="preserve"><value>Objects in one file</value></data>
+  <data name="UploadLimits.Objects.Why" xml:space="preserve"><value>The most this grid can take in one file.</value></data>
+  <data name="UploadLimits.Objects.Tip" xml:space="preserve"><value>In Blender, join objects (Ctrl+J).</value></data>
+  <data name="UploadLimits.FileSize.Name" xml:space="preserve"><value>File size</value></data>
+  <data name="UploadLimits.FileSize.Why" xml:space="preserve"><value>The largest file this grid takes.</value></data>
+  <data name="UploadLimits.FileSize.Tip" xml:space="preserve"><value>In Blender, use smaller pictures; export as glTF Binary (.glb).</value></data>
+  <data name="UploadLimits.PictureInFile.Name" xml:space="preserve"><value>Picture inside the file</value></data>
+  <data name="UploadLimits.PictureInFile.Why" xml:space="preserve"><value>Larger pictures aren't read at all.</value></data>
+  <data name="UploadLimits.PictureInFile.Tip" xml:space="preserve"><value>In Blender, scale pictures down before exporting.</value></data>
+  <data name="UploadReport.Title" xml:space="preserve"><value>Check report</value></data>
+  <data name="UploadReport.Made" xml:space="preserve"><value>Item made</value></data>
+  <data name="UploadReport.Done" xml:space="preserve"><value>{0} is in your inventory, in the Uploads folder. If you're logged in, log out and back in to see it.</value></data>
+  <data name="UploadReport.AlreadyFinished" xml:space="preserve"><value>This upload is already finished.</value></data>
+  <data name="UploadReport.UploadAnother" xml:space="preserve"><value>Upload another</value></data>
+  <data name="UploadReport.MayLookWrong" xml:space="preserve"><value>{0} may look distorted or shaped wrong.</value></data>
+  <data name="UploadReport.YouShouldCorrect" xml:space="preserve"><value>{0} You should correct:</value></data>
+  <data name="UploadReport.Size" xml:space="preserve"><value>Size, in percent</value></data>
+  <data name="UploadReport.LargestFits" xml:space="preserve"><value>{0}% is the largest size that fits on this grid.</value></data>
+  <data name="UploadReport.FixedForYou" xml:space="preserve"><value>Fixed for you</value></data>
+  <data name="UploadReport.ItemName" xml:space="preserve"><value>Item name</value></data>
+  <data name="UploadReport.NextOwner" xml:space="preserve"><value>The next owner may</value></data>
+  <data name="UploadReport.Copy" xml:space="preserve"><value>Copy</value></data>
+  <data name="UploadReport.Modify" xml:space="preserve"><value>Modify</value></data>
+  <data name="UploadReport.Transfer" xml:space="preserve"><value>Transfer</value></data>
+  <data name="UploadReport.CheckAgain" xml:space="preserve"><value>Check again</value></data>
+  <data name="UploadReport.MakeItem" xml:space="preserve"><value>Make the item</value></data>
+  <data name="UploadReport.DifferentFile" xml:space="preserve"><value>Upload a different file</value></data>
+  <data name="UploadReport.NothingCharged" xml:space="preserve"><value>That didn't work, nothing was charged</value></data>
+  <data name="UploadReport.CheckedAgain" xml:space="preserve"><value>We checked it again with your changes. Look it over, then make the item.</value></data>
+  <data name="UploadReport.NotAllowed" xml:space="preserve"><value>This upload isn't allowed right now.</value></data>
+  <data name="UploadReport.ChooseSize" xml:space="preserve"><value>Choose a size from {0} to {1} percent.</value></data>
+  <data name="UploadReport.MustFix.One" xml:space="preserve"><value>{0} thing must be fixed before the item can be made</value></data>
+  <data name="UploadReport.MustFix.Few" xml:space="preserve"><value>{0} things must be fixed before the item can be made</value></data>
+  <data name="UploadReport.MustFix.Other" xml:space="preserve"><value>{0} things must be fixed before the item can be made</value></data>
+  <data name="UploadReport.MayLookWrongCount.One" xml:space="preserve"><value>{0} thing may look wrong</value></data>
+  <data name="UploadReport.MayLookWrongCount.Few" xml:space="preserve"><value>{0} things may look wrong</value></data>
+  <data name="UploadReport.MayLookWrongCount.Other" xml:space="preserve"><value>{0} things may look wrong</value></data>
+  <data name="UploadReport.WillBeFixed.One" xml:space="preserve"><value>{0} thing will be fixed for you</value></data>
+  <data name="UploadReport.WillBeFixed.Few" xml:space="preserve"><value>{0} things will be fixed for you</value></data>
+  <data name="UploadReport.WillBeFixed.Other" xml:space="preserve"><value>{0} things will be fixed for you</value></data>
+  <data name="UploadReport.Checked" xml:space="preserve"><value>{0} was checked: {1}.</value></data>
+  <data name="UploadReport.NothingToChange" xml:space="preserve"><value>{0} was checked: nothing needs changing.</value></data>
+  <data name="UploadReport.ListSeparator" xml:space="preserve"><value>, </value></data>
+  <data name="Finding.Several" xml:space="preserve"><value>several</value></data>
+  <data name="Finding.InTheModel" xml:space="preserve"><value>in the model</value></data>
+  <data name="Finding.TheModel" xml:space="preserve"><value>The model</value></data>
+  <data name="Finding.ItsSize" xml:space="preserve"><value>its size</value></data>
+  <data name="Finding.AnotherKind" xml:space="preserve"><value>another kind</value></data>
+  <data name="Finding.SomeFaces" xml:space="preserve"><value>Some faces</value></data>
+  <data name="Finding.SomeParts" xml:space="preserve"><value>Some parts</value></data>
+  <data name="Finding.And" xml:space="preserve"><value>{0} and {1}</value></data>
+  <data name="Finding.What.Cameras" xml:space="preserve"><value>cameras</value></data>
+  <data name="Finding.What.Lights" xml:space="preserve"><value>lights</value></data>
+  <data name="Finding.What.Lines" xml:space="preserve"><value>lines</value></data>
+  <data name="Finding.What.Points" xml:space="preserve"><value>points</value></data>
+  <data name="Finding.SplitMaterials.Title" xml:space="preserve"><value>Split into {0} linked parts</value></data>
+  <data name="Finding.SplitMaterials.Why" xml:space="preserve"><value>({0} materials, {1} per part). This won't change how it looks.</value></data>
+  <data name="Finding.SplitMaterials.Tip" xml:space="preserve"><value>In Blender, join materials that share a picture, or bake them into one, to keep it to one part.</value></data>
+  <data name="Finding.SplitVertices.Title" xml:space="preserve"><value>Split {0} large faces into smaller ones</value></data>
+  <data name="Finding.SplitVertices.Why" xml:space="preserve"><value>A face can hold {0} points at most. This won't change how it looks.</value></data>
+  <data name="Finding.SplitVertices.Tip" xml:space="preserve"><value>In Blender, a Decimate modifier lowers the number of points.</value></data>
+  <data name="Finding.TextureResized.Title" xml:space="preserve"><value>Resized the picture {0}</value></data>
+  <data name="Finding.TextureResized.Why" xml:space="preserve"><value>Pictures here are sized in powers of two (like 512 or 1024). This won't change how it looks.</value></data>
+  <data name="Finding.TextureResized.Tip" xml:space="preserve"><value>In Blender, save pictures at sizes like 512 × 512 or 1024 × 1024.</value></data>
+  <data name="Finding.TextureShrunk.Title" xml:space="preserve"><value>The picture {0} was made smaller, from {1} to {2} pixels</value></data>
+  <data name="Finding.TextureShrunk.Why" xml:space="preserve"><value>Pictures on this grid are at most 1024 pixels on a side, so it will look softer up close.</value></data>
+  <data name="Finding.TextureShrunk.Tip" xml:space="preserve"><value>In Blender, bake or save the picture at 1024 × 1024 or smaller, then export again.</value></data>
+  <data name="Finding.TextureUnsupported.Title" xml:space="preserve"><value>The picture {0} was left out</value></data>
+  <data name="Finding.TextureUnsupported.Why" xml:space="preserve"><value>Only PNG and JPEG pictures can be used, and this one is {0}. Its faces will have no picture.</value></data>
+  <data name="Finding.TextureUnsupported.Tip" xml:space="preserve"><value>In Blender, save the picture as PNG or JPEG, then export again.</value></data>
+  <data name="Finding.HeavyMesh.Title" xml:space="preserve"><value>The model has {0} triangles</value></data>
+  <data name="Finding.HeavyMesh.TitleNoCount" xml:space="preserve"><value>The model has a great many triangles</value></data>
+  <data name="Finding.HeavyMesh.Why" xml:space="preserve"><value>Above {0}, the simpler versions shown from far away may look lumpy or have holes.</value></data>
+  <data name="Finding.HeavyMesh.Tip" xml:space="preserve"><value>In Blender, add a Decimate modifier to lower the number of triangles.</value></data>
+  <data name="Finding.TooBig.Title" xml:space="preserve"><value>{0} is {1} m on its longest side</value></data>
+  <data name="Finding.TooBig.TitleNoSide" xml:space="preserve"><value>{0} is too big</value></data>
+  <data name="Finding.TooBig.Why" xml:space="preserve"><value>Parts on this grid can be at most {0} m, so every region can hold them.</value></data>
+  <data name="Finding.TooBig.Tip" xml:space="preserve"><value>In Blender, scale the model down (S), apply the scale (Ctrl+A), then export again. Or choose a smaller size here.</value></data>
+  <data name="Finding.TooSmall.Title" xml:space="preserve"><value>{0} of {1} parts are too small and were left out</value></data>
+  <data name="Finding.TooSmall.TitleNoCount" xml:space="preserve"><value>Some parts are too small and were left out</value></data>
+  <data name="Finding.TooSmall.Why" xml:space="preserve"><value>Parts must be at least {0} m on a side.</value></data>
+  <data name="Finding.TooSmall.Tip" xml:space="preserve"><value>In Blender, join tiny pieces to a larger part (Ctrl+J), then export again.</value></data>
+  <data name="Finding.TooManyParts.Title" xml:space="preserve"><value>The item has {0} parts</value></data>
+  <data name="Finding.TooManyParts.Why" xml:space="preserve"><value>This grid allows {0} parts in one item.</value></data>
+  <data name="Finding.TooManyParts.WhyNoLimit" xml:space="preserve"><value>This grid allows only so many parts in one item.</value></data>
+  <data name="Finding.TooManyParts.Tip" xml:space="preserve"><value>In Blender, join objects (Ctrl+J) or use fewer materials, then export again.</value></data>
+  <data name="Finding.InsideOut.Title" xml:space="preserve"><value>{0} may be inside out</value></data>
+  <data name="Finding.InsideOut.Why" xml:space="preserve"><value>It was mirrored, so its faces may point the wrong way and look see-through.</value></data>
+  <data name="Finding.InsideOut.Tip" xml:space="preserve"><value>In Blender, apply the scale (Ctrl+A), then in Edit Mode recalculate the normals (Shift+N).</value></data>
+  <data name="Finding.InsideOutMany.Title" xml:space="preserve"><value>{0} may be inside out ({1} parts)</value></data>
+  <data name="Finding.InsideOutMany.Why" xml:space="preserve"><value>It was mirrored, so its faces may point the wrong way and look see-through.</value></data>
+  <data name="Finding.InsideOutMany.Tip" xml:space="preserve"><value>In Blender, apply the scale (Ctrl+A), then in Edit Mode recalculate the normals (Shift+N).</value></data>
+  <data name="Finding.NoUv.Title" xml:space="preserve"><value>{0} faces have a picture but no UV map</value></data>
+  <data name="Finding.NoUv.Why" xml:space="preserve"><value>Without one the picture can't be placed, so it will look smeared.</value></data>
+  <data name="Finding.NoUv.Tip" xml:space="preserve"><value>In Blender, unwrap the mesh in Edit Mode (U), then export again.</value></data>
+  <data name="Finding.DroppedAnimation.Title" xml:space="preserve"><value>Animations were left out</value></data>
+  <data name="Finding.DroppedAnimation.Why" xml:space="preserve"><value>Items here can't play glTF animations. This won't change how it looks standing still.</value></data>
+  <data name="Finding.DroppedAnimation.Tip" xml:space="preserve"><value>Nothing to fix. In Blender's glTF export you can untick Animation.</value></data>
+  <data name="Finding.DroppedMorphs.Title" xml:space="preserve"><value>Shape keys were left out</value></data>
+  <data name="Finding.DroppedMorphs.Why" xml:space="preserve"><value>The item is made in its basic shape.</value></data>
+  <data name="Finding.DroppedMorphs.Tip" xml:space="preserve"><value>In Blender, apply the shape key you want before exporting, or untick Shape Keys in the glTF export.</value></data>
+  <data name="Finding.DroppedExtras.Title" xml:space="preserve"><value>{0} were left out</value></data>
+  <data name="Finding.DroppedExtras.Why" xml:space="preserve"><value>Items can't carry them. This won't change how it looks.</value></data>
+  <data name="Finding.DroppedExtras.Tip" xml:space="preserve"><value>In Blender's glTF export, untick Cameras and Punctual Lights.</value></data>
+  <data name="Finding.VertexColours.Title" xml:space="preserve"><value>The model's vertex colours were left out</value></data>
+  <data name="Finding.VertexColours.Why" xml:space="preserve"><value>Items here can only take colour from a material or a picture, so it may look plainer.</value></data>
+  <data name="Finding.VertexColours.Tip" xml:space="preserve"><value>In Blender, bake the vertex colours into a picture (Cycles: Bake, Diffuse colour), then export again.</value></data>
+  <data name="Finding.DoubleSided.Title" xml:space="preserve"><value>{0} will only show from one side</value></data>
+  <data name="Finding.DoubleSided.Why" xml:space="preserve"><value>Items here draw a face from the front only, so thin parts like leaves or cloth may look see-through from behind.</value></data>
+  <data name="Finding.DoubleSided.Tip" xml:space="preserve"><value>In Blender, give thin parts some thickness with a Solidify modifier, then export again.</value></data>
+  <data name="Finding.DoubleSidedMany.Title" xml:space="preserve"><value>{0} will only show from one side ({1} materials)</value></data>
+  <data name="Finding.DoubleSidedMany.Why" xml:space="preserve"><value>Items here draw a face from the front only, so thin parts like leaves or cloth may look see-through from behind.</value></data>
+  <data name="Finding.DoubleSidedMany.Tip" xml:space="preserve"><value>In Blender, give thin parts some thickness with a Solidify modifier, then export again.</value></data>
+  <data name="Finding.TextureCoords.Title" xml:space="preserve"><value>A picture may sit in the wrong place</value></data>
+  <data name="Finding.TextureCoords.Why" xml:space="preserve"><value>Only the model's first UV map is used, as it is; a second UV map or a moved or scaled picture is not.</value></data>
+  <data name="Finding.TextureCoords.Tip" xml:space="preserve"><value>In Blender, put the picture on the first UV map and apply any offset or scale to the UVs, then export again.</value></data>
+  <data name="Finding.SkinIgnored.Title" xml:space="preserve"><value>The model is rigged ({0} bones), but it's made as a plain object</value></data>
+  <data name="Finding.SkinIgnored.Why" xml:space="preserve"><value>In this version it stands in its rest pose and can't be worn.</value></data>
+  <data name="Finding.SkinIgnored.Tip" xml:space="preserve"><value>In Blender, export without the armature if you only want the object.</value></data>
+  <data name="Finding.Compressed.Title" xml:space="preserve"><value>The file is compressed ({0})</value></data>
+  <data name="Finding.Compressed.Why" xml:space="preserve"><value>Compressed models can't be read here.</value></data>
+  <data name="Finding.Compressed.Tip" xml:space="preserve"><value>In Blender's glTF export, untick Compression, then export again.</value></data>
+  <data name="Finding.ExternalFiles.Title" xml:space="preserve"><value>The file uses {0} separate files</value></data>
+  <data name="Finding.ExternalFiles.Why" xml:space="preserve"><value>Only one file can be uploaded, with everything inside it.</value></data>
+  <data name="Finding.ExternalFiles.Tip" xml:space="preserve"><value>In Blender's glTF export, choose glTF Binary (.glb).</value></data>
+  <data name="Finding.NotTriangles.Title" xml:space="preserve"><value>{0} were left out</value></data>
+  <data name="Finding.NotTriangles.Why" xml:space="preserve"><value>Only faces can be made into an item.</value></data>
+  <data name="Finding.NotTriangles.Tip" xml:space="preserve"><value>In Blender, give lines some thickness (a Skin or Solidify modifier) or convert curves to a mesh.</value></data>
+  <data name="Finding.BadFile.Title" xml:space="preserve"><value>We couldn't read this file</value></data>
+  <data name="Finding.BadFile.Why" xml:space="preserve"><value>It isn't a readable glTF 2.0 file.</value></data>
+  <data name="Finding.BadFile.NoMesh" xml:space="preserve"><value>The file has no mesh.</value></data>
+  <data name="Finding.BadFile.Tip" xml:space="preserve"><value>In Blender, use File &gt; Export &gt; glTF 2.0 and choose glTF Binary (.glb).</value></data>
+  <data name="Finding.Unknown.Title" xml:space="preserve"><value>Something in the model needs a look</value></data>
+  <data name="Finding.Unknown.Why" xml:space="preserve"><value>The check found something this page can't describe yet.</value></data>
+  <data name="Finding.Unknown.Tip" xml:space="preserve"><value>In Blender, check the model and export it again as glTF Binary (.glb).</value></data>
+  <data name="Finding.TooLarge.Image.Title" xml:space="preserve"><value>A picture is {0} pixels</value></data>
+  <data name="Finding.TooLarge.Image.Why" xml:space="preserve"><value>Pictures in an upload can be at most {1} pixels on a side.</value></data>
+  <data name="Finding.TooLarge.Image.Tip" xml:space="preserve"><value>In Blender, save the picture at 1024 × 1024 or smaller, then export again.</value></data>
+  <data name="Finding.TooLarge.Triangles.Title" xml:space="preserve"><value>The model has more than {0} triangles</value></data>
+  <data name="Finding.TooLarge.Triangles.Why" xml:space="preserve"><value>That's more than this grid can take in one item.</value></data>
+  <data name="Finding.TooLarge.Triangles.Tip" xml:space="preserve"><value>In Blender, add a Decimate modifier to lower the number of triangles.</value></data>
+  <data name="Finding.TooLarge.Nodes.Title" xml:space="preserve"><value>The model has more than {0} objects</value></data>
+  <data name="Finding.TooLarge.Nodes.Why" xml:space="preserve"><value>That's more than this grid can take in one item.</value></data>
+  <data name="Finding.TooLarge.Nodes.Tip" xml:space="preserve"><value>In Blender, join objects (Ctrl+J), then export again.</value></data>
+  <data name="Finding.TooLarge.Assets.Title" xml:space="preserve"><value>The finished item would be larger than {0}</value></data>
+  <data name="Finding.TooLarge.Assets.Why" xml:space="preserve"><value>Its pictures and shapes together are more than this grid takes for one item.</value></data>
+  <data name="Finding.TooLarge.Assets.Tip" xml:space="preserve"><value>In Blender, use fewer or smaller pictures and a Decimate modifier, then export again.</value></data>
+  <data name="Finding.TooLarge.Upload.Title" xml:space="preserve"><value>The file is larger than {0}</value></data>
+  <data name="Finding.TooLarge.Upload.Why" xml:space="preserve"><value>That's the largest file this grid takes.</value></data>
+  <data name="Finding.TooLarge.Upload.Tip" xml:space="preserve"><value>In Blender, use smaller pictures and a Decimate modifier, then export again.</value></data>
 </root>
