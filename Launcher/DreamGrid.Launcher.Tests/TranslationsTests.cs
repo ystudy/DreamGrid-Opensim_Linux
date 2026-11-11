@@ -54,6 +54,40 @@ public sealed partial class TranslationsTests
     [GeneratedRegex(@"\{([A-Za-z]+)\}")]
     private static partial Regex NamedPlaceholder();
 
+    // The tests below find translations by their file names, so a deleted file would pass them; these name the built-in ones.
+    public static TheoryData<string> BuiltInTranslations() => [.. Core.Languages.BuiltIn.Where(c => c != Core.Languages.English)];
+
+    [Theory]
+    [MemberData(nameof(BuiltInTranslations))]
+    public void Every_built_in_language_has_both_translation_files(string code)
+    {
+        Assert.True(File.Exists(Path.Combine(ResidentFolder, $"ResidentText.{code}.resx")), $"ResidentText.{code}.resx is missing");
+        Assert.True(File.Exists(Path.Combine(EmailFolder, $"EmailText.{code}.resx")), $"EmailText.{code}.resx is missing");
+    }
+
+    // The satellite assembly is built and loads: the runtime gives the translated value, not the English fallback.
+    [Theory]
+    [MemberData(nameof(BuiltInTranslations))]
+    public void Every_built_in_language_loads_at_run_time_in_both_projects(string code)
+    {
+        var culture = Core.Languages.Culture(code);
+        foreach (var (name, folder, english, manager) in new[]
+        {
+            ("ResidentText", ResidentFolder, "ResidentText.resx",
+                new System.Resources.ResourceManager("DreamGrid.Launcher.Resources.ResidentText", typeof(ResidentText).Assembly)),
+            ("EmailText", EmailFolder, "EmailText.resx",
+                new System.Resources.ResourceManager("DreamGrid.Launcher.Core.Resources.EmailText", typeof(EmailText).Assembly)),
+        })
+        {
+            var en = Entries(Path.Combine(folder, english));
+            var translated = Entries(Path.Combine(folder, $"{name}.{code}.resx"));
+            var key = en.Keys.First(k => translated.TryGetValue(k, out var v) && v.Length > 0 && v != en[k]);
+            var atRunTime = manager.GetString(key, culture);
+            Assert.NotEqual(en[key], atRunTime);
+            Assert.Equal(translated[key], atRunTime);
+        }
+    }
+
     [Fact]
     public void English_texts_exist_and_are_not_empty()
     {
