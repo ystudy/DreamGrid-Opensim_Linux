@@ -63,8 +63,13 @@ public sealed class LanguageModel(OfferedLanguages offered, ResidentLanguages sa
         }
     }
 
+    /// <summary>
+    /// <paramref name="url"/> when it is a path on this site in printable ASCII (Kestrel refuses a Location header with control
+    /// or non-ASCII characters, which <see cref="IUrlHelper.IsLocalUrl"/> lets through), else the front page.
+    /// </summary>
     private string Safe(string? url) =>
-        url is { Length: > 0 } && Url.IsLocalUrl(url) && !url.StartsWith("//", StringComparison.Ordinal) && !url.StartsWith("/\\", StringComparison.Ordinal)
+        url is { Length: > 0 } && url.All(ch => ch is >= ' ' and <= '~') && Url.IsLocalUrl(url)
+            && !url.StartsWith("//", StringComparison.Ordinal) && !url.StartsWith("/\\", StringComparison.Ordinal)
             ? url
             : "/";
 }

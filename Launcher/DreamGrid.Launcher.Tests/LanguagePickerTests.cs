@@ -286,6 +286,31 @@ public sealed class LanguagePickerTests
         Assert.Contains("dg-lang=de", Assert.Single(SetCookies(r)));
     }
 
+    // IsLocalUrl lets these through, but Kestrel refuses a Location header with control or non-ASCII characters (a 500).
+    [Theory]
+    [InlineData("/x\r\nSet-Cookie: a=b")]
+    [InlineData("/x\nfoo")]
+    [InlineData("/café")]
+    [InlineData("/тест")]
+    [InlineData("/x\u007f")]
+    public async Task Picker_falls_back_to_the_front_page_for_a_return_url_that_is_not_printable_ascii(string returnUrl)
+    {
+        await using var f = Make();
+        using var r = await PostAsync(Client(f), "fr", returnUrl);
+        Assert.Equal(HttpStatusCode.SeeOther, r.StatusCode);
+        Assert.Equal("/", r.Headers.Location?.OriginalString);
+        Assert.Contains("dg-lang=fr", Assert.Single(SetCookies(r)));
+    }
+
+    [Fact]
+    public async Task Picker_keeps_a_return_url_with_an_encoded_query()
+    {
+        await using var f = Make();
+        using var r = await PostAsync(Client(f), "fr", "/guest/sign-in?returnUrl=%2Fguest%2Faccount&x=caf%C3%A9");
+        Assert.Equal(HttpStatusCode.SeeOther, r.StatusCode);
+        Assert.Equal("/guest/sign-in?returnUrl=%2Fguest%2Faccount&x=caf%C3%A9", r.Headers.Location?.OriginalString);
+    }
+
     [Fact]
     public async Task Picker_saves_the_choice_for_a_signed_in_guest()
     {
