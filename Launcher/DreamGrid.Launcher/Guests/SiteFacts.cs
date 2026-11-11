@@ -39,6 +39,6 @@ public static class SiteFacts
         ("Support tickets: the sender's name and email (and account id when signed in), the messages, any evidence link and logs, "
             + "the language the ticket was sent in, and the private links (only as hashes), until a year after the ticket is closed", "tickets/<id>.json."),
         ("Which staff switched on the support ticket emails, by account id, with when their last one went out", "guests/ticket-notices.json."),
-        ("The language each resident chose", "The data folder, guests/languages.json."),
+        ("The language each resident chose, by account id", "guests/languages.json."),
     ];
 }
