@@ -1,9 +1,12 @@
 @{
     // The design's stylesheet: the published one's on /welcome, the draft's on the staff preview.
     var css = ViewData["SplashCss"] as string ?? "/welcome/page-0.css";
+    // The language and direction of the page the viewer reads (ResidentLanguageFilter sets the culture; staff previews are English).
+    var culture = System.Globalization.CultureInfo.CurrentUICulture;
+    var lang = culture.TwoLetterISOLanguageName is { Length: 2 } two ? two : "en";
 }
 <!DOCTYPE html>
-<html lang="en">
+<html lang="@lang" dir="@(culture.TextInfo.IsRightToLeft ? "rtl" : "ltr")">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">

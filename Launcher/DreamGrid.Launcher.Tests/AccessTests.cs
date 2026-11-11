@@ -306,6 +306,8 @@ public sealed class AccessTests
             "page guest/reset-password",
             // The operator's legal pages (terms, privacy, cookies, contact) and the sign-up page: public, and 404 until written / where there is no guest side.
             "page {slug:regex(^(terms|privacy|cookies|contact)$)}",
+            // The language picker: remembers a visitor's language in a cookie (and for a signed-in guest, in their saved choice).
+            "page language",
             "page login",
             // The two-factor code step: only does anything with the pending cookie the password step leaves.
             "page login/code",

@@ -115,7 +115,7 @@ public sealed class EmailWordingModel(IGridController grid, Func<LauncherSetting
         var s = settings();
         Sections = [.. EmailTemplates.All.Select(id =>
         {
-            var current = EmailTemplates.Current(s, id);
+            var current = EmailTemplates.Current(s, id, EmailTemplates.DefaultLanguage);
             var posted = id == postedId;
             var (subject, body) = posted ? Typed() : (current.Subject, current.Body);
             var d = EmailTemplates.Default(id);

@@ -3,7 +3,9 @@ using DreamGrid.Launcher.Core.Guests;
 using DreamGrid.Launcher.Core.Plans;
 using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Guests;
+using DreamGrid.Launcher.Resident;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Localization;
 
 namespace DreamGrid.Launcher.Pages.Guest;
 
@@ -12,19 +14,19 @@ namespace DreamGrid.Launcher.Pages.Guest;
 /// links, the grid manager settings to copy, the Firestorm steps and help links. Open to anyone, since nothing on it is a
 /// secret; a signed-in resident is told which name to log in as.
 /// </summary>
-public sealed class ConnectModel(Func<LauncherSettings> settings) : PageModel
+public sealed class ConnectModel(Func<LauncherSettings> settings, IStringLocalizer<ResidentText> t) : PageModel
 {
     /// <summary>A viewer and its own site. The grid hosts no viewers and pins no versions, which would go out of date.</summary>
-    public sealed record Viewer(string Name, string Url, string LinkText);
+    public sealed record Viewer(string Name, string Url);
 
     /// <summary>Firestorm's downloads page, where people pick their system and the OpenSim build.</summary>
-    public static readonly Viewer Firestorm = new("Firestorm", "https://www.firestormviewer.org/downloads/", "Download");
+    public static readonly Viewer Firestorm = new("Firestorm", "https://www.firestormviewer.org/downloads/");
 
     public static readonly IReadOnlyList<Viewer> Others =
     [
-        new("Singularity", "https://www.singularityviewer.org/", "Website"),
-        new("Cool VL Viewer", "https://sldev.pages-perso.free.fr/", "Website"),
-        new("Alchemy", "https://www.alchemyviewer.org/", "Website"),
+        new("Singularity", "https://www.singularityviewer.org/"),
+        new("Cool VL Viewer", "https://sldev.pages-perso.free.fr/"),
+        new("Alchemy", "https://www.alchemyviewer.org/"),
     ];
 
     public const string FirestormHelp = "https://wiki.firestormviewer.org/";
@@ -51,15 +53,15 @@ public sealed class ConnectModel(Func<LauncherSettings> settings) : PageModel
         Approved = approved == 1 && DisplayName.Length > 0;
         GridSettings =
         [
-            ("Login URI", LoginUri),
-            ("Grid name", s.GridName),
-            ("Login page", WebsiteAddress.Welcome(s)),
-            ("Website", WebsiteAddress.Base(s) + "/"),
-            ("Account", WebsiteAddress.SignUp(s)),
-            ("Password", WebsiteAddress.ForgotPassword(s)),
+            (t["Connect.LoginUri"].Value, LoginUri),
+            (t["Connect.GridName"].Value, s.GridName),
+            (t["Connect.LoginPage"].Value, WebsiteAddress.Welcome(s)),
+            (t["Connect.Website"].Value, WebsiteAddress.Base(s) + "/"),
+            (t["Connect.Account"].Value, WebsiteAddress.SignUp(s)),
+            (t["Connect.Password"].Value, WebsiteAddress.ForgotPassword(s)),
         ];
         HelpPages = new[] { LegalPages.Terms, LegalPages.Contact }
-            .Where(id => LegalPages.Get(s, id) is not null)
+            .Where(id => LegalPages.Get(s, id, ResidentLanguageFilter.Current(HttpContext)) is not null)
             .Select(id => (id, LegalPages.Title(id)))
             .ToList();
     }

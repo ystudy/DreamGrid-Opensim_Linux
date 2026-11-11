@@ -1,17 +1,17 @@
 @page "/guest/upload/limits"
 @model DreamGrid.Launcher.Pages.Guest.UploadLimitsModel
 @{
-    ViewData["Title"] = "Limits on this grid";
+    ViewData["Title"] = T["UploadLimits.Title"].Value;
 }
-<h1>Limits on this grid</h1>
-<p>Every model is checked against these before it is made.</p>
+<h1>@T["UploadLimits.Title"]</h1>
+<p>@T["UploadLimits.Intro"]</p>
 @if (Model.JoinedRegionsUnchecked)
 {
-    <p class="joined-regions alert alert-info">These are the limits of this computer's own regions. Regions on computers that joined the grid aren't checked, and one with stricter settings could refuse the item.</p>
+    <p class="joined-regions alert alert-info">@T["UploadLimits.JoinedRegions"]</p>
 }
 <table class="table limits">
     <thead>
-        <tr><th scope="col">Limit</th><th scope="col">On this grid</th><th scope="col">Why</th><th scope="col">In Blender</th></tr>
+        <tr><th scope="col">@T["UploadLimits.Limit"]</th><th scope="col">@T["UploadLimits.OnThisGrid"]</th><th scope="col">@T["UploadLimits.Why"]</th><th scope="col">@T["UploadLimits.InBlender"]</th></tr>
     </thead>
     <tbody>
         @foreach (var limit in Model.Limits)
@@ -20,4 +20,4 @@
         }
     </tbody>
 </table>
-<p><a href="/guest/upload">Upload a model</a></p>
+<p><a href="/guest/upload">@T["Upload.Title"]</a></p>

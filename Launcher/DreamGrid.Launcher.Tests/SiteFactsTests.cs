@@ -140,6 +140,20 @@ public sealed class SiteFactsTests
             Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
         }
 
+        // dg-lang: a visitor picks a language.
+        await using (var f = AfterSetup())
+        {
+            var client = Client(f, seen);
+            var form = new Dictionary<string, string>
+            {
+                ["code"] = "de",
+                ["returnUrl"] = "/",
+                ["__RequestVerificationToken"] = await TokenAsync(client, "/support"),
+            };
+            using var r = await client.PostAsync("/language", new FormUrlEncodedContent(form), Ct);
+            Assert.Equal(HttpStatusCode.SeeOther, r.StatusCode);
+        }
+
         var listed = SiteFacts.Cookies.Select(c => c.Name).ToHashSet(StringComparer.Ordinal);
         Assert.Empty(seen.Except(listed)); // every cookie the site set is listed
         Assert.Empty(listed.Except(seen)); // and every listed cookie was seen
@@ -168,4 +182,9 @@ public sealed class SiteFactsTests
     [InlineData("email/problems.json")]
     public void Every_file_that_holds_something_about_people_is_listed(string file) =>
         Assert.Contains(SiteFacts.Stored, s => s.Where.Contains(file, StringComparison.Ordinal));
+
+    [Fact]
+    public void The_ticket_line_says_a_ticket_keeps_the_language_it_was_sent_in() =>
+        Assert.Contains(SiteFacts.Stored, s => s.Where.Contains("tickets/<id>.json", StringComparison.Ordinal)
+            && s.What.Contains("language the ticket was sent in", StringComparison.Ordinal));
 }

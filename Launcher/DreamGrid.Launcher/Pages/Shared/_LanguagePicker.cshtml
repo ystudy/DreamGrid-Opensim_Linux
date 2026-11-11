@@ -1,0 +1,20 @@
+@using System.Globalization
+@inject DreamGrid.Launcher.Resident.OfferedLanguages Offered
+@{
+    // Only the languages that can be picked; with one there is nothing to choose.
+    var offered = Offered.Current();
+    var current = DreamGrid.Launcher.Resident.ResidentLanguageFilter.Current(Context);
+}
+@if (offered.Count > 1)
+{
+    <form id="language-picker" class="language-picker d-flex gap-1" method="post" asp-page="/Language">
+        <input type="hidden" name="returnUrl" value="@(Context.Request.Path + Context.Request.QueryString)">
+        <select name="code" class="form-select form-select-sm w-auto" aria-label="@T["Layout.Language"]">
+            @foreach (var code in offered)
+            {
+                <option value="@code" selected="@(code == current)">@DreamGrid.Launcher.Core.Languages.NativeName(code)</option>
+            }
+        </select>
+        <button type="submit" class="btn btn-sm btn-outline-secondary">@T["Layout.ChangeLanguage"]</button>
+    </form>
+}

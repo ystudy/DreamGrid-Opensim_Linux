@@ -1,25 +1,25 @@
 @page "/guest/upload"
 @model DreamGrid.Launcher.Pages.Guest.UploadModel
 @{
-    ViewData["Title"] = "Upload a model";
+    ViewData["Title"] = T["Upload.Title"].Value;
 }
-<h1>Upload a model</h1>
+<h1>@T["Upload.Title"]</h1>
 @if (Model.Error is not null)
 {
     <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
 }
-<p>Upload one <code>.glb</code> file (in Blender: File &gt; Export &gt; glTF 2.0, glTF Binary), or a <code>.gltf</code> file with everything inside it. It is checked first, and you decide whether to make the item.</p>
+<p>@T.With("Upload.Intro", ResidentHtml.Code(".glb"), ResidentHtml.Code(".gltf"))</p>
 <form method="post" action="/guest/upload" enctype="multipart/form-data" asp-antiforgery="true">
     <div class="mb-3">
-        <label class="form-label" for="upload-file">Model file</label>
+        <label class="form-label" for="upload-file">@T["Upload.File"]</label>
         <input class="form-control" id="upload-file" type="file" name="File" accept=".glb,.gltf" required>
     </div>
     <div class="mb-3">
-        <label class="form-label" for="upload-name">Item name (optional)</label>
+        <label class="form-label" for="upload-name">@T["Upload.ItemNameOptional"]</label>
         <input class="form-control" id="upload-name" type="text" name="ItemName" maxlength="63" value="@Model.ItemName">
-        <div class="form-text">Leave it empty to use the file's name.</div>
+        <div class="form-text">@T["Upload.ItemNameHelp"]</div>
     </div>
-    <button type="submit" class="btn btn-primary">Check the model</button>
+    <button type="submit" class="btn btn-primary">@T["Upload.Check"]</button>
 </form>
-<p class="mt-3"><a href="/guest/upload/limits">Limits on this grid</a></p>
-<p><a href="/guest">Back to your account</a></p>
+<p class="mt-3"><a href="/guest/upload/limits">@T["UploadLimits.Title"]</a></p>
+<p><a href="/guest">@T["Common.BackToAccount"]</a></p>

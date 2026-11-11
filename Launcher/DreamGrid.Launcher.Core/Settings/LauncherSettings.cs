@@ -162,6 +162,25 @@ public sealed record BotSettings(
 /// <summary>Which staff may approve or deny a sign-up (spec 2026-11-01-sign-up-approval-design §6).</summary>
 public enum SignUpApprovers { Owner, OwnerAndAdmins, OwnerAdminsAndSupervisors }
 
+/// <summary>
+/// Which languages the resident web pages are offered in. <see cref="Offered"/> is the owner's choice from
+/// <see cref="Core.Languages.BuiltIn"/>; <see cref="Default"/> is the language used when a visitor's browser asks for none on the list.
+/// </summary>
+public sealed record LanguageSettings
+{
+    public IReadOnlyList<string> Offered { get; init; } = Core.Languages.BuiltIn;
+    public string Default { get; init; } = Core.Languages.English;
+
+    /// <summary>The offered languages that are known, always including the default; a missing list reads as all of them.</summary>
+    public IReadOnlyList<string> OfferedOrDefault()
+    {
+        var known = (Offered ?? Core.Languages.BuiltIn).Where(Core.Languages.BuiltIn.Contains).Distinct().ToList();
+        if (!known.Contains(Default))
+            known.Add(Default);
+        return known;
+    }
+}
+
 public sealed record LauncherSettings
 {
     public const int CurrentSchema = 6;
@@ -226,6 +245,12 @@ public sealed record LauncherSettings
     /// <summary>The owner's email wording; a missing or null value reads as every default.</summary>
     [AllowNull]
     public EmailSettings Email { get => _email; init => _email = value ?? new(); }
+
+    private readonly LanguageSettings _languages = new();
+
+    /// <summary>The languages the web pages are offered in; a missing or null value reads as the defaults.</summary>
+    [AllowNull]
+    public LanguageSettings Languages { get => _languages; init => _languages = value ?? new(); }
 
     private readonly BotSettings _bots = new();
 

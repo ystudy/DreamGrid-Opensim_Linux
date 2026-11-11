@@ -1,5 +1,6 @@
 using System.Globalization;
 using DreamGrid.Launcher.Core.ModelImport;
+using Microsoft.Extensions.Localization;
 
 namespace DreamGrid.Launcher.ModelImport;
 
@@ -7,163 +8,123 @@ namespace DreamGrid.Launcher.ModelImport;
 public sealed record FindingLine(string Title, string Why, string Tip);
 
 /// <summary>
-/// The guest-facing words for each finding code the converter writes into <c>report.json</c>, with its numbers put in. Kept
-/// here, not in the converter, so the words can go through the languages work later. A code it doesn't know gives a generic
-/// line; a missing value gives a plain word in its place. Neither ever throws.
+/// The guest-facing words for each finding code the converter writes into <c>report.json</c>, in the page's language
+/// (<c>Finding.*</c> keys in ResidentText), with its numbers put in. A code it doesn't know gives a generic line; a missing value
+/// gives a plain word in its place. Neither ever throws.
 /// </summary>
 public static class FindingText
 {
-    public static FindingLine Of(Finding f, string itemName)
+    public static FindingLine Of(IStringLocalizer<ResidentText> t, Finding f, string itemName)
     {
         var v = f.Values ?? new Dictionary<string, string>();
+        bool Has(string key) => v.TryGetValue(key, out var s) && !string.IsNullOrWhiteSpace(s);
         // Part and picture names come from the uploaded file, so they are cut short (the page escapes them).
-        string Get(string key, string fallback) => v.TryGetValue(key, out var s) && !string.IsNullOrWhiteSpace(s) ? Short(s) : fallback;
-        string N(string key, string fallback) => Number(Get(key, fallback));
-        var item = string.IsNullOrWhiteSpace(itemName) ? "The model" : itemName;
+        string Get(string key, string fallback) => Has(key) ? Short(v[key]) : fallback;
+        string L(string key, params object[] args) => t[key, args].Value;
+        // A number from the report, written in the page's language; a missing one is the given default, or "several".
+        string N(string key, string? fallback = null) => Has(key) ? Number(v[key]) : fallback is null ? L("Finding.Several") : Number(fallback);
+        string Picture() => Get("image", L("Finding.InTheModel"));
+        var item = string.IsNullOrWhiteSpace(itemName) ? L("Finding.TheModel") : itemName;
+        FindingLine Line(string name, params object[] title) =>
+            new(L($"Finding.{name}.Title", title), L($"Finding.{name}.Why"), L($"Finding.{name}.Tip"));
+        FindingLine LineWhy(string name, object[] title, params object[] why) =>
+            new(L($"Finding.{name}.Title", title), L($"Finding.{name}.Why", why), L($"Finding.{name}.Tip"));
 
         return f.Code switch
         {
-            "split-materials" => new(
-                $"Split into {N("parts", "more")} linked parts",
-                $"({N("materials", "many")} materials, {N("perPart", "8")} per part). This won't change how it looks.",
-                "In Blender, join materials that share a picture, or bake them into one, to keep it to one part."),
-            "split-vertices" => new(
-                $"Split {N("faces", "some")} large faces into smaller ones",
-                $"A face can hold {N("limit", "65535")} points at most. This won't change how it looks.",
-                "In Blender, a Decimate modifier lowers the number of points."),
-            "texture-resized" => new(
-                $"Resized the picture {Get("image", "in the model")}",
-                "Pictures here are sized in powers of two (like 512 or 1024). This won't change how it looks.",
-                "In Blender, save pictures at sizes like 512 × 512 or 1024 × 1024."),
-            "texture-shrunk" => new(
-                $"The picture {Get("image", "in the model")} was made smaller, from {N("from", "its size")} to {N("to", "1024")} pixels",
-                "Pictures on this grid are at most 1024 pixels on a side, so it will look softer up close.",
-                "In Blender, bake or save the picture at 1024 × 1024 or smaller, then export again."),
-            "texture-unsupported" => new(
-                $"The picture {Get("image", "in the model")} was left out",
-                $"Only PNG and JPEG pictures can be used, and this one is {Get("format", "another kind")}. Its faces will have no picture.",
-                "In Blender, save the picture as PNG or JPEG, then export again."),
+            "split-materials" => LineWhy("SplitMaterials", [N("parts")], N("materials"), N("perPart", "8")),
+            "split-vertices" => LineWhy("SplitVertices", [N("faces")], N("limit", "65535")),
+            "texture-resized" => Line("TextureResized", Picture()),
+            "texture-shrunk" => Line("TextureShrunk", Picture(), Has("from") ? N("from") : L("Finding.ItsSize"), N("to", "1024")),
+            "texture-unsupported" => LineWhy("TextureUnsupported", [Picture()],
+                Get("format", "unknown") is var format && format != "unknown" ? format.ToUpperInvariant() : L("Finding.AnotherKind")),
             "heavy-mesh" => new(
-                $"The model has {N("triangles", "a great many")} triangles",
-                $"Above {N("threshold", "200000")}, the simpler versions shown from far away may look lumpy or have holes.",
-                "In Blender, add a Decimate modifier to lower the number of triangles."),
+                Has("triangles") ? L("Finding.HeavyMesh.Title", N("triangles")) : L("Finding.HeavyMesh.TitleNoCount"),
+                L("Finding.HeavyMesh.Why", N("threshold", "200000")),
+                L("Finding.HeavyMesh.Tip")),
             "too-big" => new(
-                v.TryGetValue("side", out var side) && !string.IsNullOrWhiteSpace(side) ? $"{Get("part", item)} is {N("side", "")} m on its longest side" : $"{Get("part", item)} is too big",
-                $"Parts on this grid can be at most {N("limit", "1024")} m, so every region can hold them.",
-                "In Blender, scale the model down (S), apply the scale (Ctrl+A), then export again. Or choose a smaller size here."),
+                Has("side") ? L("Finding.TooBig.Title", Get("part", item), N("side")) : L("Finding.TooBig.TitleNoSide", Get("part", item)),
+                L("Finding.TooBig.Why", N("limit", "1024")),
+                L("Finding.TooBig.Tip")),
             "too-small" => new(
-                $"{N("dropped", "Some")} of {N("total", "the")} parts are too small and were left out",
-                $"Parts must be at least {N("limit", "0.001")} m on a side.",
-                "In Blender, join tiny pieces to a larger part (Ctrl+J), then export again."),
+                Has("dropped") && Has("total") ? L("Finding.TooSmall.Title", N("dropped"), N("total")) : L("Finding.TooSmall.TitleNoCount"),
+                L("Finding.TooSmall.Why", N("limit", "0.001")),
+                L("Finding.TooSmall.Tip")),
             "too-many-parts" => new(
-                $"The item has {N("parts", "too many")} parts",
-                $"This grid allows {N("limit", "only so many")} parts in one item.",
-                "In Blender, join objects (Ctrl+J) or use fewer materials, then export again."),
-            "inside-out" => new(
-                $"{Get("part", item)} may be inside out" + (Get("parts", "1") is var n && n != "1" ? $" ({Number(n)} parts)" : ""),
-                "It was mirrored, so its faces may point the wrong way and look see-through.",
-                "In Blender, apply the scale (Ctrl+A), then in Edit Mode recalculate the normals (Shift+N)."),
-            "no-uv" => new(
-                $"{N("faces", "Some")} faces have a picture but no UV map",
-                "Without one the picture can't be placed, so it will look smeared.",
-                "In Blender, unwrap the mesh in Edit Mode (U), then export again."),
-            "dropped-animation" => new(
-                "Animations were left out",
-                "Items here can't play glTF animations. This won't change how it looks standing still.",
-                "Nothing to fix. In Blender's glTF export you can untick Animation."),
-            "dropped-morphs" => new(
-                "Shape keys were left out",
-                "The item is made in its basic shape.",
-                "In Blender, apply the shape key you want before exporting, or untick Shape Keys in the glTF export."),
-            "dropped-extras" => new(
-                $"{Words(Get("what", "cameras,lights"))} were left out",
-                "Items can't carry them. This won't change how it looks.",
-                "In Blender's glTF export, untick Cameras and Punctual Lights."),
-            "vertex-colours-ignored" => new(
-                "The model's vertex colours were left out",
-                "Items here can only take colour from a material or a picture, so it may look plainer.",
-                "In Blender, bake the vertex colours into a picture (Cycles: Bake, Diffuse colour), then export again."),
-            "double-sided-ignored" => new(
-                $"{Get("material", "Some faces")} will only show from one side" + (Get("materials", "1") is var m && m != "1" ? $" ({Number(m)} materials)" : ""),
-                "Items here draw a face from the front only, so thin parts like leaves or cloth may look see-through from behind.",
-                "In Blender, give thin parts some thickness with a Solidify modifier, then export again."),
-            "texture-coords-ignored" => new(
-                "A picture may sit in the wrong place",
-                "Only the model's first UV map is used, as it is; a second UV map or a moved or scaled picture is not.",
-                "In Blender, put the picture on the first UV map and apply any offset or scale to the UVs, then export again."),
-            "skin-ignored" => new(
-                $"The model is rigged ({N("joints", "with")} bones), but it's made as a plain object",
-                "In this version it stands in its rest pose and can't be worn.",
-                "In Blender, export without the armature if you only want the object."),
-            "compressed" => new(
-                $"The file is compressed ({Get("extension", "Draco or meshopt")})",
-                "Compressed models can't be read here.",
-                "In Blender's glTF export, untick Compression, then export again."),
-            "external-files" => new(
-                $"The file uses {N("count", "other")} separate files",
-                "Only one file can be uploaded, with everything inside it.",
-                "In Blender's glTF export, choose glTF Binary (.glb)."),
-            "not-triangles" => new(
-                $"{Words(Get("what", "lines,points"))} were left out",
-                "Only faces can be made into an item.",
-                "In Blender, give lines some thickness (a Skin or Solidify modifier) or convert curves to a mesh."),
+                L("Finding.TooManyParts.Title", N("parts")),
+                Has("limit") ? L("Finding.TooManyParts.Why", N("limit")) : L("Finding.TooManyParts.WhyNoLimit"),
+                L("Finding.TooManyParts.Tip")),
+            "inside-out" => Get("parts", "1") is var n && n != "1"
+                ? Line("InsideOutMany", Get("part", item), Number(n))
+                : Line("InsideOut", Get("part", item)),
+            "no-uv" => Line("NoUv", N("faces")),
+            "dropped-animation" => Line("DroppedAnimation"),
+            "dropped-morphs" => Line("DroppedMorphs"),
+            "dropped-extras" => Line("DroppedExtras", Words(t, Get("what", "cameras,lights"))),
+            "vertex-colours-ignored" => Line("VertexColours"),
+            "double-sided-ignored" => Get("materials", "1") is var m && m != "1"
+                ? Line("DoubleSidedMany", Get("material", L("Finding.SomeFaces")), Number(m))
+                : Line("DoubleSided", Get("material", L("Finding.SomeFaces"))),
+            "texture-coords-ignored" => Line("TextureCoords"),
+            "skin-ignored" => Line("SkinIgnored", N("joints")),
+            "compressed" => Line("Compressed", Get("extension", "Draco / meshopt")),
+            "external-files" => Line("ExternalFiles", N("count")),
+            "not-triangles" => Line("NotTriangles", Words(t, Get("what", "lines,points"))),
             "bad-file" => new(
-                "We couldn't read this file",
-                Get("reason", "It isn't a readable glTF 2.0 file."),
-                "In Blender, use File > Export > glTF 2.0 and choose glTF Binary (.glb)."),
-            "too-large-file" => TooLarge(Get("what", "upload"), v),
-            _ => new(
-                "Something in the model needs a look",
-                "The check found something this page can't describe yet.",
-                "In Blender, check the model and export it again as glTF Binary (.glb)."),
+                L("Finding.BadFile.Title"),
+                // The reason is the glTF reader's own message (English and technical), unless it is one of the converter's.
+                Get("reason", "") switch { "" => L("Finding.BadFile.Why"), "The file has no mesh." => L("Finding.BadFile.NoMesh"), var r => r },
+                L("Finding.BadFile.Tip")),
+            "too-large-file" => TooLarge(t, Get("what", "upload"), v),
+            _ => Line("Unknown"),
         };
     }
 
-    private static FindingLine TooLarge(string what, IReadOnlyDictionary<string, string> v)
+    private static FindingLine TooLarge(IStringLocalizer<ResidentText> t, string what, IReadOnlyDictionary<string, string> v)
     {
         var limit = v.TryGetValue("limit", out var l) ? l : null;
+        string L(string key, params object[] args) => t[key, args].Value;
+        FindingLine Line(string name, params object[] title) =>
+            new(L($"Finding.TooLarge.{name}.Title", title), L($"Finding.TooLarge.{name}.Why", title), L($"Finding.TooLarge.{name}.Tip"));
         return what switch
         {
-            "image" => new(
-                $"A picture is {(v.TryGetValue("image", out var size) ? size.Replace("x", " × ", StringComparison.Ordinal) : "too many")} pixels",
-                $"Pictures in an upload can be at most {Number(limit ?? "8192")} pixels on a side.",
-                "In Blender, save the picture at 1024 × 1024 or smaller, then export again."),
-            "triangles" => new(
-                $"The model has more than {Number(limit ?? "2000000")} triangles",
-                "That's more than this grid can take in one item.",
-                "In Blender, add a Decimate modifier to lower the number of triangles."),
-            "nodes" => new(
-                $"The model has more than {Number(limit ?? "512")} objects",
-                "That's more than this grid can take in one item.",
-                "In Blender, join objects (Ctrl+J), then export again."),
-            "assets" => new(
-                $"The finished item would be larger than {Megabytes(limit)}",
-                "Its pictures and shapes together are more than this grid takes for one item.",
-                "In Blender, use fewer or smaller pictures and a Decimate modifier, then export again."),
-            _ => new(
-                $"The file is larger than {Megabytes(limit)}",
-                "That's the largest file this grid takes.",
-                "In Blender, use smaller pictures and a Decimate modifier, then export again."),
+            "image" => Line("Image",
+                v.TryGetValue("image", out var size) && size.Split('x') is [var w, var h] ? $"{Number(w)} × {Number(h)}" : L("Finding.Several"),
+                Number(limit ?? "8192")),
+            "triangles" => Line("Triangles", Number(limit ?? "2000000")),
+            "nodes" => Line("Nodes", Number(limit ?? "512")),
+            "assets" => Line("Assets", Megabytes(t, limit)),
+            _ => Line("Upload", Megabytes(t, limit)),
         };
     }
 
     private static string Short(string s) => s.Length <= 64 ? s : s[..(char.IsHighSurrogate(s[63]) ? 63 : 64)] + "…";
 
-    /// <summary>"cameras,lights" as "Cameras and lights".</summary>
-    private static string Words(string list)
+    /// <summary>"cameras,lights" as "Cameras and lights", in the page's language. A word the page doesn't know is shown as it is.</summary>
+    private static string Words(IStringLocalizer<ResidentText> t, string list)
     {
-        var parts = list.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (parts.Length == 0) return "Some parts";
-        var joined = parts.Length == 1 ? parts[0] : string.Join(", ", parts[..^1]) + " and " + parts[^1];
-        return char.ToUpperInvariant(joined[0]) + joined[1..];
+        var parts = list.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(p => p switch
+            {
+                "cameras" => t["Finding.What.Cameras"].Value,
+                "lights" => t["Finding.What.Lights"].Value,
+                "lines" => t["Finding.What.Lines"].Value,
+                "points" => t["Finding.What.Points"].Value,
+                _ => p,
+            }).ToArray();
+        if (parts.Length == 0) return t["Finding.SomeParts"].Value;
+        var joined = parts.Length == 1 ? parts[0] : t["Finding.And", string.Join(", ", parts[..^1]), parts[^1]].Value;
+        return char.ToUpper(joined[0], CultureInfo.CurrentCulture) + joined[1..];
     }
 
-    /// <summary>A whole number with thousands separators; anything else as it was written.</summary>
+    /// <summary>A number in the page's language (2,100,000 in English); anything else as it was written.</summary>
     private static string Number(string s) =>
-        long.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) ? n.ToString("N0", CultureInfo.InvariantCulture) : s;
+        long.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) ? n.ToString("N0", CultureInfo.CurrentCulture)
+        : double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? d.ToString("0.###", CultureInfo.CurrentCulture)
+        : s;
 
-    private static string Megabytes(string? bytes) =>
-        long.TryParse(bytes, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) && n > 0
-            ? (n / (1024 * 1024)).ToString(CultureInfo.InvariantCulture) + " MB"
-            : "64 MB";
+    private static string Megabytes(IStringLocalizer<ResidentText> t, string? bytes) =>
+        t["Upload.Megabytes", long.TryParse(bytes, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) && n > 0
+            ? (n / (1024 * 1024)).ToString(CultureInfo.CurrentCulture)
+            : "64"].Value;
 }

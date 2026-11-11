@@ -103,7 +103,7 @@ public sealed class EmailWarningsTests
         accounts.Save(new EmailAccount(Guid.NewGuid(), "gmail", "smtp.gmail.com", 587, MailSecurity.StartTls, "grid@gmail.com", null, "Avalon",
             "grid@gmail.com", null, 500, null, false, 0, null, null), "pw");
         var sender = f.Services.GetRequiredService<EmailSender>();
-        Assert.Equal(QueueResult.Queued, sender.Queue(EmailTemplates.ResetPassword, "who@nowhere.example", "Ann Avatar",
+        Assert.Equal(QueueResult.Queued, sender.Queue(EmailTemplates.ResetPassword, "en", "who@nowhere.example", "Ann Avatar",
             new Dictionary<string, string> { ["AvatarName"] = "Ann Avatar", ["Link"] = "https://x.example/r?t=TOKEN", ["ExpiresIn"] = "30 minutes" }));
         await sender.DrainAsync(Ct);
         var owner = await SignedInAsync(f, "owner");

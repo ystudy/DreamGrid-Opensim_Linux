@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <!-- The English subjects and bodies of the emails sent to residents. Keys are <template id>.Subject and <template id>.Body; the fill-in
+       words ({Link}, {AvatarName}, ...) stay as they are in every language. Staff emails are English only and live in EmailTemplates.cs. -->
+  <data name="confirm-email.Subject" xml:space="preserve"><value>Confirm your email for {GridName}</value></data>
+  <data name="confirm-email.Body" xml:space="preserve"><value>Hello {AvatarName},
+
+Please confirm your email address for {GridName}:
+
+{Link}
+
+The link works once, for {ExpiresIn}. If you didn't sign up, you can ignore this email.</value></data>
+  <data name="reset-password.Subject" xml:space="preserve"><value>Reset your {GridName} password</value></data>
+  <data name="reset-password.Body" xml:space="preserve"><value>Hello {AvatarName},
+
+Someone asked to reset your password on {GridName}. To choose a new one, open this link:
+
+{Link}
+
+The link works once, for {ExpiresIn}. If it wasn't you, ignore this email: your password stays the same.</value></data>
+  <data name="account-approved.Subject" xml:space="preserve"><value>Welcome to {GridName}</value></data>
+  <data name="account-approved.Body" xml:space="preserve"><value>Hello {AvatarName},
+
+Your account on {GridName} is ready. You can sign in now:
+
+{Link}</value></data>
+  <data name="password-changed.Subject" xml:space="preserve"><value>Your password on {GridName} was changed</value></data>
+  <data name="password-changed.Body" xml:space="preserve"><value>Hello {AvatarName},
+
+Your password on {GridName} was just changed, and you were signed out everywhere.
+
+If it wasn't you, contact the grid owner straight away.</value></data>
+  <data name="already-have-account.Subject" xml:space="preserve"><value>Someone tried to sign up on {GridName}</value></data>
+  <data name="already-have-account.Body" xml:space="preserve"><value>Hello {AvatarName},
+
+Someone tried to sign up on {GridName} with this email address. If that was you, you already have an avatar: {AvatarName}.
+
+Forgot your password? You can choose a new one here:
+
+{Link}
+
+If it wasn't you, you can ignore this email.</value></data>
+  <data name="confirm-new-email.Subject" xml:space="preserve"><value>Confirm your new email address</value></data>
+  <data name="confirm-new-email.Body" xml:space="preserve"><value>Hello {AvatarName},
+
+Confirm your new email address for {AvatarName} on {GridName}:
+
+{Link}
+
+The link works once, for {ExpiresIn}. If you didn't ask for this, ignore this email.</value></data>
+  <data name="email-change-notice.Subject" xml:space="preserve"><value>Your email address on {GridName}</value></data>
+  <data name="email-change-notice.Body" xml:space="preserve"><value>Hello {AvatarName},
+
+Someone asked to change the email address for {AvatarName} on {GridName}. If that was you, there's nothing to do.
+
+If not, change your password now:
+
+{Link}</value></data>
+  <data name="signup-denied.Subject" xml:space="preserve"><value>Your sign-up on {GridName}</value></data>
+  <data name="signup-denied.Body" xml:space="preserve"><value>Hello {AvatarName},
+
+Your sign-up on {GridName} wasn't approved.
+
+{Note}</value></data>
+  <data name="name-changed.Subject" xml:space="preserve"><value>Your name on {GridName} was changed</value></data>
+  <data name="name-changed.Body" xml:space="preserve"><value>Hello {AvatarName},
+
+Staff on {GridName} changed your avatar's name from {OldName} to {AvatarName}. Log in with the new name from now on. Your friends, groups, inventory and regions stay as they were.
+
+If you didn't ask for this, contact the grid owner.</value></data>
+  <data name="email-changed-by-staff.Subject" xml:space="preserve"><value>Your email address on {GridName} was changed</value></data>
+  <data name="email-changed-by-staff.Body" xml:space="preserve"><value>Hello {AvatarName},
+
+Staff on {GridName} changed the email address for {AvatarName}, so emails from the grid no longer come here.
+
+If you didn't ask for this, contact the grid owner, and choose a new password:
+
+{Link}</value></data>
+  <data name="email-set-by-staff.Subject" xml:space="preserve"><value>Your email address on {GridName}</value></data>
+  <data name="email-set-by-staff.Body" xml:space="preserve"><value>Hello {AvatarName},
+
+Staff on {GridName} set this as the email address for {AvatarName}. Password resets and notices from the grid come here from now on.
+
+If you don't know {AvatarName}, you can ignore this email.</value></data>
+  <data name="staff-reset-password.Subject" xml:space="preserve"><value>Choose a new password for {GridName}</value></data>
+  <data name="staff-reset-password.Body" xml:space="preserve"><value>Hello {AvatarName},
+
+Staff on {GridName} sent you this link to choose a new password:
+
+{Link}
+
+The link works once, for {ExpiresIn}. When you set the new password, two-factor sign-in is turned off for your account, and you can turn it on again from your account page. If you didn't ask staff for this, ignore this email: nothing changes.</value></data>
+  <data name="takedown-removed.Subject" xml:space="preserve"><value>Items removed from your {GridName} inventory</value></data>
+  <data name="takedown-removed.Body" xml:space="preserve"><value>Hello {AvatarName},
+
+Staff on {GridName} removed these items from your inventory after a notice ({Reason}): {Items}
+
+The case number is {CaseNumber}. If you think this is a mistake, reply to this email and give the case number.</value></data>
+  <data name="takedown-restored.Subject" xml:space="preserve"><value>Items put back in your {GridName} inventory</value></data>
+  <data name="takedown-restored.Body" xml:space="preserve"><value>Hello {AvatarName},
+
+Staff on {GridName} put these items back in your inventory: {Items}
+
+The case number is {CaseNumber}.</value></data>
+  <data name="ticket-confirm.Subject" xml:space="preserve"><value>Confirm your {GridName} support ticket</value></data>
+  <data name="ticket-confirm.Body" xml:space="preserve"><value>Hello {Name},
+
+You (or someone using this address) sent a support ticket to {GridName}: "{Subject}". To send it to staff, open this link within 24 hours:
+
+{Link}
+
+If you didn't send it, ignore this email and the ticket is deleted.</value></data>
+  <data name="ticket-access.Subject" xml:space="preserve"><value>Your {GridName} support ticket {TicketNumber}</value></data>
+  <data name="ticket-access.Body" xml:space="preserve"><value>Hello {Name},
+
+Your ticket {TicketNumber} ("{Subject}") is with {GridName}'s staff. Read their answers and reply here:
+
+{Link}
+
+The link works for 30 days. Keep it private: anyone with it can read your ticket.</value></data>
+  <data name="ticket-staff-reply.Subject" xml:space="preserve"><value>{GridName} staff answered your ticket {TicketNumber}</value></data>
+  <data name="ticket-staff-reply.Body" xml:space="preserve"><value>Hello {Name},
+
+Staff answered your ticket {TicketNumber} ("{Subject}"). Read the answer and reply here:
+
+{Link}
+
+The link works for 30 days. Keep it private: anyone with it can read your ticket.</value></data>
+  <!-- Fill-in values for {ExpiresIn} and {Reason}. -->
+  <data name="ExpiresIn.30m" xml:space="preserve"><value>30 minutes</value></data>
+  <data name="ExpiresIn.24h" xml:space="preserve"><value>24 hours</value></data>
+  <data name="Reason.Copyright" xml:space="preserve"><value>Copyright (DMCA)</value></data>
+  <data name="Reason.Illegal" xml:space="preserve"><value>Illegal content</value></data>
+  <data name="Reason.Rules" xml:space="preserve"><value>Breaks the grid's rules</value></data>
+  <data name="Reason.Other" xml:space="preserve"><value>Other</value></data>
+</root>

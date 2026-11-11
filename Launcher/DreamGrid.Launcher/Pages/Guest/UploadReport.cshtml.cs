@@ -4,6 +4,7 @@ using DreamGrid.Launcher.Guests;
 using DreamGrid.Launcher.ModelImport;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Localization;
 
 namespace DreamGrid.Launcher.Pages.Guest;
 
@@ -17,12 +18,13 @@ public sealed record ReportLine(Finding Finding, FindingLine Text);
 /// they get. The done page is shown here too.
 /// </summary>
 [UploadPagesOnly]
-public sealed class UploadReportModel(ModelUploads uploads) : PageModel
+public sealed class UploadReportModel(ModelUploads uploads, IStringLocalizer<ResidentText> t) : PageModel
 {
     public const int MinScale = 1;
     public const int MaxScale = 1000;
-    public const string NothingCharged = "That didn't work, nothing was charged";
-    public const string CheckedAgain = "We checked it again with your changes. Look it over, then make the item.";
+    /// <summary>ResidentText keys.</summary>
+    public const string NothingCharged = "UploadReport.NothingCharged";
+    public const string CheckedAgain = "UploadReport.CheckedAgain";
 
     [FromRoute] public string Job { get; set; } = "";
 
@@ -72,7 +74,7 @@ public sealed class UploadReportModel(ModelUploads uploads) : PageModel
         if (uploads.Read(Guest, Job) is { Finished: false } job)
         {
             if (Posted(job) is not { } options) return Show(job);
-            if (options != job.Options) return await CheckAgainAsync(job, options, CheckedAgain, ct);
+            if (options != job.Options) return await CheckAgainAsync(job, options, t[CheckedAgain], ct);
         }
 
         var who = new Uploader(Guest, User.Identity?.Name ?? "", HttpContext.Connection.RemoteIpAddress?.ToString());
@@ -89,7 +91,8 @@ public sealed class UploadReportModel(ModelUploads uploads) : PageModel
             case MakeStatus.Blocked:
             case MakeStatus.Busy:
                 if (uploads.Read(Guest, Job) is not { } again) return NotFound();
-                Error = result.Status == MakeStatus.Busy ? UploadModel.Busy : result.Message;
+                Error = result.Status == MakeStatus.Busy ? t[UploadModel.Busy]
+                    : result.Message ?? (result.Status == MakeStatus.Refused ? t["UploadReport.NotAllowed"].Value : null);
                 return Show(again);
             case MakeStatus.Failed:
                 Failed = true;
@@ -105,7 +108,7 @@ public sealed class UploadReportModel(ModelUploads uploads) : PageModel
         var scale = ScalePercent ?? job.Options.ScalePercent;
         if (scale is < MinScale or > MaxScale)
         {
-            Error = string.Create(CultureInfo.InvariantCulture, $"Choose a size from {MinScale} to {MaxScale} percent.");
+            Error = t["UploadReport.ChooseSize", MinScale, MaxScale];
             return null;
         }
         var name = ModelUploads.CleanName(ItemName) is { Length: > 0 } n ? n : UploadModel.DefaultItemName(job.Options.FileName);
@@ -125,7 +128,7 @@ public sealed class UploadReportModel(ModelUploads uploads) : PageModel
             AlreadyFinished = true;
             return Page();
         }
-        Error = result.Status == CheckStatus.Busy ? UploadModel.Busy : UploadModel.Unreadable;
+        Error = t[result.Status == CheckStatus.Busy ? UploadModel.Busy : UploadModel.Unreadable];
         return uploads.Read(Guest, job.Id) is { } still ? Show(still) : Page();
     }
 
@@ -151,7 +154,7 @@ public sealed class UploadReportModel(ModelUploads uploads) : PageModel
     private void Lines(ImportReport report, string itemName)
     {
         Report = report;
-        var lines = (report.Findings ?? []).Select(f => new ReportLine(f, FindingText.Of(f, itemName))).ToList();
+        var lines = (report.Findings ?? []).Select(f => new ReportLine(f, FindingText.Of(t, f, itemName))).ToList();
         Safe = lines.Where(l => l.Finding.Kind == FindingKind.Safe).ToList();
         Risky = lines.Where(l => l.Finding.Kind == FindingKind.Risky).ToList();
         Blocking = lines.Where(l => l.Finding.Kind == FindingKind.Blocking).ToList();
@@ -165,12 +168,11 @@ public sealed class UploadReportModel(ModelUploads uploads) : PageModel
     /// <summary>"castle.glb was checked: 1 thing may look wrong, 2 things will be fixed for you."</summary>
     public string Heading()
     {
-        static string Things(int n) => n == 1 ? "1 thing" : n.ToString(CultureInfo.InvariantCulture) + " things";
         var parts = new List<string>();
-        if (Blocking.Count > 0) parts.Add($"{Things(Blocking.Count)} must be fixed before the item can be made");
-        if (Risky.Count > 0) parts.Add($"{Things(Risky.Count)} may look wrong");
-        if (Safe.Count > 0) parts.Add($"{Things(Safe.Count)} will be fixed for you");
+        if (Blocking.Count > 0) parts.Add(t.Count("UploadReport.MustFix", Blocking.Count));
+        if (Risky.Count > 0) parts.Add(t.Count("UploadReport.MayLookWrongCount", Risky.Count));
+        if (Safe.Count > 0) parts.Add(t.Count("UploadReport.WillBeFixed", Safe.Count));
         var file = Current?.Options.FileName ?? Item;
-        return parts.Count == 0 ? $"{file} was checked: nothing needs changing." : $"{file} was checked: {string.Join(", ", parts)}.";
+        return parts.Count == 0 ? t["UploadReport.NothingToChange", file] : t["UploadReport.Checked", file, string.Join(t["UploadReport.ListSeparator"], parts)];
     }
 }

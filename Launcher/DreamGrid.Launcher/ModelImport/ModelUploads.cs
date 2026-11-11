@@ -198,7 +198,8 @@ public sealed class ModelUploads(ImportJobs jobs, LauncherPaths paths, IModelCon
             if (!charged.Allowed)
             {
                 File.Delete(done);
-                return new MakeResult(MakeStatus.Refused, Message: charged.Message ?? "This upload isn't allowed right now.");
+                // No message: the page says, in its language, that the upload isn't allowed right now.
+                return new MakeResult(MakeStatus.Refused, Message: charged.Message);
             }
 
             // The object last: it points at the textures and meshes, which must be there first.

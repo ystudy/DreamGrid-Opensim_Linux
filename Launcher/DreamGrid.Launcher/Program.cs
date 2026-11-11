@@ -24,6 +24,7 @@ using DreamGrid.Launcher.Email;
 using DreamGrid.Launcher.Groups;
 using DreamGrid.Launcher.Guests;
 using DreamGrid.Launcher.ModelImport;
+using DreamGrid.Launcher.Resident;
 using DreamGrid.Launcher.Setup;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -41,6 +42,11 @@ var processEnv = new Dictionary<string, string?>
 };
 if (await CommandLine.RunVerbAsync(args, processEnv, Console.Out, CancellationToken.None) is { } verbExit)
     return verbExit;
+
+// Staff pages stay in English whatever the operating system's language, words, dates and numbers alike (spec section 2): only
+// resident pages get ResidentLanguageFilter, which sets the culture for its own request.
+System.Globalization.CultureInfo.DefaultThreadCurrentCulture = System.Globalization.CultureInfo.GetCultureInfo("en");
+System.Globalization.CultureInfo.DefaultThreadCurrentUICulture = System.Globalization.CultureInfo.GetCultureInfo("en");
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseSystemd();
@@ -161,6 +167,7 @@ builder.Services.AddAuthorizationBuilder()
     // Only the guest cookie: a staff cookie opens no guest page, and a guest cookie opens no staff page.
     .AddPolicy(AuthSchemes.GuestPolicy, p => p.AddAuthenticationSchemes(AuthSchemes.Guest).RequireRole(AuthSchemes.GuestRole))
     .SetFallbackPolicy(new AuthorizationPolicyBuilder().AddAuthenticationSchemes(AuthSchemes.Admin).RequireRole(AuthSchemes.AdminRole).Build());
+builder.Services.AddLocalization(o => o.ResourcesPath = "Resources");
 builder.Services.AddRazorPages(o =>
 {
     // Every page needs the admin role except these; the setup pages are guarded by SetupGate. A person's own pages under
@@ -211,13 +218,22 @@ builder.Services.AddRazorPages(o =>
     // The same for the Email pages: email is for the guest side's sign-up and password reset.
     foreach (var emailPage in new[] { "/Security/Email", "/Security/EmailWording" })
         o.Conventions.AddPageApplicationModelConvention(emailPage, m => m.Filters.Add(new GuestSideOnly()));
-    foreach (var open in new[] { "/Login", "/Login/Code", "/Logout", "/Welcome", "/Waiting", "/SetupDone", "/Setup", "/Home", "/Legal", "/SignUp", "/Guest/SignIn", "/Guest/SignInCode", "/Guest/ForgotPassword", "/Guest/ResetPassword", "/Guest/Confirm", "/Guest/ConfirmEmail", "/Guest/Connect" })
+    foreach (var open in new[] { "/Login", "/Login/Code", "/Logout", "/Welcome", "/Waiting", "/SetupDone", "/Setup", "/Home", "/Legal", "/SignUp", "/Guest/SignIn", "/Guest/SignInCode", "/Guest/ForgotPassword", "/Guest/ResetPassword", "/Guest/Confirm", "/Guest/ConfirmEmail", "/Guest/Connect", "/Language" })
         o.Conventions.AllowAnonymousToPage(open);
     o.Conventions.AllowAnonymousToFolder("/Setup");
     // Support tickets for guests: open to anyone (each page checks the ticket's link or cookie), only where there is a guest side.
     // Outside /Guest, which needs the guest sign-in and the Terms gate.
     o.Conventions.AllowAnonymousToFolder("/Support");
     o.Conventions.AddFolderApplicationModelConvention("/Support", m => m.Filters.Add(new GuestSideOnly()));
+    // The resident pages pick their language per visitor (see ResidentLanguageFilter); staff pages stay English. Only the welcome
+    // page takes its language from ?lang= alone.
+    o.Conventions.AddPageApplicationModelConvention("/Welcome", m => m.Filters.Add(new ResidentLanguageFilter(welcome: true)));
+    // The language picker's own page: anyone may use it, and like the guest pages it is not there on a Region Server.
+    o.Conventions.AddPageApplicationModelConvention("/Language", m => m.Filters.Add(new GuestSideOnly()));
+    foreach (var folder in new[] { "/Guest", "/Support" })
+        o.Conventions.AddFolderApplicationModelConvention(folder, m => m.Filters.Add(new ResidentLanguageFilter(welcome: false)));
+    foreach (var page in new[] { "/Home", "/Legal", "/SignUp" })
+        o.Conventions.AddPageApplicationModelConvention(page, m => m.Filters.Add(new ResidentLanguageFilter(welcome: false)));
     // The dashboard's forms post here: a POST to "/" belongs to the port-8001 contract (LegacyRootPolicy).
     o.Conventions.AddPageRoute("/Index", "dashboard");
 });
@@ -303,6 +319,9 @@ builder.Services.AddSingleton(sp => new DreamGrid.Launcher.Core.Tickets.TicketNo
 builder.Services.AddSingleton<TicketCookie>();
 builder.Services.AddSingleton<DreamGrid.Launcher.Security.StaffTickets>();
 builder.Services.AddSingleton<SignUpNotices>();
+// The language each resident chose (plan 16a).
+builder.Services.AddSingleton(sp => new DreamGrid.Launcher.Core.ResidentLanguages(Path.Combine(paths.Guests, "languages.json"),
+    sp.GetRequiredService<ILogger<DreamGrid.Launcher.Core.ResidentLanguages>>()));
 // The resident account page (plan 10): email changes waiting for their link, and their own request counts.
 builder.Services.AddSingleton(sp => new PendingEmailChanges(Path.Combine(paths.Guests, "email-changes.json"), sp.GetRequiredService<TimeProvider>(),
     sp.GetRequiredService<ILogger<PendingEmailChanges>>()));
@@ -317,6 +336,8 @@ builder.Services.AddSingleton(sp => new EmailOutbox(paths.Email, sp.GetRequiredS
     log: sp.GetRequiredService<ILogger<EmailOutbox>>()));
 builder.Services.AddSingleton<IMailTransport, SmtpMailTransport>();
 builder.Services.AddSingleton<EmailSender>();
+builder.Services.AddSingleton<DreamGrid.Launcher.Resident.OfferedLanguages>();
+builder.Services.AddSingleton<EmailLanguage>();
 builder.Services.AddSingleton<EmailTestLimiter>();
 builder.Services.AddHostedService<EmailWorker>();
 // The proof-of-work key lives in the owner-only security folder; one key for the life of the install. The image CAPTCHA signs with

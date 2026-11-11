@@ -1,35 +1,35 @@
 @page "/guest"
 @model DreamGrid.Launcher.Pages.Guest.IndexModel
 @{
-    ViewData["Title"] = "Your account";
+    ViewData["Title"] = T["Guest.Title"].Value;
 }
 <h1>@Model.GridName</h1>
-<p>You're signed in as @Model.DisplayName.</p>
+<p>@T["Guest.SignedInAs", Model.DisplayName]</p>
 
-<h2>Connect with Firestorm</h2>
+<h2>@T["Guest.ConnectHeading"]</h2>
 <ol>
-    <li>Install Firestorm for OpenSim from <a href="https://www.firestormviewer.org/downloads/">https://www.firestormviewer.org/downloads/</a>.</li>
-    <li>In Firestorm open Preferences, then OpenSim, then Grid Manager.</li>
-    <li>Paste <code>@Model.LoginUri</code> and click Apply.</li>
-    <li>Pick @Model.GridName on the login screen and sign in with your avatar name and password.</li>
+    <li>@T.With("Guest.Step1", ResidentHtml.Link("https://www.firestormviewer.org/downloads/", "https://www.firestormviewer.org/downloads/"))</li>
+    <li>@T["Guest.Step2"]</li>
+    <li>@T.With("Guest.Step3", ResidentHtml.Code(Model.LoginUri))</li>
+    <li>@T["Guest.Step4", Model.GridName]</li>
 </ol>
 
-<p><a href="/guest/connect">How to connect</a></p>
-<p><a href="/guest/account">Account settings</a></p>
+<p><a href="/guest/connect">@T["Common.HowToConnect"]</a></p>
+<p><a href="/guest/account">@T["Account.Title"]</a></p>
 
 @if (Model.OwnsRegions)
 {
-    <p><a href="/guest/regions">My regions</a></p>
+    <p><a href="/guest/regions">@T["Regions.Title"]</a></p>
 }
 @if (Model.UploadLink)
 {
-    <p><a href="/guest/upload">Upload a model</a></p>
+    <p><a href="/guest/upload">@T["Upload.Title"]</a></p>
 }
 @if (Model.TwoFactorLink)
 {
-    <p><a href="/guest/two-factor">Two-factor sign-in</a></p>
+    <p><a href="/guest/two-factor">@T["Common.TwoFactorSignIn"]</a></p>
 }
 
 <form method="post" action="/guest/sign-out" asp-antiforgery="true">
-    <button type="submit" class="btn btn-outline-secondary">Sign out</button>
+    <button type="submit" class="btn btn-outline-secondary">@T["Guest.SignOut"]</button>
 </form>

@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This translation was drafted by AI and has not been checked by a native speaker.
+     Corrections from native speakers are welcome: see docs/languages.md. -->
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="confirm-email.Subject" xml:space="preserve"><value>Confirme seu e-mail para {GridName}</value></data>
+  <data name="confirm-email.Body" xml:space="preserve"><value>Olá, {AvatarName},
+
+Confirme o seu endereço de e-mail para {GridName}:
+
+{Link}
+
+O link funciona uma vez, por {ExpiresIn}. Se você não se cadastrou, pode ignorar este e-mail.</value></data>
+  <data name="reset-password.Subject" xml:space="preserve"><value>Redefina sua senha de {GridName}</value></data>
+  <data name="reset-password.Body" xml:space="preserve"><value>Olá, {AvatarName},
+
+Alguém pediu para redefinir a sua senha em {GridName}. Para escolher uma nova, abra este link:
+
+{Link}
+
+O link funciona uma vez, por {ExpiresIn}. Se não foi você, ignore este e-mail: sua senha continua a mesma.</value></data>
+  <data name="account-approved.Subject" xml:space="preserve"><value>Boas-vindas a {GridName}</value></data>
+  <data name="account-approved.Body" xml:space="preserve"><value>Olá, {AvatarName},
+
+Sua conta em {GridName} está pronta. Você já pode entrar:
+
+{Link}</value></data>
+  <data name="password-changed.Subject" xml:space="preserve"><value>Sua senha em {GridName} foi alterada</value></data>
+  <data name="password-changed.Body" xml:space="preserve"><value>Olá, {AvatarName},
+
+Sua senha em {GridName} acabou de ser alterada, e você foi desconectado em todos os lugares.
+
+Se não foi você, fale com o dono do grid imediatamente.</value></data>
+  <data name="already-have-account.Subject" xml:space="preserve"><value>Alguém tentou se cadastrar em {GridName}</value></data>
+  <data name="already-have-account.Body" xml:space="preserve"><value>Olá, {AvatarName},
+
+Alguém tentou se cadastrar em {GridName} com este endereço de e-mail. Se foi você, você já tem um avatar: {AvatarName}.
+
+Esqueceu a senha? Você pode escolher uma nova aqui:
+
+{Link}
+
+Se não foi você, pode ignorar este e-mail.</value></data>
+  <data name="confirm-new-email.Subject" xml:space="preserve"><value>Confirme seu novo endereço de e-mail</value></data>
+  <data name="confirm-new-email.Body" xml:space="preserve"><value>Olá, {AvatarName},
+
+Confirme o seu novo endereço de e-mail para {AvatarName} em {GridName}:
+
+{Link}
+
+O link funciona uma vez, por {ExpiresIn}. Se você não pediu isso, ignore este e-mail.</value></data>
+  <data name="email-change-notice.Subject" xml:space="preserve"><value>Seu endereço de e-mail em {GridName}</value></data>
+  <data name="email-change-notice.Body" xml:space="preserve"><value>Olá, {AvatarName},
+
+Alguém pediu para alterar o endereço de e-mail de {AvatarName} em {GridName}. Se foi você, não precisa fazer nada.
+
+Se não foi, altere sua senha agora:
+
+{Link}</value></data>
+  <data name="signup-denied.Subject" xml:space="preserve"><value>Seu cadastro em {GridName}</value></data>
+  <data name="signup-denied.Body" xml:space="preserve"><value>Olá, {AvatarName},
+
+Seu cadastro em {GridName} não foi aprovado.
+
+{Note}</value></data>
+  <data name="name-changed.Subject" xml:space="preserve"><value>Seu nome em {GridName} foi alterado</value></data>
+  <data name="name-changed.Body" xml:space="preserve"><value>Olá, {AvatarName},
+
+A equipe de {GridName} alterou o nome do seu avatar de {OldName} para {AvatarName}. De agora em diante, entre com o novo nome. Seus amigos, grupos, inventário e regiões continuam como estavam.
+
+Se você não pediu isso, fale com o dono do grid.</value></data>
+  <data name="email-changed-by-staff.Subject" xml:space="preserve"><value>Seu endereço de e-mail em {GridName} foi alterado</value></data>
+  <data name="email-changed-by-staff.Body" xml:space="preserve"><value>Olá, {AvatarName},
+
+A equipe de {GridName} alterou o endereço de e-mail de {AvatarName}, então os e-mails do grid não chegam mais aqui.
+
+Se você não pediu isso, fale com o dono do grid e escolha uma nova senha:
+
+{Link}</value></data>
+  <data name="email-set-by-staff.Subject" xml:space="preserve"><value>Seu endereço de e-mail em {GridName}</value></data>
+  <data name="email-set-by-staff.Body" xml:space="preserve"><value>Olá, {AvatarName},
+
+A equipe de {GridName} definiu este como o endereço de e-mail de {AvatarName}. Redefinições de senha e avisos do grid chegam aqui a partir de agora.
+
+Se você não conhece {AvatarName}, pode ignorar este e-mail.</value></data>
+  <data name="staff-reset-password.Subject" xml:space="preserve"><value>Escolha uma nova senha para {GridName}</value></data>
+  <data name="staff-reset-password.Body" xml:space="preserve"><value>Olá, {AvatarName},
+
+A equipe de {GridName} enviou este link para você escolher uma nova senha:
+
+{Link}
+
+O link funciona uma vez, por {ExpiresIn}. Quando você definir a nova senha, o login em duas etapas será desativado na sua conta, e você pode ativá-lo de novo na página da sua conta. Se você não pediu isso à equipe, ignore este e-mail: nada muda.</value></data>
+  <data name="takedown-removed.Subject" xml:space="preserve"><value>Itens removidos do seu inventário em {GridName}</value></data>
+  <data name="takedown-removed.Body" xml:space="preserve"><value>Olá, {AvatarName},
+
+A equipe de {GridName} removeu estes itens do seu inventário após uma notificação ({Reason}): {Items}
+
+O número do caso é {CaseNumber}. Se você acha que foi um engano, responda a este e-mail e informe o número do caso.</value></data>
+  <data name="takedown-restored.Subject" xml:space="preserve"><value>Itens devolvidos ao seu inventário em {GridName}</value></data>
+  <data name="takedown-restored.Body" xml:space="preserve"><value>Olá, {AvatarName},
+
+A equipe de {GridName} devolveu estes itens ao seu inventário: {Items}
+
+O número do caso é {CaseNumber}.</value></data>
+  <data name="ticket-confirm.Subject" xml:space="preserve"><value>Confirme seu chamado de suporte em {GridName}</value></data>
+  <data name="ticket-confirm.Body" xml:space="preserve"><value>Olá, {Name},
+
+Você (ou alguém usando este endereço) enviou um chamado de suporte para {GridName}: “{Subject}”. Para enviá-lo à equipe, abra este link em até 24 horas:
+
+{Link}
+
+Se não foi você que enviou, ignore este e-mail e o chamado será apagado.</value></data>
+  <data name="ticket-access.Subject" xml:space="preserve"><value>Seu chamado de suporte {TicketNumber} em {GridName}</value></data>
+  <data name="ticket-access.Body" xml:space="preserve"><value>Olá, {Name},
+
+Seu chamado {TicketNumber} (“{Subject}”) está com a equipe de {GridName}. Leia as respostas e responda aqui:
+
+{Link}
+
+O link funciona por 30 dias. Não compartilhe: qualquer pessoa com ele pode ler o seu chamado.</value></data>
+  <data name="ticket-staff-reply.Subject" xml:space="preserve"><value>A equipe de {GridName} respondeu ao seu chamado {TicketNumber}</value></data>
+  <data name="ticket-staff-reply.Body" xml:space="preserve"><value>Olá, {Name},
+
+A equipe respondeu ao seu chamado {TicketNumber} (“{Subject}”). Leia a resposta e responda aqui:
+
+{Link}
+
+O link funciona por 30 dias. Não compartilhe: qualquer pessoa com ele pode ler o seu chamado.</value></data>
+  <data name="ExpiresIn.30m" xml:space="preserve"><value>30 minutos</value></data>
+  <data name="ExpiresIn.24h" xml:space="preserve"><value>24 horas</value></data>
+  <data name="Reason.Copyright" xml:space="preserve"><value>Direitos autorais (DMCA)</value></data>
+  <data name="Reason.Illegal" xml:space="preserve"><value>Conteúdo ilegal</value></data>
+  <data name="Reason.Rules" xml:space="preserve"><value>Viola as regras do grid</value></data>
+  <data name="Reason.Other" xml:space="preserve"><value>Outro</value></data>
+</root>

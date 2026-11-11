@@ -10,7 +10,7 @@
     var guestSide = AdminRule.HasStaffPages(s);
     var links = c.Links;
     static string En(IReadOnlyDictionary<string, string>? text) => text is not null && text.TryGetValue("en", out var t) ? t : "";
-    static string Count(int n, string one, string many) => n == 1 ? "1 " + one : n + " " + many;
+    var language = DreamGrid.Launcher.Resident.ResidentLanguageFilter.Current(Context);
 }
 @* One block of the splash page. Owner text goes through the Legal pages' Markdown, which shows any HTML as text. *@
 <div class="splash-block splash-kind-@b.Kind.ToString().ToLowerInvariant() @SplashCss.ClassOf(b)" data-block-id="@b.Id">
@@ -35,15 +35,15 @@
             <ul class="splash-list">
                 @if (c.Status?.Online == true)
                 {
-                    <li>@(status.GridOnline ? "Online" : "Offline")</li>
+                    <li>@(status.GridOnline ? T["Welcome.Online"] : T["Welcome.Offline"])</li>
                 }
                 @if (c.Status?.People == true)
                 {
-                    <li>@(status.PeopleOnline is { } p ? Count(p, "person online", "people online") : "Status unavailable")</li>
+                    <li>@(status.PeopleOnline is { } p ? (p == 1 ? T["Welcome.OnePersonOnline"] : T["Welcome.PeopleOnline", p]) : T["Welcome.StatusUnavailable"])</li>
                 }
                 @if (c.Status?.Regions == true)
                 {
-                    <li>@(status.RegionsRunning is { } r ? Count(r, "region", "regions") : "Status unavailable")</li>
+                    <li>@(status.RegionsRunning is { } r ? (r == 1 ? T["Welcome.OneRegion"] : T["Welcome.Regions", r]) : T["Welcome.StatusUnavailable"])</li>
                 }
             </ul>
             break;
@@ -56,7 +56,7 @@
                 @foreach (var item in (c.News ?? []).Where(n => !n.Hidden).OrderByDescending(n => n.Date))
                 {
                     <li>
-                        <span class="splash-news-date">@item.Date.ToString("d MMMM yyyy", System.Globalization.CultureInfo.InvariantCulture)</span>
+                        <span class="splash-news-date">@item.Date.ToString("d MMMM yyyy", System.Globalization.CultureInfo.CurrentCulture)</span>
                         @Html.Raw(LegalMarkdown.ToHtml(En(item.Text)))
                     </li>
                 }
@@ -78,7 +78,7 @@
             </ul>
             break;
         case SplashBlockKind.Picture:
-            <div class="splash-picture @SplashCss.PictureClassOf(b)" role="img" aria-label="@(En(c.Caption) is { Length: > 0 } label ? label : "Picture")"></div>
+            <div class="splash-picture @SplashCss.PictureClassOf(b)" role="img" aria-label="@(En(c.Caption) is { Length: > 0 } label ? label : T["Welcome.Picture"].Value)"></div>
             if (En(c.Caption) is { Length: > 0 } caption)
             {
                 <div class="splash-caption">@caption</div>
@@ -88,23 +88,23 @@
             <nav class="splash-links">
                 @if (links?.SignUp == true && guestSide && SignUpRules.IsOpen(s))
                 {
-                    <a href="/signup">Create an account</a>
+                    <a href="/signup">@T["Common.CreateAccount"]</a>
                 }
                 @if (links?.ForgotPassword == true && guestSide)
                 {
-                    <a href="/guest/forgot-password">Forgot password</a>
+                    <a href="/guest/forgot-password">@T["Welcome.ForgotPassword"]</a>
                 }
-                @if (links?.Terms == true && guestSide && LegalPages.Get(s, LegalPages.Terms) is not null)
+                @if (links?.Terms == true && guestSide && LegalPages.Get(s, LegalPages.Terms, language) is not null)
                 {
-                    <a href="/terms">Terms</a>
+                    <a href="/terms">@T["Legal.Terms"]</a>
                 }
-                @if (links?.Privacy == true && guestSide && LegalPages.Get(s, LegalPages.Privacy) is not null)
+                @if (links?.Privacy == true && guestSide && LegalPages.Get(s, LegalPages.Privacy, language) is not null)
                 {
-                    <a href="/privacy">Privacy</a>
+                    <a href="/privacy">@T["Legal.Privacy"]</a>
                 }
                 @if (links?.FrontPage == true && guestSide)
                 {
-                    <a href="/home">About this grid</a>
+                    <a href="/home">@T["Welcome.AboutGrid"]</a>
                 }
             </nav>
             break;

@@ -3,6 +3,7 @@ using System.Net;
 using System.Text.Json;
 using AngleSharp.Html.Dom;
 using AngleSharp.Html.Parser;
+using DreamGrid.Launcher.Core;
 using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.Processes;
 using DreamGrid.Launcher.Core.Settings;
@@ -196,6 +197,31 @@ public sealed class MyRegionsTests : IAsyncLifetime
         Assert.Contains("Restarting Sunset Shore. It can take a minute or two.", Text(await DocAsync(client, "/guest/regions")));
     }
 
+    // The restart runs in BackgroundWork after the page has answered; it must not carry the German page's culture into the grid's
+    // long-lived work (a region monitor started by the restart lives far longer than the request).
+    [Fact]
+    public async Task Restart_from_a_German_page_runs_in_English()
+    {
+        SetStatus(RegionState.Failed);
+        Rights.Grant(SunsetId, TestAuth.GuestId, "Test Guest");
+        _f.Services.GetRequiredService<ResidentLanguages>().Set(TestAuth.GuestId, "de");
+        var seen = new TaskCompletionSource<(string Culture, string UiCulture)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _f.Grid.OnComponent = _ =>
+        {
+            seen.TrySetResult((CultureInfo.CurrentCulture.Name, CultureInfo.CurrentUICulture.Name));
+            return Task.CompletedTask;
+        };
+        using var client = await GuestAsync();
+        Assert.Equal("de", (await DocAsync(client, "/guest/regions")).DocumentElement.GetAttribute("lang")); // the page is German
+
+        using var r = await RestartAsync(client, SunsetId);
+
+        Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
+        var (culture, ui) = await seen.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
+        Assert.Contains(culture, new[] { "", "en" });
+        Assert.Equal("en", ui);
+    }
+
     [Fact]
     public async Task Stopped_region_is_started()
     {
@@ -206,7 +232,7 @@ public sealed class MyRegionsTests : IAsyncLifetime
         var page = await DocAsync(client, "/guest/regions");
         using var r = await RestartAsync(client, SunsetId);
 
-        Assert.Equal("Start this region", page.QuerySelector("button[type=submit]")!.TextContent.Trim());
+        Assert.Equal("Start this region", page.QuerySelector("main button[type=submit]")!.TextContent.Trim());
         Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
         Assert.True(await WaitForCallAsync($"RegionPower Start {SunsetId}"));
     }
@@ -227,7 +253,7 @@ public sealed class MyRegionsTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Redirect, second.StatusCode);
         var page = await DocAsync(client, "/guest/regions");
         Assert.Contains($"This region was restarted a few minutes ago. Try again after {tryAgain} (UTC).", Text(page));
-        Assert.True(page.QuerySelector("button[type=submit]")!.HasAttribute("disabled"));
+        Assert.True(page.QuerySelector("main button[type=submit]")!.HasAttribute("disabled"));
         Assert.Single(_f.Grid.Snapshot(), c => c.StartsWith("RegionPower"));
         Assert.Equal(["ok", "refused"], Audit("region-restart").Select(e => e.GetProperty("result").GetString()));
 
@@ -287,7 +313,7 @@ public sealed class MyRegionsTests : IAsyncLifetime
         using var r = await RestartAsync(client, HomeId);
 
         Assert.Contains("This region runs with regions that aren't yours. To restart it, contact the grid's staff.", Text(page));
-        Assert.True(page.QuerySelector("button[type=submit]")!.HasAttribute("disabled"));
+        Assert.True(page.QuerySelector("main button[type=submit]")!.HasAttribute("disabled"));
         Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
         AssertAudit(Assert.Single(Audit("region-restart")), "Home", "refused");
         Assert.DoesNotContain(_f.Grid.Snapshot(), c => c.StartsWith("RegionPower"));

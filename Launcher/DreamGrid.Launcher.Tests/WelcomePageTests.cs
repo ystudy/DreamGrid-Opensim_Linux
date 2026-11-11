@@ -361,4 +361,55 @@ public sealed class WelcomePageTests
         Assert.Empty(page.QuerySelectorAll("a[href='/privacy']"));
         Assert.NotNull(page.QuerySelector("a[href='/guest/forgot-password']"));
     }
+
+    [Fact]
+    public async Task Welcome_ignores_the_cookie_and_Accept_Language()
+    {
+        await using var f = Factory();
+        var client = Client(f);
+
+        async Task<string?> Lang(string url)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Add("Cookie", "dg-lang=de");
+            request.Headers.Add("Accept-Language", "de");
+            using var r = await client.SendAsync(request, Ct);
+            Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+            return new HtmlParser().ParseDocument(await r.Content.ReadAsStringAsync(Ct)).DocumentElement.GetAttribute("lang");
+        }
+
+        // The viewer's login screen has no picker and no cookie: only ?lang= and the grid's default choose its language.
+        Assert.Equal("en", await Lang("/welcome"));
+        Assert.Equal("de", await Lang("/welcome?lang=de"));
+    }
+
+    [Fact]
+    public async Task Welcome_is_still_publicly_cacheable_for_60_seconds()
+    {
+        await using var f = Factory();
+
+        foreach (var url in new[] { "/welcome", "/welcome?lang=de" })
+        {
+            using var r = await Client(f).GetAsync(url, Ct);
+
+            Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+            Assert.True(r.Headers.CacheControl?.Public, url);
+            Assert.Equal(TimeSpan.FromSeconds(60), r.Headers.CacheControl?.MaxAge);
+            Assert.False(r.Headers.Contains("Set-Cookie"), url + " sets a cookie, which would stop a shared cache keeping it");
+        }
+    }
+
+    [Fact]
+    public async Task Welcome_language_is_chosen_per_request_not_kept_in_the_snapshot()
+    {
+        // The snapshot keeps the design and the counts, not the page, so the words around them are chosen per request.
+        await using var f = Factory(s => s with { Languages = s.Languages with { Offered = ["en", "de"], Default = "en" } });
+
+        var english = await GetAsync(f);
+        var german = await GetAsync(f, "/welcome?lang=de");
+
+        Assert.Equal("en", english.Page.DocumentElement.GetAttribute("lang"));
+        Assert.Equal("de", german.Page.DocumentElement.GetAttribute("lang"));
+        Assert.Contains("Online", english.Page.Body!.TextContent);
+    }
 }

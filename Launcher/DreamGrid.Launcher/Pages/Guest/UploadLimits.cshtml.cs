@@ -4,6 +4,7 @@ using DreamGrid.Launcher.Core.Plans;
 using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.ModelImport;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Localization;
 
 namespace DreamGrid.Launcher.Pages.Guest;
 
@@ -15,7 +16,7 @@ public sealed record LimitLine(string Name, string Value, string Why, string Tip
 /// a Blender tip. On a Grid Asset Server the values are this computer's own regions only, and the page says so.
 /// </summary>
 [UploadPagesOnly]
-public sealed class UploadLimitsModel(Func<LauncherSettings> settings) : PageModel
+public sealed class UploadLimitsModel(Func<LauncherSettings> settings, IStringLocalizer<ResidentText> t) : PageModel
 {
     /// <summary>The converter's own fixed limits (Task 2's face splitter).</summary>
     private const int FacesPerPart = 8;
@@ -31,46 +32,27 @@ public sealed class UploadLimitsModel(Func<LauncherSettings> settings) : PageMod
         JoinedRegionsUnchecked = s.Plan == OwnerPlan.GridAsset;
         Limits =
         [
-            new("Largest part", Metres(l.MaxPartSize) + " on a side",
-                "Regions refuse parts larger than this.",
-                "In Blender, check the size in the N panel; scale down (S) and apply the scale (Ctrl+A)."),
-            new("Largest physical part", Metres(l.MaxPhysicalPartSize) + " on a side",
-                "Parts that move with physics must be smaller, so the region can work out collisions.",
-                "In Blender, split a large model into smaller objects if it should be physical."),
-            new("Smallest part", Metres(l.MinPartSize) + " on a side",
-                "Smaller parts can't be made, so they are left out.",
-                "In Blender, join tiny pieces to a larger part (Ctrl+J)."),
-            new("Parts in one item", l.MaxLinksetParts == 0 ? "no limit" : Whole(l.MaxLinksetParts) + " parts",
-                "An item is a set of linked parts; regions can limit how many.",
-                "In Blender, join objects (Ctrl+J) to use fewer parts."),
-            new("Materials in one part", Whole(FacesPerPart) + " faces",
-                "Each part has at most 8 faces, one material each. More materials are split into extra linked parts for you.",
-                "In Blender, join materials that share a picture, or bake them into one."),
-            new("Points in one face", Whole(PointsPerFace),
-                "Larger faces are split for you.",
-                "In Blender, a Decimate modifier lowers the number of points."),
-            new("Picture size", Whole(l.MaxTextureSide) + " px on a side",
-                "Pictures are resized to a power of two no larger than this, to keep the grid quick to load.",
-                "In Blender, save pictures at 1024 × 1024 or smaller."),
-            new("Triangles before it gets heavy", Thousands(l.HeavyTriangles),
-                "Above this, the simpler versions shown from far away may look lumpy or have holes.",
-                "In Blender, add a Decimate modifier."),
-            new("Triangles in one upload", Thousands(l.MaxTriangles),
-                "The most this grid can take in one item.",
-                "In Blender, add a Decimate modifier."),
-            new("Objects in one file", Whole(l.MaxNodes),
-                "The most this grid can take in one file.",
-                "In Blender, join objects (Ctrl+J)."),
-            new("File size", Whole(l.MaxUploadBytes / (1024 * 1024)) + " MB",
-                "The largest file this grid takes.",
-                "In Blender, use smaller pictures; export as glTF Binary (.glb)."),
-            new("Picture inside the file", Whole(l.MaxImageSide) + " px on a side",
-                "Larger pictures aren't read at all.",
-                "In Blender, scale pictures down before exporting."),
+            Line("LargestPart", t["UploadLimits.MetresSide", Metres(l.MaxPartSize)]),
+            Line("LargestPhysical", t["UploadLimits.MetresSide", Metres(l.MaxPhysicalPartSize)]),
+            Line("SmallestPart", t["UploadLimits.MetresSide", Metres(l.MinPartSize)]),
+            Line("Parts", l.MaxLinksetParts == 0 ? t["UploadLimits.NoLimit"] : t.Count("UploadLimits.PartsCount", l.MaxLinksetParts)),
+            Line("Materials", t.Count("UploadLimits.FacesCount", FacesPerPart)),
+            Line("Points", Whole(PointsPerFace)),
+            Line("Picture", t["UploadLimits.PixelsSide", Whole(l.MaxTextureSide)]),
+            Line("Heavy", Thousands(l.HeavyTriangles)),
+            Line("Triangles", Thousands(l.MaxTriangles)),
+            Line("Objects", Whole(l.MaxNodes)),
+            Line("FileSize", t["Upload.Megabytes", Whole(l.MaxUploadBytes / (1024 * 1024))]),
+            Line("PictureInFile", t["UploadLimits.PixelsSide", Whole(l.MaxImageSide)]),
         ];
     }
 
-    private static string Whole(long n) => n.ToString(CultureInfo.InvariantCulture);
-    private static string Thousands(long n) => n.ToString("N0", CultureInfo.InvariantCulture);
-    private static string Metres(double m) => m.ToString("0.###", CultureInfo.InvariantCulture) + " m";
+    /// <summary>A row: its name, why and tip are the keys <c>UploadLimits.&lt;row&gt;.Name</c>, <c>.Why</c> and <c>.Tip</c>.</summary>
+    private LimitLine Line(string row, string value) =>
+        new(t[$"UploadLimits.{row}.Name"], value, t[$"UploadLimits.{row}.Why"], t[$"UploadLimits.{row}.Tip"]);
+
+    // Numbers are written in the page's language: 2,000,000 in English, 2 000 000 in French.
+    private static string Whole(long n) => n.ToString(CultureInfo.CurrentCulture);
+    private static string Thousands(long n) => n.ToString("N0", CultureInfo.CurrentCulture);
+    private static string Metres(double m) => m.ToString("0.###", CultureInfo.CurrentCulture);
 }

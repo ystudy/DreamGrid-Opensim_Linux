@@ -4,6 +4,6 @@
     <p id="login-uri-label" class="login-address-label">@Model.Label</p>
     <div class="input-group copy-row">
         <code id="login-uri" class="form-control login-uri" aria-labelledby="login-uri-label">@Model.Uri</code>
-        <button type="button" id="copy-uri" class="btn btn-primary" hidden>Copy</button>
+        <button type="button" id="copy-uri" class="btn btn-primary" hidden data-copied="@T["Connect.Copied"]" data-selected="@T["Connect.CopySelected"]">@T["Connect.Copy"]</button>
     </div>
 </div>

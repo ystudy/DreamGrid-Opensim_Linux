@@ -155,7 +155,7 @@ public sealed class LegalModel(IGridController grid, Func<LauncherSettings> sett
     private void Fill()
     {
         var s = settings();
-        Texts = LegalPages.All.ToDictionary(id => id, id => (string?)(LegalPages.Get(s, id)?.Markdown ?? ""));
+        Texts = LegalPages.All.ToDictionary(id => id, id => (string?)(LegalPages.Exact(s, id, LegalPages.DefaultLanguage)?.Markdown ?? ""));
         Responsible = s.Legal.OperatorResponsible;
         SetGate();
     }

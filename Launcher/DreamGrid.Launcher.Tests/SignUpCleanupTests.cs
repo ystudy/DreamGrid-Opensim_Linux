@@ -1,3 +1,4 @@
+using DreamGrid.Launcher.Core;
 using DreamGrid.Launcher.Core.Guests;
 using DreamGrid.Launcher.Guests;
 using Microsoft.Extensions.DependencyInjection;
@@ -15,7 +16,7 @@ public sealed class SignUpCleanupTests
     private static async Task<(SignUpsTests.Rig Rig, Guid Bea)> PendingAsync()
     {
         var rig = SignUpsTests.Factory();
-        await rig.SignUps.SubmitAsync(SignUpsTests.Form(), null, Ct);
+        await rig.SignUps.SubmitAsync(SignUpsTests.Form(), null, Ct, "en");
         return (rig, rig.F.Robust.All.Single(a => a.FirstName == "Bea").PrincipalId);
     }
 
@@ -74,7 +75,7 @@ public sealed class SignUpCleanupTests
     public async Task Deletes_unlisted_after_24_hours()
     {
         await using var rig = SignUpsTests.Factory();
-        await rig.SignUps.SubmitAsync(SignUpsTests.Form(email: "ann@example.com"), null, Ct);
+        await rig.SignUps.SubmitAsync(SignUpsTests.Form(email: "ann@example.com"), null, Ct, "en");
         var bea = rig.F.Robust.All.Single(a => a.FirstName == "Bea").PrincipalId;
         rig.F.Time.Advance(TimeSpan.FromHours(23));
         await Cleanup(rig).RunOnceAsync(Ct);
@@ -151,7 +152,7 @@ public sealed class SignUpCleanupTests
         var (rig, bea) = await PendingAsync();
         await using var _ = rig;
         rig.F.Time.Advance(TimeSpan.FromHours(23));
-        await rig.SignUps.ResendAsync("Bea", "Example", null, Ct);
+        await rig.SignUps.ResendAsync("Bea", "Example", null, Ct, "en");
         rig.F.Time.Advance(TimeSpan.FromHours(2));
 
         await Cleanup(rig).RunOnceAsync(Ct);
@@ -220,5 +221,74 @@ public sealed class SignUpCleanupTests
         rig.F.Remover.Down = false;
         await Cleanup(rig).RunOnceAsync(Ct);
         Assert.False(rig.Pending.Contains(bea));
+    }
+
+    private static string? SavedFor(SignUpsTests.Rig rig, Guid id) => rig.F.Services.GetRequiredService<ResidentLanguages>().Get(id);
+
+    [Fact]
+    public async Task Deleting_an_expired_sign_up_forgets_its_saved_language()
+    {
+        var rig = SignUpsTests.Factory();
+        await using var _ = rig;
+        await rig.SignUps.SubmitAsync(SignUpsTests.Form(), null, Ct, "es");
+        var bea = rig.F.Robust.All.Single(a => a.FirstName == "Bea").PrincipalId;
+        Assert.Equal("es", SavedFor(rig, bea));
+        rig.F.Time.Advance(TimeSpan.FromDays(30) + TimeSpan.FromHours(1));
+
+        await Cleanup(rig).RunOnceAsync(Ct);
+
+        Assert.Equal([bea], rig.F.Remover.Deleted);
+        Assert.Null(SavedFor(rig, bea));
+    }
+
+    [Fact]
+    public async Task A_waiting_sign_up_whose_account_is_gone_forgets_its_saved_language()
+    {
+        var rig = SignUpsTests.Factory();
+        await using var _ = rig;
+        await rig.SignUps.SubmitAsync(SignUpsTests.Form(), null, Ct, "es");
+        var bea = rig.F.Robust.All.Single(a => a.FirstName == "Bea").PrincipalId;
+        rig.F.Robust.RemoveById(bea);
+        rig.F.Time.Advance(TimeSpan.FromHours(2));
+
+        await Cleanup(rig).RunOnceAsync(Ct);
+
+        Assert.False(rig.Pending.Contains(bea) && rig.Pending.Get(bea)!.Waiting);
+        Assert.Null(SavedFor(rig, bea));
+    }
+
+    // The first pass drops an expired entry whose account is already gone; its saved language goes with it (the second pass only
+    // sees entries still listed, so it never would).
+    [Fact]
+    public async Task An_expired_sign_up_whose_account_is_gone_forgets_its_saved_language()
+    {
+        var rig = SignUpsTests.Factory();
+        await using var _ = rig;
+        await rig.SignUps.SubmitAsync(SignUpsTests.Form(), null, Ct, "es");
+        var bea = rig.F.Robust.All.Single(a => a.FirstName == "Bea").PrincipalId;
+        Assert.Equal("es", SavedFor(rig, bea));
+        rig.F.Robust.RemoveById(bea);
+        rig.F.Time.Advance(TimeSpan.FromDays(30) + TimeSpan.FromHours(1));
+
+        await Cleanup(rig).RunOnceAsync(Ct);
+
+        Assert.Null(rig.Pending.Get(bea));
+        Assert.Empty(rig.F.Remover.Deleted);
+        Assert.Null(SavedFor(rig, bea));
+    }
+
+    [Fact]
+    public async Task A_waiting_sign_up_confirmed_elsewhere_keeps_its_saved_language()
+    {
+        var rig = SignUpsTests.Factory();
+        await using var _ = rig;
+        await rig.SignUps.SubmitAsync(SignUpsTests.Form(), null, Ct, "es");
+        var bea = rig.F.Robust.All.Single(a => a.FirstName == "Bea").PrincipalId;
+        rig.F.Robust.SetLevel("Bea", "Example", 0);
+        rig.F.Time.Advance(TimeSpan.FromHours(2));
+
+        await Cleanup(rig).RunOnceAsync(Ct);
+
+        Assert.Equal("es", SavedFor(rig, bea));
     }
 }

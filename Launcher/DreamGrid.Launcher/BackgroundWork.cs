@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace DreamGrid.Launcher;
 
 /// <summary>
@@ -19,6 +21,7 @@ public sealed class BackgroundWork(ILogger<BackgroundWork> log) : IHostedService
         {
             var task = Task.Run(async () =>
             {
+                UseStaffCulture();
                 try
                 {
                     await work(ct);
@@ -34,6 +37,19 @@ public sealed class BackgroundWork(ILogger<BackgroundWork> log) : IHostedService
             _running.Add(task);
             _ = task.ContinueWith(t => { lock (_gate) _running.Remove(t); }, TaskScheduler.Default);
         }
+    }
+
+    /// <summary>
+    /// Sets English for the work this thread runs next. <c>Task.Run</c> carries the culture of the request that started it, and a
+    /// resident page runs in the resident's language (<c>ResidentLanguageFilter</c>), so without this a German resident's restart
+    /// would leave a long-lived monitor formatting in German. An email that needs a language is given it explicitly.
+    /// Call it first thing inside work started from a request.
+    /// </summary>
+    public static void UseStaffCulture()
+    {
+        var en = CultureInfo.GetCultureInfo("en");
+        CultureInfo.CurrentCulture = en;
+        CultureInfo.CurrentUICulture = en;
     }
 
     public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;

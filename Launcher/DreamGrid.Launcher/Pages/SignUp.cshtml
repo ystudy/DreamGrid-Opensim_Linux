@@ -2,56 +2,56 @@
 @model DreamGrid.Launcher.Pages.SignUpModel
 @{
     Layout = "_GuestLayout";
-    ViewData["Title"] = "Create an account";
+    ViewData["Title"] = T["Common.CreateAccount"].Value;
 }
 <div class="card card-body shadow-sm mx-auto sign-in-card">
-<h1>Create an account</h1>
+<h1>@T["Common.CreateAccount"]</h1>
 @if (Model.Closed)
 {
-    <p>This grid isn't open for sign-ups yet.</p>
-    <p class="mb-0"><a href="/guest/sign-in">Sign in</a> if you already have an account.</p>
+    <p>@T["SignUp.Closed"]</p>
+    <p class="mb-0">@T.With("SignUp.SignInIfAccount", ResidentHtml.Link("/guest/sign-in", T["Common.SignIn"].Value))</p>
 }
 else if (Model.CheckEmail)
 {
-    <p id="sign-up-reply" role="status">Check your email. We sent a link to confirm your account. It works once, for 24 hours. Check your spam folder.</p>
-    <p>Can't find the email? Staff can approve you too.</p>
+    <p id="sign-up-reply" role="status">@T["SignUp.CheckEmail"]</p>
+    <p>@T["SignUp.CantFindEmail"]</p>
     <form id="resend" method="post" asp-page-handler="Resend">
         <input type="hidden" asp-for="First">
         <input type="hidden" asp-for="Last">
-        <button type="submit" class="btn btn-outline-primary">Send it again</button>
+        <button type="submit" class="btn btn-outline-primary">@T["SignUp.SendAgain"]</button>
     </form>
-    <p class="mt-3 mb-0"><a href="/guest/connect">How to connect</a></p>
+    <p class="mt-3 mb-0"><a href="/guest/connect">@T["Common.HowToConnect"]</a></p>
 }
 else if (Model.WaitingForStaff)
 {
-    <p id="sign-up-reply" role="status">Thanks. The grid's staff will look at your sign-up. Once you're approved, you can sign in here with the name and password you just chose.</p>
-    <p class="mb-0"><a href="/guest/sign-in">Sign in</a> · <a href="/guest/connect">How to connect</a></p>
+    <p id="sign-up-reply" role="status">@T["SignUp.WaitingForStaff"]</p>
+    <p class="mb-0"><a href="/guest/sign-in">@T["Common.SignIn"]</a> · <a href="/guest/connect">@T["Common.HowToConnect"]</a></p>
 }
 else
 {
-    <p>Choose a name for your avatar and a password. You'll use them to log in to @Model.GridName.</p>
+    <p>@T["SignUp.Intro", Model.GridName]</p>
     @if (Model.Error is not null)
     {
         <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
     }
     <form id="sign-up" method="post">
-        <label class="form-label mt-3" asp-for="First">First name</label>
+        <label class="form-label mt-3" asp-for="First">@T["SignUp.FirstName"]</label>
         <input class="form-control" asp-for="First" maxlength="31" autocomplete="given-name" required>
-        <label class="form-label mt-3" asp-for="Last">Last name</label>
+        <label class="form-label mt-3" asp-for="Last">@T["SignUp.LastName"]</label>
         <input class="form-control" asp-for="Last" maxlength="31" autocomplete="family-name" required>
-        <label class="form-label mt-3" asp-for="Email">Email</label>
+        <label class="form-label mt-3" asp-for="Email">@T["Common.Email"]</label>
         <input class="form-control" asp-for="Email" type="email" maxlength="254" autocomplete="email" required>
-        <label class="form-label mt-3" asp-for="Password">Password</label>
+        <label class="form-label mt-3" asp-for="Password">@T["Common.Password"]</label>
         <input class="form-control" asp-for="Password" type="password" value="" autocomplete="new-password" minlength="8" required>
-        <label class="form-label mt-3" asp-for="Again">Password again</label>
+        <label class="form-label mt-3" asp-for="Again">@T["SignUp.PasswordAgain"]</label>
         <input class="form-control" asp-for="Again" type="password" value="" autocomplete="new-password" minlength="8" required>
         <div class="form-check mt-3">
             <input class="form-check-input" type="checkbox" id="AcceptTerms" name="AcceptTerms" value="true" required>
-            <label class="form-check-label" for="AcceptTerms">I accept the <a href="/terms">Terms of Service</a> and the <a href="/privacy">Privacy notice</a>.</label>
+            <label class="form-check-label" for="AcceptTerms">@T.With("SignUp.AcceptTerms", ResidentHtml.Link("/terms", T["SignUp.TermsOfService"].Value), ResidentHtml.Link("/privacy", T["SignUp.PrivacyNotice"].Value))</label>
         </div>
         <partial name="_BotFields" />
-        <button type="submit" class="btn btn-primary w-100 mt-4">Create my avatar</button>
+        <button type="submit" class="btn btn-primary w-100 mt-4">@T["SignUp.CreateAvatar"]</button>
     </form>
-    <p class="mt-3 mb-0"><a href="/guest/sign-in">Sign in</a> if you already have an account.</p>
+    <p class="mt-3 mb-0">@T.With("SignUp.SignInIfAccount", ResidentHtml.Link("/guest/sign-in", T["Common.SignIn"].Value))</p>
 }
 </div>

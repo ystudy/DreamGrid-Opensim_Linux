@@ -4,21 +4,21 @@
 @using DreamGrid.Launcher.Guests
 @using DreamGrid.Launcher.Pages.Support
 @{
-    ViewData["Title"] = Model.Ticket is { } shown ? shown.Number + ": " + shown.Subject : "Your ticket";
+    ViewData["Title"] = Model.Ticket is { } shown ? T["Support.TicketTitle", shown.Number, shown.Subject].Value : T["Support.YourTicket"].Value;
 }
 @if (Model.Ticket is not { } ticket)
 {
     <div class="card card-body shadow-sm mx-auto sign-in-card">
-        <h1>This link has run out</h1>
-        <p>Links to a ticket work for 30 days. We can send you a new one.</p>
-        <p class="mb-0"><a href="/support/lost-link">Send me a new link</a> · <a href="/support">Start a new ticket</a></p>
+        <h1>@T["Support.RanOutTitle"]</h1>
+        <p>@T["Support.RanOutText"]</p>
+        <p class="mb-0"><a href="/support/lost-link">@T["Support.SendNewLink"]</a> · <a href="/support">@T["Support.StartNew"]</a></p>
     </div>
 }
 else
 {
-    <p class="back-link"><a href="/support">‹ Ask for help</a></p>
+    <p class="back-link"><a href="/support">@T["Support.Back"]</a></p>
     <h1>@ticket.Subject</h1>
-    <p class="text-body-secondary">@ticket.Number · @TicketCategories.Title(ticket.Category) · <span id="ticket-state">@TicketView.StateText(ticket.State)</span></p>
+    <p class="text-body-secondary">@ticket.Number · @TicketView.CategoryText(ticket.Category, T) · <span id="ticket-state">@TicketView.StateText(ticket.State, T)</span></p>
     @if (Model.Notice is not null)
     {
         <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
@@ -31,26 +31,26 @@ else
         @foreach (var m in TicketView.ForGuest(ticket))
         {
             <li class="panel mb-2@(m.Staff is null ? "" : " ticket-staff")">
-                <div class="panel-head"><strong>@(m.Staff is null ? "You" : "Staff (" + (m.StaffName ?? "staff") + ")")</strong><span class="row-sub">@m.At.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</span></div>
+                <div class="panel-head"><strong>@(m.Staff is null ? T["Support.You"].Value : T["Support.FromStaff", m.StaffName ?? T["Support.StaffName"].Value].Value)</strong><span class="row-sub">@m.At.ToLocalTime().ToString("g", System.Globalization.CultureInfo.CurrentCulture)</span></div>
                 <div class="ticket-text">@m.Text</div>
             </li>
         }
     </ol>
     @if (ticket.Evidence is { } evidence)
     {
-        <p class="form-text">Evidence link you sent: <code>@evidence</code></p>
+        <p class="form-text">@T.With("Support.EvidenceSent", ResidentHtml.Code(evidence))</p>
     }
     @if (Model.CanReply)
     {
         <form id="reply" method="post" class="panel">
             <input type="hidden" asp-for="Id">
-            <label class="form-label" asp-for="Reply">Your reply</label>
+            <label class="form-label" asp-for="Reply">@T["Support.ReplyLabel"]</label>
             <textarea class="form-control" asp-for="Reply" rows="5" minlength="@TicketRules.MessageMin" maxlength="@TicketRules.MessageMax" required></textarea>
-            <button type="submit" class="btn btn-primary mt-3">Send reply</button>
+            <button type="submit" class="btn btn-primary mt-3">@T["Support.SendReply"]</button>
         </form>
     }
     else
     {
-        <p id="closed-for-good">@SupportTickets.ClosedForGood <a href="/support">Start a new ticket</a></p>
+        <p id="closed-for-good">@T["Support.ClosedForGood"] <a href="/support">@T["Support.StartNew"]</a></p>
     }
 }

@@ -711,7 +711,7 @@ public sealed class UploadPagesTests : IAsyncLifetime
         var text = Text(await DocAsync(client, "/guest/upload/limits"));
         Assert.Contains("1024 m", text); // the region config's NonPhysicalPrimMax
         Assert.Contains("128 m", text); // PhysicalPrimMax
-        Assert.Contains("1024 parts", text); // LinksetPrims
+        Assert.Contains("1,024 parts", text); // LinksetPrims
         Assert.Contains("8 faces", text);
         Assert.Contains("1024 px", text);
         Assert.Contains("64 MB", text);
@@ -725,6 +725,61 @@ public sealed class UploadPagesTests : IAsyncLifetime
         Assert.Contains("64 m", text);
         Assert.DoesNotContain("1024 m", text);
         Assert.Contains("Regions on computers that joined the grid aren't checked", text);
+    }
+
+    // ---- languages ----
+
+    private static readonly System.Text.RegularExpressions.Regex RawKey = new(@"[A-Z][a-zA-Z]+\.[A-Z][a-zA-Z]+(\.[A-Z][a-zA-Z]+)*");
+
+    [Fact]
+    public async Task Every_upload_page_is_in_every_built_in_language_with_no_raw_keys()
+    {
+        Allow();
+        _converter.Report = BlockedCastle();
+        foreach (var language in DreamGrid.Launcher.Core.Languages.BuiltIn)
+        {
+            using var client = await GuestAsync();
+            client.DefaultRequestHeaders.AcceptLanguage.ParseAdd(language);
+            var job = await UploadedJobAsync(client, itemName: "Castle");
+            var pages = new Dictionary<string, IHtmlDocument>
+            {
+                ["account"] = await DocAsync(client, "/guest"),
+                ["upload"] = await DocAsync(client, "/guest/upload"),
+                ["limits"] = await DocAsync(client, "/guest/upload/limits"),
+                ["report"] = await DocAsync(client, "/guest/upload/" + job),
+            };
+            foreach (var (name, doc) in pages)
+            {
+                Assert.Equal(language, doc.DocumentElement.GetAttribute("lang"));
+                var text = Text(doc);
+                Assert.True(!RawKey.IsMatch(text), $"{language} {name}: raw key {RawKey.Match(text).Value}");
+                Assert.DoesNotContain("{0}", text);
+            }
+            if (language != "en")
+            {
+                Assert.DoesNotContain("Upload a model", Text(pages["upload"]));
+                Assert.DoesNotContain("may look distorted", Text(pages["report"]));
+                Assert.DoesNotContain("Limits on this grid", Text(pages["limits"]));
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData("en", 1, "1 thing may look wrong")]
+    [InlineData("en", 2, "2 things may look wrong")]
+    [InlineData("fr", 0, "0 point peut paraître incorrect")]
+    [InlineData("ru", 1, "1 пункт может выглядеть неправильно")]
+    [InlineData("ru", 3, "3 пункта могут выглядеть неправильно")]
+    [InlineData("ru", 5, "5 пунктов могут выглядеть неправильно")]
+    [InlineData("ru", 11, "11 пунктов могут выглядеть неправильно")]
+    [InlineData("ru", 22, "22 пункта могут выглядеть неправильно")]
+    public void Counted_words_follow_the_language(string language, int n, string expected)
+    {
+        var t = _f.Services.GetRequiredService<Microsoft.Extensions.Localization.IStringLocalizer<ResidentText>>();
+        var (culture, ui) = (System.Globalization.CultureInfo.CurrentCulture, System.Globalization.CultureInfo.CurrentUICulture);
+        System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.CurrentUICulture = System.Globalization.CultureInfo.GetCultureInfo(language);
+        try { Assert.Equal(expected, t.Count("UploadReport.MayLookWrongCount", n)); }
+        finally { (System.Globalization.CultureInfo.CurrentCulture, System.Globalization.CultureInfo.CurrentUICulture) = (culture, ui); }
     }
 
     // ---- fakes ----

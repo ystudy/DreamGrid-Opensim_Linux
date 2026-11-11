@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This translation was drafted by AI and has not been checked by a native speaker.
+     Corrections from native speakers are welcome: see docs/languages.md. -->
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="confirm-email.Subject" xml:space="preserve"><value>Подтвердите адрес электронной почты для {GridName}</value></data>
+  <data name="confirm-email.Body" xml:space="preserve"><value>Здравствуйте, {AvatarName}!
+
+Пожалуйста, подтвердите адрес электронной почты для {GridName}:
+
+{Link}
+
+Ссылка срабатывает один раз и действует {ExpiresIn}. Если вы не регистрировались, просто проигнорируйте это письмо.</value></data>
+  <data name="reset-password.Subject" xml:space="preserve"><value>Сброс пароля для {GridName}</value></data>
+  <data name="reset-password.Body" xml:space="preserve"><value>Здравствуйте, {AvatarName}!
+
+Кто-то запросил сброс вашего пароля в {GridName}. Чтобы выбрать новый пароль, откройте эту ссылку:
+
+{Link}
+
+Ссылка срабатывает один раз и действует {ExpiresIn}. Если это были не вы, проигнорируйте письмо: ваш пароль останется прежним.</value></data>
+  <data name="account-approved.Subject" xml:space="preserve"><value>Добро пожаловать в {GridName}</value></data>
+  <data name="account-approved.Body" xml:space="preserve"><value>Здравствуйте, {AvatarName}!
+
+Ваша учётная запись в {GridName} готова. Вы уже можете войти:
+
+{Link}</value></data>
+  <data name="password-changed.Subject" xml:space="preserve"><value>Ваш пароль в {GridName} изменён</value></data>
+  <data name="password-changed.Body" xml:space="preserve"><value>Здравствуйте, {AvatarName}!
+
+Ваш пароль в {GridName} только что изменили, и вы вышли из системы на всех устройствах.
+
+Если это были не вы, немедленно свяжитесь с владельцем грида.</value></data>
+  <data name="already-have-account.Subject" xml:space="preserve"><value>Кто-то пытался зарегистрироваться в {GridName}</value></data>
+  <data name="already-have-account.Body" xml:space="preserve"><value>Здравствуйте, {AvatarName}!
+
+Кто-то пытался зарегистрироваться в {GridName} с этим адресом электронной почты. Если это были вы, у вас уже есть аватар: {AvatarName}.
+
+Забыли пароль? Новый можно выбрать здесь:
+
+{Link}
+
+Если это были не вы, просто проигнорируйте это письмо.</value></data>
+  <data name="confirm-new-email.Subject" xml:space="preserve"><value>Подтвердите новый адрес электронной почты</value></data>
+  <data name="confirm-new-email.Body" xml:space="preserve"><value>Здравствуйте, {AvatarName}!
+
+Подтвердите новый адрес электронной почты для {AvatarName} в {GridName}:
+
+{Link}
+
+Ссылка срабатывает один раз и действует {ExpiresIn}. Если вы этого не запрашивали, проигнорируйте письмо.</value></data>
+  <data name="email-change-notice.Subject" xml:space="preserve"><value>Ваш адрес электронной почты в {GridName}</value></data>
+  <data name="email-change-notice.Body" xml:space="preserve"><value>Здравствуйте, {AvatarName}!
+
+Кто-то запросил смену адреса электронной почты для {AvatarName} в {GridName}. Если это были вы, ничего делать не нужно.
+
+Если нет, смените пароль прямо сейчас:
+
+{Link}</value></data>
+  <data name="signup-denied.Subject" xml:space="preserve"><value>Ваша регистрация в {GridName}</value></data>
+  <data name="signup-denied.Body" xml:space="preserve"><value>Здравствуйте, {AvatarName}!
+
+Ваша регистрация в {GridName} не одобрена.
+
+{Note}</value></data>
+  <data name="name-changed.Subject" xml:space="preserve"><value>Ваше имя в {GridName} изменено</value></data>
+  <data name="name-changed.Body" xml:space="preserve"><value>Здравствуйте, {AvatarName}!
+
+Администрация {GridName} изменила имя вашего аватара с {OldName} на {AvatarName}. Теперь входите под новым именем. Ваши друзья, группы, инвентарь и регионы остались прежними.
+
+Если вы об этом не просили, свяжитесь с владельцем грида.</value></data>
+  <data name="email-changed-by-staff.Subject" xml:space="preserve"><value>Ваш адрес электронной почты в {GridName} изменён</value></data>
+  <data name="email-changed-by-staff.Body" xml:space="preserve"><value>Здравствуйте, {AvatarName}!
+
+Администрация {GridName} изменила адрес электронной почты для {AvatarName}, поэтому письма от грида больше не будут приходить сюда.
+
+Если вы об этом не просили, свяжитесь с владельцем грида и выберите новый пароль:
+
+{Link}</value></data>
+  <data name="email-set-by-staff.Subject" xml:space="preserve"><value>Ваш адрес электронной почты в {GridName}</value></data>
+  <data name="email-set-by-staff.Body" xml:space="preserve"><value>Здравствуйте, {AvatarName}!
+
+Администрация {GridName} указала этот адрес как адрес электронной почты для {AvatarName}. Теперь письма для сброса пароля и уведомления от грида будут приходить сюда.
+
+Если вы не знаете {AvatarName}, просто проигнорируйте это письмо.</value></data>
+  <data name="staff-reset-password.Subject" xml:space="preserve"><value>Выберите новый пароль для {GridName}</value></data>
+  <data name="staff-reset-password.Body" xml:space="preserve"><value>Здравствуйте, {AvatarName}!
+
+Администрация {GridName} прислала вам эту ссылку для выбора нового пароля:
+
+{Link}
+
+Ссылка срабатывает один раз и действует {ExpiresIn}. Когда вы зададите новый пароль, двухфакторный вход для вашей учётной записи будет выключен; снова включить его можно на странице учётной записи. Если вы не просили об этом администрацию, проигнорируйте письмо: ничего не изменится.</value></data>
+  <data name="takedown-removed.Subject" xml:space="preserve"><value>Предметы удалены из вашего инвентаря в {GridName}</value></data>
+  <data name="takedown-removed.Body" xml:space="preserve"><value>Здравствуйте, {AvatarName}!
+
+Администрация {GridName} удалила эти предметы из вашего инвентаря после жалобы ({Reason}): {Items}
+
+Номер дела: {CaseNumber}. Если вы считаете, что это ошибка, ответьте на это письмо и укажите номер дела.</value></data>
+  <data name="takedown-restored.Subject" xml:space="preserve"><value>Предметы возвращены в ваш инвентарь в {GridName}</value></data>
+  <data name="takedown-restored.Body" xml:space="preserve"><value>Здравствуйте, {AvatarName}!
+
+Администрация {GridName} вернула эти предметы в ваш инвентарь: {Items}
+
+Номер дела: {CaseNumber}.</value></data>
+  <data name="ticket-confirm.Subject" xml:space="preserve"><value>Подтвердите обращение в поддержку {GridName}</value></data>
+  <data name="ticket-confirm.Body" xml:space="preserve"><value>Здравствуйте, {Name}!
+
+Вы (или кто-то, кто использует этот адрес) отправили обращение в поддержку {GridName}: «{Subject}». Чтобы передать его администрации, откройте эту ссылку в течение 24 часов:
+
+{Link}
+
+Если вы его не отправляли, проигнорируйте это письмо, и обращение будет удалено.</value></data>
+  <data name="ticket-access.Subject" xml:space="preserve"><value>Ваше обращение {TicketNumber} в поддержку {GridName}</value></data>
+  <data name="ticket-access.Body" xml:space="preserve"><value>Здравствуйте, {Name}!
+
+Ваше обращение {TicketNumber} («{Subject}») передано администрации {GridName}. Читайте ответы и отвечайте здесь:
+
+{Link}
+
+Ссылка действует 30 дней. Никому её не передавайте: любой, у кого она есть, может прочитать ваше обращение.</value></data>
+  <data name="ticket-staff-reply.Subject" xml:space="preserve"><value>Администрация {GridName} ответила на ваше обращение {TicketNumber}</value></data>
+  <data name="ticket-staff-reply.Body" xml:space="preserve"><value>Здравствуйте, {Name}!
+
+Администрация ответила на ваше обращение {TicketNumber} («{Subject}»). Прочитайте ответ и ответьте здесь:
+
+{Link}
+
+Ссылка действует 30 дней. Никому её не передавайте: любой, у кого она есть, может прочитать ваше обращение.</value></data>
+  <data name="ExpiresIn.30m" xml:space="preserve"><value>30 минут</value></data>
+  <data name="ExpiresIn.24h" xml:space="preserve"><value>24 часа</value></data>
+  <data name="Reason.Copyright" xml:space="preserve"><value>Авторские права (DMCA)</value></data>
+  <data name="Reason.Illegal" xml:space="preserve"><value>Незаконный контент</value></data>
+  <data name="Reason.Rules" xml:space="preserve"><value>Нарушение правил грида</value></data>
+  <data name="Reason.Other" xml:space="preserve"><value>Другое</value></data>
+</root>

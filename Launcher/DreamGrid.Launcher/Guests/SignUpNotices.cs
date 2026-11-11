@@ -5,6 +5,7 @@ using DreamGrid.Launcher.Core.Guests;
 using DreamGrid.Launcher.Core.OpenSim;
 using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Core.Settings;
+using DreamGrid.Launcher.Core;
 using DreamGrid.Launcher.Email;
 
 namespace DreamGrid.Launcher.Guests;
@@ -55,7 +56,7 @@ public sealed class SignUpNotices(Func<LauncherSettings> settings, SignUpBoard b
             var role = AdminRule.RoleOf(s, account);
             if (!ApprovalRules.CanApprove(role, s) || account.Email.Trim().Length == 0 || notices.OptedOut(account.PrincipalId)) continue;
             var link = site + (role == StaffRole.Supervisor ? ListPath : "/");
-            sender.Queue(EmailTemplates.SignUpsWaiting, account.Email.Trim(), $"{account.FirstName} {account.LastName}",
+            sender.Queue(EmailTemplates.SignUpsWaiting, Languages.English, account.Email.Trim(), $"{account.FirstName} {account.LastName}",
                 new Dictionary<string, string> { ["Count"] = waiting.Count.ToString(), ["Names"] = names, ["Link"] = link });
         }
         notices.Sent(startedAt ?? time.GetUtcNow(), waiting[^1].Made);

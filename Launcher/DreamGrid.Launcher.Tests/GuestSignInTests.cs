@@ -83,7 +83,8 @@ public sealed class GuestSignInTests
         Assert.DoesNotContain("expires", cookie, StringComparison.OrdinalIgnoreCase); // a session cookie
         using var home = await client.GetAsync("/guest", Ct);
         Assert.Equal(HttpStatusCode.OK, home.StatusCode);
-        Assert.Contains("You're signed in as Test Guest.", await home.Content.ReadAsStringAsync(Ct));
+        // Resource text is HTML-encoded (the apostrophe is &#x27;), so the words are read from the parsed page.
+        Assert.Contains("You're signed in as Test Guest.", new HtmlParser().ParseDocument(await home.Content.ReadAsStringAsync(Ct)).Body!.TextContent);
     }
 
     [Fact]

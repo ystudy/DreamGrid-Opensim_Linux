@@ -48,7 +48,7 @@ public sealed class EmailSenderTests : IDisposable
     private static Dictionary<string, string> Reset => new() { ["AvatarName"] = "Ann Avatar", ["Link"] = Link, ["ExpiresIn"] = "30 minutes" };
 
     private static QueueResult QueueReset(EmailSender s, string to, TimeSpan? validFor = null) =>
-        s.Queue(EmailTemplates.ResetPassword, to, "Ann Avatar", Reset, validFor);
+        s.Queue(EmailTemplates.ResetPassword, "en", to, "Ann Avatar", Reset, validFor);
 
     [Fact]
     public void Queue_not_ready_without_accounts()

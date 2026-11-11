@@ -88,7 +88,7 @@ body.page-full > header > .container, body.page-full > main.container { max-widt
 
 /* Help behind a "?" icon (HelpTipTagHelper; splash-editor.js help()): the words show while the pointer is over it or it
    has the keyboard focus. Closed, the words are clipped out of sight but stay in the page for screen readers. */
-.help-tip { position: relative; display: inline-flex; align-items: center; margin-left: .4rem; vertical-align: middle; color: var(--bs-link-color); cursor: help; border-radius: 50%; font-size: 1rem; font-weight: 400; }
+.help-tip { position: relative; display: inline-flex; align-items: center; margin-inline-start: .4rem; vertical-align: middle; color: var(--bs-link-color); cursor: help; border-radius: 50%; font-size: 1rem; font-weight: 400; }
 .help-tip:focus-visible { outline: 2px solid var(--bs-link-color); outline-offset: 2px; }
 .help-icon { width: 1.05rem; height: 1.05rem; }
 .help-tip .help-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
@@ -126,7 +126,7 @@ body.page-full > header > .container, body.page-full > main.container { max-widt
 }
 
 /* Button icons (ButtonIconTagHelper, wwwroot/img/icons.svg): drawn in the button's text colour, before its words. */
-.btn-icon { width: 1.1em; height: 1.1em; margin-right: .45em; vertical-align: -.2em; flex-shrink: 0; }
+.btn-icon { width: 1.1em; height: 1.1em; margin-inline-end: .45em; vertical-align: -.2em; flex-shrink: 0; }
 footer { padding: 1rem; text-align: center; color: var(--bs-secondary-color); font-size: .875em; }
 h1 { font-size: 1.6rem; margin-bottom: 1rem; }
 h2 { font-size: 1.15rem; margin-bottom: .75rem; }
@@ -348,7 +348,7 @@ header .signout { margin: 0; }
 .home-col { display: flex; flex-direction: column; gap: .75rem; min-width: 0; }
 
 /* Guest pages: help (and the front page's staff sign in) as buttons at the right of the header bar. */
-.guest-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; }
+.guest-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .5rem; }
 
 /* Guest front page: sign in and create an account as two cards side by side. */
 .front-cards { display: grid; gap: 1rem; grid-template-columns: minmax(0, 1fr); margin-top: 1.25rem; }
@@ -360,7 +360,7 @@ header .signout { margin: 0; }
 .front-cards .front-fields { padding-bottom: .5rem; }
 /* The front page's legal pages: a row of buttons under the two cards. */
 .front-legal { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .75rem; margin-top: 1.25rem; padding: .75rem 1rem; border: 1px solid var(--bs-border-color); border-radius: var(--bs-border-radius-lg); }
-.front-legal h2 { margin-right: .25rem; }
+.front-legal h2 { margin-inline-end: .25rem; }
 
 /* Work pages with one form: a panel no wider than the form needs, and its buttons in one row. */
 .form-panel { max-width: 46rem; }

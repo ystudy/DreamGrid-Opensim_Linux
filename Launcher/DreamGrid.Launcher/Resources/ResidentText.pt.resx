@@ -1,0 +1,511 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This translation was drafted by AI and has not been checked by a native speaker.
+     Corrections from native speakers are welcome: see docs/languages.md. -->
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="Layout.BackToStaff" xml:space="preserve"><value>Voltar às páginas da equipe</value></data>
+  <data name="Layout.Help" xml:space="preserve"><value>Pedir ajuda</value></data>
+  <data name="Layout.Language" xml:space="preserve"><value>Idioma</value></data>
+  <data name="Layout.ChangeLanguage" xml:space="preserve"><value>Mudar idioma</value></data>
+  <data name="Common.SignIn" xml:space="preserve"><value>Entrar</value></data>
+  <data name="SignIn.Intro" xml:space="preserve"><value>Use o nome e a senha do seu avatar.</value></data>
+  <data name="Common.AvatarName" xml:space="preserve"><value>Nome do avatar</value></data>
+  <data name="Common.NamePlaceholder" xml:space="preserve"><value>Nome Sobrenome</value></data>
+  <data name="Common.Password" xml:space="preserve"><value>Senha</value></data>
+  <data name="SignIn.ResendLink" xml:space="preserve"><value>Enviar o link de novo</value></data>
+  <data name="Common.ForgotPasswordLink" xml:space="preserve"><value>Esqueceu a senha?</value></data>
+  <data name="SignIn.CantSignIn" xml:space="preserve"><value>Não consegue entrar? Peça ajuda</value></data>
+  <data name="Common.CreateAccount" xml:space="preserve"><value>Criar uma conta</value></data>
+  <data name="SignIn.WrongNameOrPassword" xml:space="preserve"><value>Nome ou senha incorretos.</value></data>
+  <data name="Common.TooManyAttempts" xml:space="preserve"><value>Tentativas demais. Tente de novo em alguns minutos.</value></data>
+  <data name="SignIn.ConfirmFirst" xml:space="preserve"><value>Confirme seu e-mail primeiro. Ou aguarde a aprovação da equipe.</value></data>
+  <data name="SignIn.WaitForStaff" xml:space="preserve"><value>Sua conta está aguardando a aprovação da equipe do grid.</value></data>
+  <data name="Common.ServiceDown" xml:space="preserve"><value>O serviço de login do grid não está funcionando agora. Tente mais tarde.</value></data>
+  <data name="Common.WrongCode" xml:space="preserve"><value>Esse código não está certo. Tente de novo.</value></data>
+  <data name="SignIn.CodeUnknown" xml:space="preserve"><value>O login em duas etapas não pode ser verificado agora. Fale com o dono do grid.</value></data>
+  <data name="SignIn.SaveFailed" xml:space="preserve"><value>Não foi possível salvar o arquivo do login em duas etapas. Tente de novo.</value></data>
+  <data name="SignIn.Code" xml:space="preserve"><value>Código</value></data>
+  <data name="Common.BackToSignIn" xml:space="preserve"><value>Voltar para o login</value></data>
+  <data name="SignInCode.Title" xml:space="preserve"><value>Código de duas etapas</value></data>
+  <data name="SignInCode.Intro" xml:space="preserve"><value>Digite o código de 6 dígitos do seu aplicativo autenticador. Se você estiver sem o celular, digite um dos seus códigos de backup.</value></data>
+  <data name="SignInCode.StartAgain" xml:space="preserve"><value>Começar de novo</value></data>
+  <data name="Common.TwoFactorSignIn" xml:space="preserve"><value>Login em duas etapas</value></data>
+  <data name="TwoFactor.Intro" xml:space="preserve"><value>Com o login em duas etapas, para entrar neste site e para redefinir sua senha você precisa de um código de um aplicativo autenticador no celular, além da sua senha ou do seu e-mail.</value></data>
+  <data name="TwoFactor.IsOn" xml:space="preserve"><value>O login em duas etapas está ativado.</value></data>
+  <data name="TwoFactor.IsOff" xml:space="preserve"><value>O login em duas etapas está desativado.</value></data>
+  <data name="TwoFactor.BackupCodes" xml:space="preserve"><value>Seus códigos de backup</value></data>
+  <data name="TwoFactor.BackupCodesIntro" xml:space="preserve"><value>Cada código funciona uma vez, quando você estiver sem o celular. Guarde-os em um lugar seguro. Eles não serão mostrados de novo.</value></data>
+  <data name="Common.Continue" xml:space="preserve"><value>Continuar</value></data>
+  <data name="TwoFactor.TurnItOn" xml:space="preserve"><value>Ativar</value></data>
+  <data name="TwoFactor.ScanIntro" xml:space="preserve"><value>Escaneie este código com um aplicativo autenticador no celular e depois digite o código de 6 dígitos que o aplicativo mostrar.</value></data>
+  <data name="TwoFactor.QrLabel" xml:space="preserve"><value>Código QR para o seu aplicativo autenticador</value></data>
+  <data name="TwoFactor.CantScan" xml:space="preserve"><value>Não consegue escanear? Digite esta chave no aplicativo:</value></data>
+  <data name="TwoFactor.TurnOn" xml:space="preserve"><value>Ativar</value></data>
+  <data name="TwoFactor.NewCodes" xml:space="preserve"><value>Novos códigos de backup</value></data>
+  <data name="TwoFactor.NewCodesIntro" xml:space="preserve"><value>Isso substitui todos os seus códigos de backup. Digite um código do seu aplicativo autenticador.</value></data>
+  <data name="TwoFactor.TurnOff" xml:space="preserve"><value>Desativar</value></data>
+  <data name="TwoFactor.TurnOffIntro" xml:space="preserve"><value>Digite um código do seu aplicativo autenticador ou um código de backup.</value></data>
+  <data name="Common.BackToAccount" xml:space="preserve"><value>Voltar para a sua conta</value></data>
+  <data name="TwoFactor.StartedAgain" xml:space="preserve"><value>A configuração recomeçou. Escaneie o novo código abaixo.</value></data>
+  <data name="TwoFactor.StartedElsewhere" xml:space="preserve"><value>A configuração foi recomeçada em outro lugar. Escaneie o novo código abaixo.</value></data>
+  <data name="ForgotPassword.Title" xml:space="preserve"><value>Esqueci a senha</value></data>
+  <data name="ForgotPassword.Off" xml:space="preserve"><value>A redefinição de senha não está ativada neste grid. Fale com o dono do grid.</value></data>
+  <data name="ForgotPassword.Reply" xml:space="preserve"><value>Se esse nome e esse e-mail corresponderem a uma conta, enviamos um link. Ele funciona uma vez, por 30 minutos. Verifique sua pasta de spam.</value></data>
+  <data name="ForgotPassword.Intro" xml:space="preserve"><value>Digite o nome do seu avatar e o endereço de e-mail da sua conta. Vamos enviar por e-mail um link para você escolher uma nova senha.</value></data>
+  <data name="Common.Email" xml:space="preserve"><value>E-mail</value></data>
+  <data name="Common.SendLink" xml:space="preserve"><value>Enviar o link</value></data>
+  <data name="Common.BotFailed" xml:space="preserve"><value>O formulário não conseguiu verificar que você é uma pessoa. Tente de novo.</value></data>
+  <data name="ResetPassword.Title" xml:space="preserve"><value>Escolha uma nova senha</value></data>
+  <data name="ResetPassword.Done" xml:space="preserve"><value>Sua senha foi alterada. Entre com a nova senha.</value></data>
+  <data name="ResetPassword.Expired" xml:space="preserve"><value>Este link expirou ou já foi usado. Peça um novo.</value></data>
+  <data name="ResetPassword.AskNew" xml:space="preserve"><value>Pedir um novo link</value></data>
+  <data name="ResetPassword.Intro" xml:space="preserve"><value>Para {0}. Use pelo menos {1} caracteres.</value></data>
+  <data name="Common.CodeLabel" xml:space="preserve"><value>Código do seu aplicativo autenticador ou um código de backup</value></data>
+  <data name="Common.NewPassword" xml:space="preserve"><value>Nova senha</value></data>
+  <data name="Common.NewPasswordAgain" xml:space="preserve"><value>Repita a nova senha</value></data>
+  <data name="Common.ChangePassword" xml:space="preserve"><value>Alterar senha</value></data>
+  <data name="ResetPassword.WrongCode" xml:space="preserve"><value>Esse código não está certo. Tente de novo ou use um código de backup.</value></data>
+  <data name="Common.PasswordWriteFailed" xml:space="preserve"><value>Não foi possível alterar a senha agora. Tente de novo em alguns minutos.</value></data>
+  <data name="Password.Mismatch" xml:space="preserve"><value>Digite a mesma senha duas vezes.</value></data>
+  <data name="Password.TooShort" xml:space="preserve"><value>Use pelo menos {0} caracteres.</value></data>
+  <data name="Password.TooCommon" xml:space="preserve"><value>Essa senha é comum demais. Escolha outra.</value></data>
+  <data name="Password.IsName" xml:space="preserve"><value>Não use o nome do seu avatar como senha.</value></data>
+  <data name="Confirm.Title" xml:space="preserve"><value>Confirme seu e-mail</value></data>
+  <data name="Common.SignUpBusy" xml:space="preserve"><value>O cadastro não está funcionando agora. Tente de novo em alguns minutos.</value></data>
+  <data name="Confirm.AlreadyApproved" xml:space="preserve"><value>Você já foi aprovado.</value></data>
+  <data name="Confirm.SignInLink" xml:space="preserve"><value>Entrar.</value></data>
+  <data name="Confirm.Expired" xml:space="preserve"><value>Este link expirou ou já foi usado.</value></data>
+  <data name="Confirm.SignUpAgain" xml:space="preserve"><value>Cadastrar-se de novo</value></data>
+  <data name="Confirm.SignInForNewLink" xml:space="preserve"><value>Entre para pedir um novo link</value></data>
+  <data name="ConfirmEmail.Title" xml:space="preserve"><value>Confirme seu novo e-mail</value></data>
+  <data name="ConfirmEmail.Done" xml:space="preserve"><value>Seu endereço de e-mail agora é {0}.</value></data>
+  <data name="ConfirmEmail.Taken" xml:space="preserve"><value>Esse endereço já é usado por outro avatar neste grid.</value></data>
+  <data name="ConfirmEmail.Busy" xml:space="preserve"><value>Não foi possível alterar seu e-mail agora. Tente de novo em alguns minutos.</value></data>
+  <data name="ConfirmEmail.Expired" xml:space="preserve"><value>Este link expirou ou já foi usado.</value></data>
+  <data name="ConfirmEmail.ToAccount" xml:space="preserve"><value>Ir para a sua conta</value></data>
+  <data name="Common.HowToConnect" xml:space="preserve"><value>Como se conectar</value></data>
+  <data name="Connect.Heading" xml:space="preserve"><value>Como se conectar a {0}</value></data>
+  <data name="Connect.Choose" xml:space="preserve"><value>Escolha um visualizador e depois adicione {0} no Grid Manager dele.</value></data>
+  <data name="Connect.Approved" xml:space="preserve"><value>Você foi aprovado. Entre como {0}.</value></data>
+  <data name="Connect.Recommended" xml:space="preserve"><value>Recomendado</value></data>
+  <data name="Connect.FirestormSystems" xml:space="preserve"><value>Windows, macOS e Linux</value></data>
+  <data name="Connect.Download" xml:space="preserve"><value>Baixar</value></data>
+  <data name="Connect.FirestormNote" xml:space="preserve"><value>Na página do Firestorm, escolha o seu sistema e a versão para OpenSim, não a do Second Life.</value></data>
+  <data name="Connect.OtherViewers" xml:space="preserve"><value>Outros visualizadores</value></data>
+  <data name="Connect.AnyViewer" xml:space="preserve"><value>Qualquer visualizador para OpenSim funciona</value></data>
+  <data name="Connect.Website" xml:space="preserve"><value>Site</value></data>
+  <data name="Connect.OthersNote" xml:space="preserve"><value>Os links levam ao site de cada visualizador. Este grid não hospeda visualizadores.</value></data>
+  <data name="Connect.GridSettings" xml:space="preserve"><value>Dados para o Grid Manager</value></data>
+  <data name="Connect.LoginUri" xml:space="preserve"><value>URI de login</value></data>
+  <data name="Connect.GridName" xml:space="preserve"><value>Nome do grid</value></data>
+  <data name="Connect.LoginPage" xml:space="preserve"><value>Página de login</value></data>
+  <data name="Connect.Account" xml:space="preserve"><value>Conta</value></data>
+  <data name="Connect.Password" xml:space="preserve"><value>Senha</value></data>
+  <data name="Connect.Copy" xml:space="preserve"><value>Copiar</value></data>
+  <data name="Connect.Copied" xml:space="preserve"><value>Copiado</value></data>
+  <data name="Connect.CopySelected" xml:space="preserve"><value>Selecionado: pressione Ctrl+C</value></data>
+  <data name="Connect.SettingsNote" xml:space="preserve"><value>A maioria dos visualizadores preenche o resto sozinha assim que você informa a URI de login.</value></data>
+  <data name="Connect.Steps" xml:space="preserve"><value>Passos no Firestorm</value></data>
+  <data name="Connect.Step1" xml:space="preserve"><value>Abra Preferências, depois OpenSim, depois Grid Manager.</value></data>
+  <data name="Connect.Step2" xml:space="preserve"><value>Em “Adicionar novo grid”, cole a URI de login e clique em Aplicar:</value></data>
+  <data name="Connect.Step3" xml:space="preserve"><value>Na tela de login, escolha {0} na lista de grids.</value></data>
+  <data name="Connect.Step4Named" xml:space="preserve"><value>Entre como {0} com a sua senha.</value></data>
+  <data name="Connect.Step4" xml:space="preserve"><value>Entre com o nome e o sobrenome do seu avatar e a sua senha.</value></data>
+  <data name="Connect.Help" xml:space="preserve"><value>Ajuda</value></data>
+  <data name="Connect.FirestormHelp" xml:space="preserve"><value>As páginas de ajuda do Firestorm</value></data>
+  <data name="Connect.MakeAccount" xml:space="preserve"><value>Criar uma conta</value></data>
+  <data name="Connect.ForgotPassword" xml:space="preserve"><value>Esqueceu a senha</value></data>
+  <data name="Connect.AskStaff" xml:space="preserve"><value>Pedir ajuda à equipe do grid</value></data>
+  <data name="Legal.Terms" xml:space="preserve"><value>Termos</value></data>
+  <data name="Legal.Contact" xml:space="preserve"><value>Contato</value></data>
+  <data name="Connect.NoSupport" xml:space="preserve"><value>{0} não oferece suporte técnico para visualizadores.</value></data>
+  <data name="Legal.Privacy" xml:space="preserve"><value>Privacidade</value></data>
+  <data name="Legal.Cookies" xml:space="preserve"><value>Cookies</value></data>
+  <data name="Home.Title" xml:space="preserve"><value>Boas-vindas</value></data>
+  <data name="Home.Intro" xml:space="preserve"><value>Boas-vindas! Entre com o seu avatar para ver como se conectar, ou crie uma conta para participar.</value></data>
+  <data name="Home.SignInIntro" xml:space="preserve"><value>Já tem um avatar aqui? Use o nome e a senha dele.</value></data>
+  <data name="Home.NewHere" xml:space="preserve"><value>É novo aqui? Crie um avatar para participar de {0} e do seu mundo.</value></data>
+  <data name="Home.AboutGrid" xml:space="preserve"><value>Sobre este grid</value></data>
+  <data name="Home.StaffSignIn" xml:space="preserve"><value>Login da equipe</value></data>
+  <data name="SignUp.Closed" xml:space="preserve"><value>Este grid ainda não está aberto para cadastros.</value></data>
+  <data name="SignUp.SignInIfAccount" xml:space="preserve"><value>{0} se você já tem uma conta.</value></data>
+  <data name="SignUp.CheckEmail" xml:space="preserve"><value>Confira seu e-mail. Enviamos um link para confirmar sua conta. Ele funciona uma vez, por 24 horas. Verifique sua pasta de spam.</value></data>
+  <data name="SignUp.CantFindEmail" xml:space="preserve"><value>Não encontrou o e-mail? A equipe também pode aprovar você.</value></data>
+  <data name="SignUp.SendAgain" xml:space="preserve"><value>Enviar de novo</value></data>
+  <data name="SignUp.WaitingForStaff" xml:space="preserve"><value>Obrigado. A equipe do grid vai analisar o seu cadastro. Depois de aprovado, você pode entrar aqui com o nome e a senha que acabou de escolher.</value></data>
+  <data name="SignUp.Intro" xml:space="preserve"><value>Escolha um nome para o seu avatar e uma senha. Você vai usá-los para entrar em {0}.</value></data>
+  <data name="SignUp.FirstName" xml:space="preserve"><value>Nome</value></data>
+  <data name="SignUp.LastName" xml:space="preserve"><value>Sobrenome</value></data>
+  <data name="SignUp.PasswordAgain" xml:space="preserve"><value>Repita a senha</value></data>
+  <data name="SignUp.AcceptTerms" xml:space="preserve"><value>Aceito os {0} e o {1}.</value></data>
+  <data name="SignUp.TermsOfService" xml:space="preserve"><value>Termos de Serviço</value></data>
+  <data name="SignUp.PrivacyNotice" xml:space="preserve"><value>Aviso de Privacidade</value></data>
+  <data name="SignUp.CreateAvatar" xml:space="preserve"><value>Criar meu avatar</value></data>
+  <data name="SignUp.AddressLimit" xml:space="preserve"><value>Cadastros demais a partir do seu endereço. Tente de novo daqui a uma hora.</value></data>
+  <data name="SignUp.TermsProblem" xml:space="preserve"><value>Marque a caixa para aceitar os Termos de Serviço e o Aviso de Privacidade.</value></data>
+  <data name="SignUp.NameMissing" xml:space="preserve"><value>Digite um nome e um sobrenome.</value></data>
+  <data name="SignUp.NameTooLong" xml:space="preserve"><value>Cada nome pode ter no máximo {0} caracteres.</value></data>
+  <data name="SignUp.NameBadCharacters" xml:space="preserve"><value>Use no nome apenas letras de A a Z, dígitos e hifens.</value></data>
+  <data name="SignUp.NameTaken" xml:space="preserve"><value>Esse nome já está em uso. Tente outro.</value></data>
+  <data name="SignUp.EmailMissing" xml:space="preserve"><value>Digite o seu endereço de e-mail.</value></data>
+  <data name="SignUp.EmailTooLong" xml:space="preserve"><value>Use um endereço de e-mail com no máximo {0} caracteres.</value></data>
+  <data name="SignUp.EmailBadShape" xml:space="preserve"><value>Isso não parece um endereço de e-mail.</value></data>
+  <data name="Guest.Title" xml:space="preserve"><value>Sua conta</value></data>
+  <data name="Guest.SignedInAs" xml:space="preserve"><value>Você entrou como {0}.</value></data>
+  <data name="Guest.ConnectHeading" xml:space="preserve"><value>Conectar com o Firestorm</value></data>
+  <data name="Guest.Step1" xml:space="preserve"><value>Instale o Firestorm para OpenSim a partir de {0}.</value></data>
+  <data name="Guest.Step2" xml:space="preserve"><value>No Firestorm, abra Preferências, depois OpenSim, depois Grid Manager.</value></data>
+  <data name="Guest.Step3" xml:space="preserve"><value>Cole {0} e clique em Aplicar.</value></data>
+  <data name="Guest.Step4" xml:space="preserve"><value>Escolha {0} na tela de login e entre com o nome e a senha do seu avatar.</value></data>
+  <data name="Guest.SignOut" xml:space="preserve"><value>Sair</value></data>
+  <data name="Terms.Version" xml:space="preserve"><value>Versão {0}</value></data>
+  <data name="Terms.Accepted" xml:space="preserve"><value>Você aceitou esta versão.</value></data>
+  <data name="Terms.Accept" xml:space="preserve"><value>Aceito estes termos</value></data>
+  <data name="Terms.Changed" xml:space="preserve"><value>Os termos mudaram enquanto você lia. Leia a nova versão.</value></data>
+  <data name="Regions.Title" xml:space="preserve"><value>Minhas regiões</value></data>
+  <data name="Regions.None" xml:space="preserve"><value>Você não tem nenhuma região.</value></data>
+  <data name="Regions.RestartInWorld" xml:space="preserve"><value>Reinícios normais são feitos in-world, pela janela Região/Propriedade do visualizador.</value></data>
+  <data name="Regions.State" xml:space="preserve"><value>Estado desta região: {0}.</value></data>
+  <data name="Regions.PeopleHere" xml:space="preserve"><value>Pessoas aqui agora: {0}</value></data>
+  <data name="Regions.Unknown" xml:space="preserve"><value>desconhecido</value></data>
+  <data name="Regions.NotRunning" xml:space="preserve"><value>não está em execução</value></data>
+  <data name="Regions.LastStarted" xml:space="preserve"><value>Último início: {0} (UTC)</value></data>
+  <data name="Regions.Start" xml:space="preserve"><value>Iniciar esta região</value></data>
+  <data name="Regions.Restart" xml:space="preserve"><value>Reiniciar esta região</value></data>
+  <data name="Regions.SharedProgram" xml:space="preserve"><value>Esta região roda junto com regiões que não são suas. Para reiniciá-la, fale com a equipe do grid.</value></data>
+  <data name="Regions.RestartedRecently" xml:space="preserve"><value>Esta região foi reiniciada há poucos minutos. Tente de novo depois das {0} (UTC).</value></data>
+  <data name="Regions.NoRestartNeeded" xml:space="preserve"><value>{0} não precisa ser reiniciada.</value></data>
+  <data name="Regions.Restarting" xml:space="preserve"><value>Reiniciando {0}. Pode levar um ou dois minutos.</value></data>
+  <data name="Regions.StateRunning" xml:space="preserve"><value>em execução</value></data>
+  <data name="Regions.StateStopped" xml:space="preserve"><value>parada</value></data>
+  <data name="Regions.StateStarting" xml:space="preserve"><value>iniciando</value></data>
+  <data name="Regions.StateStopping" xml:space="preserve"><value>parando</value></data>
+  <data name="Regions.StateFailed" xml:space="preserve"><value>não responde</value></data>
+  <data name="Regions.StateParked" xml:space="preserve"><value>desativada</value></data>
+  <data name="Account.Title" xml:space="preserve"><value>Configurações da conta</value></data>
+  <data name="Account.Details" xml:space="preserve"><value>Seus dados</value></data>
+  <data name="Account.EmailAddress" xml:space="preserve"><value>Endereço de e-mail</value></data>
+  <data name="Account.NoEmailAddress" xml:space="preserve"><value>Nenhum endereço de e-mail</value></data>
+  <data name="Account.Role" xml:space="preserve"><value>Função</value></data>
+  <data name="Account.Made" xml:space="preserve"><value>Conta criada</value></data>
+  <data name="Account.Language" xml:space="preserve"><value>Idioma</value></data>
+  <data name="Account.LanguageLabel" xml:space="preserve"><value>Idioma das páginas e dos e-mails</value></data>
+  <data name="Account.SaveLanguage" xml:space="preserve"><value>Salvar idioma</value></data>
+  <data name="Account.RoleOwner" xml:space="preserve"><value>Proprietário</value></data>
+  <data name="Account.RoleAdmin" xml:space="preserve"><value>Administrador</value></data>
+  <data name="Account.RoleSupervisor" xml:space="preserve"><value>Supervisor</value></data>
+  <data name="Account.RoleResident" xml:space="preserve"><value>Residente</value></data>
+  <data name="Account.CurrentPassword" xml:space="preserve"><value>Senha atual</value></data>
+  <data name="Account.ChangeEmail" xml:space="preserve"><value>Alterar e-mail</value></data>
+  <data name="Account.NewEmail" xml:space="preserve"><value>Novo endereço de e-mail</value></data>
+  <data name="Account.NoEmail" xml:space="preserve"><value>Para alterar o seu e-mail, o envio de e-mails do grid precisa estar configurado. Fale com o dono do grid.</value></data>
+  <data name="Account.PasswordDone" xml:space="preserve"><value>Sua senha foi alterada.</value></data>
+  <data name="Account.AskReply" xml:space="preserve"><value>Enviamos um link para o novo endereço. Seu e-mail continua o mesmo até você abri-lo. Ele funciona uma vez, por 24 horas.</value></data>
+  <data name="Account.WrongCurrent" xml:space="preserve"><value>Essa não é a sua senha atual.</value></data>
+  <data name="Account.SamePassword" xml:space="preserve"><value>Escolha uma senha que você não estava usando.</value></data>
+  <data name="Account.SameAddress" xml:space="preserve"><value>Esse já é o seu endereço de e-mail.</value></data>
+  <data name="Bots.LeaveEmpty" xml:space="preserve"><value>Deixe isto em branco</value></data>
+  <data name="Bots.NeedsJs" xml:space="preserve"><value>Este formulário precisa de JavaScript para comprovar que você não é um robô.</value></data>
+  <data name="Bots.PictureAlt" xml:space="preserve"><value>Imagem com letras; se não conseguir vê-la, responda à pergunta abaixo</value></data>
+  <data name="Bots.TypeLetters" xml:space="preserve"><value>Digite as letras</value></data>
+  <data name="Bots.Question" xml:space="preserve"><value>Quanto é {0} mais {1}?</value></data>
+  <data name="Bots.DigitsWork" xml:space="preserve"><value>Você pode digitar a resposta em algarismos, por exemplo 11.</value></data>
+  <data name="Bots.EitherOne" xml:space="preserve"><value>Responda a qualquer uma das duas.</value></data>
+  <data name="Bots.Number1" xml:space="preserve"><value>um</value></data>
+  <data name="Bots.Number2" xml:space="preserve"><value>dois</value></data>
+  <data name="Bots.Number3" xml:space="preserve"><value>três</value></data>
+  <data name="Bots.Number4" xml:space="preserve"><value>quatro</value></data>
+  <data name="Bots.Number5" xml:space="preserve"><value>cinco</value></data>
+  <data name="Bots.Number6" xml:space="preserve"><value>seis</value></data>
+  <data name="Bots.Number7" xml:space="preserve"><value>sete</value></data>
+  <data name="Bots.Number8" xml:space="preserve"><value>oito</value></data>
+  <data name="Bots.Number9" xml:space="preserve"><value>nove</value></data>
+  <data name="Legal.ShownInDefault" xml:space="preserve"><value>Esta página é exibida neste idioma: {0}.</value></data>
+  <data name="Legal.VersionSaved" xml:space="preserve"><value>Versão {0}, {1}</value></data>
+  <data name="Legal.NavLabel" xml:space="preserve"><value>Páginas legais</value></data>
+  <data name="Welcome.Online" xml:space="preserve"><value>Online</value></data>
+  <data name="Welcome.Offline" xml:space="preserve"><value>Offline</value></data>
+  <data name="Welcome.OnePersonOnline" xml:space="preserve"><value>Online agora: 1</value></data>
+  <data name="Welcome.PeopleOnline" xml:space="preserve"><value>Online agora: {0}</value></data>
+  <data name="Welcome.OneRegion" xml:space="preserve"><value>Regiões: 1</value></data>
+  <data name="Welcome.Regions" xml:space="preserve"><value>Regiões: {0}</value></data>
+  <data name="Welcome.StatusUnavailable" xml:space="preserve"><value>Status indisponível</value></data>
+  <data name="Welcome.Picture" xml:space="preserve"><value>Imagem</value></data>
+  <data name="Welcome.ForgotPassword" xml:space="preserve"><value>Esqueci a senha</value></data>
+  <data name="Welcome.AboutGrid" xml:space="preserve"><value>Sobre este grid</value></data>
+  <data name="Support.Title" xml:space="preserve"><value>Pedir ajuda</value></data>
+  <data name="Support.CheckEmail" xml:space="preserve"><value>Confira seu e-mail. Enviamos um link para mandar o seu chamado à equipe. Ele funciona por 24 horas. Verifique sua pasta de spam.</value></data>
+  <data name="Support.StartAnother" xml:space="preserve"><value>Abrir outro chamado</value></data>
+  <data name="Support.StartNew" xml:space="preserve"><value>Abrir um novo chamado</value></data>
+  <data name="Support.Intro" xml:space="preserve"><value>Envie um chamado à equipe do grid. Você vai receber por e-mail um link privado para ler as respostas e responder.</value></data>
+  <data name="Support.YourTickets" xml:space="preserve"><value>Seus chamados</value></data>
+  <data name="Support.EmailOff" xml:space="preserve"><value>Entre para enviar um chamado. Este grid ainda não consegue enviar e-mails, então não consegue verificar um endereço.</value></data>
+  <data name="Support.From" xml:space="preserve"><value>De {0}. Vamos responder no e-mail da sua conta.</value></data>
+  <data name="Support.NameLabel" xml:space="preserve"><value>Seu nome ou nome do avatar</value></data>
+  <data name="Support.EmailLabel" xml:space="preserve"><value>Seu e-mail</value></data>
+  <data name="Support.CategoryLabel" xml:space="preserve"><value>Do que se trata?</value></data>
+  <data name="Support.ChooseOne" xml:space="preserve"><value>Escolha uma opção</value></data>
+  <data name="Support.CategoryAccounts" xml:space="preserve"><value>Contas e login</value></data>
+  <data name="Support.CategoryLand" xml:space="preserve"><value>Terrenos e regiões</value></data>
+  <data name="Support.CategoryAbuse" xml:space="preserve"><value>Denunciar abuso</value></data>
+  <data name="Support.CategoryTechnical" xml:space="preserve"><value>Problema técnico</value></data>
+  <data name="Support.CategoryOther" xml:space="preserve"><value>Outro assunto</value></data>
+  <data name="Support.SubjectLabel" xml:space="preserve"><value>Assunto</value></data>
+  <data name="Support.MessageLabel" xml:space="preserve"><value>Mensagem</value></data>
+  <data name="Support.MessageHelp" xml:space="preserve"><value>Conte o que aconteceu, quando, e os nomes dos avatares ou regiões envolvidos.</value></data>
+  <data name="Support.EvidenceLabel" xml:space="preserve"><value>Link de evidência (opcional)</value></data>
+  <data name="Support.EvidenceHelp" xml:space="preserve"><value>Um endereço web, por exemplo uma imagem que você enviou. A equipe o vê como texto.</value></data>
+  <data name="Support.LogsLabel" xml:space="preserve"><value>Logs (opcional)</value></data>
+  <data name="Support.Send" xml:space="preserve"><value>Enviar chamado</value></data>
+  <data name="Support.NoPasswords" xml:space="preserve"><value>A equipe vai ler isto. Não coloque senhas aqui.</value></data>
+  <data name="Support.LostLink" xml:space="preserve"><value>Perdeu o link do seu chamado?</value></data>
+  <data name="Support.ConfirmTitle" xml:space="preserve"><value>Enviar o seu chamado</value></data>
+  <data name="Support.ConfirmFailed" xml:space="preserve"><value>Este link não funciona mais. Ele funciona uma vez, por 24 horas. {0}.</value></data>
+  <data name="Support.ConfirmIntro" xml:space="preserve"><value>Clique no botão para enviar o seu chamado à equipe do grid.</value></data>
+  <data name="Support.ConfirmButton" xml:space="preserve"><value>Enviar meu chamado</value></data>
+  <data name="Support.LostTitle" xml:space="preserve"><value>Perdeu o link do chamado</value></data>
+  <data name="Support.LostHeading" xml:space="preserve"><value>Perdeu o link do chamado?</value></data>
+  <data name="Support.LostSent" xml:space="preserve"><value>Se houver chamados para esse endereço, enviamos os links deles. Verifique sua pasta de spam.</value></data>
+  <data name="Support.LostIntro" xml:space="preserve"><value>Informe o endereço de e-mail do qual você enviou o chamado, e enviaremos um novo link.</value></data>
+  <data name="Support.SendNewLink" xml:space="preserve"><value>Enviar um novo link</value></data>
+  <data name="Support.TicketTitle" xml:space="preserve"><value>{0}: {1}</value></data>
+  <data name="Support.YourTicket" xml:space="preserve"><value>Seu chamado</value></data>
+  <data name="Support.RanOutTitle" xml:space="preserve"><value>Este link expirou</value></data>
+  <data name="Support.RanOutText" xml:space="preserve"><value>Os links de um chamado funcionam por 30 dias. Podemos enviar um novo para você.</value></data>
+  <data name="Support.Back" xml:space="preserve"><value>‹ Pedir ajuda</value></data>
+  <data name="Support.You" xml:space="preserve"><value>Você</value></data>
+  <data name="Support.FromStaff" xml:space="preserve"><value>Equipe ({0})</value></data>
+  <data name="Support.StaffName" xml:space="preserve"><value>equipe</value></data>
+  <data name="Support.EvidenceSent" xml:space="preserve"><value>Link de evidência que você enviou: {0}</value></data>
+  <data name="Support.ReplyLabel" xml:space="preserve"><value>Sua resposta</value></data>
+  <data name="Support.SendReply" xml:space="preserve"><value>Enviar resposta</value></data>
+  <data name="Support.ClosedForGood" xml:space="preserve"><value>Este chamado está encerrado. Abra um novo chamado.</value></data>
+  <data name="Support.StateOpen" xml:space="preserve"><value>Aberto</value></data>
+  <data name="Support.StateWaiting" xml:space="preserve"><value>Aguardando você</value></data>
+  <data name="Support.StateClosed" xml:space="preserve"><value>Encerrado</value></data>
+  <data name="Support.StateUnsent" xml:space="preserve"><value>Ainda não enviado</value></data>
+  <data name="Support.TooManyReplies" xml:space="preserve"><value>Respostas demais por enquanto. Tente de novo daqui a pouco.</value></data>
+  <data name="Support.ReplySent" xml:space="preserve"><value>Sua resposta foi enviada à equipe.</value></data>
+  <data name="Support.TooManyOpen" xml:space="preserve"><value>Você já tem o número máximo de chamados abertos ({0}). Responda em um deles.</value></data>
+  <data name="Support.Full" xml:space="preserve"><value>O grid não está aceitando novos chamados agora. Tente mais tarde.</value></data>
+  <data name="Support.Busy" xml:space="preserve"><value>Não foi possível salvar o seu chamado. Tente de novo em alguns minutos.</value></data>
+  <data name="Support.TooLong" xml:space="preserve"><value>Este chamado está longo demais. Abra um novo chamado.</value></data>
+  <data name="Support.ReplyShort" xml:space="preserve"><value>Escreva pelo menos {0} caracteres.</value></data>
+  <data name="Support.ReplyLong" xml:space="preserve"><value>Use menos de {0:N0} caracteres.</value></data>
+  <data name="Support.NameProblem" xml:space="preserve"><value>Escreva o seu nome, com até {0} caracteres.</value></data>
+  <data name="Support.EmailProblem" xml:space="preserve"><value>Escreva o endereço de e-mail para o qual devemos responder.</value></data>
+  <data name="Support.CategoryProblem" xml:space="preserve"><value>Escolha do que se trata o seu chamado.</value></data>
+  <data name="Support.SubjectProblem" xml:space="preserve"><value>Escreva um assunto de {0} a {1} caracteres.</value></data>
+  <data name="Support.MessageShort" xml:space="preserve"><value>Escreva pelo menos {0} caracteres sobre o problema.</value></data>
+  <data name="Support.MessageLong" xml:space="preserve"><value>A mensagem deve ter menos de {0:N0} caracteres.</value></data>
+  <data name="Support.EvidenceProblem" xml:space="preserve"><value>O link de evidência deve ser um único endereço web começando com https:// ou http://.</value></data>
+  <data name="Support.LogsProblem" xml:space="preserve"><value>Os logs devem ter menos de {0:N0} caracteres.</value></data>
+  <data name="Upload.Title" xml:space="preserve"><value>Enviar um modelo</value></data>
+  <data name="Upload.Intro" xml:space="preserve"><value>Envie um arquivo {0} (no Blender: Arquivo &gt; Exportar &gt; glTF 2.0, glTF Binary) ou um arquivo {1} com tudo dentro. Ele é verificado primeiro, e você decide se quer criar o objeto.</value></data>
+  <data name="Upload.File" xml:space="preserve"><value>Arquivo do modelo</value></data>
+  <data name="Upload.ItemNameOptional" xml:space="preserve"><value>Nome do objeto (opcional)</value></data>
+  <data name="Upload.ItemNameHelp" xml:space="preserve"><value>Deixe em branco para usar o nome do arquivo.</value></data>
+  <data name="Upload.Check" xml:space="preserve"><value>Verificar o modelo</value></data>
+  <data name="Upload.ChooseFile" xml:space="preserve"><value>Escolha um arquivo para enviar.</value></data>
+  <data name="Upload.WrongType" xml:space="preserve"><value>Escolha um arquivo .glb ou .gltf. No Blender, use Arquivo &gt; Exportar &gt; glTF 2.0.</value></data>
+  <data name="Upload.TooLarge" xml:space="preserve"><value>O arquivo tem mais de {0} MB.</value></data>
+  <data name="Upload.Busy" xml:space="preserve"><value>O envio está ocupado, tente de novo daqui a um minuto</value></data>
+  <data name="Upload.Unreadable" xml:space="preserve"><value>Não conseguimos ler este arquivo</value></data>
+  <data name="Upload.Megabytes" xml:space="preserve"><value>{0} MB</value></data>
+  <data name="UploadLimits.Title" xml:space="preserve"><value>Limites deste grid</value></data>
+  <data name="UploadLimits.Intro" xml:space="preserve"><value>Cada modelo é verificado com estes limites antes de ser criado.</value></data>
+  <data name="UploadLimits.JoinedRegions" xml:space="preserve"><value>Estes são os limites das regiões próprias deste computador. As regiões de computadores que entraram no grid não são verificadas, e uma com configurações mais rígidas pode recusar o objeto.</value></data>
+  <data name="UploadLimits.Limit" xml:space="preserve"><value>Limite</value></data>
+  <data name="UploadLimits.OnThisGrid" xml:space="preserve"><value>Neste grid</value></data>
+  <data name="UploadLimits.Why" xml:space="preserve"><value>Por quê</value></data>
+  <data name="UploadLimits.InBlender" xml:space="preserve"><value>No Blender</value></data>
+  <data name="UploadLimits.MetresSide" xml:space="preserve"><value>{0} m por lado</value></data>
+  <data name="UploadLimits.PixelsSide" xml:space="preserve"><value>{0} px por lado</value></data>
+  <data name="UploadLimits.NoLimit" xml:space="preserve"><value>sem limite</value></data>
+  <data name="UploadLimits.PartsCount.One" xml:space="preserve"><value>{0} parte</value></data>
+  <data name="UploadLimits.PartsCount.Few" xml:space="preserve"><value>{0} partes</value></data>
+  <data name="UploadLimits.PartsCount.Other" xml:space="preserve"><value>{0} partes</value></data>
+  <data name="UploadLimits.FacesCount.One" xml:space="preserve"><value>{0} face</value></data>
+  <data name="UploadLimits.FacesCount.Few" xml:space="preserve"><value>{0} faces</value></data>
+  <data name="UploadLimits.FacesCount.Other" xml:space="preserve"><value>{0} faces</value></data>
+  <data name="UploadLimits.LargestPart.Name" xml:space="preserve"><value>Maior parte</value></data>
+  <data name="UploadLimits.LargestPart.Why" xml:space="preserve"><value>As regiões recusam partes maiores.</value></data>
+  <data name="UploadLimits.LargestPart.Tip" xml:space="preserve"><value>No Blender, confira o tamanho no painel N; reduza a escala (S) e aplique-a (Ctrl+A).</value></data>
+  <data name="UploadLimits.LargestPhysical.Name" xml:space="preserve"><value>Maior parte física</value></data>
+  <data name="UploadLimits.LargestPhysical.Why" xml:space="preserve"><value>Partes que se movem com física precisam ser menores, para que a região consiga calcular as colisões.</value></data>
+  <data name="UploadLimits.LargestPhysical.Tip" xml:space="preserve"><value>No Blender, divida um modelo grande em objetos menores se ele deve ser físico.</value></data>
+  <data name="UploadLimits.SmallestPart.Name" xml:space="preserve"><value>Menor parte</value></data>
+  <data name="UploadLimits.SmallestPart.Why" xml:space="preserve"><value>Partes menores não podem ser criadas, então ficam de fora.</value></data>
+  <data name="UploadLimits.SmallestPart.Tip" xml:space="preserve"><value>No Blender, junte as peças minúsculas a uma parte maior (Ctrl+J).</value></data>
+  <data name="UploadLimits.Parts.Name" xml:space="preserve"><value>Partes em um objeto</value></data>
+  <data name="UploadLimits.Parts.Why" xml:space="preserve"><value>Um objeto é um conjunto de partes vinculadas; as regiões podem limitar quantas.</value></data>
+  <data name="UploadLimits.Parts.Tip" xml:space="preserve"><value>No Blender, junte objetos (Ctrl+J) para usar menos partes.</value></data>
+  <data name="UploadLimits.Materials.Name" xml:space="preserve"><value>Materiais em uma parte</value></data>
+  <data name="UploadLimits.Materials.Why" xml:space="preserve"><value>Cada parte tem no máximo 8 faces, com um material cada. Materiais a mais são divididos automaticamente em partes vinculadas extras.</value></data>
+  <data name="UploadLimits.Materials.Tip" xml:space="preserve"><value>No Blender, junte os materiais que usam a mesma imagem ou faça o bake deles em um só.</value></data>
+  <data name="UploadLimits.Points.Name" xml:space="preserve"><value>Pontos em uma face</value></data>
+  <data name="UploadLimits.Points.Why" xml:space="preserve"><value>Faces maiores são divididas automaticamente.</value></data>
+  <data name="UploadLimits.Points.Tip" xml:space="preserve"><value>No Blender, um modificador Decimate reduz o número de pontos.</value></data>
+  <data name="UploadLimits.Picture.Name" xml:space="preserve"><value>Tamanho da imagem</value></data>
+  <data name="UploadLimits.Picture.Why" xml:space="preserve"><value>As imagens são redimensionadas para uma potência de dois não maior que esta, para o grid carregar rápido.</value></data>
+  <data name="UploadLimits.Picture.Tip" xml:space="preserve"><value>No Blender, salve as imagens em 1024 × 1024 ou menos.</value></data>
+  <data name="UploadLimits.Heavy.Name" xml:space="preserve"><value>Triângulos antes de ficar pesado</value></data>
+  <data name="UploadLimits.Heavy.Why" xml:space="preserve"><value>Acima disso, as versões mais simples mostradas de longe podem parecer deformadas ou ter buracos.</value></data>
+  <data name="UploadLimits.Heavy.Tip" xml:space="preserve"><value>No Blender, adicione um modificador Decimate.</value></data>
+  <data name="UploadLimits.Triangles.Name" xml:space="preserve"><value>Triângulos em um envio</value></data>
+  <data name="UploadLimits.Triangles.Why" xml:space="preserve"><value>O máximo que este grid aceita em um objeto.</value></data>
+  <data name="UploadLimits.Triangles.Tip" xml:space="preserve"><value>No Blender, adicione um modificador Decimate.</value></data>
+  <data name="UploadLimits.Objects.Name" xml:space="preserve"><value>Objetos em um arquivo</value></data>
+  <data name="UploadLimits.Objects.Why" xml:space="preserve"><value>O máximo que este grid aceita em um arquivo.</value></data>
+  <data name="UploadLimits.Objects.Tip" xml:space="preserve"><value>No Blender, junte objetos (Ctrl+J).</value></data>
+  <data name="UploadLimits.FileSize.Name" xml:space="preserve"><value>Tamanho do arquivo</value></data>
+  <data name="UploadLimits.FileSize.Why" xml:space="preserve"><value>O maior arquivo que este grid aceita.</value></data>
+  <data name="UploadLimits.FileSize.Tip" xml:space="preserve"><value>No Blender, use imagens menores; exporte como glTF Binary (.glb).</value></data>
+  <data name="UploadLimits.PictureInFile.Name" xml:space="preserve"><value>Imagem dentro do arquivo</value></data>
+  <data name="UploadLimits.PictureInFile.Why" xml:space="preserve"><value>Imagens maiores nem são lidas.</value></data>
+  <data name="UploadLimits.PictureInFile.Tip" xml:space="preserve"><value>No Blender, reduza as imagens antes de exportar.</value></data>
+  <data name="UploadReport.Title" xml:space="preserve"><value>Relatório da verificação</value></data>
+  <data name="UploadReport.Made" xml:space="preserve"><value>Objeto criado</value></data>
+  <data name="UploadReport.Done" xml:space="preserve"><value>{0} está no seu inventário, na pasta “Uploads”. Se você estiver conectado, saia e entre de novo para vê-lo.</value></data>
+  <data name="UploadReport.AlreadyFinished" xml:space="preserve"><value>Este envio já foi concluído.</value></data>
+  <data name="UploadReport.UploadAnother" xml:space="preserve"><value>Enviar outro</value></data>
+  <data name="UploadReport.MayLookWrong" xml:space="preserve"><value>{0} pode parecer distorcido ou com a forma errada.</value></data>
+  <data name="UploadReport.YouShouldCorrect" xml:space="preserve"><value>{0} Você deveria corrigir:</value></data>
+  <data name="UploadReport.Size" xml:space="preserve"><value>Tamanho, em porcentagem</value></data>
+  <data name="UploadReport.LargestFits" xml:space="preserve"><value>{0}% é o maior tamanho que cabe neste grid.</value></data>
+  <data name="UploadReport.FixedForYou" xml:space="preserve"><value>Corrigido automaticamente</value></data>
+  <data name="UploadReport.ItemName" xml:space="preserve"><value>Nome do objeto</value></data>
+  <data name="UploadReport.NextOwner" xml:space="preserve"><value>O próximo dono pode</value></data>
+  <data name="UploadReport.Copy" xml:space="preserve"><value>Copiar</value></data>
+  <data name="UploadReport.Modify" xml:space="preserve"><value>Modificar</value></data>
+  <data name="UploadReport.Transfer" xml:space="preserve"><value>Transferir</value></data>
+  <data name="UploadReport.CheckAgain" xml:space="preserve"><value>Verificar de novo</value></data>
+  <data name="UploadReport.MakeItem" xml:space="preserve"><value>Criar o objeto</value></data>
+  <data name="UploadReport.DifferentFile" xml:space="preserve"><value>Enviar outro arquivo</value></data>
+  <data name="UploadReport.NothingCharged" xml:space="preserve"><value>Não deu certo; nada foi cobrado</value></data>
+  <data name="UploadReport.CheckedAgain" xml:space="preserve"><value>Verificamos de novo com as suas alterações. Confira e depois crie o objeto.</value></data>
+  <data name="UploadReport.NotAllowed" xml:space="preserve"><value>Este envio não é permitido no momento.</value></data>
+  <data name="UploadReport.ChooseSize" xml:space="preserve"><value>Escolha um tamanho de {0} a {1} por cento.</value></data>
+  <data name="UploadReport.MustFix.One" xml:space="preserve"><value>{0} item precisa ser corrigido antes de criar o objeto</value></data>
+  <data name="UploadReport.MustFix.Few" xml:space="preserve"><value>{0} itens precisam ser corrigidos antes de criar o objeto</value></data>
+  <data name="UploadReport.MustFix.Other" xml:space="preserve"><value>{0} itens precisam ser corrigidos antes de criar o objeto</value></data>
+  <data name="UploadReport.MayLookWrongCount.One" xml:space="preserve"><value>{0} item pode parecer errado</value></data>
+  <data name="UploadReport.MayLookWrongCount.Few" xml:space="preserve"><value>{0} itens podem parecer errados</value></data>
+  <data name="UploadReport.MayLookWrongCount.Other" xml:space="preserve"><value>{0} itens podem parecer errados</value></data>
+  <data name="UploadReport.WillBeFixed.One" xml:space="preserve"><value>{0} item será corrigido automaticamente</value></data>
+  <data name="UploadReport.WillBeFixed.Few" xml:space="preserve"><value>{0} itens serão corrigidos automaticamente</value></data>
+  <data name="UploadReport.WillBeFixed.Other" xml:space="preserve"><value>{0} itens serão corrigidos automaticamente</value></data>
+  <data name="UploadReport.Checked" xml:space="preserve"><value>{0} foi verificado: {1}.</value></data>
+  <data name="UploadReport.NothingToChange" xml:space="preserve"><value>{0} foi verificado: nada precisa mudar.</value></data>
+  <data name="UploadReport.ListSeparator" xml:space="preserve"><value>, </value></data>
+  <data name="Finding.Several" xml:space="preserve"><value>vários</value></data>
+  <data name="Finding.InTheModel" xml:space="preserve"><value>do modelo</value></data>
+  <data name="Finding.TheModel" xml:space="preserve"><value>O modelo</value></data>
+  <data name="Finding.ItsSize" xml:space="preserve"><value>o tamanho original</value></data>
+  <data name="Finding.AnotherKind" xml:space="preserve"><value>de outro tipo</value></data>
+  <data name="Finding.SomeFaces" xml:space="preserve"><value>Algumas faces</value></data>
+  <data name="Finding.SomeParts" xml:space="preserve"><value>Algumas partes</value></data>
+  <data name="Finding.And" xml:space="preserve"><value>{0} e {1}</value></data>
+  <data name="Finding.What.Cameras" xml:space="preserve"><value>câmeras</value></data>
+  <data name="Finding.What.Lights" xml:space="preserve"><value>luzes</value></data>
+  <data name="Finding.What.Lines" xml:space="preserve"><value>linhas</value></data>
+  <data name="Finding.What.Points" xml:space="preserve"><value>pontos</value></data>
+  <data name="Finding.SplitMaterials.Title" xml:space="preserve"><value>Dividido em {0} partes vinculadas</value></data>
+  <data name="Finding.SplitMaterials.Why" xml:space="preserve"><value>({0} materiais, {1} por parte). Isso não muda a aparência.</value></data>
+  <data name="Finding.SplitMaterials.Tip" xml:space="preserve"><value>No Blender, junte os materiais que usam a mesma imagem ou faça o bake em um só, para ficar em uma parte.</value></data>
+  <data name="Finding.SplitVertices.Title" xml:space="preserve"><value>{0} faces grandes divididas em menores</value></data>
+  <data name="Finding.SplitVertices.Why" xml:space="preserve"><value>Uma face pode ter no máximo {0} pontos. Isso não muda a aparência.</value></data>
+  <data name="Finding.SplitVertices.Tip" xml:space="preserve"><value>No Blender, um modificador Decimate reduz o número de pontos.</value></data>
+  <data name="Finding.TextureResized.Title" xml:space="preserve"><value>A imagem {0} foi redimensionada</value></data>
+  <data name="Finding.TextureResized.Why" xml:space="preserve"><value>Aqui as imagens têm tamanhos em potências de dois (como 512 ou 1024). Isso não muda a aparência.</value></data>
+  <data name="Finding.TextureResized.Tip" xml:space="preserve"><value>No Blender, salve as imagens em tamanhos como 512 × 512 ou 1024 × 1024.</value></data>
+  <data name="Finding.TextureShrunk.Title" xml:space="preserve"><value>A imagem {0} foi reduzida de {1} para {2} pixels</value></data>
+  <data name="Finding.TextureShrunk.Why" xml:space="preserve"><value>Neste grid as imagens têm no máximo 1024 pixels por lado, então de perto vai parecer menos nítida.</value></data>
+  <data name="Finding.TextureShrunk.Tip" xml:space="preserve"><value>No Blender, faça o bake ou salve a imagem em 1024 × 1024 ou menos e exporte de novo.</value></data>
+  <data name="Finding.TextureUnsupported.Title" xml:space="preserve"><value>A imagem {0} ficou de fora</value></data>
+  <data name="Finding.TextureUnsupported.Why" xml:space="preserve"><value>Só imagens PNG e JPEG podem ser usadas, e esta é {0}. As faces dela ficarão sem imagem.</value></data>
+  <data name="Finding.TextureUnsupported.Tip" xml:space="preserve"><value>No Blender, salve a imagem como PNG ou JPEG e exporte de novo.</value></data>
+  <data name="Finding.HeavyMesh.Title" xml:space="preserve"><value>O modelo tem {0} triângulos</value></data>
+  <data name="Finding.HeavyMesh.TitleNoCount" xml:space="preserve"><value>O modelo tem triângulos demais</value></data>
+  <data name="Finding.HeavyMesh.Why" xml:space="preserve"><value>Acima de {0}, as versões mais simples mostradas de longe podem parecer deformadas ou ter buracos.</value></data>
+  <data name="Finding.HeavyMesh.Tip" xml:space="preserve"><value>No Blender, adicione um modificador Decimate para reduzir o número de triângulos.</value></data>
+  <data name="Finding.TooBig.Title" xml:space="preserve"><value>{0} tem {1} m no lado mais longo</value></data>
+  <data name="Finding.TooBig.TitleNoSide" xml:space="preserve"><value>{0} é grande demais</value></data>
+  <data name="Finding.TooBig.Why" xml:space="preserve"><value>Neste grid as partes podem ter no máximo {0} m, para que toda região consiga recebê-las.</value></data>
+  <data name="Finding.TooBig.Tip" xml:space="preserve"><value>No Blender, reduza a escala do modelo (S), aplique-a (Ctrl+A) e exporte de novo. Ou escolha aqui um tamanho menor.</value></data>
+  <data name="Finding.TooSmall.Title" xml:space="preserve"><value>{0} de {1} partes são pequenas demais e ficaram de fora</value></data>
+  <data name="Finding.TooSmall.TitleNoCount" xml:space="preserve"><value>Algumas partes são pequenas demais e ficaram de fora</value></data>
+  <data name="Finding.TooSmall.Why" xml:space="preserve"><value>As partes precisam ter pelo menos {0} m por lado.</value></data>
+  <data name="Finding.TooSmall.Tip" xml:space="preserve"><value>No Blender, junte as peças minúsculas a uma parte maior (Ctrl+J) e exporte de novo.</value></data>
+  <data name="Finding.TooManyParts.Title" xml:space="preserve"><value>O objeto tem {0} partes</value></data>
+  <data name="Finding.TooManyParts.Why" xml:space="preserve"><value>Este grid permite {0} partes em um objeto.</value></data>
+  <data name="Finding.TooManyParts.WhyNoLimit" xml:space="preserve"><value>Este grid limita o número de partes em um objeto.</value></data>
+  <data name="Finding.TooManyParts.Tip" xml:space="preserve"><value>No Blender, junte objetos (Ctrl+J) ou use menos materiais e exporte de novo.</value></data>
+  <data name="Finding.InsideOut.Title" xml:space="preserve"><value>{0} pode estar do avesso</value></data>
+  <data name="Finding.InsideOut.Why" xml:space="preserve"><value>Ele foi espelhado, então as faces podem apontar para o lado errado e parecer transparentes.</value></data>
+  <data name="Finding.InsideOut.Tip" xml:space="preserve"><value>No Blender, aplique a escala (Ctrl+A) e depois, no Modo de Edição, recalcule as normais (Shift+N).</value></data>
+  <data name="Finding.InsideOutMany.Title" xml:space="preserve"><value>{0} pode estar do avesso ({1} partes)</value></data>
+  <data name="Finding.InsideOutMany.Why" xml:space="preserve"><value>Ele foi espelhado, então as faces podem apontar para o lado errado e parecer transparentes.</value></data>
+  <data name="Finding.InsideOutMany.Tip" xml:space="preserve"><value>No Blender, aplique a escala (Ctrl+A) e depois, no Modo de Edição, recalcule as normais (Shift+N).</value></data>
+  <data name="Finding.NoUv.Title" xml:space="preserve"><value>{0} faces têm imagem, mas não têm mapa UV</value></data>
+  <data name="Finding.NoUv.Why" xml:space="preserve"><value>Sem ele, a imagem não pode ser posicionada e vai parecer borrada.</value></data>
+  <data name="Finding.NoUv.Tip" xml:space="preserve"><value>No Blender, desdobre a malha no Modo de Edição (U) e exporte de novo.</value></data>
+  <data name="Finding.DroppedAnimation.Title" xml:space="preserve"><value>As animações ficaram de fora</value></data>
+  <data name="Finding.DroppedAnimation.Why" xml:space="preserve"><value>Aqui os objetos não reproduzem animações glTF. Isso não muda a aparência parada.</value></data>
+  <data name="Finding.DroppedAnimation.Tip" xml:space="preserve"><value>Nada a corrigir. Na exportação glTF do Blender você pode desmarcar Animation.</value></data>
+  <data name="Finding.DroppedMorphs.Title" xml:space="preserve"><value>As shape keys ficaram de fora</value></data>
+  <data name="Finding.DroppedMorphs.Why" xml:space="preserve"><value>O objeto é criado na forma básica.</value></data>
+  <data name="Finding.DroppedMorphs.Tip" xml:space="preserve"><value>No Blender, aplique a shape key desejada antes de exportar, ou desmarque Shape Keys na exportação glTF.</value></data>
+  <data name="Finding.DroppedExtras.Title" xml:space="preserve"><value>Ficaram de fora: {0}</value></data>
+  <data name="Finding.DroppedExtras.Why" xml:space="preserve"><value>Os objetos não podem levá-los. Isso não muda a aparência.</value></data>
+  <data name="Finding.DroppedExtras.Tip" xml:space="preserve"><value>Na exportação glTF do Blender, desmarque Cameras e Punctual Lights.</value></data>
+  <data name="Finding.VertexColours.Title" xml:space="preserve"><value>As cores de vértice do modelo ficaram de fora</value></data>
+  <data name="Finding.VertexColours.Why" xml:space="preserve"><value>Aqui os objetos só pegam cor de um material ou de uma imagem, então pode parecer mais simples.</value></data>
+  <data name="Finding.VertexColours.Tip" xml:space="preserve"><value>No Blender, faça o bake das cores de vértice em uma imagem (Cycles: Bake, cor Diffuse) e exporte de novo.</value></data>
+  <data name="Finding.DoubleSided.Title" xml:space="preserve"><value>{0}: só vai aparecer de um lado</value></data>
+  <data name="Finding.DoubleSided.Why" xml:space="preserve"><value>Aqui os objetos só desenham a face pela frente, então partes finas como folhas ou tecido podem parecer transparentes por trás.</value></data>
+  <data name="Finding.DoubleSided.Tip" xml:space="preserve"><value>No Blender, dê espessura às partes finas com um modificador Solidify e exporte de novo.</value></data>
+  <data name="Finding.DoubleSidedMany.Title" xml:space="preserve"><value>{0}: só vai aparecer de um lado ({1} materiais)</value></data>
+  <data name="Finding.DoubleSidedMany.Why" xml:space="preserve"><value>Aqui os objetos só desenham a face pela frente, então partes finas como folhas ou tecido podem parecer transparentes por trás.</value></data>
+  <data name="Finding.DoubleSidedMany.Tip" xml:space="preserve"><value>No Blender, dê espessura às partes finas com um modificador Solidify e exporte de novo.</value></data>
+  <data name="Finding.TextureCoords.Title" xml:space="preserve"><value>Uma imagem pode ficar no lugar errado</value></data>
+  <data name="Finding.TextureCoords.Why" xml:space="preserve"><value>Só o primeiro mapa UV do modelo é usado, como está; um segundo mapa UV ou uma imagem deslocada ou em escala, não.</value></data>
+  <data name="Finding.TextureCoords.Tip" xml:space="preserve"><value>No Blender, coloque a imagem no primeiro mapa UV, aplique qualquer deslocamento ou escala às UVs e exporte de novo.</value></data>
+  <data name="Finding.SkinIgnored.Title" xml:space="preserve"><value>O modelo tem rig ({0} ossos), mas é criado como um objeto comum</value></data>
+  <data name="Finding.SkinIgnored.Why" xml:space="preserve"><value>Nesta versão ele fica na pose de descanso e não pode ser vestido.</value></data>
+  <data name="Finding.SkinIgnored.Tip" xml:space="preserve"><value>No Blender, exporte sem a armature se você só quer o objeto.</value></data>
+  <data name="Finding.Compressed.Title" xml:space="preserve"><value>O arquivo está comprimido ({0})</value></data>
+  <data name="Finding.Compressed.Why" xml:space="preserve"><value>Modelos comprimidos não podem ser lidos aqui.</value></data>
+  <data name="Finding.Compressed.Tip" xml:space="preserve"><value>Na exportação glTF do Blender, desmarque Compression e exporte de novo.</value></data>
+  <data name="Finding.ExternalFiles.Title" xml:space="preserve"><value>O arquivo usa {0} arquivos separados</value></data>
+  <data name="Finding.ExternalFiles.Why" xml:space="preserve"><value>Só um arquivo pode ser enviado, com tudo dentro.</value></data>
+  <data name="Finding.ExternalFiles.Tip" xml:space="preserve"><value>Na exportação glTF do Blender, escolha glTF Binary (.glb).</value></data>
+  <data name="Finding.NotTriangles.Title" xml:space="preserve"><value>Ficaram de fora: {0}</value></data>
+  <data name="Finding.NotTriangles.Why" xml:space="preserve"><value>Só faces podem virar um objeto.</value></data>
+  <data name="Finding.NotTriangles.Tip" xml:space="preserve"><value>No Blender, dê espessura às linhas (um modificador Skin ou Solidify) ou converta as curvas em malha.</value></data>
+  <data name="Finding.BadFile.Title" xml:space="preserve"><value>Não conseguimos ler este arquivo</value></data>
+  <data name="Finding.BadFile.Why" xml:space="preserve"><value>Não é um arquivo glTF 2.0 legível.</value></data>
+  <data name="Finding.BadFile.NoMesh" xml:space="preserve"><value>O arquivo não tem malha.</value></data>
+  <data name="Finding.BadFile.Tip" xml:space="preserve"><value>No Blender, use Arquivo &gt; Exportar &gt; glTF 2.0 e escolha glTF Binary (.glb).</value></data>
+  <data name="Finding.Unknown.Title" xml:space="preserve"><value>Algo no modelo precisa de atenção</value></data>
+  <data name="Finding.Unknown.Why" xml:space="preserve"><value>A verificação encontrou algo que esta página ainda não sabe descrever.</value></data>
+  <data name="Finding.Unknown.Tip" xml:space="preserve"><value>No Blender, confira o modelo e exporte de novo como glTF Binary (.glb).</value></data>
+  <data name="Finding.TooLarge.Image.Title" xml:space="preserve"><value>Uma imagem tem {0} pixels</value></data>
+  <data name="Finding.TooLarge.Image.Why" xml:space="preserve"><value>As imagens de um envio podem ter no máximo {1} pixels por lado.</value></data>
+  <data name="Finding.TooLarge.Image.Tip" xml:space="preserve"><value>No Blender, salve a imagem em 1024 × 1024 ou menos e exporte de novo.</value></data>
+  <data name="Finding.TooLarge.Triangles.Title" xml:space="preserve"><value>O modelo tem mais de {0} triângulos</value></data>
+  <data name="Finding.TooLarge.Triangles.Why" xml:space="preserve"><value>É mais do que este grid aceita em um objeto.</value></data>
+  <data name="Finding.TooLarge.Triangles.Tip" xml:space="preserve"><value>No Blender, adicione um modificador Decimate para reduzir o número de triângulos.</value></data>
+  <data name="Finding.TooLarge.Nodes.Title" xml:space="preserve"><value>O modelo tem mais de {0} objetos</value></data>
+  <data name="Finding.TooLarge.Nodes.Why" xml:space="preserve"><value>É mais do que este grid aceita em um objeto.</value></data>
+  <data name="Finding.TooLarge.Nodes.Tip" xml:space="preserve"><value>No Blender, junte objetos (Ctrl+J) e exporte de novo.</value></data>
+  <data name="Finding.TooLarge.Assets.Title" xml:space="preserve"><value>O objeto pronto teria mais de {0}</value></data>
+  <data name="Finding.TooLarge.Assets.Why" xml:space="preserve"><value>As imagens e formas juntas passam do que este grid aceita para um objeto.</value></data>
+  <data name="Finding.TooLarge.Assets.Tip" xml:space="preserve"><value>No Blender, use menos imagens ou imagens menores e um modificador Decimate e exporte de novo.</value></data>
+  <data name="Finding.TooLarge.Upload.Title" xml:space="preserve"><value>O arquivo tem mais de {0}</value></data>
+  <data name="Finding.TooLarge.Upload.Why" xml:space="preserve"><value>É o maior arquivo que este grid aceita.</value></data>
+  <data name="Finding.TooLarge.Upload.Tip" xml:space="preserve"><value>No Blender, use imagens menores e um modificador Decimate e exporte de novo.</value></data>
+</root>
