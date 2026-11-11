@@ -21,7 +21,7 @@ fetch_gltf() {
     [ -s "$dir/$out.gltf" ] && return 0
     mkdir -p "$dir"
     curl -fsSL -o "$dir/$out.gltf" "$BASE/$name/$variant/$name.gltf"
-    grep -o '"uri"[[:space:]]*:[[:space:]]*"[^"]*"' "$dir/$out.gltf" | sed 's/.*:[[:space:]]*"\(.*\)"/\1/' | grep -v '^data:' | sort -u |
+    grep -o '"uri"[[:space:]]*:[[:space:]]*"[^"]*"' "$dir/$out.gltf" | sed 's/.*:[[:space:]]*"\(.*\)"/\1/' | { grep -v '^data:' || true; } | sort -u |
     while read -r uri; do
         # The uris come from a downloaded file: nothing that climbs out of the folder, is absolute, or names a scheme.
         case "$uri" in
