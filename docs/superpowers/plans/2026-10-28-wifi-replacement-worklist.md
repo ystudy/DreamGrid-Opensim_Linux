@@ -57,11 +57,11 @@ Legend: **[S]** security requirement, **[X]** cross-platform note, **[?]** decis
 - [x] SMTP settings page: host, port, TLS mode, user, password, sender address, and a "send test email" button. (`/security/email`: provider cards and Other server.)
 - [x] **[S]** Store the SMTP password encrypted with data protection. It is never shown back in a page (write-only field).
 - [x] **[X]** Use MailKit (works the same on Windows and Debian) rather than `System.Net.Mail`.
-- [x] Email templates are localised (see 1.5), in plain text and HTML. (Plain text and HTML done, editable at `/security/email/wording`; built in for en, de, es, fr, pt and ru by plan 16a. The per-language editor arrives in plan 16b.)
+- [x] Email templates are localised (see 1.5), in plain text and HTML. (Plain text and HTML done, editable at `/security/email/wording`; built in for en, de, es, fr, pt and ru by plan 16a; plan 16b's language selector edits, previews and test-sends each email in each language, added languages included.)
 - [x] Every feature that needs email is hidden or explains itself when SMTP isn't set up. (`EmailSender.IsReady`; the features in 2.1–2.3 use it.)
 
 ### 1.5 Languages (localisation)
-> Built in plan 16a (`docs/superpowers/plans/2026-11-10-plan16a-languages.md`, design `docs/superpowers/specs/2026-11-10-languages-design.md`): the six built-in languages for resident pages and emails. How it works, and how to correct or add a translation, is in `docs/languages.md`. Plan 16b will add the owner's tone text, the Languages page (languages on and off, the grid default), adding a new language without code, and the wording and legal editors per language.
+> Built in plan 16a (`docs/superpowers/plans/2026-11-10-plan16a-languages.md`, design `docs/superpowers/specs/2026-11-10-languages-design.md`): the six built-in languages for resident pages and emails. How it works, and how to correct or add a translation, is in `docs/languages.md`. Plan 16b (`docs/superpowers/plans/2026-11-11-plan16b-languages-owner.md`) added the owner's side: the Languages page (`/security/languages`: languages on and off, the grid default), page wording per language (`/security/wording`), adding a language on the site or from a JSON file (`/security/languages/<code>`), the email and legal editors per language, and a dashboard line when an added language has new texts to translate.
 - [x] Use ASP.NET Core localisation: `IStringLocalizer` and `IViewLocalizer` with `.resx` files per page or area, plus a shared resource for common words. (16a: `IStringLocalizer<ResidentText>` over one shared .resx per language; no `IViewLocalizer`)
 - [x] Choose the language from a cookie (the language picker in the header), then the browser's `Accept-Language`, then English.
 - [x] Starting languages: **en, de, es, fr, pt, ru** (the ones Wifi had). Use Wifi's `.po` files as a first draft for translators, then remove them. (Drafts were AI-made, not from the .po files; the .po files go with Wifi's removal in Phase 3.)
@@ -70,6 +70,7 @@ Legend: **[S]** security requirement, **[X]** cross-platform note, **[?]** decis
 - [x] A test that fails when a key is missing from any language file, or when a page has a hard-coded English string (a scan of `.cshtml` files).
 - [x] **[X]** Make sure `InvariantGlobalization` is **off** and ICU is present: `libicu72` on Debian 12, `libicu76` on Debian 13. Add it to the `.deb` dependencies and test the culture switch on both. (`install.sh` installs the right ICU per release. 2026-11-11: release.yml run 42944379220 for `fd43ef5` passed the Debian 12 and 13 and Windows smoke runs; on the Debian 12 VM `/guest/sign-in` rendered in all six languages from the `dg-lang` cookie, `Accept-Language: fr-CA` gave French, a junk cookie gave English, `/welcome?lang=ru` gave Russian with `public, max-age=60` and ignored the cookie, the staff `/login` stayed English, and the picker POST set `dg-lang=ru` (303) and refused a POST without a token (400). Signed-in pages, emails and Firestorm are the owner's check.)
 - [x] Contributor notes: how to add a language (copy the `.resx`, translate, add to the supported list).
+- [ ] The owner's check on the VM for plan 16b: turn a language off and see a resident who chose it get the default; add a language, translate a few texts and upload a file; reword the front page in German; write a German Terms translation, change the English source and see the German readers get English with the note; make German the default.
 
 ## Phase 2 — Wifi features, rebuilt
 
@@ -134,7 +135,7 @@ Each item says what Wifi did, how v7 should do it better, and the security rules
 #### 2.5c History for legal requests — moved to "Later" (owner, 2026-11-05)
 
 ### 2.6 Terms of service (Wifi: `termsofservice`, `tos`)
-- [ ] The admin edits a ToS text per language, with a version number.
+- [ ] The admin edits a ToS text per language, with a version number. (Plan 16b: the owner writes the Terms, Privacy and Cookies pages per language at `/security/legal`. The default language is the source and owns the version number; a translation carries the source's version and is shown only while it matches. Versions per language on their own, and the acceptance table below, are still this item's.)
 - [ ] Accepted at sign-up. When the version changes, the next website sign-in asks again.
 - Decided: **grid login is blocked** until the current version is accepted.
   - Wifi never did this. It only recorded acceptance on the web, in a `TOS` column it added to `GridUser`. Core OpenSim has no ToS check in login.

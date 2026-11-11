@@ -42,6 +42,9 @@ public sealed class LanguagesModel(IGridController grid, OwnerLanguages added, L
 
     public IReadOnlyList<Choice> Choices { get; private set; } = [];
 
+    /// <summary>Added languages that are on and miss texts, also said on the dashboard.</summary>
+    public IReadOnlyList<NewTexts> NewTexts { get; private set; } = [];
+
     /// <summary>The language of the legal pages the owner must write first, for the link beside <see cref="Error"/>; null otherwise.</summary>
     public string? LegalLanguage { get; private set; }
 
@@ -207,6 +210,7 @@ public sealed class LanguagesModel(IGridController grid, OwnerLanguages added, L
         Rows = [.. offeredLanguages.All().Select(code => new Row(code, Languages.NativeName(code), offeredLanguages.IsBuiltIn(code),
             current.Contains(code, StringComparer.OrdinalIgnoreCase), string.Equals(code, standard, StringComparison.OrdinalIgnoreCase),
             offeredLanguages.IsBuiltIn(code) ? 0 : catalog.Missing(code), residents.CountUsing(code)))];
+        NewTexts = Resident.NewTexts.Of(offeredLanguages, catalog);
         var have = added.Codes();
         Choices = [.. AddableCultures.Value.Where(c => !have.Contains(c.Code, StringComparer.Ordinal))];
     }

@@ -17,8 +17,12 @@ namespace DreamGrid.Launcher.Pages;
 /// </summary>
 public sealed class IndexModel(IGridController grid, IOnlineUsers online, GridActions actions, LogReader logs, Func<LauncherSettings> settings,
     IEnumerable<IDashboardSwitch> switches, DreamGrid.Launcher.Email.EmailSender email, SignUpBoard board, TimeProvider time,
-    DreamGrid.Launcher.Dashboard.DashboardSnapshot dashboard) : PageModel
+    DreamGrid.Launcher.Dashboard.DashboardSnapshot dashboard, DreamGrid.Launcher.Resident.OfferedLanguages offeredLanguages,
+    DreamGrid.Launcher.Resident.LanguageCatalog catalog) : PageModel
 {
+    /// <summary>For the owner only: added languages that are on and miss texts (plan 16b, Task 7). Empty for other staff.</summary>
+    public IReadOnlyList<DreamGrid.Launcher.Resident.NewTexts> NewTexts { get; private set; } = [];
+
     /// <summary>
     /// Email's warnings (empty where there is no guest side). The owner sees each one and a link to the Email page; other staff
     /// only that email has a problem, with no account details.
@@ -85,6 +89,8 @@ public sealed class IndexModel(IGridController grid, IOnlineUsers online, GridAc
         if (AdminRule.HasStaffPages(settings()))
         {
             EmailWarnings = email.Status().Warnings;
+            if (IsOwner)
+                NewTexts = DreamGrid.Launcher.Resident.NewTexts.Of(offeredLanguages, catalog);
             var shown = board.Shown();
             SignUpsWaiting = shown.Count(e => e.Waiting);
             SignUps = new(SignUpRows.Default(shown).Take(SignUpRows.CardRows).ToList(),
