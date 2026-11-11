@@ -258,7 +258,24 @@ public sealed record LauncherSettings
 
     /// <summary>The owner's own wording for some resident-page texts: language code, then text key, then the text. A missing or null value reads as none.</summary>
     [AllowNull]
-    public IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> Wording { get => _wording; init => _wording = value ?? NoWording; }
+    public IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> Wording { get => _wording; init => _wording = Clean(value); }
+
+    // A hand-edited file may hold a null language or a null/blank text; those read as no wording rather than failing every page.
+    private static IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> Clean(IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? value)
+    {
+        if (value is null)
+            return NoWording;
+        Dictionary<string, IReadOnlyDictionary<string, string>> clean = new(StringComparer.Ordinal);
+        foreach (var (lang, texts) in value)
+        {
+            if (lang is null || texts is null)
+                continue;
+            var kept = texts.Where(t => t.Key is not null && !string.IsNullOrWhiteSpace(t.Value)).ToDictionary(t => t.Key, t => t.Value, StringComparer.Ordinal);
+            if (kept.Count > 0)
+                clean[lang] = kept;
+        }
+        return clean;
+    }
 
     private readonly BotSettings _bots = new();
 

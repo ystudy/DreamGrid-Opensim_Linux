@@ -1,10 +1,14 @@
+using System.Globalization;
 using System.Net;
 using AngleSharp.Html.Dom;
 using AngleSharp.Html.Parser;
 using DreamGrid.Launcher.Core;
 using DreamGrid.Launcher.Resident;
 using DreamGrid.Launcher.Core.Settings;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Localization;
 using Xunit;
 
 namespace DreamGrid.Launcher.Tests;
@@ -143,10 +147,38 @@ public sealed class ToneTextTests
         Assert.DoesNotContain("GEHEIM", page.Body!.TextContent);
     }
 
+    /// <summary>Records the UI culture and what the localiser says while a staff page renders.</summary>
+    private sealed class Capture : IAsyncResultFilter
+    {
+        public string? Culture;
+        public string? Intro;
+
+        public async Task OnResultExecutionAsync(ResultExecutingContext context, ResultExecutionDelegate next)
+        {
+            if (context.HttpContext.Request.Path == "/")
+            {
+                Culture = CultureInfo.CurrentUICulture.Name;
+                Intro = context.HttpContext.RequestServices.GetRequiredService<IStringLocalizer<ResidentText>>()["Home.Intro"].Value;
+            }
+            await next();
+        }
+    }
+
     [Fact]
     public async Task Staff_pages_are_unaffected()
     {
-        await using var f = Factory(Wording("de", "Home.Intro", "Willkommen bei {grid}!"));
+        var capture = new Capture();
+        await using var f = new LauncherFactory(s => s with
+        {
+            GridName = "Avalon",
+            SetupToken = null,
+            Setup = s.Setup with { OwnerCreated = true, Finished = true, Owner = new OwnerInfo("Test", "Owner", TestAuth.OwnerId) },
+            Wording = new Dictionary<string, IReadOnlyDictionary<string, string>> { ["de"] = new Dictionary<string, string> { ["Home.Intro"] = "Willkommen bei {grid}!" } },
+        })
+        {
+            Before = TestAuth.Apply,
+            ExtraServices = sv => sv.Configure<MvcOptions>(o => o.Filters.Add(capture)),
+        };
         TestAuth.AddStaff(f.Robust);
         using var client = f.CreateClient(new() { AllowAutoRedirect = false, HandleCookies = true, BaseAddress = new Uri("http://localhost") });
         using var signIn = await client.GetAsync("/__test/signin?role=owner", Ct);
@@ -155,5 +187,75 @@ public sealed class ToneTextTests
         using var r = await client.SendAsync(req, Ct);
         Assert.Equal(HttpStatusCode.OK, r.StatusCode);
         Assert.DoesNotContain("Willkommen", await r.Content.ReadAsStringAsync(Ct));
+        Assert.NotNull(capture.Culture);
+        Assert.False(capture.Culture.StartsWith("de", StringComparison.OrdinalIgnoreCase), capture.Culture);
+        Assert.DoesNotContain("Willkommen", capture.Intro);
+    }
+
+    private static LauncherSettings WithWording(LauncherSettings s, IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> w) => s with { Wording = w };
+
+    [Fact]
+    public async Task A_null_language_entry_in_the_wording_does_not_break_pages()
+    {
+        await using var f = new LauncherFactory(s => WithWording(s with { GridName = "Avalon", SetupToken = null, Setup = s.Setup with { OwnerCreated = true, Finished = true, Owner = new OwnerInfo("Test", "Owner", TestAuth.OwnerId) } }, new Dictionary<string, IReadOnlyDictionary<string, string>> { ["de"] = null! })) { Before = TestAuth.Apply };
+        Assert.NotEmpty(IntroOf(await PageAsync(f, "/home", "de")));
+    }
+
+    [Fact]
+    public async Task A_null_text_inside_a_language_does_not_break_pages()
+    {
+        await using var f = new LauncherFactory(s => WithWording(s with { GridName = "Avalon", SetupToken = null, Setup = s.Setup with { OwnerCreated = true, Finished = true, Owner = new OwnerInfo("Test", "Owner", TestAuth.OwnerId) } },
+            new Dictionary<string, IReadOnlyDictionary<string, string>> { ["de"] = new Dictionary<string, string> { ["Home.Intro"] = null!, ["SignIn.Intro"] = "Hallo" } })) { Before = TestAuth.Apply };
+        var page = await PageAsync(f, "/home", "de");
+        Assert.NotEmpty(IntroOf(page));
+        Assert.Equal("Hallo", IntroOf(await PageAsync(f, "/guest/sign-in", "de")));
+    }
+
+    [Fact]
+    public void Settings_wording_drops_null_languages_and_blank_texts()
+    {
+        var s = TestSettings.Create() with
+        {
+            Wording = new Dictionary<string, IReadOnlyDictionary<string, string>>
+            {
+                ["de"] = null!,
+                ["fr"] = new Dictionary<string, string> { ["Home.Intro"] = " ", ["SignIn.Intro"] = "Salut" },
+            },
+        };
+        Assert.Equal(["fr"], s.Wording.Keys);
+        Assert.Equal(["SignIn.Intro"], s.Wording["fr"].Keys);
+    }
+
+    [Fact]
+    public void ToFormat_handles_the_grid_twice()
+    {
+        Assert.Equal("Avalon Avalon", string.Format(ToneText.ToFormat("{grid} {grid}"), "Avalon"));
+        Assert.Equal("AvalonAvalon", string.Format(ToneText.ToFormat("{grid}{grid}"), "Avalon"));
+    }
+
+    [Fact]
+    public void ResourceNotFound_is_true_only_when_no_layer_has_the_key()
+    {
+        using var f = Factory(Wording("de", "Home.Intro", "Hallo {grid}"), offered: [.. Languages.BuiltIn, "it"]);
+        f.Services.GetRequiredService<OwnerLanguages>().Save(new OwnerLanguage("it",
+            new Dictionary<string, string> { ["Extra.Only"] = "Solo" }, new Dictionary<string, string>(), default));
+        var t = f.Services.GetRequiredService<IStringLocalizer<ResidentText>>();
+        var saved = CultureInfo.CurrentUICulture;
+        try
+        {
+            CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo("de");
+            Assert.False(t["Home.Intro"].ResourceNotFound);
+            Assert.True(t["No.Such.Key"].ResourceNotFound);
+            Assert.Equal("Hallo Avalon", t["Home.Intro"].Value);
+            CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo("it");
+            Assert.False(t["Extra.Only"].ResourceNotFound);
+            Assert.Equal("Solo", t["Extra.Only"].Value);
+            Assert.True(t["No.Such.Key"].ResourceNotFound);
+            Assert.False(t["Common.SignIn"].ResourceNotFound);
+        }
+        finally
+        {
+            CultureInfo.CurrentUICulture = saved;
+        }
     }
 }

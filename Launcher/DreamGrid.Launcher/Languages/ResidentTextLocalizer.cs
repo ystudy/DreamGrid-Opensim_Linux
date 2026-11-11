@@ -40,7 +40,7 @@ public sealed class ResidentTextLocalizer(IStringLocalizerFactory factory, Func<
         if (Override(lang, name) is { } owner)
             // {grid} is the grid's name even where the page passes no arguments.
             return Made(name, ToneText.ToFormat(owner), arguments.Length == 0 ? [settings().GridName] : arguments, escaped: true);
-        if (lang is not null && added.Get(lang)?.Page.GetValueOrDefault(name) is { } page && !string.IsNullOrWhiteSpace(page))
+        if (AddedPage(lang)?.GetValueOrDefault(name) is { } page && !string.IsNullOrWhiteSpace(page))
             return Made(name, page, arguments, escaped: false);
         return arguments.Length == 0 ? _inner[name] : _inner[name, arguments];
     }
@@ -73,6 +73,19 @@ public sealed class ResidentTextLocalizer(IStringLocalizerFactory factory, Func<
         return null;
     }
 
-    /// <summary>The built-in or added language the current UI culture belongs to ("de-AT" is "de", an added "pt-PT" is itself), or null.</summary>
-    private string? Current() => Languages.Match(CultureInfo.CurrentUICulture.Name, [.. Languages.BuiltIn, .. added.Codes()]);
+    /// <summary>The page text of the owner-added language <paramref name="lang"/>; null for a built-in one, which never asks the store.</summary>
+    private IReadOnlyDictionary<string, string>? AddedPage(string? lang) =>
+        lang is null || Languages.BuiltIn.Contains(lang, StringComparer.Ordinal) ? null : added.Get(lang)?.Page;
+
+    /// <summary>
+    /// The built-in or added language the current UI culture belongs to ("de-AT" is "de", an added "pt-PT" is itself), or null. A plain
+    /// built-in name ("de") is answered without the store; only a regional name can be an added code and asks it.
+    /// </summary>
+    private string? Current()
+    {
+        var name = CultureInfo.CurrentUICulture.Name;
+        if (Languages.BuiltIn.Contains(name, StringComparer.Ordinal))
+            return name;
+        return Languages.Match(name, [.. Languages.BuiltIn, .. added.Codes()]);
+    }
 }
