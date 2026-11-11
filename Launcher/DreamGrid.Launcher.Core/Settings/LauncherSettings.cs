@@ -137,12 +137,15 @@ public sealed record LegalText(string Markdown, int Version, DateTimeOffset Save
 /// <summary>
 /// The operator's own legal pages. <see cref="Texts"/>: language ("en") to page id ("terms", "privacy", "cookies", "contact") to
 /// text; null or empty means none written. DreamGrid ships no wording. <see cref="OperatorResponsible"/> is the operator's tick that they
-/// are responsible for the texts; <see cref="ResponsibleSince"/> is when it was ticked.
+/// are responsible for the texts; <see cref="ResponsibleSince"/> is when it was ticked. <see cref="HighestVersion"/>: page id to the
+/// highest version that page has ever had in any language, kept when records go (a deleted language), so a number is never used
+/// twice; null or a missing page reads as the highest of its records (a file from before plan 16b).
 /// </summary>
 public sealed record LegalSettings(
     IReadOnlyDictionary<string, IReadOnlyDictionary<string, LegalText>>? Texts = null,
     bool OperatorResponsible = false,
-    DateTimeOffset? ResponsibleSince = null);
+    DateTimeOffset? ResponsibleSince = null,
+    IReadOnlyDictionary<string, int>? HighestVersion = null);
 
 /// <summary>
 /// The owner's wording for the grid's emails: language ("en") to template id to text, only where it differs from the default
@@ -178,10 +181,11 @@ public sealed record LanguageSettings
     public IReadOnlyList<string> Offered { get; init; } = Core.Languages.BuiltIn;
     public string Default { get; init; } = Core.Languages.English;
 
-    /// <summary>The offered languages that are known, always including the default; a missing list reads as all of them.</summary>
-    public IReadOnlyList<string> OfferedOrDefault()
+    /// <summary>The offered languages that are built in or among <c>added</c> (the owner's own), always including the default; a missing list reads as all of them.</summary>
+    public IReadOnlyList<string> OfferedOrDefault(IReadOnlyCollection<string>? added = null)
     {
-        var known = (Offered ?? Core.Languages.BuiltIn).Where(Core.Languages.BuiltIn.Contains).Distinct().ToList();
+        added ??= [];
+        var known = (Offered ?? Core.Languages.BuiltIn).Where(c => Core.Languages.BuiltIn.Contains(c) || added.Contains(c)).Distinct().ToList();
         if (!known.Contains(Default))
             known.Add(Default);
         return known;
@@ -260,6 +264,30 @@ public sealed record LauncherSettings
     /// <summary>The languages the web pages are offered in; a missing or null value reads as the defaults.</summary>
     [AllowNull]
     public LanguageSettings Languages { get => _languages; init => _languages = value ?? new(); }
+
+    private static readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> NoWording = new Dictionary<string, IReadOnlyDictionary<string, string>>();
+    private IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> _wording = NoWording;
+
+    /// <summary>The owner's own wording for some resident-page texts: language code, then text key, then the text. A missing or null value reads as none.</summary>
+    [AllowNull]
+    public IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> Wording { get => _wording; init => _wording = Clean(value); }
+
+    // A hand-edited file may hold a null language or a null/blank text; those read as no wording rather than failing every page.
+    private static IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> Clean(IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? value)
+    {
+        if (value is null)
+            return NoWording;
+        Dictionary<string, IReadOnlyDictionary<string, string>> clean = new(StringComparer.Ordinal);
+        foreach (var (lang, texts) in value)
+        {
+            if (lang is null || texts is null)
+                continue;
+            var kept = texts.Where(t => t.Key is not null && !string.IsNullOrWhiteSpace(t.Value)).ToDictionary(t => t.Key, t => t.Value, StringComparer.Ordinal);
+            if (kept.Count > 0)
+                clean[lang] = kept;
+        }
+        return clean;
+    }
 
     private readonly BotSettings _bots = new();
 

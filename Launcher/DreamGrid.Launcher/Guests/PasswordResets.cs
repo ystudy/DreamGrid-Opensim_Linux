@@ -56,7 +56,7 @@ public sealed class PasswordResets(Func<LauncherSettings> settings, IRobustClien
     /// </summary>
     public const string StaffPurpose = "staff-reset-password";
     public static readonly TimeSpan LinkLifetime = TimeSpan.FromMinutes(30);
-    /// <summary>The <c>EmailText</c> key of "30 minutes", read in the email's language by <see cref="EmailTemplates.Words(string, string)"/>.</summary>
+    /// <summary>The <c>EmailText</c> key of "30 minutes", read in the email's language by <see cref="EmailSender.Words"/>.</summary>
     public const string ExpiresIn = "ExpiresIn.30m";
     public const string ResetPath = "/guest/reset-password";
     public const string AskPath = "/guest/forgot-password";
@@ -122,7 +122,7 @@ public sealed class PasswordResets(Func<LauncherSettings> settings, IRobustClien
         var link = $"http://{HostAddress.Effective(s.Hostname)}:{s.WebPort}{ResetPath}?token={token}";
         var full = $"{account.FirstName} {account.LastName}";
         var queued = sender.Queue(EmailTemplates.ResetPassword, language, account.Email.Trim(), full,
-            new Dictionary<string, string> { ["AvatarName"] = full, ["Link"] = link, ["ExpiresIn"] = EmailTemplates.Words(ExpiresIn, language) }, LinkLifetime);
+            new Dictionary<string, string> { ["AvatarName"] = full, ["Link"] = link, ["ExpiresIn"] = sender.Words(ExpiresIn, language) }, LinkLifetime);
         if (queued != QueueResult.Queued)
             log.LogWarning("Password reset: the email for first name {First} couldn't be queued: {Result}", typed.ForLog, queued);
         audit.Write(new AuditEntry(full, account.PrincipalId, AdminRule.RoleOf(s, account).AuditName(), ip?.ToString(),
@@ -148,7 +148,7 @@ public sealed class PasswordResets(Func<LauncherSettings> settings, IRobustClien
         var full = $"{account.FirstName} {account.LastName}";
         var language = emailLanguage.ForResident(account.PrincipalId);
         var queued = sender.Queue(EmailTemplates.StaffResetPassword, language, to, full,
-            new Dictionary<string, string> { ["AvatarName"] = full, ["Link"] = link, ["ExpiresIn"] = EmailTemplates.Words(ExpiresIn, language) }, LinkLifetime);
+            new Dictionary<string, string> { ["AvatarName"] = full, ["Link"] = link, ["ExpiresIn"] = sender.Words(ExpiresIn, language) }, LinkLifetime);
         if (queued == QueueResult.Queued) return StaffResetResult.Sent;
         tokens.Revoke(StaffPurpose, account.PrincipalId);
         return StaffResetResult.EmailOff;

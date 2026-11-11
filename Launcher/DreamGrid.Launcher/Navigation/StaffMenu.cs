@@ -62,6 +62,8 @@ public static class StaffMenu
             Add(groups, new("Guest pages", "/guest-pages", Items(
                 (admin, new("Splash page", "/splash", "/splash")),
                 (owner, new("Legal pages", "/security/legal", "/security/legal")),
+                (owner, new("Page wording", "/security/wording", "/security/wording")),
+                (owner, new("Languages", "/security/languages", "/security/languages")),
                 (owner, new("Sign-up and bots", "/security/bots", "/security/bots")),
                 (owner, new("Email server", "/security/email", "/security/email")),
                 (owner, new("Password reset", "/advanced/password-reset", "/advanced/password-reset")))));

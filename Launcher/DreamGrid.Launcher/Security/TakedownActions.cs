@@ -354,7 +354,7 @@ public sealed class TakedownActions(PeopleActions people, IInventoryStore invent
             ["AvatarName"] = person.FullName,
             ["CaseNumber"] = c.Number,
             ["Items"] = string.Join(", ", items),
-            ["Reason"] = EmailTemplates.Words("Reason." + c.Notice.Reason, language),
+            ["Reason"] = sender.Words("Reason." + c.Notice.Reason, language),
         }) == QueueResult.Queued;
     }
 

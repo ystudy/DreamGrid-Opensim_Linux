@@ -7,11 +7,11 @@ using Microsoft.AspNetCore.Http;
 namespace DreamGrid.Launcher.Email;
 
 /// <summary>
-/// The language an email to a resident goes out in. Always one the grid offers (<see cref="LanguageSettings.OfferedOrDefault"/>),
+/// The language an email to a resident goes out in. Always one the grid offers (<see cref="OfferedLanguages"/>),
 /// otherwise the grid's default: a saved or asked-for language the owner has since taken off the list is not used. Saved values are
 /// never trusted: each goes through <see cref="Languages.Match"/>.
 /// </summary>
-public sealed class EmailLanguage(Func<LauncherSettings> settings, ResidentLanguages saved)
+public sealed class EmailLanguage(OfferedLanguages offeredLanguages, ResidentLanguages saved)
 {
     /// <summary>The grid's default language, for an email with no resident and no page behind it.</summary>
     public string Default() => Pick(null);
@@ -34,8 +34,7 @@ public sealed class EmailLanguage(Func<LauncherSettings> settings, ResidentLangu
 
     private string Pick(string? tag, string? fallback = null)
     {
-        var s = settings().Languages;
-        var offered = OfferedLanguages.Of(s);
-        return Languages.Match(tag, offered) ?? Languages.Match(fallback, offered) ?? OfferedLanguages.DefaultOf(s);
+        var offered = offeredLanguages.Current();
+        return Languages.Match(tag, offered) ?? Languages.Match(fallback, offered) ?? offeredLanguages.Default();
     }
 }

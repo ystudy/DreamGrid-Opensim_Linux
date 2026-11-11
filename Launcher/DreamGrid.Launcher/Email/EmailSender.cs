@@ -40,7 +40,8 @@ public sealed class EmailSender(
     IMailTransport transport,
     Func<LauncherSettings> settings,
     TimeProvider time,
-    ILogger<EmailSender> log)
+    ILogger<EmailSender> log,
+    DreamGrid.Launcher.Core.OwnerLanguages? added = null)
 {
     public static readonly TimeSpan DefaultValidFor = TimeSpan.FromHours(24);
 
@@ -67,7 +68,14 @@ public sealed class EmailSender(
     public bool IsReady => accounts.IsReady;
 
     /// <summary>
-    /// Renders the template in <paramref name="language"/> (the owner's wording in that language, else the built-in wording;
+    /// A fill-in value such as <c>ExpiresIn.24h</c> in <paramref name="language"/>, read from the owner's file for a language they
+    /// added (<see cref="EmailTemplates.Words(string, string, Core.OwnerLanguages?)"/>), English where it has none.
+    /// </summary>
+    public string Words(string key, string language) => EmailTemplates.Words(key, language, added);
+
+    /// <summary>
+    /// Renders the template in <paramref name="language"/> (the owner's wording in that language, else the built-in wording, from
+    /// the owner's file for a language they added and English per text where it has none;
     /// <c>{GridName}</c> filled in from settings) and puts it in the outbox, valid for <paramref name="validFor"/> (24 hours by
     /// default). An email to staff is English whatever the language; pass <see cref="Languages.English"/>.
     /// </summary>
@@ -77,7 +85,7 @@ public sealed class EmailSender(
         var s = settings();
         var all = new Dictionary<string, string>(values);
         all.TryAdd("GridName", s.GridName);
-        var email = EmailTemplates.Render(templateId, EmailTemplates.Current(s, templateId, language), all);
+        var email = EmailTemplates.Render(templateId, EmailTemplates.Current(s, templateId, language, added, log), all);
         var expires = time.GetUtcNow() + (validFor ?? DefaultValidFor);
         if (!outbox.Add(templateId, avatarName, new OutboxMessage(to, email.Subject, email.Text, email.Html), expires))
         {

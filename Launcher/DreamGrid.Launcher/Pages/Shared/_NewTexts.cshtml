@@ -1,0 +1,14 @@
+@model IReadOnlyList<DreamGrid.Launcher.Resident.NewTexts>
+@* Owner only: added languages that are on and miss texts. Residents see those texts in English until they are translated. *@
+@if (Model.Count > 0)
+{
+    <div id="new-texts" class="alert alert-warning" role="status">
+        <ul class="mb-1">
+            @foreach (var n in Model)
+            {
+                <li><a href="/security/languages/@n.Code">@n.Line</a></li>
+            }
+        </ul>
+        <p class="mb-0 form-text">Until they are translated, residents see these texts in English, or for a regional variety such as pt-PT, in its built-in language.</p>
+    </div>
+}

@@ -51,7 +51,7 @@ public sealed class ResidentLanguageFilter(bool welcome) : IAsyncPageFilter, IAs
             var sp = ctx.RequestServices;
             // Asked of the guest cookie itself: pages such as /home and /signup are not under the guest policy, so User is not the guest.
             var guest = welcome ? null : (await ctx.AuthenticateAsync(AuthSchemes.Guest)).Principal;
-            ctx.Items[ItemKey] = LanguagePick.For(ctx, sp.GetRequiredService<Func<LauncherSettings>>()().Languages,
+            ctx.Items[ItemKey] = LanguagePick.For(ctx, sp.GetRequiredService<OfferedLanguages>(),
                 sp.GetRequiredService<ResidentLanguages>(), guest, welcome);
         }
         return Core.Languages.Culture(Current(ctx));

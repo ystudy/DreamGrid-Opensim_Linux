@@ -394,3 +394,8 @@ header .signout { margin: 0; }
 /* Logs: the pickers in one row above the log. */
 .log-pick { display: flex; align-items: center; gap: .5rem; margin: 0; white-space: nowrap; }
 .log-pick .form-select { width: auto; }
+
+/* The owner's own words on a resident page keep their paragraph breaks (plan 16b). */
+.tone-text { white-space: pre-line; }
+/* The English beside a translation box (Languages, translate page): line breaks as in the email. */
+.language-english { white-space: pre-line; }

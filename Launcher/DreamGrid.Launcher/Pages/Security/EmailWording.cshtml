@@ -6,9 +6,23 @@
 <h1>Email wording</h1>
 <p>The words the grid's emails use. Each one starts with wording that works as it is. Fill-in words in curly brackets are
     replaced when the email is sent. You can use simple formatting: <code>*italic*</code>, <code>**bold**</code> and lists.</p>
-<p id="wording-language-note" class="alert alert-info">This wording is used for emails in English. Residents who read another
-    language get GridGate's built-in wording in their language until you can write your own in it (coming in a later update).</p>
 <p><a href="/security/email">Back to Email</a></p>
+<nav id="wording-languages" aria-label="Language" class="mb-3">
+    <ul class="nav nav-pills flex-wrap">
+        @foreach (var code in Model.Choices)
+        {
+            var current = code == Model.Language;
+            <li class="nav-item">
+                <a class="nav-link @(current ? "active" : "")" href="/security/email/wording?lang=@code" aria-current="@(current ? "page" : null)">@DreamGrid.Launcher.Core.Languages.NativeName(code)</a>
+            </li>
+        }
+    </ul>
+</nav>
+<p id="wording-language-note" class="alert alert-info">This wording is used for emails in @DreamGrid.Launcher.Core.Languages.NativeName(Model.Language).</p>
+@if (!Model.IsEnglish)
+{
+    <p id="staff-emails-note" class="form-text">Emails to staff are always in English. Change them under English.</p>
+}
 @if (Model.Notice is not null)
 {
     <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
@@ -18,10 +32,6 @@
 {
     <section id="tpl-@t.Id" class="card card-body mt-3">
         <h2 class="h4">@t.Title@(t.IsDefault ? "" : " (changed)")</h2>
-        @if (!t.IsDefault)
-        {
-            <p class="other-languages-warning alert alert-warning py-1 px-2 small">Residents reading other languages won't see these changes.</p>
-        }
         @if (t.Error is not null)
         {
             <div class="error alert alert-danger" role="alert">@t.Error</div>
@@ -32,7 +42,7 @@
         }
         <p class="hint form-text mb-1">Fill-in words:
             @string.Join(", ", t.Words.Select(w => t.Required.Contains(w) ? w + " (needed)" : w))</p>
-        <form method="post" action="/security/email/wording?handler=Save" asp-antiforgery="true">
+        <form method="post" action="/security/email/wording?handler=Save&amp;lang=@Model.Language" asp-antiforgery="true">
             <input type="hidden" name="id" value="@t.Id">
             <label class="form-label" for="subj-@t.Id">Subject</label>
             <input class="form-control" id="subj-@t.Id" name="Subject" value="@t.Subject" autocomplete="off">
@@ -42,11 +52,11 @@
             <input class="form-control" id="to-@t.Id" name="TestTo" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Your own email">
             <div class="d-flex flex-wrap gap-2 mt-3">
                 <button type="submit" class="btn btn-primary">Save</button>
-                <button type="submit" class="btn btn-outline-secondary" formaction="/security/email/wording?handler=Preview">Preview</button>
-                <button type="submit" class="btn btn-outline-secondary" formaction="/security/email/wording?handler=Test">Send test</button>
+                <button type="submit" class="btn btn-outline-secondary" formaction="/security/email/wording?handler=Preview&amp;lang=@Model.Language">Preview</button>
+                <button type="submit" class="btn btn-outline-secondary" formaction="/security/email/wording?handler=Test&amp;lang=@Model.Language">Send test</button>
                 @if (!t.IsDefault)
                 {
-                    <button type="submit" class="btn btn-outline-danger" formaction="/security/email/wording?handler=Reset">Reset to default</button>
+                    <button type="submit" class="btn btn-outline-danger" formaction="/security/email/wording?handler=Reset&amp;lang=@Model.Language">Reset to default</button>
                 }
             </div>
         </form>

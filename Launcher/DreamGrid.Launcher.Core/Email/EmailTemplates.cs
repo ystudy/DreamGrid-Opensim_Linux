@@ -3,6 +3,7 @@ using System.Net;
 using System.Resources;
 using DreamGrid.Launcher.Core.Guests;
 using DreamGrid.Launcher.Core.Settings;
+using Microsoft.Extensions.Logging;
 
 namespace DreamGrid.Launcher.Core.Email;
 
@@ -43,9 +44,6 @@ public static class EmailTemplates
     public const string TicketStaffReply = "ticket-staff-reply";
     public const string TicketNew = "ticket-new";
     public const string TicketReplyGuest = "ticket-reply-guest";
-
-    /// <summary>The language the wording page edits; the owner's wording in other languages arrives with plan 16b.</summary>
-    public const string DefaultLanguage = LegalPages.DefaultLanguage;
 
     private static readonly ResourceManager Text = new("DreamGrid.Launcher.Core.Resources.EmailText", typeof(EmailText).Assembly);
 
@@ -116,11 +114,27 @@ public static class EmailTemplates
     /// The built-in wording in <paramref name="language"/>: an email to a resident reads <c>EmailText</c> (a missing word or language
     /// falls back to English); an email to staff is English whatever the language.
     /// </summary>
-    public static EmailTemplateText Default(string id, string language)
+    public static EmailTemplateText Default(string id, string language) => Default(id, language, null);
+
+    /// <summary>
+    /// Like <see cref="Default(string, string)"/>, and for a language the owner added (<paramref name="added"/>, not built in) the
+    /// subject and body come from its file, each one in English where the file has no text for it. When what that gives leaves out a
+    /// needed fill-in word (a hand-edited file without <c>{Link}</c>, say), the built-in wording is used instead and
+    /// <paramref name="log"/> gets a warning naming the language and the email, never the text.
+    /// </summary>
+    public static EmailTemplateText Default(string id, string language, OwnerLanguages? added, ILogger? log = null)
     {
         var t = Get(id);
         if (IsStaffEmail(id)) return new(t.Subject, t.Body, Shipped);
         var culture = CultureFor(language);
+        if (Added(language, added) is { } file)
+        {
+            var subject = Lookup(id + ".Subject", culture, file);
+            var body = Lookup(id + ".Body", culture, file);
+            if (MissingWords(id, subject, body).Count == 0)
+                return new(subject, body, Shipped);
+            log?.LogWarning("The {Language} wording of email {Template} leaves out a needed fill-in word; the built-in wording is used", language, id);
+        }
         return new(Resource(id + ".Subject", culture), Resource(id + ".Body", culture), Shipped);
     }
 
@@ -128,24 +142,65 @@ public static class EmailTemplates
     /// A fill-in value in <paramref name="language"/>: <c>ExpiresIn.30m</c>, <c>ExpiresIn.24h</c> or <c>Reason.Copyright</c>,
     /// <c>Reason.Illegal</c>, <c>Reason.Rules</c>, <c>Reason.Other</c>.
     /// </summary>
-    public static string Words(string key, string language) =>
-        Text.GetString(key, CultureFor(language)) ?? throw new ArgumentException($"No email word \"{key}\".", nameof(key));
+    public static string Words(string key, string language) => Words(key, language, null);
+
+    /// <summary>Like <see cref="Words(string, string)"/>, and for a language the owner added the value comes from its file, in English where it has none.</summary>
+    public static string Words(string key, string language, OwnerLanguages? added)
+    {
+        _ = Text.GetString(key, CultureInfo.InvariantCulture) ?? throw new ArgumentException($"No email word \"{key}\".", nameof(key));
+        return Lookup(key, CultureFor(language), Added(language, added));
+    }
 
     /// <summary>
     /// The wording an email goes out with in <paramref name="language"/>: the owner's wording in that language, else the built-in
     /// wording in that language (English where it has none). The owner's wording in another language is never used.
     /// </summary>
-    public static EmailTemplateText Current(LauncherSettings s, string id, string language)
+    public static EmailTemplateText Current(LauncherSettings s, string id, string language) => Current(s, id, language, null);
+
+    /// <summary>Like <see cref="Current(LauncherSettings, string, string)"/>, with the built-in wording of a language the owner added read from its file (<see cref="Default(string, string, OwnerLanguages?)"/>).</summary>
+    public static EmailTemplateText Current(LauncherSettings s, string id, string language, OwnerLanguages? added, ILogger? log = null)
     {
         if (IsStaffEmail(id)) language = Languages.English;
         return s.Email.Templates is { } all && all.TryGetValue(language, out var texts) && texts.TryGetValue(id, out var t)
             ? t
-            : Default(id, language);
+            : Default(id, language, added, log);
     }
+
+    /// <summary>
+    /// Every key of the resident emails' wording, in order: <c>&lt;id&gt;.Subject</c> and <c>&lt;id&gt;.Body</c> for each email to a
+    /// resident, then <c>ExpiresIn.*</c> and <c>Reason.*</c> (what an owner-added language has to translate). Read once from the
+    /// English resource; never a staff email.
+    /// </summary>
+    public static IReadOnlyList<string> ResidentTextKeys() => ResidentKeys.Value;
+
+    /// <summary>The English wording of <paramref name="key"/> (one of <see cref="ResidentTextKeys"/>).</summary>
+    public static string EnglishText(string key) =>
+        Text.GetString(key, CultureInfo.InvariantCulture) ?? throw new ArgumentException($"No email word \"{key}\".", nameof(key));
+
+    private static readonly Lazy<IReadOnlyList<string>> ResidentKeys = new(() =>
+    {
+        var set = Text.GetResourceSet(CultureInfo.InvariantCulture, createIfNotExists: true, tryParents: false);
+        List<string> keys = [];
+        if (set is not null)
+            foreach (System.Collections.DictionaryEntry e in set)
+                if (e.Key is string k && e.Value is string && (k.StartsWith("ExpiresIn.", StringComparison.Ordinal)
+                    || k.StartsWith("Reason.", StringComparison.Ordinal) || !IsStaffEmail(k[..Math.Max(k.LastIndexOf('.'), 0)])))
+                    keys.Add(k);
+        keys.Sort(StringComparer.Ordinal);
+        return keys;
+    });
 
     /// <summary>A text of <c>EmailText</c> in <paramref name="culture"/>; a key it lacks is a bug, never an empty email.</summary>
     internal static string Resource(string key, CultureInfo culture) =>
         Text.GetString(key, culture) ?? throw new InvalidOperationException($"EmailText has no \"{key}\".");
+
+    /// <summary>The email texts of <paramref name="language"/> when the owner added it (never for a built-in language), else null.</summary>
+    private static IReadOnlyDictionary<string, string>? Added(string language, OwnerLanguages? added) =>
+        added is null || Languages.BuiltIn.Contains(language, StringComparer.OrdinalIgnoreCase) ? null : added.Get(language)?.Email;
+
+    /// <summary>The text of <paramref name="key"/>: the added language's file when it has a non-blank value, else <c>EmailText</c> in <paramref name="culture"/>.</summary>
+    private static string Lookup(string key, CultureInfo culture, IReadOnlyDictionary<string, string>? file) =>
+        file is not null && file.TryGetValue(key, out var v) && !string.IsNullOrWhiteSpace(v) ? v : Resource(key, culture);
 
     private static CultureInfo CultureFor(string language) =>
         Languages.HasCulture(language) ? Languages.Culture(language) : Languages.Culture(Languages.English);

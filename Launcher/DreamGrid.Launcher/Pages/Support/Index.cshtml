@@ -6,7 +6,7 @@
 @{
     ViewData["Title"] = T["Support.Title"].Value;
 }
-<h1>@T["Support.Title"]</h1>
+<h1 class="tone-text">@T["Support.Title"]</h1>
 @if (Model.CheckEmail)
 {
     <div id="support-reply" class="alert alert-success" role="status">@T["Support.CheckEmail"]</div>
@@ -14,7 +14,7 @@
 }
 else
 {
-    <p>@T["Support.Intro"]</p>
+    <p class="tone-text">@T["Support.Intro"]</p>
     @if (Model.Mine.Count > 0)
     {
         <section id="my-tickets" class="panel mb-3">

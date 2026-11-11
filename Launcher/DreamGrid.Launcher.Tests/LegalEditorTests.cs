@@ -4,6 +4,7 @@ using AngleSharp.Html.Parser;
 using DreamGrid.Launcher.Core.Guests;
 using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Guests;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace DreamGrid.Launcher.Tests;
@@ -211,7 +212,7 @@ public sealed class LegalEditorTests
         using var clear = await SaveAsync(owner, "terms", "");
         using var clearAgain = await SaveAsync(owner, "terms", "  ");
         Assert.Null(Stored(f, "terms"));
-        Assert.Equal(2, f.Store.LoadOrCreate().Legal.Texts![LegalPages.DefaultLanguage]["terms"].Version); // kept as an empty record
+        Assert.Equal(2, f.Store.LoadOrCreate().Legal.Texts!["en"]["terms"].Version); // kept as an empty record
         Assert.Single(LegalEntries(f), e => e.GetProperty("target").GetString() == "terms cleared"); // the second clear changed nothing
 
         using var again = await SaveAsync(owner, "terms", "Test terms three.");
@@ -356,6 +357,190 @@ public sealed class LegalEditorTests
         Assert.Equal("Sign-ups can be opened", Gate(await owner.GetStringAsync("/security/legal", Ct)));
     }
 
+    // ---- per language: the default language is the source, a translation carries the source's version ----
+
+    private static LegalText? Exact(LauncherFactory f, string language, string page) =>
+        LegalPages.Exact(f.Store.LoadOrCreate(), page, language);
+
+    [Fact]
+    public async Task A_save_for_a_language_that_is_gone_never_writes_the_source()
+    {
+        // The owner had ?lang=it open and deleted Italian in another tab: the save must not overwrite the default's Terms.
+        await using var f = Factory();
+        var owner = await SignedInAsync(f);
+        using var one = await SaveAsync(owner, "terms", "Test terms one.");
+        using var it = await PostAsync(owner, "Save&lang=it", new() { ["Texts[terms]"] = "Termini di prova." }, "/security/legal");
+        Assert.Equal(HttpStatusCode.NotFound, it.StatusCode);
+        Assert.Equal(("Test terms one.", 1), (Exact(f, "en", "terms")!.Markdown, Exact(f, "en", "terms")!.Version));
+        Assert.Null(Exact(f, "it", "terms"));
+    }
+
+    [Fact]
+    public async Task Saving_a_translation_stamps_the_source_version()
+    {
+        await using var f = Factory();
+        var owner = await SignedInAsync(f);
+        using var one = await SaveAsync(owner, "terms", "Test terms one.");
+        using var two = await SaveAsync(owner, "terms", "Test terms two.");
+        using var three = await SaveAsync(owner, "terms", "Test terms three.");
+
+        using var de = await PostAsync(owner, "Save&lang=de", new() { ["Texts[terms]"] = "Test Bedingungen drei." }, "/security/legal?lang=de");
+
+        Assert.Equal(HttpStatusCode.Redirect, de.StatusCode);
+        Assert.Equal("/security/legal?lang=de", de.Headers.Location?.OriginalString);
+        Assert.Equal(("Test Bedingungen drei.", 3), (Exact(f, "de", "terms")!.Markdown, Exact(f, "de", "terms")!.Version));
+        Assert.Equal(3, Exact(f, "en", "terms")!.Version); // the source is not bumped
+        Assert.Equal("de terms v3", LegalEntries(f).Last().GetProperty("target").GetString());
+        // A German reader now reads German.
+        using var req = new HttpRequestMessage(HttpMethod.Get, "/terms");
+        req.Headers.Add("Cookie", "dg-lang=de");
+        using var r = await owner.SendAsync(req, Ct);
+        Assert.Contains("Test Bedingungen drei.", await r.Content.ReadAsStringAsync(Ct));
+
+        // Saving the source bumps it as before; the German page is then out of date and says so in the editor.
+        using var four = await SaveAsync(owner, "terms", "Test terms four.");
+        Assert.Equal(4, Exact(f, "en", "terms")!.Version);
+        Assert.Equal(3, Exact(f, "de", "terms")!.Version);
+        var editor = new HtmlParser().ParseDocument(await owner.GetStringAsync("/security/legal?lang=de", Ct));
+        Assert.Contains("Test Bedingungen drei.", editor.QuerySelector("#text-terms")!.TextContent);
+        Assert.NotNull(editor.QuerySelector("label[for=text-terms] .out-of-date"));
+        Assert.Null(editor.QuerySelector("#SmallFix")); // a translation always takes the source's number
+        Assert.NotNull(editor.QuerySelector("#matches-terms"));
+        Assert.False(editor.QuerySelector("#matches-terms")!.HasAttribute("checked"));
+        Assert.Null(editor.QuerySelector("#matches-privacy")); // only on a page that is out of date
+        // Saving the same German text again leaves it out of date: nothing was translated.
+        using var again = await PostAsync(owner, "Save&lang=de", new() { ["Texts[terms]"] = "Test Bedingungen drei." }, "/security/legal?lang=de");
+        Assert.Equal(3, Exact(f, "de", "terms")!.Version);
+        // Ticking that it still matches brings it up to date.
+        using var matches = await PostAsync(owner, "Save&lang=de",
+            new() { ["Texts[terms]"] = "Test Bedingungen drei.", ["Matches[terms]"] = "true" }, "/security/legal?lang=de");
+        Assert.Equal(4, Exact(f, "de", "terms")!.Version);
+        Assert.Equal("de terms v4", LegalEntries(f).Last().GetProperty("target").GetString());
+        editor = new HtmlParser().ParseDocument(await owner.GetStringAsync("/security/legal?lang=de", Ct));
+        Assert.Null(editor.QuerySelector("label[for=text-terms] .out-of-date"));
+        Assert.Null(editor.QuerySelector("#matches-terms"));
+    }
+
+    private static readonly DateTimeOffset Old = new(2026, 10, 1, 9, 0, 0, TimeSpan.Zero);
+
+    /// <summary>Puts these legal records in the settings (an empty text is a cleared record) with the given default.</summary>
+    private static void SetLegal(LauncherFactory f, string @default, params (string Language, string Page, string Text, int Version)[] texts) =>
+        f.Store.Save(f.Store.LoadOrCreate() is var s ? s with
+        {
+            Languages = s.Languages with { Default = @default },
+            Legal = s.Legal with
+            {
+                Texts = texts.GroupBy(t => t.Language).ToDictionary(g => g.Key,
+                    g => (IReadOnlyDictionary<string, LegalText>)g.ToDictionary(t => t.Page, t => new LegalText(t.Text, t.Version, Old))),
+            },
+        } : null!);
+
+    private static DreamGrid.Launcher.Guests.TermsAcceptances Acceptances(LauncherFactory f) =>
+        f.Services.GetRequiredService<DreamGrid.Launcher.Guests.TermsAcceptances>();
+
+    /// <summary>Whether the test guest gets into their pages, or is sent to the Terms first.</summary>
+    private static async Task<bool> GuestWavedThroughAsync(LauncherFactory f)
+    {
+        var guest = f.CreateClient(new() { AllowAutoRedirect = false });
+        (await guest.GetAsync("/__test/guest-signin", Ct)).Dispose();
+        using var home = await guest.GetAsync("/guest", Ct);
+        return home.StatusCode == HttpStatusCode.OK;
+    }
+
+    private static int GateVersion(LauncherFactory f) =>
+        LegalPages.Get(f.Store.LoadOrCreate(), LegalPages.Terms, f.Store.LoadOrCreate().Languages.Default)!.Version;
+
+    [Fact]
+    public async Task Path_A_the_first_text_of_a_new_default_numbers_past_the_English_stand_in()
+    {
+        // German became the default with no pages, so English Terms v5 stands in. Writing the German Terms must not start again at 1.
+        await using var f = Factory();
+        SetLegal(f, "de", ("en", "terms", "Test terms five.", 5));
+        Acceptances(f).Accept(TestAuth.GuestId, 1, "203.0.113.9");
+        Assert.Equal(5, GateVersion(f));
+        var owner = await SignedInAsync(f);
+
+        using var r = await PostAsync(owner, "Save", new() { ["Texts[terms]"] = "Test Bedingungen." });
+
+        Assert.Equal("/security/legal", r.Headers.Location?.OriginalString);
+        Assert.Equal(6, Exact(f, "de", "terms")!.Version);
+        Assert.Equal(6, GateVersion(f));
+        Assert.False(await GuestWavedThroughAsync(f)); // accepted v1, which is not the current Terms
+        Acceptances(f).Accept(TestAuth.GuestId, 5, "203.0.113.9");
+        Assert.False(await GuestWavedThroughAsync(f)); // nor is v5
+    }
+
+    [Fact]
+    public async Task Path_C_a_cleared_default_never_lets_a_stale_English_translation_stand_in()
+    {
+        await using var f = Factory();
+        SetLegal(f, "de", ("de", "terms", "Test Bedingungen sechs.", 6), ("en", "terms", "Test terms three.", 3));
+        Acceptances(f).Accept(TestAuth.GuestId, 3, "203.0.113.9");
+        Assert.Equal(6, GateVersion(f));
+        var owner = await SignedInAsync(f);
+
+        using var clear = await SaveAsync(owner, "terms", "");
+
+        var s = f.Store.LoadOrCreate();
+        Assert.Null(LegalPages.Get(s, "terms", "en")); // no Terms at all, not the old English v3
+        Assert.Null(LegalPages.Get(s, "terms", "de"));
+        Assert.Contains("terms", LegalPages.Missing(s));
+        using var again = await SaveAsync(owner, "terms", "Test Bedingungen sieben.");
+        Assert.Equal(7, GateVersion(f));
+        Assert.False(await GuestWavedThroughAsync(f)); // accepted v3
+    }
+
+    [Fact]
+    public async Task Fixing_one_page_of_a_translation_leaves_the_others_out_of_date()
+    {
+        await using var f = Factory();
+        SetLegal(f, "de", ("de", "terms", "Test Bedingungen.", 2), ("de", "cookies", "Test Cookies de.", 2),
+            ("en", "terms", "Test terms.\nSecond line.", 1), ("en", "cookies", "Test cookies.", 1));
+        var owner = await SignedInAsync(f);
+
+        using var r = await PostAsync(owner, "Save&lang=en",
+            new() { ["Texts[terms]"] = "Test terms.\r\nSecond line.", ["Texts[cookies]"] = "Test cookies, fixed." }, "/security/legal?lang=en");
+
+        Assert.Equal(2, Exact(f, "en", "cookies")!.Version);
+        Assert.Equal(1, Exact(f, "en", "terms")!.Version);
+        var editor = new HtmlParser().ParseDocument(await owner.GetStringAsync("/security/legal?lang=en", Ct));
+        Assert.NotNull(editor.QuerySelector("label[for=text-terms] .out-of-date"));
+        Assert.Null(editor.QuerySelector("label[for=text-cookies] .out-of-date"));
+    }
+
+    [Fact]
+    public async Task A_page_the_source_lacks_cannot_be_translated()
+    {
+        await using var f = Factory();
+        var owner = await SignedInAsync(f);
+
+        using var de = await PostAsync(owner, "Save&lang=de", new() { ["Texts[privacy]"] = "Test Datenschutz." }, "/security/legal?lang=de");
+
+        Assert.Equal(HttpStatusCode.OK, de.StatusCode);
+        Assert.Contains("Write Privacy in English first, then translate it.", TextOf(await de.Content.ReadAsStringAsync(Ct)));
+        Assert.Null(Exact(f, "de", "privacy"));
+    }
+
+    [Fact]
+    public async Task The_editor_offers_each_language_and_names_the_source()
+    {
+        await using var f = Factory();
+        f.Services.GetRequiredService<DreamGrid.Launcher.Core.OwnerLanguages>()
+            .Save(new DreamGrid.Launcher.Core.OwnerLanguage("it", new Dictionary<string, string>(), new Dictionary<string, string>(), DateTimeOffset.UtcNow));
+        var owner = await SignedInAsync(f);
+
+        var page = new HtmlParser().ParseDocument(await owner.GetStringAsync("/security/legal", Ct));
+
+        var links = page.QuerySelectorAll("#legal-languages a").ToList();
+        Assert.Equal(["/security/legal?lang=en", "/security/legal?lang=de", "/security/legal?lang=es", "/security/legal?lang=fr",
+            "/security/legal?lang=pt", "/security/legal?lang=ru", "/security/legal?lang=it"], links.Select(a => a.GetAttribute("href")));
+        Assert.Contains("English (the source)", links[0].TextContent);
+        Assert.Equal("page", links[0].GetAttribute("aria-current"));
+        // An unknown language shows the source.
+        var odd = new HtmlParser().ParseDocument(await owner.GetStringAsync("/security/legal?lang=../x", Ct));
+        Assert.Equal("page", odd.QuerySelector("#legal-languages a[href='/security/legal?lang=en']")!.GetAttribute("aria-current"));
+    }
+
     [Fact]
     public async Task The_facts_are_listed_beside_the_editor()
     {
@@ -429,5 +614,37 @@ public sealed class LegalEditorTests
 
         Assert.Equal("/security/legal", hub.QuerySelector("main a[href='/security/legal']")!.GetAttribute("href"));
         Assert.Contains("Guests and the public pages are reachable from any address; this list covers the staff pages.", security.Body!.TextContent);
+    }
+
+    [Fact]
+    public async Task English_standing_in_never_opens_sign_up_through_the_pages()
+    {
+        // English pages written and ticked; the owner unticks, makes German the default (no German pages), and ticks again.
+        await using var f = Factory();
+        var owner = await SignedInAsync(f);
+        using (var r = await PostAsync(owner, "Save", new() { ["Texts[terms]"] = "Test terms.", ["Texts[privacy]"] = "Test privacy.", ["Texts[cookies]"] = "Test cookies." }))
+            Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
+        (await PostAsync(owner, "Responsibility", new() { ["Responsible"] = "true" })).Dispose();
+        Assert.True(LegalPages.SignUpGateOpen(f.Store.LoadOrCreate()));
+
+        (await PostAsync(owner, "Responsibility", [])).Dispose();
+        var page = new HtmlParser().ParseDocument(await owner.GetStringAsync("/security/languages", Ct));
+        var token = page.QuerySelector("input[name=__RequestVerificationToken]")!.GetAttribute("value")!;
+        List<KeyValuePair<string, string>> form = [new("__RequestVerificationToken", token), new("default", "de"),
+            .. DreamGrid.Launcher.Core.Languages.BuiltIn.Select(c => new KeyValuePair<string, string>("offered", c))];
+        using (var r = await owner.PostAsync("/security/languages?handler=Choose", new FormUrlEncodedContent(form), Ct))
+            Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
+        Assert.Equal("de", f.Store.LoadOrCreate().Languages.Default);
+        (await PostAsync(owner, "Responsibility", new() { ["Responsible"] = "true" })).Dispose();
+
+        var s = f.Store.LoadOrCreate();
+        Assert.True(s.Legal.OperatorResponsible);
+        Assert.False(LegalPages.SignUpGateOpen(s));
+        Assert.Equal(1, LegalPages.Get(s, "terms", "de")!.Version); // still shown and accepted in English
+        using (var r = await PostAsync(owner, "SignUp", new() { ["SignUpOpen"] = "true" }))
+            Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
+        Assert.False(SignUpRules.IsOpen(f.Store.LoadOrCreate()));
+        Assert.StartsWith("Before sign-ups can be opened: Terms, Privacy, Cookies",
+            new HtmlParser().ParseDocument(await owner.GetStringAsync("/security/legal", Ct)).QuerySelector("#gate-state")!.TextContent.Trim());
     }
 }

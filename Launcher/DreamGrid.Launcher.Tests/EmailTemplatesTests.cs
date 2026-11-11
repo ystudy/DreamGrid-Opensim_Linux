@@ -257,4 +257,78 @@ public sealed class EmailTemplatesTests
         Assert.Contains("24 hours", mail.Text);
         Assert.Contains("Ann Smith", mail.Text);
     }
+
+    // ---- a language the owner added: its file's email texts, English per key where it has none ----
+
+    private static OwnerLanguages Italian(Dictionary<string, string> email)
+    {
+        var store = new OwnerLanguages(Path.Combine(Path.GetTempPath(), "dg-email-langs-" + Guid.NewGuid().ToString("N")), TimeProvider.System);
+        store.Save(new OwnerLanguage("it", new Dictionary<string, string>(), email, Saved));
+        return store;
+    }
+
+    [Fact]
+    public void Email_in_an_added_language_uses_its_file_then_English_per_key()
+    {
+        var store = Italian(new()
+        {
+            ["confirm-email.Subject"] = "Conferma la tua email su {GridName}",
+            ["confirm-email.Body"] = "  ", // blank reads as missing
+            ["ExpiresIn.24h"] = "24 ore",
+        });
+        var english = EmailTemplates.Default("confirm-email", "en");
+
+        var it = EmailTemplates.Default("confirm-email", "it", store);
+        Assert.Equal("Conferma la tua email su {GridName}", it.Subject);
+        Assert.Equal(english.Body, it.Body);
+        Assert.Equal("24 ore", EmailTemplates.Words("ExpiresIn.24h", "it", store));
+        Assert.Equal("30 minutes", EmailTemplates.Words("ExpiresIn.30m", "it", store));
+        Assert.Equal(EmailTemplates.Words("Reason.Copyright", "en"), EmailTemplates.Words("Reason.Copyright", "it", store));
+
+        // Current reads the same, an owner override in Italian wins, and a staff email stays English.
+        var s = TestSettings.Create();
+        Assert.Equal(it, EmailTemplates.Current(s, "confirm-email", "it", store));
+        var mine = new EmailTemplateText("Mia", "Mia {Link} {ExpiresIn}", Saved);
+        Assert.Equal(mine, EmailTemplates.Current(WithWording("it", "confirm-email", mine), "confirm-email", "it", store));
+        Assert.Equal(EmailTemplates.Default("ticket-new"), EmailTemplates.Current(s, "ticket-new", "it", store));
+
+        // Without the store, or for a built-in language, the file is not read.
+        Assert.Equal(english, EmailTemplates.Default("confirm-email", "it"));
+        Assert.Equal(EmailTemplates.Default("confirm-email", "de"), EmailTemplates.Default("confirm-email", "de", store));
+        Assert.Equal("24 hours", EmailTemplates.Words("ExpiresIn.24h", "it"));
+    }
+
+    /// <summary>A logger that keeps what it is told.</summary>
+    private sealed class ListLogger : Microsoft.Extensions.Logging.ILogger
+    {
+        public List<(Microsoft.Extensions.Logging.LogLevel Level, string Message)> Lines { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state,
+            Exception? exception, Func<TState, Exception?, string> formatter) => Lines.Add((logLevel, formatter(state, exception)));
+    }
+
+    [Fact]
+    public void Added_language_text_without_a_needed_word_falls_back_to_the_built_in_wording()
+    {
+        // A hand-edited it.json whose confirm-email lost {Link}: the email must not go out without it.
+        var store = Italian(new()
+        {
+            ["confirm-email.Subject"] = "Conferma su {GridName}",
+            ["confirm-email.Body"] = "Ciao {AvatarName}, entro {ExpiresIn}. SEGRETO",
+        });
+        var log = new ListLogger();
+
+        var it = EmailTemplates.Default("confirm-email", "it", store, log);
+
+        Assert.Equal(EmailTemplates.Default("confirm-email", "en"), it);
+        Assert.Empty(EmailTemplates.MissingWords("confirm-email", it.Subject, it.Body));
+        var line = Assert.Single(log.Lines);
+        Assert.Equal(Microsoft.Extensions.Logging.LogLevel.Warning, line.Level);
+        Assert.Contains("it", line.Message);
+        Assert.Contains("confirm-email", line.Message);
+        Assert.DoesNotContain("SEGRETO", line.Message);
+        Assert.DoesNotContain("Conferma", line.Message);
+        Assert.Equal(EmailTemplates.Default("confirm-email", "en"), EmailTemplates.Current(TestSettings.Create(), "confirm-email", "it", store, log));
+    }
 }

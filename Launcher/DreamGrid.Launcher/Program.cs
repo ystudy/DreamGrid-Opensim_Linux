@@ -168,6 +168,10 @@ builder.Services.AddAuthorizationBuilder()
     .AddPolicy(AuthSchemes.GuestPolicy, p => p.AddAuthenticationSchemes(AuthSchemes.Guest).RequireRole(AuthSchemes.GuestRole))
     .SetFallbackPolicy(new AuthorizationPolicyBuilder().AddAuthenticationSchemes(AuthSchemes.Admin).RequireRole(AuthSchemes.AdminRole).Build());
 builder.Services.AddLocalization(o => o.ResourcesPath = "Resources");
+// Registered after AddLocalization so the closed generic wins over the framework's open one: the owner's tone text and added languages come first (plan 16b).
+builder.Services.AddSingleton<Microsoft.Extensions.Localization.IStringLocalizer<ResidentText>>(sp => new DreamGrid.Launcher.Resident.ResidentTextLocalizer(
+    sp.GetRequiredService<Microsoft.Extensions.Localization.IStringLocalizerFactory>(), sp.GetRequiredService<Func<LauncherSettings>>(),
+    sp.GetRequiredService<DreamGrid.Launcher.Core.OwnerLanguages>()));
 builder.Services.AddRazorPages(o =>
 {
     // Every page needs the admin role except these; the setup pages are guarded by SetupGate. A person's own pages under
@@ -216,7 +220,7 @@ builder.Services.AddRazorPages(o =>
     o.Conventions.AddPageApplicationModelConvention("/People/SignUps", m => m.Filters.Add(new GuestSideOnly()));
     o.Conventions.AddPageApplicationModelConvention("/People/Deny", m => m.Filters.Add(new GuestSideOnly()));
     // The same for the Email pages: email is for the guest side's sign-up and password reset.
-    foreach (var emailPage in new[] { "/Security/Email", "/Security/EmailWording" })
+    foreach (var emailPage in new[] { "/Security/Email", "/Security/EmailWording", "/Security/Wording", "/Security/Languages", "/Security/Translate" })
         o.Conventions.AddPageApplicationModelConvention(emailPage, m => m.Filters.Add(new GuestSideOnly()));
     foreach (var open in new[] { "/Login", "/Login/Code", "/Logout", "/Welcome", "/Waiting", "/SetupDone", "/Setup", "/Home", "/Legal", "/SignUp", "/Guest/SignIn", "/Guest/SignInCode", "/Guest/ForgotPassword", "/Guest/ResetPassword", "/Guest/Confirm", "/Guest/ConfirmEmail", "/Guest/Connect", "/Language" })
         o.Conventions.AllowAnonymousToPage(open);
@@ -322,6 +326,8 @@ builder.Services.AddSingleton<SignUpNotices>();
 // The language each resident chose (plan 16a).
 builder.Services.AddSingleton(sp => new DreamGrid.Launcher.Core.ResidentLanguages(Path.Combine(paths.Guests, "languages.json"),
     sp.GetRequiredService<ILogger<DreamGrid.Launcher.Core.ResidentLanguages>>()));
+builder.Services.AddSingleton(sp => new DreamGrid.Launcher.Core.OwnerLanguages(paths.Languages, TimeProvider.System,
+    sp.GetRequiredService<ILogger<DreamGrid.Launcher.Core.OwnerLanguages>>()));
 // The resident account page (plan 10): email changes waiting for their link, and their own request counts.
 builder.Services.AddSingleton(sp => new PendingEmailChanges(Path.Combine(paths.Guests, "email-changes.json"), sp.GetRequiredService<TimeProvider>(),
     sp.GetRequiredService<ILogger<PendingEmailChanges>>()));
@@ -337,6 +343,7 @@ builder.Services.AddSingleton(sp => new EmailOutbox(paths.Email, sp.GetRequiredS
 builder.Services.AddSingleton<IMailTransport, SmtpMailTransport>();
 builder.Services.AddSingleton<EmailSender>();
 builder.Services.AddSingleton<DreamGrid.Launcher.Resident.OfferedLanguages>();
+builder.Services.AddSingleton<DreamGrid.Launcher.Resident.LanguageCatalog>();
 builder.Services.AddSingleton<EmailLanguage>();
 builder.Services.AddSingleton<EmailTestLimiter>();
 builder.Services.AddHostedService<EmailWorker>();
