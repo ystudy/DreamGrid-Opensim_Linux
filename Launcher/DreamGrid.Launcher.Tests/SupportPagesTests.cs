@@ -8,6 +8,7 @@ using DreamGrid.Launcher.Core.Email;
 using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Core.Tickets;
 using DreamGrid.Launcher.Email;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -25,7 +26,7 @@ public sealed partial class SupportPagesTests
         public ValueTask DisposeAsync() => F.DisposeAsync();
     }
 
-    private static Rig Make(bool email = true, OwnerPlan plan = OwnerPlan.Local)
+    private static Rig Make(bool email = true, OwnerPlan plan = OwnerPlan.Local, IPAddress? caller = null, string[]? adminNetworks = null)
     {
         var transport = new EmailPageTests.FakeTransport();
         var f = new LauncherFactory(s => s with
@@ -38,9 +39,19 @@ public sealed partial class SupportPagesTests
                 : s.Join,
             Setup = s.Setup with { WorldNamed = true, OwnerCreated = true, Finished = true, Owner = new OwnerInfo("Test", "Owner", TestAuth.OwnerId) },
             Bots = new BotSettings(Honeypot: true, RateLimit: false, ProofOfWork: false),
+            Security = adminNetworks is null ? s.Security : s.Security with { AdminNetworks = adminNetworks },
         })
         {
-            Before = TestAuth.Apply,
+            Before = app =>
+            {
+                if (caller is not null)
+                    app.Use((ctx, next) =>
+                    {
+                        ctx.Connection.RemoteIpAddress = caller;
+                        return next(ctx);
+                    });
+                TestAuth.Apply(app);
+            },
             ExtraServices = services => services.AddSingleton<IMailTransport>(transport),
         };
         TestAuth.AddStaff(f.Robust);
@@ -249,6 +260,26 @@ public sealed partial class SupportPagesTests
         await using var r = Make(plan: OwnerPlan.RegionServer);
         using var resp = await Client(r).GetAsync(url, Ct);
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task Residents_reach_support_from_outside_the_admin_networks()
+    {
+        await using var r = Make(caller: IPAddress.Parse("192.168.1.50"), adminNetworks: ["10.0.0.0/8"]);
+        var guest = Client(r);
+        using (var staff = await guest.GetAsync("/login", Ct)) Assert.Equal(HttpStatusCode.NotFound, staff.StatusCode); // the list is on
+
+        using (await PostAsync(guest, "/support", Form())) { }
+        var ticket = Assert.Single(r.Store.All());
+        var confirm = await EmailLinkAsync(r, "/support/confirm");
+        using (var pressed = await PostAsync(guest, confirm, new() { ["Token"] = confirm.Split("token=")[1] }))
+            Assert.Equal(HttpStatusCode.Redirect, pressed.StatusCode);
+        Assert.Equal(TicketState.Open, r.Store.Get(ticket.Id)!.State);
+
+        var link = await EmailLinkAsync(r, "/support/ticket", 1);
+        var other = Client(r);
+        using (var opened = await other.GetAsync(link, Ct)) Assert.Equal(HttpStatusCode.Redirect, opened.StatusCode);
+        Assert.Equal("Region won't start", (await PageAsync(other, "/support/ticket?id=" + ticket.Id)).QuerySelector("h1")!.TextContent);
     }
 
     [Fact]
