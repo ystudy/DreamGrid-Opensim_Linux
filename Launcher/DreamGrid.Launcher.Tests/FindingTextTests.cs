@@ -12,7 +12,8 @@ public sealed class FindingTextTests
     [
         "split-materials", "split-vertices", "texture-resized", "texture-shrunk", "texture-unsupported", "heavy-mesh", "too-big",
         "too-small", "too-many-parts", "inside-out", "no-uv", "dropped-animation", "dropped-morphs", "dropped-extras", "skin-ignored",
-        "compressed", "external-files", "not-triangles", "bad-file", "too-large-file",
+        "compressed", "external-files", "not-triangles", "bad-file", "too-large-file", "vertex-colours-ignored", "double-sided-ignored",
+        "texture-coords-ignored",
     ];
 
     public static TheoryData<string> AllCodes() => new(Codes);
@@ -77,5 +78,13 @@ public sealed class FindingTextTests
 
         var upload = FindingText.Of(F("too-large-file", ("what", "upload"), ("limit", "67108864")), "Castle");
         Assert.Contains("64 MB", upload.Title + upload.Why);
+
+        var assets = FindingText.Of(F("too-large-file", ("what", "assets"), ("limit", "67108864")), "Castle");
+        Assert.NotEqual(upload.Title, assets.Title);
+        Assert.Contains("64 MB", assets.Title + assets.Why);
+        Assert.Contains("Blender", assets.Tip);
+
+        var sides = FindingText.Of(F("double-sided-ignored", ("material", "Leaves"), ("materials", "2")), "Castle");
+        Assert.Contains("Leaves", sides.Title + sides.Why);
     }
 }

@@ -21,6 +21,16 @@ public class ImportContractsTests
         AssertRoundTrip<ImportManifest>("manifest.json");
     }
 
+    [Fact]
+    public void Fixture_manifest_mask_is_the_mask_of_the_fixture_options()
+    {
+        // The converter's tests pin the same number for the same two files, so the two mask functions cannot drift apart.
+        var options = JsonSerializer.Deserialize<ImportOptions>(File.ReadAllText(FixturePath("options.json")), ContractJson.Options)!;
+        var manifest = JsonSerializer.Deserialize<ImportManifest>(File.ReadAllText(FixturePath("manifest.json")), ContractJson.Options)!;
+        Assert.Equal(573440u, DreamGrid.Launcher.ModelImport.ModelUploads.NextOwnerMask(options.NextOwner)); // Move | Copy | Modify
+        Assert.Equal(573440u, manifest.Item.NextOwnerMask);
+    }
+
     private static void AssertRoundTrip<T>(string name)
     {
         var text = File.ReadAllText(FixturePath(name));

@@ -87,8 +87,9 @@ public sealed class UploadReportModel(ModelUploads uploads) : PageModel
                 return Page();
             case MakeStatus.Refused:
             case MakeStatus.Blocked:
+            case MakeStatus.Busy:
                 if (uploads.Read(Guest, Job) is not { } again) return NotFound();
-                Error = result.Message;
+                Error = result.Status == MakeStatus.Busy ? UploadModel.Busy : result.Message;
                 return Show(again);
             case MakeStatus.Failed:
                 Failed = true;

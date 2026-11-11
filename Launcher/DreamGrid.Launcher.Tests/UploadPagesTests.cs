@@ -556,6 +556,44 @@ public sealed class UploadPagesTests : IAsyncLifetime
         Assert.Empty(Audit("model-uploaded"));
     }
 
+    [Fact]
+    public async Task An_asset_id_robust_already_has_writes_nothing()
+    {
+        Allow();
+        _converter.Report = GoodCastle();
+        _assets.Existing.Add(MeshId);
+        using var client = await GuestAsync();
+        var job = await UploadedJobAsync(client, itemName: "Castle");
+
+        using var r = await PostReportAsync(client, job, "Make");
+        Assert.Contains("That didn't work, nothing was charged", Text(await DocAsync(r)));
+        Assert.Contains(_f.Logs, l => l.Level == LogLevel.Error && l.Message.Contains(MeshId.ToString("D")) && l.Message.Contains("already"));
+        Assert.Empty(_calls);
+        Assert.False(Directory.Exists(JobDir(job)));
+    }
+
+    [Fact]
+    public async Task Make_while_another_make_or_check_runs_says_busy()
+    {
+        Allow();
+        _converter.Report = GoodCastle();
+        using var client = await GuestAsync();
+        var job = await UploadedJobAsync(client, itemName: "Castle");
+        Assert.True(Jobs.TryEnterSlot());
+        try
+        {
+            using var r = await PostReportAsync(client, job, "Make");
+            Assert.Contains("The uploader is busy, try again in a minute", Text(await DocAsync(r)));
+            Assert.Empty(_calls);
+            Assert.True(Directory.Exists(JobDir(job)));
+            Assert.False(File.Exists(Path.Combine(JobDir(job), "done")));
+        }
+        finally { Jobs.LeaveSlot(); }
+
+        using var again = await PostReportAsync(client, job, "Make");
+        Assert.Contains(DoneLine, Text(await DocAsync(again)));
+    }
+
     [Theory]
     [InlineData("type")]
     [InlineData("outside")]
@@ -671,7 +709,9 @@ public sealed class UploadPagesTests : IAsyncLifetime
         Allow();
         using var client = await GuestAsync();
         var text = Text(await DocAsync(client, "/guest/upload/limits"));
-        Assert.Contains("256 m", text);
+        Assert.Contains("1024 m", text); // the region config's NonPhysicalPrimMax
+        Assert.Contains("128 m", text); // PhysicalPrimMax
+        Assert.Contains("1024 parts", text); // LinksetPrims
         Assert.Contains("8 faces", text);
         Assert.Contains("1024 px", text);
         Assert.Contains("64 MB", text);
@@ -683,7 +723,7 @@ public sealed class UploadPagesTests : IAsyncLifetime
         using var grid = await GuestAsync();
         text = Text(await DocAsync(grid, "/guest/upload/limits"));
         Assert.Contains("64 m", text);
-        Assert.DoesNotContain("256 m", text);
+        Assert.DoesNotContain("1024 m", text);
         Assert.Contains("Regions on computers that joined the grid aren't checked", text);
     }
 
@@ -754,6 +794,10 @@ public sealed class UploadPagesTests : IAsyncLifetime
         public static readonly Guid Folder = Guid.Parse("52000000-0000-0000-0000-000000000001");
         public List<(Guid Owner, Guid Folder, ManifestItem Item)> Items { get; } = [];
         public Exception? Fail { get; set; }
+        /// <summary>Asset ids Robust already holds.</summary>
+        public HashSet<Guid> Existing { get; } = [];
+
+        public Task<bool> ExistsAsync(Guid id, CancellationToken ct) => Task.FromResult(Existing.Contains(id));
 
         public Task StoreAsync(Guid id, int type, string name, byte[] data, Guid creator, CancellationToken ct)
         {

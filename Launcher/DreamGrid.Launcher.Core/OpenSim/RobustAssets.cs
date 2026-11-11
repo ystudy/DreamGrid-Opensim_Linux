@@ -16,6 +16,9 @@ public interface IRobustAssets
     /// <summary>Stores an asset under <paramref name="id"/>. Throws <see cref="RobustAssetsUnavailableException"/> when it was not stored.</summary>
     Task StoreAsync(Guid id, int type, string name, byte[] data, Guid creator, CancellationToken ct);
 
+    /// <summary>Whether Robust already holds an asset with <paramref name="id"/>. Throws <see cref="RobustAssetsUnavailableException"/> when it can't tell.</summary>
+    Task<bool> ExistsAsync(Guid id, CancellationToken ct);
+
     /// <summary>The id of the owner's "Uploads" folder under the inventory root, made when it isn't there.</summary>
     Task<Guid> UploadsFolderAsync(Guid owner, CancellationToken ct);
 
@@ -25,7 +28,8 @@ public interface IRobustAssets
 
 /// <summary>
 /// <see cref="IRobustAssets"/> on Robust's private services: <c>POST /assets</c> (<c>AssetServerPostHandler</c>, an
-/// <c>AssetBase</c> in XML) and <c>POST /xinventory</c> (<c>XInventoryInConnector</c>, form fields). The settings are read per call.
+/// <c>AssetBase</c> in XML), <c>GET /assets/&lt;id&gt;/metadata</c> (<c>AssetServerGetHandler</c>: 200 with the metadata, or 404)
+/// and <c>POST /xinventory</c> (<c>XInventoryInConnector</c>, form fields). The settings are read per call.
 /// </summary>
 public sealed class RobustAssets(HttpClient http, Func<LauncherSettings> settings) : IRobustAssets
 {
@@ -58,10 +62,26 @@ public sealed class RobustAssets(HttpClient http, Func<LauncherSettings> setting
             new XElement("CreatorID", Id(creator)),
             new XElement("Flags", "Normal"));
 
-        var reply = await Send("/assets", new StringContent(asset.ToString(SaveOptions.DisableFormatting), System.Text.Encoding.UTF8, "text/xml"), ct);
+        using var body = new StringContent(asset.ToString(SaveOptions.DisableFormatting), System.Text.Encoding.UTF8, "text/xml");
+        var reply = await Send("/assets", body, ct);
         // The handler answers <string>id</string>; the nil id means the database refused the asset.
         if (!Guid.TryParse(reply.Value.Trim(), out var stored) || stored != id)
             throw new RobustAssetsUnavailableException("The asset service did not store the asset.");
+    }
+
+    public async Task<bool> ExistsAsync(Guid id, CancellationToken ct)
+    {
+        try
+        {
+            using var resp = await http.GetAsync(new Uri(PrivateBase, $"/assets/{Id(id)}/metadata"), HttpCompletionOption.ResponseHeadersRead, ct);
+            if (resp.StatusCode == System.Net.HttpStatusCode.NotFound) return false;
+            resp.EnsureSuccessStatusCode();
+            return true;
+        }
+        catch (Exception e) when (e is HttpRequestException || (e is OperationCanceledException && !ct.IsCancellationRequested))
+        {
+            throw new RobustAssetsUnavailableException("Robust could not be reached or its reply was not understood.", e);
+        }
     }
 
     public async Task<Guid> UploadsFolderAsync(Guid owner, CancellationToken ct)

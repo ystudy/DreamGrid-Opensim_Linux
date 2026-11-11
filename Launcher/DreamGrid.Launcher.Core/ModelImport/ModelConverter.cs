@@ -16,8 +16,8 @@ public interface IModelConverter
 }
 
 /// <summary>
-/// Runs <c>GridGate.ModelImport.dll check</c> as a child process with a memory limit and a time limit, and reads the report it writes.
-/// Only JSON files cross between the two programs.
+/// Runs <c>GridGate.ModelImport.dll check</c> as a child process with a memory limit, a time limit and below-normal priority (so
+/// running regions keep the processor first), and reads the report it writes. Only JSON files cross between the two programs.
 /// </summary>
 public sealed class ModelConverter(LauncherPaths paths, TimeProvider time, ILogger<ModelConverter> log, TimeSpan? timeLimit = null) : IModelConverter
 {
@@ -57,6 +57,11 @@ public sealed class ModelConverter(LauncherPaths paths, TimeProvider time, ILogg
             log.LogError(e, "Model import: the converter could not be started");
             return new ConverterRun(ConverterOutcome.Failed, null);
         }
+        try { process.PriorityClass = ProcessPriorityClass.BelowNormal; }
+        catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception or PlatformNotSupportedException)
+        {
+            // It exited already, or the system won't lower it: it runs at normal priority.
+        }
 
         using (process)
         {
@@ -72,7 +77,7 @@ public sealed class ModelConverter(LauncherPaths paths, TimeProvider time, ILogg
             }
             catch (OperationCanceledException)
             {
-                Kill(process);
+                Kill(process, log);
                 if (ct.IsCancellationRequested) throw;
                 log.LogWarning("Model import: the converter ran over {Limit} and was stopped", limit);
                 return new ConverterRun(ConverterOutcome.TimedOut, null);
@@ -99,12 +104,18 @@ public sealed class ModelConverter(LauncherPaths paths, TimeProvider time, ILogg
         return new ConverterRun(ConverterOutcome.Failed, null);
     }
 
-    private static void Kill(Process process)
+    // Never throws, so the caller's time-out or cancel path always runs. Kill(entireProcessTree) throws AggregateException when
+    // part of the tree could not be stopped.
+    private static void Kill(Process process, ILogger log)
     {
         try
         {
             if (!process.HasExited) process.Kill(entireProcessTree: true);
             process.WaitForExit(5000);
+        }
+        catch (AggregateException e)
+        {
+            log.LogWarning(e, "Model import: the converter could not be stopped completely: {Message}", e.Message);
         }
         catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception)
         {

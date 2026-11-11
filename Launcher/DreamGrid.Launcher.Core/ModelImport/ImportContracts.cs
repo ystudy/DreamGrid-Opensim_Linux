@@ -6,9 +6,12 @@ namespace DreamGrid.Launcher.Core.ModelImport;
 // The model converter's file contract, copied from OpenSim/Tools/GridGate.ModelImport/Contracts.cs with identical JSON names.
 // The launcher references no converter code; only these JSON files cross between them (tests/fixtures/model-import).
 
-/// <summary>The region's limits, as the launcher passes them to the converter. <see cref="MaxLinksetParts"/> 0 means none.</summary>
+/// <summary>
+/// The region's limits, as the launcher passes them to the converter. <see cref="MaxLinksetParts"/> 0 means none.
+/// <see cref="MaxAssetBytes"/> caps the total size of the assets one conversion writes.
+/// </summary>
 public sealed record ImportLimits(double MaxPartSize, double MinPartSize, double MaxPhysicalPartSize, int MaxLinksetParts,
-    long MaxUploadBytes, int MaxImageSide, int MaxTextureSide, int MaxTriangles, int MaxNodes, int HeavyTriangles);
+    long MaxUploadBytes, int MaxImageSide, int MaxTextureSide, int MaxTriangles, int MaxNodes, int HeavyTriangles, long MaxAssetBytes);
 
 public sealed record NextOwner(bool Copy, bool Modify, bool Transfer);
 

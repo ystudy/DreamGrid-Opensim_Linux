@@ -1,4 +1,5 @@
 using Xunit;
+using DreamGrid.Launcher.Core.Ini;
 using DreamGrid.Launcher.Core.ModelImport;
 using DreamGrid.Launcher.Core.Settings;
 
@@ -23,17 +24,34 @@ public class ImportLimitsTests
         Assert.Equal(128, limits.MaxPartSize);
         Assert.Equal(5, limits.MaxPhysicalPartSize);
         Assert.Equal(0.001, limits.MinPartSize);
-        Assert.Equal(0, limits.MaxLinksetParts);
+        Assert.Equal(1024, limits.MaxLinksetParts);
 
+        // The values every region gets from the prototype OpenSim.ini when its own options don't set them.
         var defaults = ImportLimitsRules.For(Settings(OwnerPlan.GridAsset, Region("a"), Region("b")));
-        Assert.Equal(256, defaults.MaxPartSize);
-        Assert.Equal(10, defaults.MaxPhysicalPartSize);
+        Assert.Equal(1024, defaults.MaxPartSize);
+        Assert.Equal(128, defaults.MaxPhysicalPartSize);
+        Assert.Equal(1024, defaults.MaxLinksetParts);
         Assert.Equal(64L * 1024 * 1024, defaults.MaxUploadBytes);
+        Assert.Equal(64L * 1024 * 1024, defaults.MaxAssetBytes);
         Assert.Equal(8192, defaults.MaxImageSide);
         Assert.Equal(1024, defaults.MaxTextureSide);
         Assert.Equal(2_000_000, defaults.MaxTriangles);
         Assert.Equal(512, defaults.MaxNodes);
         Assert.Equal(200_000, defaults.HeavyTriangles);
+    }
+
+    [Fact]
+    public void Defaults_are_the_ones_the_prototype_region_config_sets()
+    {
+        // GridConfigWriter starts every region's OpenSim.ini from this file; a region's own options are written over it.
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "DreamGrid.sln"))) dir = dir.Parent;
+        Assert.NotNull(dir);
+        var proto = IniDocument.Load(Path.Combine(dir.FullName, "bin", "config-include", "Proto", "Robust", "OpenSim.ini"));
+        Assert.Equal(ImportLimitsRules.DefaultMaxPartSize.ToString(), proto.Get("Startup", "NonPhysicalPrimMax"));
+        Assert.Equal(ImportLimitsRules.DefaultMaxPhysicalPartSize.ToString(), proto.Get("Startup", "PhysicalPrimMax"));
+        Assert.Equal(ImportLimitsRules.DefaultLinksetParts.ToString(), proto.Get("Startup", "LinksetPrims"));
+        Assert.Null(proto.Get("Startup", "NonPhysicalPrimMin")); // left at OpenSim's own 0.001
     }
 
     [Fact]

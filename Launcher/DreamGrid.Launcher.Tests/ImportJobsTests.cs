@@ -43,6 +43,15 @@ public sealed class ImportJobsTests : IDisposable
     }
 
     [Fact]
+    public void A_job_id_with_a_trailing_newline_is_not_a_job_id()
+    {
+        var id = new string('a', 32);
+        Assert.True(ImportJobs.IsJobId(id));
+        Assert.False(ImportJobs.IsJobId(id + "\n"));
+        Assert.False(ImportJobs.IsJobId(id.ToUpperInvariant()));
+    }
+
+    [Fact]
     public void Only_one_slot()
     {
         var jobs = new ImportJobs(Paths, _time);

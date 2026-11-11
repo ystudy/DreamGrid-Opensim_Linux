@@ -19,7 +19,8 @@ public enum CheckStatus { Checked, Busy, Unreadable, Finished }
 /// <summary><see cref="JobId"/> is set when <see cref="Status"/> is <see cref="CheckStatus.Checked"/>.</summary>
 public sealed record CheckResult(CheckStatus Status, string? JobId);
 
-public enum MakeStatus { Made, AlreadyFinished, Refused, Blocked, Failed, NotFound }
+/// <summary><see cref="Busy"/>: another Make or a check holds the install's one slot; nothing was done.</summary>
+public enum MakeStatus { Made, AlreadyFinished, Refused, Blocked, Failed, NotFound, Busy }
 
 /// <summary>What Make the item did. <see cref="Report"/> and <see cref="ItemName"/> are set when it was made (or made before).</summary>
 public sealed record MakeResult(MakeStatus Status, string? ItemName = null, ImportReport? Report = null, string? Message = null);
@@ -134,8 +135,10 @@ public sealed class ModelUploads(ImportJobs jobs, LauncherPaths paths, IModelCon
         _made.TryGetValue(jobId, out var m) && m.Guest == guest ? (m.ItemName, m.Report) : null;
 
     /// <summary>
-    /// Makes the item: the job's manifest is checked, the job is marked finished (so a second request does nothing), the charge is
-    /// asked, then every asset, the Uploads folder and the item go to Robust, the upload is audited and the job is deleted.
+    /// Makes the item, one at a time on the whole install (under the conversion slot, so never beside a check either): the job's
+    /// manifest is checked, also that Robust holds none of its asset ids yet, the job is marked finished (so a second request
+    /// does nothing), the charge is asked, then every asset, the Uploads folder and the item go to Robust, the upload is audited
+    /// and the job is deleted.
     /// </summary>
     public async Task<MakeResult> MakeAsync(Uploader who, string jobId, CancellationToken ct)
     {
@@ -147,8 +150,34 @@ public sealed class ModelUploads(ImportJobs jobs, LauncherPaths paths, IModelCon
         if (job.Finished) return new MakeResult(MakeStatus.AlreadyFinished);
         if (job.Report.Blocked) return new MakeResult(MakeStatus.Blocked);
 
+        if (!jobs.TryEnterSlot()) return new MakeResult(MakeStatus.Busy);
+        try { return await MakeInSlotAsync(who, jobId, job, ct); }
+        finally { jobs.LeaveSlot(); }
+    }
+
+    private async Task<MakeResult> MakeInSlotAsync(Uploader who, string jobId, UploadJob job, CancellationToken ct)
+    {
         var dir = JobDir(jobId);
         var manifest = CheckedManifest(dir, who.Id, job.Options, out var problem);
+        if (manifest is not null)
+        {
+            // The ids are the converter's: one Robust already holds would be overwritten (or refused) and the item made wrong.
+            try
+            {
+                foreach (var asset in manifest.Assets)
+                    if (await robust.ExistsAsync(asset.Id, ct))
+                    {
+                        problem = $"asset {asset.Id:D} is already in Robust";
+                        manifest = null;
+                        break;
+                    }
+            }
+            catch (RobustAssetsUnavailableException e)
+            {
+                problem = e.Message;
+                manifest = null;
+            }
+        }
         if (manifest is null)
         {
             log.LogError("Model import: the upload {Job} was not made: {Problem}", jobId, problem);
@@ -272,7 +301,7 @@ public sealed class ModelUploads(ImportJobs jobs, LauncherPaths paths, IModelCon
     }
 
     /// <summary>The mask the converter writes for <paramref name="next"/> (ObjectAssetBuilder.NextOwnerMask): none ticked means Transfer; Move always.</summary>
-    private static uint NextOwnerMask(NextOwner next)
+    public static uint NextOwnerMask(NextOwner next)
     {
         var mask = (next.Copy ? CopyBit : 0) | (next.Modify ? ModifyBit : 0) | (next.Transfer ? TransferBit : 0);
         return (mask == 0 ? TransferBit : mask) | MoveBit;

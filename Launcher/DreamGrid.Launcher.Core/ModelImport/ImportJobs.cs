@@ -14,8 +14,11 @@ public sealed partial class ImportJobs(LauncherPaths paths, TimeProvider time)
     private const string OwnerFile = "owner";
     private int _slot;
 
-    [GeneratedRegex("^[0-9a-f]{32}$")]
+    [GeneratedRegex(@"^[0-9a-f]{32}\z")]
     private static partial Regex JobId();
+
+    /// <summary>32 lowercase hex digits and nothing else (not even a trailing newline, which <c>$</c> would let through).</summary>
+    internal static bool IsJobId(string id) => JobId().IsMatch(id);
 
     /// <summary>Makes a new folder for <paramref name="guest"/> and returns its path.</summary>
     public string Create(Guid guest)
@@ -34,7 +37,7 @@ public sealed partial class ImportJobs(LauncherPaths paths, TimeProvider time)
 
     public bool Owns(Guid guest, string jobId)
     {
-        if (!JobId().IsMatch(jobId)) return false;
+        if (!IsJobId(jobId)) return false;
         try
         {
             var lines = File.ReadAllLines(Path.Combine(paths.Uploads, jobId, OwnerFile));
@@ -53,7 +56,7 @@ public sealed partial class ImportJobs(LauncherPaths paths, TimeProvider time)
 
     public void Delete(string jobId)
     {
-        if (!JobId().IsMatch(jobId)) return;
+        if (!IsJobId(jobId)) return;
         TryDelete(Path.Combine(paths.Uploads, jobId));
     }
 
@@ -63,7 +66,7 @@ public sealed partial class ImportJobs(LauncherPaths paths, TimeProvider time)
         if (!Directory.Exists(paths.Uploads)) return;
         var now = time.GetUtcNow();
         foreach (var dir in Directory.EnumerateDirectories(paths.Uploads))
-            if (JobId().IsMatch(Path.GetFileName(dir)) && now - CreatedAt(dir) > MaxAge)
+            if (IsJobId(Path.GetFileName(dir)) && now - CreatedAt(dir) > MaxAge)
                 TryDelete(dir);
     }
 

@@ -49,7 +49,7 @@ public static class FindingText
                 "In Blender, add a Decimate modifier to lower the number of triangles."),
             "too-big" => new(
                 v.TryGetValue("side", out var side) && !string.IsNullOrWhiteSpace(side) ? $"{Get("part", item)} is {N("side", "")} m on its longest side" : $"{Get("part", item)} is too big",
-                $"Parts on this grid can be at most {N("limit", "256")} m, so every region can hold them.",
+                $"Parts on this grid can be at most {N("limit", "1024")} m, so every region can hold them.",
                 "In Blender, scale the model down (S), apply the scale (Ctrl+A), then export again. Or choose a smaller size here."),
             "too-small" => new(
                 $"{N("dropped", "Some")} of {N("total", "the")} parts are too small and were left out",
@@ -79,6 +79,18 @@ public static class FindingText
                 $"{Words(Get("what", "cameras,lights"))} were left out",
                 "Items can't carry them. This won't change how it looks.",
                 "In Blender's glTF export, untick Cameras and Punctual Lights."),
+            "vertex-colours-ignored" => new(
+                "The model's vertex colours were left out",
+                "Items here can only take colour from a material or a picture, so it may look plainer.",
+                "In Blender, bake the vertex colours into a picture (Cycles: Bake, Diffuse colour), then export again."),
+            "double-sided-ignored" => new(
+                $"{Get("material", "Some faces")} will only show from one side" + (Get("materials", "1") is var m && m != "1" ? $" ({Number(m)} materials)" : ""),
+                "Items here draw a face from the front only, so thin parts like leaves or cloth may look see-through from behind.",
+                "In Blender, give thin parts some thickness with a Solidify modifier, then export again."),
+            "texture-coords-ignored" => new(
+                "A picture may sit in the wrong place",
+                "Only the model's first UV map is used, as it is; a second UV map or a moved or scaled picture is not.",
+                "In Blender, put the picture on the first UV map and apply any offset or scale to the UVs, then export again."),
             "skin-ignored" => new(
                 $"The model is rigged ({N("joints", "with")} bones), but it's made as a plain object",
                 "In this version it stands in its rest pose and can't be worn.",
@@ -124,6 +136,10 @@ public static class FindingText
                 $"The model has more than {Number(limit ?? "512")} objects",
                 "That's more than this grid can take in one item.",
                 "In Blender, join objects (Ctrl+J), then export again."),
+            "assets" => new(
+                $"The finished item would be larger than {Megabytes(limit)}",
+                "Its pictures and shapes together are more than this grid takes for one item.",
+                "In Blender, use fewer or smaller pictures and a Decimate modifier, then export again."),
             _ => new(
                 $"The file is larger than {Megabytes(limit)}",
                 "That's the largest file this grid takes.",

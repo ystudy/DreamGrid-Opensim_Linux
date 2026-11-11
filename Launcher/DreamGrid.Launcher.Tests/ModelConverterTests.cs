@@ -12,7 +12,7 @@ public sealed class ModelConverterTests : IDisposable
     private readonly string _root = Path.Combine(Path.GetTempPath(), "dg-converter-" + Guid.NewGuid().ToString("N"));
     private readonly string _job;
     private ProcessStartInfo? _seen;
-    private static readonly ImportLimits Limits = new(256, 0.001, 10, 0, 67108864, 8192, 1024, 2000000, 512, 200000);
+    private static readonly ImportLimits Limits = new(256, 0.001, 10, 0, 67108864, 8192, 1024, 2000000, 512, 200000, 67108864);
     private static readonly ImportOptions Options = new("Chair", "chair.glb", 100, new NextOwner(true, true, false), Guid.NewGuid(), "Test Person");
 
     public ModelConverterTests()
@@ -76,6 +76,29 @@ public sealed class ModelConverterTests : IDisposable
         var run = await Check(Converter(["--import-ok", Path.Combine(_root, "elsewhere")]));
         Assert.Equal(ConverterOutcome.Failed, run.Outcome);
         Assert.Null(run.Report);
+    }
+
+    [Fact]
+    public async Task Converter_runs_below_normal_priority()
+    {
+        var pidFile = Path.Combine(_root, "slow.pid");
+        var run = Check(Converter(["--import-hang", pidFile], TimeSpan.FromSeconds(5)));
+        ProcessPriorityClass? priority = null;
+        try
+        {
+            int pid = 0;
+            for (var i = 0; i < 100 && !(File.Exists(pidFile) && int.TryParse(File.ReadAllText(pidFile), out pid)); i++)
+                await Task.Delay(50, TestContext.Current.CancellationToken);
+            Assert.NotEqual(0, pid);
+            using var p = Process.GetProcessById(pid);
+            priority = p.PriorityClass;
+        }
+        finally
+        {
+            // The time limit stops the child whatever the asserts did, so it never outlives the test run.
+            Assert.Equal(ConverterOutcome.TimedOut, (await run).Outcome);
+        }
+        Assert.Equal(ProcessPriorityClass.BelowNormal, priority);
     }
 
     [Fact]

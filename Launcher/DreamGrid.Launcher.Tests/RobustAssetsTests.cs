@@ -69,6 +69,30 @@ public class RobustAssetsTests
         Assert.Equal(Convert.ToBase64String([1, 2, 3, 250]), V("Data"));
     }
 
+    [Theory]
+    [InlineData(HttpStatusCode.OK, true)]
+    [InlineData(HttpStatusCode.NotFound, false)]
+    public async Task Exists_asks_for_the_assets_metadata(HttpStatusCode status, bool expected)
+    {
+        var id = Guid.NewGuid();
+        var (assets, h) = Make(r => (status, status == HttpStatusCode.OK ? "<AssetMetadata><ID>x</ID></AssetMetadata>" : ""));
+
+        Assert.Equal(expected, await assets.ExistsAsync(id, CancellationToken.None));
+
+        var req = Assert.Single(h.Requests);
+        Assert.Equal(HttpMethod.Get, req.Method);
+        Assert.Equal($"http://127.0.0.1:{Defaults.RobustPrivatePort}/assets/{id:D}/metadata", req.Uri.ToString());
+    }
+
+    [Fact]
+    public async Task Exists_with_robust_down_or_failing_throws_unavailable()
+    {
+        var (failing, _) = Make(r => (HttpStatusCode.InternalServerError, "oops"));
+        await Assert.ThrowsAsync<RobustAssetsUnavailableException>(() => failing.ExistsAsync(Guid.NewGuid(), CancellationToken.None));
+        var down = new RobustAssets(new HttpClient(new ThrowingHandler()), () => Defaults);
+        await Assert.ThrowsAsync<RobustAssetsUnavailableException>(() => down.ExistsAsync(Guid.NewGuid(), CancellationToken.None));
+    }
+
     [Fact]
     public async Task Store_reply_with_another_id_throws_unavailable()
     {
