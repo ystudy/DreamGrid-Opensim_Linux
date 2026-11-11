@@ -90,7 +90,7 @@ public sealed class AccountModel(AccountChanges changes, IRobustClient robust, F
     public Task<IActionResult> OnPostLanguageAsync(string? language)
     {
         if (GuestSignIn.Read(User) is not { } guest) return Task.FromResult<IActionResult>(Challenge());
-        var offered = settings().Languages.OfferedOrDefault().Where(Core.Languages.HasCulture).ToList();
+        var offered = OfferedLanguages.Of(settings().Languages);
         if (Core.Languages.Match(language, offered) is not { } chosen) return Task.FromResult<IActionResult>(BadRequest());
         languages.Set(guest.Principal, chosen);
         LanguagePick.SetCookie(HttpContext, chosen);
@@ -127,7 +127,7 @@ public sealed class AccountModel(AccountChanges changes, IRobustClient robust, F
         EmailChangeAvailable = changes.EmailChangeAvailable();
         TwoFactorLink = ResidentTwoFactor.PageShown(s, residents.Store.StateOf(principal));
         OwnsRegions = rights.OwnedBy(principal).Count > 0;
-        var offered = s.Languages.OfferedOrDefault().Where(Core.Languages.HasCulture).ToList();
+        var offered = OfferedLanguages.Of(s.Languages);
         LanguageChoices = [.. offered.Select(c => (c, Core.Languages.NativeName(c)))];
         SelectedLanguage = Core.Languages.Match(languages.Get(principal), offered) ?? ResidentLanguageFilter.Current(HttpContext);
     }

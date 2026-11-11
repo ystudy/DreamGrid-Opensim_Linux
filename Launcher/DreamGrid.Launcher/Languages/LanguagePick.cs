@@ -36,8 +36,7 @@ public static class LanguagePick
     /// </summary>
     public static string For(HttpContext ctx, LanguageSettings s, ResidentLanguages saved, ClaimsPrincipal? guest, bool welcome)
     {
-        // OfferedOrDefault adds a hand-edited unknown default to the list; only codes with a culture may be picked.
-        var offered = s.OfferedOrDefault().Where(Core.Languages.HasCulture).ToList();
+        var offered = OfferedLanguages.Of(s);
         string? Try(string? tag) => Core.Languages.Match(tag, offered);
 
         if (welcome)
@@ -55,6 +54,6 @@ public static class LanguagePick
                     if (Try(entry.Value.Value) is { } a) return a;
             }
         }
-        return Try(s.Default) ?? Core.Languages.English;
+        return OfferedLanguages.DefaultOf(s);
     }
 }

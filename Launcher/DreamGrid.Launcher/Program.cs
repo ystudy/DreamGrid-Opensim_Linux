@@ -331,6 +331,7 @@ builder.Services.AddSingleton(sp => new EmailOutbox(paths.Email, sp.GetRequiredS
     log: sp.GetRequiredService<ILogger<EmailOutbox>>()));
 builder.Services.AddSingleton<IMailTransport, SmtpMailTransport>();
 builder.Services.AddSingleton<EmailSender>();
+builder.Services.AddSingleton<DreamGrid.Launcher.Resident.OfferedLanguages>();
 builder.Services.AddSingleton<EmailLanguage>();
 builder.Services.AddSingleton<EmailTestLimiter>();
 builder.Services.AddHostedService<EmailWorker>();

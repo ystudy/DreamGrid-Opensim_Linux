@@ -1,5 +1,4 @@
 using DreamGrid.Launcher.Core;
-using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Guests;
 using DreamGrid.Launcher.Resident;
 using DreamGrid.Launcher.Security;
@@ -14,14 +13,13 @@ namespace DreamGrid.Launcher.Pages;
 /// also in <see cref="ResidentLanguages"/>) and goes back to the page they were on. A POST only (the antiforgery token is
 /// required); anyone may use it. The way back is a path on this site, never another address.
 /// </summary>
-public sealed class LanguageModel(Func<LauncherSettings> settings, ResidentLanguages saved) : PageModel
+public sealed class LanguageModel(OfferedLanguages offered, ResidentLanguages saved) : PageModel
 {
     public IActionResult OnGet() => StatusCode(StatusCodes.Status405MethodNotAllowed);
 
     public async Task<IActionResult> OnPostAsync(string? code, string? returnUrl)
     {
-        var offered = settings().Languages.OfferedOrDefault().Where(Core.Languages.HasCulture).ToList();
-        if (Core.Languages.Match(code, offered) is not { } chosen)
+        if (Core.Languages.Match(code, offered.Current()) is not { } chosen)
             return BadRequest();
 
         LanguagePick.SetCookie(HttpContext, chosen);

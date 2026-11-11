@@ -35,7 +35,7 @@ public sealed class EmailLanguage(Func<LauncherSettings> settings, ResidentLangu
     private string Pick(string? tag, string? fallback = null)
     {
         var s = settings().Languages;
-        var offered = s.OfferedOrDefault().Where(Languages.HasCulture).ToList();
-        return Languages.Match(tag, offered) ?? Languages.Match(fallback, offered) ?? Languages.Match(s.Default, offered) ?? Languages.English;
+        var offered = OfferedLanguages.Of(s);
+        return Languages.Match(tag, offered) ?? Languages.Match(fallback, offered) ?? OfferedLanguages.DefaultOf(s);
     }
 }

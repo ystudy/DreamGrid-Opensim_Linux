@@ -1,9 +1,8 @@
 @using System.Globalization
-@using DreamGrid.Launcher.Core.Settings
-@inject Func<LauncherSettings> Settings
+@inject DreamGrid.Launcher.Resident.OfferedLanguages Offered
 @{
     // Only the languages that can be picked; with one there is nothing to choose.
-    var offered = Settings().Languages.OfferedOrDefault().Where(DreamGrid.Launcher.Core.Languages.HasCulture).ToList();
+    var offered = Offered.Current();
     var current = DreamGrid.Launcher.Resident.ResidentLanguageFilter.Current(Context);
 }
 @if (offered.Count > 1)
