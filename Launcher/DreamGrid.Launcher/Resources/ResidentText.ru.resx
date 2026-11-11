@@ -13,7 +13,7 @@
   <data name="Common.SignIn" xml:space="preserve"><value>Войти</value></data>
   <data name="SignIn.Intro" xml:space="preserve"><value>Используйте имя и пароль вашего аватара.</value></data>
   <data name="Common.AvatarName" xml:space="preserve"><value>Имя аватара</value></data>
-  <data name="Common.NamePlaceholder" xml:space="preserve"><value>Имя Фамилия</value></data>
+  <data name="Common.NamePlaceholder" xml:space="preserve"><value>Ivan Petrov</value></data>
   <data name="Common.Password" xml:space="preserve"><value>Пароль</value></data>
   <data name="SignIn.ResendLink" xml:space="preserve"><value>Отправить ссылку ещё раз</value></data>
   <data name="Common.ForgotPasswordLink" xml:space="preserve"><value>Забыли пароль?</value></data>
@@ -147,7 +147,7 @@
   <data name="SignUp.AddressLimit" xml:space="preserve"><value>Слишком много регистраций с вашего адреса. Попробуйте ещё раз через час.</value></data>
   <data name="SignUp.TermsProblem" xml:space="preserve"><value>Отметьте флажок, чтобы принять Условия обслуживания и Уведомление о конфиденциальности.</value></data>
   <data name="SignUp.NameMissing" xml:space="preserve"><value>Введите имя и фамилию.</value></data>
-  <data name="SignUp.NameTooLong" xml:space="preserve"><value>Максимум символов в имени и в фамилии (в каждом): {0}.</value></data>
+  <data name="SignUp.NameTooLong" xml:space="preserve"><value>Максимум символов в имени и в фамилии по отдельности: {0}.</value></data>
   <data name="SignUp.NameBadCharacters" xml:space="preserve"><value>Используйте в имени только латинские буквы от A до Z, цифры и дефисы.</value></data>
   <data name="SignUp.NameTaken" xml:space="preserve"><value>Это имя занято. Попробуйте другое.</value></data>
   <data name="SignUp.EmailMissing" xml:space="preserve"><value>Введите адрес электронной почты.</value></data>
@@ -184,7 +184,7 @@
   <data name="Regions.StateStarting" xml:space="preserve"><value>запускается</value></data>
   <data name="Regions.StateStopping" xml:space="preserve"><value>останавливается</value></data>
   <data name="Regions.StateFailed" xml:space="preserve"><value>не отвечает</value></data>
-  <data name="Regions.StateParked" xml:space="preserve"><value>в режиме ожидания</value></data>
+  <data name="Regions.StateParked" xml:space="preserve"><value>отключён</value></data>
   <data name="Account.Title" xml:space="preserve"><value>Настройки учётной записи</value></data>
   <data name="Account.Details" xml:space="preserve"><value>Ваши данные</value></data>
   <data name="Account.EmailAddress" xml:space="preserve"><value>Адрес электронной почты</value></data>
@@ -202,7 +202,7 @@
   <data name="Account.PasswordDone" xml:space="preserve"><value>Пароль изменён.</value></data>
   <data name="Account.AskReply" xml:space="preserve"><value>Мы отправили ссылку на новый адрес. Ваш адрес не изменится, пока вы её не откроете. Она срабатывает один раз и действует 24 часа.</value></data>
   <data name="Account.WrongCurrent" xml:space="preserve"><value>Это не ваш текущий пароль.</value></data>
-  <data name="Account.SamePassword" xml:space="preserve"><value>Выберите пароль, который вы ещё не использовали.</value></data>
+  <data name="Account.SamePassword" xml:space="preserve"><value>Выберите пароль, отличный от текущего.</value></data>
   <data name="Account.SameAddress" xml:space="preserve"><value>Это уже ваш адрес электронной почты.</value></data>
   <data name="Bots.LeaveEmpty" xml:space="preserve"><value>Оставьте это поле пустым</value></data>
   <data name="Bots.NeedsJs" xml:space="preserve"><value>Этой форме нужен JavaScript, чтобы убедиться, что вы не бот.</value></data>

@@ -202,7 +202,7 @@
   <data name="Account.PasswordDone" xml:space="preserve"><value>Ihr Passwort wurde geändert.</value></data>
   <data name="Account.AskReply" xml:space="preserve"><value>Wir haben einen Link an die neue Adresse gesendet. Ihre E-Mail-Adresse bleibt dieselbe, bis Sie ihn öffnen. Er funktioniert einmal, 24 Stunden lang.</value></data>
   <data name="Account.WrongCurrent" xml:space="preserve"><value>Das ist nicht Ihr aktuelles Passwort.</value></data>
-  <data name="Account.SamePassword" xml:space="preserve"><value>Wählen Sie ein Passwort, das Sie bisher nicht verwendet haben.</value></data>
+  <data name="Account.SamePassword" xml:space="preserve"><value>Wählen Sie ein anderes Passwort als Ihr aktuelles.</value></data>
   <data name="Account.SameAddress" xml:space="preserve"><value>Das ist bereits Ihre E-Mail-Adresse.</value></data>
   <data name="Bots.LeaveEmpty" xml:space="preserve"><value>Dieses Feld leer lassen</value></data>
   <data name="Bots.NeedsJs" xml:space="preserve"><value>Dieses Formular braucht JavaScript, um zu prüfen, dass Sie kein Bot sind.</value></data>
@@ -235,8 +235,8 @@
   <data name="Welcome.AboutGrid" xml:space="preserve"><value>Über dieses Grid</value></data>
   <data name="Support.Title" xml:space="preserve"><value>Hilfe anfragen</value></data>
   <data name="Support.CheckEmail" xml:space="preserve"><value>Sehen Sie in Ihre E-Mails. Wir haben einen Link gesendet, mit dem Sie Ihr Ticket an das Team senden. Er funktioniert 24 Stunden lang. Sehen Sie auch in Ihrem Spam-Ordner nach.</value></data>
-  <data name="Support.StartAnother" xml:space="preserve"><value>Weiteres Ticket beginnen</value></data>
-  <data name="Support.StartNew" xml:space="preserve"><value>Neues Ticket beginnen</value></data>
+  <data name="Support.StartAnother" xml:space="preserve"><value>Weiteres Ticket erstellen</value></data>
+  <data name="Support.StartNew" xml:space="preserve"><value>Neues Ticket erstellen</value></data>
   <data name="Support.Intro" xml:space="preserve"><value>Senden Sie ein Ticket an das Team des Grids. Sie erhalten per E-Mail einen privaten Link, über den Sie die Antworten lesen und selbst antworten können.</value></data>
   <data name="Support.YourTickets" xml:space="preserve"><value>Ihre Tickets</value></data>
   <data name="Support.EmailOff" xml:space="preserve"><value>Melden Sie sich an, um ein Ticket zu senden. Dieses Grid kann noch keine E-Mails senden und daher keine Adresse prüfen.</value></data>
@@ -285,7 +285,7 @@
   <data name="Support.StateClosed" xml:space="preserve"><value>Geschlossen</value></data>
   <data name="Support.StateUnsent" xml:space="preserve"><value>Noch nicht gesendet</value></data>
   <data name="Support.TooManyReplies" xml:space="preserve"><value>Zu viele Antworten auf einmal. Versuchen Sie es später erneut.</value></data>
-  <data name="Support.ReplySent" xml:space="preserve"><value>Ihre Antwort ist beim Team.</value></data>
+  <data name="Support.ReplySent" xml:space="preserve"><value>Ihre Antwort wurde an das Team gesendet.</value></data>
   <data name="Support.TooManyOpen" xml:space="preserve"><value>Sie haben bereits die Höchstzahl offener Tickets ({0}). Antworten Sie stattdessen in einem davon.</value></data>
   <data name="Support.Full" xml:space="preserve"><value>Das Grid nimmt gerade keine neuen Tickets an. Versuchen Sie es später erneut.</value></data>
   <data name="Support.Busy" xml:space="preserve"><value>Ihr Ticket konnte nicht gespeichert werden. Versuchen Sie es in ein paar Minuten erneut.</value></data>

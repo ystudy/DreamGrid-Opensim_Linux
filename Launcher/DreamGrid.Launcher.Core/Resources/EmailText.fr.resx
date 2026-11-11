@@ -114,7 +114,7 @@ Vous (ou quelqu’un utilisant cette adresse) avez envoyé un ticket d’assista
 {Link}
 
 Si vous ne l’avez pas envoyé, ignorez cet e-mail et le ticket sera supprimé.</value></data>
-  <data name="ticket-access.Subject" xml:space="preserve"><value>Votre ticket d’assistance {GridName} {TicketNumber}</value></data>
+  <data name="ticket-access.Subject" xml:space="preserve"><value>Votre ticket d’assistance {TicketNumber} sur {GridName}</value></data>
   <data name="ticket-access.Body" xml:space="preserve"><value>Bonjour {Name},
 
 Votre ticket {TicketNumber} (« {Subject} ») a été transmis à l’équipe de {GridName}. Lisez ses réponses et répondez ici :

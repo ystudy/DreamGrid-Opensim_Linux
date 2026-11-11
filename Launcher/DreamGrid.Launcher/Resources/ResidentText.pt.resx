@@ -184,14 +184,14 @@
   <data name="Regions.StateStarting" xml:space="preserve"><value>iniciando</value></data>
   <data name="Regions.StateStopping" xml:space="preserve"><value>parando</value></data>
   <data name="Regions.StateFailed" xml:space="preserve"><value>não responde</value></data>
-  <data name="Regions.StateParked" xml:space="preserve"><value>em espera</value></data>
+  <data name="Regions.StateParked" xml:space="preserve"><value>desativada</value></data>
   <data name="Account.Title" xml:space="preserve"><value>Configurações da conta</value></data>
   <data name="Account.Details" xml:space="preserve"><value>Seus dados</value></data>
   <data name="Account.EmailAddress" xml:space="preserve"><value>Endereço de e-mail</value></data>
   <data name="Account.NoEmailAddress" xml:space="preserve"><value>Nenhum endereço de e-mail</value></data>
   <data name="Account.Role" xml:space="preserve"><value>Função</value></data>
   <data name="Account.Made" xml:space="preserve"><value>Conta criada</value></data>
-  <data name="Account.RoleOwner" xml:space="preserve"><value>Dono</value></data>
+  <data name="Account.RoleOwner" xml:space="preserve"><value>Proprietário</value></data>
   <data name="Account.RoleAdmin" xml:space="preserve"><value>Administrador</value></data>
   <data name="Account.RoleSupervisor" xml:space="preserve"><value>Supervisor</value></data>
   <data name="Account.RoleResident" xml:space="preserve"><value>Residente</value></data>

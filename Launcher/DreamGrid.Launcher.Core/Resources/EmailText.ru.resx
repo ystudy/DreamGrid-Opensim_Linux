@@ -114,7 +114,7 @@
 {Link}
 
 Если вы его не отправляли, проигнорируйте это письмо, и обращение будет удалено.</value></data>
-  <data name="ticket-access.Subject" xml:space="preserve"><value>Ваше обращение в поддержку {GridName} {TicketNumber}</value></data>
+  <data name="ticket-access.Subject" xml:space="preserve"><value>Ваше обращение {TicketNumber} в поддержку {GridName}</value></data>
   <data name="ticket-access.Body" xml:space="preserve"><value>Здравствуйте, {Name}!
 
 Ваше обращение {TicketNumber} («{Subject}») передано администрации {GridName}. Читайте ответы и отвечайте здесь:

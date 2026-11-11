@@ -21,7 +21,7 @@
   <data name="Common.CreateAccount" xml:space="preserve"><value>Crear una cuenta</value></data>
   <data name="SignIn.WrongNameOrPassword" xml:space="preserve"><value>El nombre o la contraseña no son correctos.</value></data>
   <data name="Common.TooManyAttempts" xml:space="preserve"><value>Demasiados intentos. Inténtelo de nuevo en unos minutos.</value></data>
-  <data name="SignIn.ConfirmFirst" xml:space="preserve"><value>Primero confirme su correo electrónico. O espere a que el equipo le apruebe.</value></data>
+  <data name="SignIn.ConfirmFirst" xml:space="preserve"><value>Primero confirme su correo electrónico. O espere a que el equipo apruebe su cuenta.</value></data>
   <data name="SignIn.WaitForStaff" xml:space="preserve"><value>Su cuenta está pendiente de aprobación por el equipo del grid.</value></data>
   <data name="Common.ServiceDown" xml:space="preserve"><value>El servicio de inicio de sesión del grid no está funcionando ahora mismo. Inténtelo más tarde.</value></data>
   <data name="Common.WrongCode" xml:space="preserve"><value>Ese código no es correcto. Inténtelo de nuevo.</value></data>
@@ -133,7 +133,7 @@
   <data name="SignUp.Closed" xml:space="preserve"><value>Este grid todavía no está abierto a nuevos registros.</value></data>
   <data name="SignUp.SignInIfAccount" xml:space="preserve"><value>{0} si ya tiene una cuenta.</value></data>
   <data name="SignUp.CheckEmail" xml:space="preserve"><value>Revise su correo. Le hemos enviado un enlace para confirmar su cuenta. Funciona una sola vez, durante 24 horas. Revise su carpeta de spam.</value></data>
-  <data name="SignUp.CantFindEmail" xml:space="preserve"><value>¿No encuentra el correo? El equipo también puede aprobarle.</value></data>
+  <data name="SignUp.CantFindEmail" xml:space="preserve"><value>¿No encuentra el correo? El equipo también puede aprobar su cuenta.</value></data>
   <data name="SignUp.SendAgain" xml:space="preserve"><value>Enviarlo de nuevo</value></data>
   <data name="SignUp.WaitingForStaff" xml:space="preserve"><value>Gracias. El equipo del grid revisará su registro. Cuando le aprueben, podrá iniciar sesión aquí con el nombre y la contraseña que acaba de elegir.</value></data>
   <data name="SignUp.Intro" xml:space="preserve"><value>Elija un nombre para su avatar y una contraseña. Los usará para iniciar sesión en {0}.</value></data>
@@ -184,7 +184,7 @@
   <data name="Regions.StateStarting" xml:space="preserve"><value>iniciándose</value></data>
   <data name="Regions.StateStopping" xml:space="preserve"><value>deteniéndose</value></data>
   <data name="Regions.StateFailed" xml:space="preserve"><value>no responde</value></data>
-  <data name="Regions.StateParked" xml:space="preserve"><value>en espera</value></data>
+  <data name="Regions.StateParked" xml:space="preserve"><value>desactivada</value></data>
   <data name="Account.Title" xml:space="preserve"><value>Ajustes de la cuenta</value></data>
   <data name="Account.Details" xml:space="preserve"><value>Sus datos</value></data>
   <data name="Account.EmailAddress" xml:space="preserve"><value>Dirección de correo electrónico</value></data>

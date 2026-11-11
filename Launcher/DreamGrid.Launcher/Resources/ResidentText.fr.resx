@@ -184,7 +184,7 @@
   <data name="Regions.StateStarting" xml:space="preserve"><value>en démarrage</value></data>
   <data name="Regions.StateStopping" xml:space="preserve"><value>en cours d’arrêt</value></data>
   <data name="Regions.StateFailed" xml:space="preserve"><value>ne répond pas</value></data>
-  <data name="Regions.StateParked" xml:space="preserve"><value>en veille</value></data>
+  <data name="Regions.StateParked" xml:space="preserve"><value>désactivée</value></data>
   <data name="Account.Title" xml:space="preserve"><value>Paramètres du compte</value></data>
   <data name="Account.Details" xml:space="preserve"><value>Vos informations</value></data>
   <data name="Account.EmailAddress" xml:space="preserve"><value>Adresse e-mail</value></data>
@@ -291,7 +291,7 @@
   <data name="Support.Busy" xml:space="preserve"><value>Votre ticket n’a pas pu être enregistré. Réessayez dans quelques minutes.</value></data>
   <data name="Support.TooLong" xml:space="preserve"><value>Ce ticket est trop long. Ouvrez un nouveau ticket.</value></data>
   <data name="Support.ReplyShort" xml:space="preserve"><value>Écrivez au moins {0} caractères.</value></data>
-  <data name="Support.ReplyLong" xml:space="preserve"><value>Restez sous {0:N0} caractères.</value></data>
+  <data name="Support.ReplyLong" xml:space="preserve"><value>Votre réponse doit faire moins de {0:N0} caractères.</value></data>
   <data name="Support.NameProblem" xml:space="preserve"><value>Écrivez votre nom, jusqu’à {0} caractères.</value></data>
   <data name="Support.EmailProblem" xml:space="preserve"><value>Écrivez l’adresse e-mail à laquelle nous devons répondre.</value></data>
   <data name="Support.CategoryProblem" xml:space="preserve"><value>Choisissez le sujet de votre ticket.</value></data>

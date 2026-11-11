@@ -117,7 +117,7 @@ Wenn Sie es nicht gesendet haben, ignorieren Sie diese E-Mail, und das Ticket wi
   <data name="ticket-access.Subject" xml:space="preserve"><value>Ihr Support-Ticket {TicketNumber} bei {GridName}</value></data>
   <data name="ticket-access.Body" xml:space="preserve"><value>Hallo {Name},
 
-Ihr Ticket {TicketNumber} („{Subject}“) liegt beim Team von {GridName}. Hier lesen Sie die Antworten und antworten selbst:
+Ihr Ticket {TicketNumber} („{Subject}“) liegt beim Team von {GridName}. Hier können Sie die Antworten lesen und antworten:
 
 {Link}
 
@@ -125,7 +125,7 @@ Der Link funktioniert 30 Tage lang. Halten Sie ihn privat: Jeder, der ihn hat, k
   <data name="ticket-staff-reply.Subject" xml:space="preserve"><value>Das Team von {GridName} hat auf Ihr Ticket {TicketNumber} geantwortet</value></data>
   <data name="ticket-staff-reply.Body" xml:space="preserve"><value>Hallo {Name},
 
-das Team hat auf Ihr Ticket {TicketNumber} („{Subject}“) geantwortet. Hier lesen Sie die Antwort und antworten selbst:
+das Team hat auf Ihr Ticket {TicketNumber} („{Subject}“) geantwortet. Hier können Sie die Antwort lesen und antworten:
 
 {Link}
 
