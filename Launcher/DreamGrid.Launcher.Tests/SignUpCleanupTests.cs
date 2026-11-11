@@ -257,6 +257,26 @@ public sealed class SignUpCleanupTests
         Assert.Null(SavedFor(rig, bea));
     }
 
+    // The first pass drops an expired entry whose account is already gone; its saved language goes with it (the second pass only
+    // sees entries still listed, so it never would).
+    [Fact]
+    public async Task An_expired_sign_up_whose_account_is_gone_forgets_its_saved_language()
+    {
+        var rig = SignUpsTests.Factory();
+        await using var _ = rig;
+        await rig.SignUps.SubmitAsync(SignUpsTests.Form(), null, Ct, "es");
+        var bea = rig.F.Robust.All.Single(a => a.FirstName == "Bea").PrincipalId;
+        Assert.Equal("es", SavedFor(rig, bea));
+        rig.F.Robust.RemoveById(bea);
+        rig.F.Time.Advance(TimeSpan.FromDays(30) + TimeSpan.FromHours(1));
+
+        await Cleanup(rig).RunOnceAsync(Ct);
+
+        Assert.Null(rig.Pending.Get(bea));
+        Assert.Empty(rig.F.Remover.Deleted);
+        Assert.Null(SavedFor(rig, bea));
+    }
+
     [Fact]
     public async Task A_waiting_sign_up_confirmed_elsewhere_keeps_its_saved_language()
     {

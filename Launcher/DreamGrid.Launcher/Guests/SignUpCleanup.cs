@@ -69,6 +69,8 @@ public sealed class SignUpCleanup(SignUpBoard pending, IRobustClient robust, IAc
                     audit.Write(new AuditEntry("DreamGrid", null, "system", null, "signup-expired",
                         LogText.Clean($"{account.FirstName} {account.LastName}", 64), "ok"));
                 }
+                // Gone from Robust already: a language saved at sign-up has no owner left (as in the second pass below).
+                else if (account is null) languages.Remove(principal);
                 pending.Remove(principal);
             }
             catch (Exception e) when (IsDown(e, ct))
