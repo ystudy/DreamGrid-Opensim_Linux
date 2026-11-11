@@ -135,7 +135,7 @@ public sealed class LegalModel(IGridController grid, Func<LauncherSettings> sett
             }
             if (changes.Count == 0) return s;
             all[language] = pages;
-            return s with { Legal = s.Legal with { Texts = all } };
+            return s with { Legal = LegalPages.WithMarks(s.Legal with { Texts = all }) };
         }, writeConfig: false);
 
         foreach (var (target, result) in changes)
@@ -198,7 +198,7 @@ public sealed class LegalModel(IGridController grid, Func<LauncherSettings> sett
             }
             if (unwritten.Count > 0 || changes.Count == 0) return s;
             all[language] = pages;
-            return s with { Legal = s.Legal with { Texts = all } };
+            return s with { Legal = LegalPages.WithMarks(s.Legal with { Texts = all }) };
         }, writeConfig: false);
 
         if (unwritten.Count > 0)

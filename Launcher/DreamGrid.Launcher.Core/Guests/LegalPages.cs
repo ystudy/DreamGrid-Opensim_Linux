@@ -55,11 +55,33 @@ public static class LegalPages
     }
 
     /// <summary>
-    /// The version the source's next text of <paramref name="page"/> gets: one more than the highest version the page has in any
-    /// language, cleared records included, so a number is never used twice and never goes backwards.
+    /// The version the source's next text of <paramref name="page"/> gets: one more than <see cref="Highest"/>, so a number is never
+    /// used twice and never goes backwards.
     /// </summary>
-    public static int NextVersion(LauncherSettings s, string page) =>
-        1 + (s.Legal.Texts?.Values.Select(l => l.TryGetValue(page, out var t) && t is not null ? t.Version : 0).DefaultIfEmpty(0).Max() ?? 0);
+    public static int NextVersion(LauncherSettings s, string page) => 1 + Highest(s.Legal, page);
+
+    /// <summary>
+    /// The highest version <paramref name="page"/> has had: its high-water mark (<see cref="LegalSettings.HighestVersion"/>) or any
+    /// record's version in any language, cleared records included, whichever is higher; 0 when there is none.
+    /// </summary>
+    public static int Highest(LegalSettings legal, string page)
+    {
+        var mark = legal.HighestVersion is { } marks && marks.TryGetValue(page, out var m) ? m : 0;
+        var records = legal.Texts?.Values.Select(l => l is not null && l.TryGetValue(page, out var t) && t is not null ? t.Version : 0)
+            .DefaultIfEmpty(0).Max() ?? 0;
+        return Math.Max(mark, records);
+    }
+
+    /// <summary>
+    /// <paramref name="legal"/> with every page's high-water mark raised to <see cref="Highest"/>: done on every save, and before records
+    /// are removed, so the marks outlive them. A file from before plan 16b gets its marks here, from its records.
+    /// </summary>
+    public static LegalSettings WithMarks(LegalSettings legal)
+    {
+        var pages = (legal.Texts?.Values.Where(l => l is not null).SelectMany(l => l.Keys) ?? []).Concat(legal.HighestVersion?.Keys ?? []).Distinct();
+        var marks = pages.ToDictionary(p => p, p => Highest(legal, p));
+        return marks.Count == 0 ? legal : legal with { HighestVersion = marks };
+    }
 
     /// <summary>
     /// The text of <paramref name="page"/> for a visitor reading <paramref name="language"/>: that language's text while it is at the
@@ -95,8 +117,12 @@ public static class LegalPages
     /// <summary>Whether sign-up may open: Terms, Privacy and Cookies have source text and the operator has ticked that they are responsible.</summary>
     public static bool SignUpGateOpen(LauncherSettings s) => s.Legal.OperatorResponsible && Missing(s).Count == 0;
 
-    /// <summary>Which of Terms, Privacy and Cookies have no source text (<see cref="SourceOf"/>), in that order.</summary>
-    public static IReadOnlyList<string> Missing(LauncherSettings s) => Required.Where(p => SourceOf(s, p).Text is null).ToList();
+    /// <summary>
+    /// Which of Terms, Privacy and Cookies have no text in the default language itself, in that order. English standing in
+    /// (<see cref="SourceOf"/>) is shown and accepted, but never opens sign-up: the owner writes the default's own pages first.
+    /// </summary>
+    public static IReadOnlyList<string> Missing(LauncherSettings s) =>
+        Required.Where(p => SourceOf(s, p) is not (var code, { }) || !string.Equals(code, Source(s), StringComparison.OrdinalIgnoreCase)).ToList();
 
     /// <summary>
     /// Which of Terms, Privacy and Cookies in <paramref name="language"/> are missing or at a version other than the source's
@@ -107,8 +133,9 @@ public static class LegalPages
 
     /// <summary>
     /// The required pages that stop <paramref name="language"/> from becoming the default, in order: while sign-up can open, each one
-    /// <see cref="UpToDate"/> lists; at any time, each page whose source text would change version or vanish with the switch (the
-    /// numbers carry over, so Terms acceptances stand and never go backwards).
+    /// <see cref="UpToDate"/> lists; at any time, each page whose source text would change version or vanish with the switch, and each
+    /// whose source text after the switch would be below the page's highest version (<see cref="Highest"/>; a cleared source leaves a
+    /// stale translation behind). The numbers carry over, so Terms acceptances stand and never go backwards.
     /// </summary>
     public static IReadOnlyList<string> DefaultBlockers(LauncherSettings s, string language)
     {
@@ -116,7 +143,8 @@ public static class LegalPages
         var gate = SignUpGateOpen(s);
         var behind = gate ? UpToDate(s, language) : [];
         return Required.Where(p => behind.Contains(p)
-            || (SourceOf(s, p).Text is { } now && (SourceOf(after, p).Text is not { } next || next.Version != now.Version))).ToList();
+            || (SourceOf(s, p).Text is { } now && (SourceOf(after, p).Text is not { } next || next.Version != now.Version))
+            || (SourceOf(after, p).Text is { } then && then.Version < Highest(s.Legal, p))).ToList();
     }
 
     /// <summary>"Terms", "Terms and Cookies" or "Terms, Privacy and Cookies": page titles joined for a sentence.</summary>

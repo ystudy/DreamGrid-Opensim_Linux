@@ -94,7 +94,8 @@ public sealed class LanguagesModel(IGridController grid, OwnerLanguages added, L
                 s = s with { Email = s.Email with { Templates = kept.Count == 0 ? null : kept } };
             }
             if (s.Legal.Texts is { } texts && texts.Keys.Any(Its))
-                s = s with { Legal = s.Legal with { Texts = texts.Where(l => !Its(l.Key)).ToDictionary(l => l.Key, l => l.Value) } };
+                // The high-water marks are raised first, so a number its records held is never handed out again.
+                s = s with { Legal = LegalPages.WithMarks(s.Legal) with { Texts = texts.Where(l => !Its(l.Key)).ToDictionary(l => l.Key, l => l.Value) } };
             return s;
         }, writeConfig: false);
         Write("language-deleted", name);

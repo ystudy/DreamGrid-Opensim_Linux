@@ -844,4 +844,48 @@ public sealed class LanguagesPageTests
         Assert.Equal(HttpStatusCode.OK, r.StatusCode);
         return Parser.ParseDocument(await r.Content.ReadAsStringAsync(Ct)).DocumentElement.GetAttribute("lang");
     }
+
+    [Fact]
+    public async Task A_cleared_source_does_not_let_a_stale_translation_become_the_source()
+    {
+        // English Terms was v5 and is cleared; the German translation is still at v2. With the gate closed, German as the default
+        // would take the Terms from 5 to nothing to 2.
+        var legal = new LegalSettings(new Dictionary<string, IReadOnlyDictionary<string, LegalText>>
+        {
+            ["en"] = new Dictionary<string, LegalText> { ["terms"] = new("", 5, LegalSaved) },
+            ["de"] = new Dictionary<string, LegalText> { ["terms"] = new("Test de terms.", 2, LegalSaved) },
+        });
+        await using var f = Factory(legal: legal);
+        f.Services.GetRequiredService<DreamGrid.Launcher.Guests.TermsAcceptances>().Accept(TestAuth.GuestId, 2, "203.0.113.9");
+
+        var page = await HtmlAsync(await ChooseAsync(await OwnerAsync(f), Languages.BuiltIn, "de"));
+
+        Assert.StartsWith("Write the Terms page in Deutsch first", page.QuerySelector("[role=alert]")!.TextContent.Trim());
+        Assert.Equal("en", Saved(f).Default);
+        Assert.Null(Core.Guests.LegalPages.Get(f.Store.LoadOrCreate(), "terms", "de"));
+    }
+
+    [Fact]
+    public async Task Deleting_a_language_never_lets_its_legal_numbers_be_used_again()
+    {
+        // Italian Terms was v6 and is cleared; English Terms is v2. Deleting Italian takes its records, not the number.
+        await using var f = Factory(legal: new LegalSettings(new Dictionary<string, IReadOnlyDictionary<string, LegalText>>
+        {
+            ["it"] = new Dictionary<string, LegalText> { ["terms"] = new("", 6, LegalSaved) },
+            ["en"] = new Dictionary<string, LegalText> { ["terms"] = new("Test en terms.", 2, LegalSaved) },
+        }));
+        Add(f, "it");
+        f.Services.GetRequiredService<DreamGrid.Launcher.Guests.TermsAcceptances>().Accept(TestAuth.GuestId, 6, "203.0.113.9");
+        var owner = await OwnerAsync(f);
+
+        using (var r = await PostAsync(owner, Page, "Delete", new() { ["code"] = "it", ["confirm"] = "true" }))
+            Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
+        Assert.Equal(["en"], f.Store.LoadOrCreate().Legal.Texts!.Keys);
+        Assert.Equal(6, f.Store.LoadOrCreate().Legal.HighestVersion!["terms"]);
+
+        using (var r = await PostAsync(owner, "/security/legal", "Save", new() { ["Texts[terms]"] = "Test en terms, new." }))
+            Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
+        Assert.Equal(7, Core.Guests.LegalPages.Get(f.Store.LoadOrCreate(), "terms", "en")!.Version);
+        Assert.Equal(HttpStatusCode.Redirect, await GuestHomeAsync(f)); // the old v6 acceptor is asked again
+    }
 }

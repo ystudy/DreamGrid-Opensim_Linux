@@ -378,10 +378,14 @@ public sealed class LegalPagesTests
         Assert.True(LegalPages.SignUpGateOpen(s));
         Assert.Empty(LegalPages.Missing(s));
 
-        // German as the default with no legal records at all: English stands in as the source, gate included.
+        // German as the default with no legal records at all: English stands in for reading and acceptance, but the gate stays
+        // closed until the German pages are written.
         var english = Settings(Legal(true, "terms", "privacy", "cookies")) with { Languages = new LanguageSettings { Default = "de" } };
-        Assert.True(LegalPages.SignUpGateOpen(english));
+        Assert.False(LegalPages.SignUpGateOpen(english));
+        Assert.Equal(["terms", "privacy", "cookies"], LegalPages.Missing(english));
         Assert.Equal(("en", 3), (LegalPages.SourceOf(english, "terms").Language, LegalPages.SourceOf(english, "terms").Text!.Version));
+        Assert.Equal(3, LegalPages.Get(english, "terms", "de")!.Version);
+        Assert.True(LegalPages.SignUpGateOpen(english with { Languages = new LanguageSettings { Default = "en" } }));
 
         // A cleared German Terms is "no text": English does not take over, and the gate asks for Terms again.
         var cleared = Versions("de", ("de", "privacy", 1), ("de", "cookies", 1), ("en", "terms", 3)) is var v
@@ -471,5 +475,23 @@ public sealed class LegalPagesTests
 
         Assert.Equal(3, LegalPages.Get(s, "terms", "de")!.Version);
         Assert.Equal("en", LegalPages.Find(s, "terms", "en")!.Value.Language);
+    }
+
+    [Fact]
+    public void High_water_marks_are_seeded_from_old_records_and_outlive_them()
+    {
+        // A settings file from before plan 16b has no marks: they come from its records, cleared ones included.
+        var old = Versions("en", ("en", "terms", 3), ("it", "terms", 6)).Legal;
+        Assert.Null(old.HighestVersion);
+        var marked = LegalPages.WithMarks(old);
+        Assert.Equal(6, marked.HighestVersion!["terms"]);
+
+        // The records go; the mark stays, and the next number is past it.
+        var gone = marked with { Texts = marked.Texts!.Where(l => l.Key != "it").ToDictionary(l => l.Key, l => l.Value) };
+        var s = Settings(gone);
+        Assert.Equal(7, LegalPages.NextVersion(s, "terms"));
+        Assert.Equal(6, LegalPages.Highest(gone, "terms"));
+        // A mark never comes down.
+        Assert.Equal(6, LegalPages.WithMarks(gone).HighestVersion!["terms"]);
     }
 }

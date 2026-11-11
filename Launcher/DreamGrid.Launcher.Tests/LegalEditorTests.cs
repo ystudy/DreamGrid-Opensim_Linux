@@ -602,4 +602,36 @@ public sealed class LegalEditorTests
         Assert.Equal("/security/legal", hub.QuerySelector("main a[href='/security/legal']")!.GetAttribute("href"));
         Assert.Contains("Guests and the public pages are reachable from any address; this list covers the staff pages.", security.Body!.TextContent);
     }
+
+    [Fact]
+    public async Task English_standing_in_never_opens_sign_up_through_the_pages()
+    {
+        // English pages written and ticked; the owner unticks, makes German the default (no German pages), and ticks again.
+        await using var f = Factory();
+        var owner = await SignedInAsync(f);
+        using (var r = await PostAsync(owner, "Save", new() { ["Texts[terms]"] = "Test terms.", ["Texts[privacy]"] = "Test privacy.", ["Texts[cookies]"] = "Test cookies." }))
+            Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
+        (await PostAsync(owner, "Responsibility", new() { ["Responsible"] = "true" })).Dispose();
+        Assert.True(LegalPages.SignUpGateOpen(f.Store.LoadOrCreate()));
+
+        (await PostAsync(owner, "Responsibility", [])).Dispose();
+        var page = new HtmlParser().ParseDocument(await owner.GetStringAsync("/security/languages", Ct));
+        var token = page.QuerySelector("input[name=__RequestVerificationToken]")!.GetAttribute("value")!;
+        List<KeyValuePair<string, string>> form = [new("__RequestVerificationToken", token), new("default", "de"),
+            .. DreamGrid.Launcher.Core.Languages.BuiltIn.Select(c => new KeyValuePair<string, string>("offered", c))];
+        using (var r = await owner.PostAsync("/security/languages?handler=Choose", new FormUrlEncodedContent(form), Ct))
+            Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
+        Assert.Equal("de", f.Store.LoadOrCreate().Languages.Default);
+        (await PostAsync(owner, "Responsibility", new() { ["Responsible"] = "true" })).Dispose();
+
+        var s = f.Store.LoadOrCreate();
+        Assert.True(s.Legal.OperatorResponsible);
+        Assert.False(LegalPages.SignUpGateOpen(s));
+        Assert.Equal(1, LegalPages.Get(s, "terms", "de")!.Version); // still shown and accepted in English
+        using (var r = await PostAsync(owner, "SignUp", new() { ["SignUpOpen"] = "true" }))
+            Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
+        Assert.False(SignUpRules.IsOpen(f.Store.LoadOrCreate()));
+        Assert.StartsWith("Before sign-ups can be opened: Terms, Privacy, Cookies",
+            new HtmlParser().ParseDocument(await owner.GetStringAsync("/security/legal", Ct)).QuerySelector("#gate-state")!.TextContent.Trim());
+    }
 }

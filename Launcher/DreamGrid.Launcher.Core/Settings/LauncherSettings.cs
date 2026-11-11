@@ -130,12 +130,15 @@ public sealed record LegalText(string Markdown, int Version, DateTimeOffset Save
 /// <summary>
 /// The operator's own legal pages. <see cref="Texts"/>: language ("en") to page id ("terms", "privacy", "cookies", "contact") to
 /// text; null or empty means none written. DreamGrid ships no wording. <see cref="OperatorResponsible"/> is the operator's tick that they
-/// are responsible for the texts; <see cref="ResponsibleSince"/> is when it was ticked.
+/// are responsible for the texts; <see cref="ResponsibleSince"/> is when it was ticked. <see cref="HighestVersion"/>: page id to the
+/// highest version that page has ever had in any language, kept when records go (a deleted language), so a number is never used
+/// twice; null or a missing page reads as the highest of its records (a file from before plan 16b).
 /// </summary>
 public sealed record LegalSettings(
     IReadOnlyDictionary<string, IReadOnlyDictionary<string, LegalText>>? Texts = null,
     bool OperatorResponsible = false,
-    DateTimeOffset? ResponsibleSince = null);
+    DateTimeOffset? ResponsibleSince = null,
+    IReadOnlyDictionary<string, int>? HighestVersion = null);
 
 /// <summary>
 /// The owner's wording for the grid's emails: language ("en") to template id to text, only where it differs from the default
