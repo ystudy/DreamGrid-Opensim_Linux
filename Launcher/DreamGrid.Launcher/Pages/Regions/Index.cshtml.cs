@@ -1,4 +1,5 @@
 using DreamGrid.Launcher.Core.Grid;
+using DreamGrid.Launcher.Core.Plans;
 using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Endpoints;
@@ -33,7 +34,54 @@ public sealed class IndexModel(IGridController grid, RegionRights rights) : Page
 
     [TempData] public string? Notice { get; set; }
 
+    /// <summary>Whether the Landing section is shown: only where this computer runs the grid (a Region Server's grid decides).</summary>
+    public bool LandingShown { get; private set; }
+
+    /// <summary>The automatic default's name (the first region), shown as the select's first choice.</summary>
+    public string? AutomaticName { get; private set; }
+
+    /// <summary>The chosen default region's UUID; empty for automatic.</summary>
+    [BindProperty] public string? LandingDefault { get; set; }
+
+    /// <summary>The fallback regions' UUIDs.</summary>
+    [BindProperty] public List<string> LandingFallbacks { get; set; } = [];
+
     public void OnGet()
+    {
+        var s = grid.CurrentSettings();
+        LandingShown = PlanCatalog.RunsRobust(s);
+        AutomaticName = RegionModel.First(s)?.Name;
+        LandingDefault = Landing.DefaultChosen(s) ? Landing.Default(s)!.Uuid.ToString() : "";
+        LandingFallbacks = [.. Landing.Fallbacks(s).Select(r => r.Uuid.ToString())];
+        Fill();
+    }
+
+    /// <summary>
+    /// Saves the landing regions and writes the config; Robust reads them when the world restarts. A value that is not one of
+    /// this computer's live regions is a 400 and nothing is saved.
+    /// </summary>
+    public IActionResult OnPostLanding()
+    {
+        var s = grid.CurrentSettings();
+        if (!PlanCatalog.RunsRobust(s)) return NotFound();
+        var live = RegionModel.Live(s).Select(r => r.Uuid).ToHashSet();
+        Guid? Parse(string? v) => Guid.TryParse(v, out var id) && live.Contains(id) ? id : null;
+
+        Guid? chosen = null;
+        if (!string.IsNullOrEmpty(LandingDefault) && (chosen = Parse(LandingDefault)) is null) return BadRequest();
+        var fallbacks = new List<Guid>();
+        foreach (var v in LandingFallbacks)
+        {
+            if (Parse(v) is not { } id) return BadRequest();
+            if (id != chosen && !fallbacks.Contains(id)) fallbacks.Add(id);
+        }
+
+        grid.UpdateSettings(x => x with { Landing = new LandingSettings(chosen, fallbacks) }, writeConfig: true);
+        Notice = "Landing saved. It applies when your world restarts.";
+        return Redirect("/regions");
+    }
+
+    private void Fill()
     {
         Types = RegionTypes.All(grid.CurrentSettings());
         Moving = Move is { } id && RegionModel.Find(grid.CurrentSettings(), id) is { DeletedAt: null } r ? r : null;

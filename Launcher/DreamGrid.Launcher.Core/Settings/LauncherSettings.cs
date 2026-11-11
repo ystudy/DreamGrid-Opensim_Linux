@@ -82,6 +82,13 @@ public sealed record RegionSettings(
 /// <summary>A region type made from a file in the OAR library; <see cref="Id"/> is "c-" and 8 lowercase hex characters.</summary>
 public sealed record CustomRegionType(string Id, string Name, string File);
 
+/// <summary>
+/// Where people land when their home or last region can't take them (2.14). <see cref="Default"/>: the region chosen, null for
+/// automatic (the first region). <see cref="Fallbacks"/>: regions tried when the default is down too; Robust takes the nearest
+/// running one, so the order is not kept. Both are region UUIDs; one that is deleted or unknown is ignored.
+/// </summary>
+public sealed record LandingSettings(Guid? Default = null, IReadOnlyList<Guid>? Fallbacks = null);
+
 /// <summary>Version 1's single region, read only to migrate a schema 1 file.</summary>
 public sealed record LegacyRegionV1(string Instance, string Name, Guid Uuid, int X = 1000, int Y = 1000, string Physics = "ubODE",
     string Content = "starter");
@@ -220,6 +227,8 @@ public sealed record LauncherSettings
     public string DefaultPhysics { get; init; } = "ubODE";
     /// <summary>Whether a program without its own setting runs scripts.</summary>
     public bool DefaultScripts { get; init; } = true;
+    /// <summary>The landing regions; null until the owner saves them (read as automatic, no fallbacks).</summary>
+    public LandingSettings? Landing { get; init; }
 
     public SetupState Setup { get; init; } = new();
     private readonly SecuritySettings _security = new();

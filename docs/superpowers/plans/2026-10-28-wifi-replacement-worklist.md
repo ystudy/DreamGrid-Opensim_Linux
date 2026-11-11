@@ -190,11 +190,12 @@ Each item says what Wifi did, how v7 should do it better, and the security rules
 - [ ] **Bulk user creation** (`gridusers-creation-progress`). Dropped unless asked for.
 - [ ] **Destinations list** (`destinationlist`). Folded into the splash page as "popular regions" if wanted.
 
-### 2.14 Landing regions (Wifi: `1DivaOpenSimServices` fallback regions) — not started, owner said later
-- Today the launcher writes no landing lines: the "Set by Dreamgrid" slot in `Robust.HG.ini.proto` (`; START` … `; END`) is empty. If someone's home region is stopped and no default region is set, their login can fail instead of landing them somewhere. Not yet checked on the VM.
-- [ ] A **Landing** section on the Regions page: pick one default region, where people land when their home or last region can't take them, and an ordered list of fallback regions tried when the default is down too.
-- [ ] Hypergrid visitors who name no region land on the default region too, unless the owner decides otherwise when this is designed.
-- [ ] The launcher writes OpenSim's own `Region_<name> = "DefaultRegion, DefaultHGRegion, FallbackRegion"` lines into that slot. No change to OpenSim code. Robust reads them at start, so a change applies at the next grid restart; the page says so.
+### 2.14 Landing regions (Wifi: `1DivaOpenSimServices` fallback regions)
+> Built without questions (owner, 2026-11-11: "just start"). Before that, the "Set by Dreamgrid" slot in `Robust.HG.ini.proto` (`; START` … `; END`) was empty, so a login whose home region was stopped could fail.
+- [x] A **Landing** section on the Regions page (`/regions`, only where this computer runs the grid): one default region, where people land when their home or last region can't take them, and fallback regions tried when the default is down too. With nothing chosen the default is **Automatic**: the first region, so a new grid has one from the start. A deleted region is dropped from both.
+- [x] Decided: the fallbacks are a set, not an ordered list. OpenSim's `GridService.GetFallbackRegions` sorts them by distance from where the login was headed, so a written order would not be kept without an OpenSim patch; the page says the nearest running one is used.
+- [x] Hypergrid visitors who name no region land on the default region too (it gets `DefaultHGRegion`).
+- [x] The launcher writes OpenSim's own lines into that slot, one per region by UUID (`Landing.Lines`): `Region_<uuid> = "DefaultRegion, DefaultHGRegion, -FallbackRegion"` and so on. Every other region gets the flags taken off with `-`, because Robust adds a line's flags to the region's database row when it registers and never clears them on its own. No change to OpenSim code. A change applies when the world restarts; the page says so. A Region Server writes no lines (its grid decides).
 - [ ] Check on the VM: stop someone's home region, log in, and see them land on the default, then on a fallback with the default stopped too.
 
 ## Phase 3 — Remove Wifi completely

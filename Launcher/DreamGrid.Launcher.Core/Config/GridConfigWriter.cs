@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
+using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.Ini;
 using DreamGrid.Launcher.Core.Plans;
 using DreamGrid.Launcher.Core.Security;
@@ -68,6 +69,9 @@ public sealed class GridConfigWriter(LauncherPaths paths)
             robust.Set("LoginService", "TermsCheckURL", $"http://127.0.0.1:{s.WebPort}/dreamgrid/terms");
             robust.Set("LoginService", "TermsPageURL", $"http://{host}:{s.WebPort}/terms");
         }
+        // Where people land when their home or last region can't take them (2.14). A Region Server's grid decides that.
+        if (PlanCatalog.RunsRobust(s))
+            robust.ReplaceBlock(Landing.Section, Landing.SlotStart, Landing.SlotEnd, Landing.Lines(s));
         robust.Set("GridInfoService", "gridname", s.GridName);
         // What a Region Server reads to join this grid.
         robust.Set("GridInfoService", GridInfoKeys.Version, LauncherVersion.Current);
