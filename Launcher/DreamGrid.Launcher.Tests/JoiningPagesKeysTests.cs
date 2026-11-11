@@ -238,7 +238,7 @@ public sealed class JoiningPagesKeysTests
 [CollectionDefinition("Process culture", DisableParallelization = true)]
 public sealed class ProcessCultureCollection;
 
-/// <summary>Changes the process-wide UI culture, so it runs alone: no other test is running while it is set.</summary>
+/// <summary>Changes the process-wide culture, so it runs alone: no other test is running while it is set.</summary>
 [Collection("Process culture")]
 public sealed class StaffPagesEnglishTests
 {
@@ -283,6 +283,42 @@ public sealed class StaffPagesEnglishTests
         finally
         {
             CultureInfo.DefaultThreadCurrentUICulture = before;
+        }
+    }
+
+    // Dates and numbers too: the staff splash preview draws the news date through the shared _SplashBlock with CurrentCulture.
+    [Fact]
+    public async Task Staff_dates_are_English_whatever_the_system_culture()
+    {
+        var (culture, ui) = (CultureInfo.DefaultThreadCurrentCulture, CultureInfo.DefaultThreadCurrentUICulture);
+        try
+        {
+            CultureInfo.DefaultThreadCurrentCulture = CultureInfo.GetCultureInfo("de");
+            CultureInfo.DefaultThreadCurrentUICulture = CultureInfo.GetCultureInfo("de");
+            await using var f = SplashPictureApiTests.Factory();
+            var client = await SplashPictureApiTests.StaffAsync(f, "owner");
+            Assert.Equal("en", CultureInfo.DefaultThreadCurrentCulture?.Name);
+
+            var token = await SplashPictureApiTests.TokenAsync(client);
+            using var doc = System.Text.Json.JsonDocument.Parse(await client.GetStringAsync("/api/splash", Ct));
+            var basedOn = doc.RootElement.GetProperty("draftVersion").GetInt32();
+            var design = new Core.Splash.SplashDesign(1280, 800, new Core.Splash.SplashBackground("#223344", null, 50, 50, 0), false, 16,
+            [
+                new Core.Splash.SplashBlock(1, Core.Splash.SplashBlockKind.News, 40, 40, 600, 200, 1, "#000000", 50, null, false, 8,
+                    new Core.Splash.SplashFont(24, "#ffffff", false, Core.Splash.SplashAlign.Left, Core.Splash.SplashFontFamily.Sans),
+                    new Core.Splash.SplashContent(News: [new Core.Splash.SplashNewsItem(new DateOnly(2026, 3, 1), new Dictionary<string, string> { ["en"] = "Party" }, false)])),
+            ]);
+            using (var r = await SplashPictureApiTests.SendAsync(client, HttpMethod.Put, "/api/splash/draft?basedOn=" + basedOn, token,
+                System.Net.Http.Json.JsonContent.Create(design, options: new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web))))
+                Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+
+            var page = await PageAsync(client, "/splash/preview");
+            Assert.Equal("1 March 2026", page.QuerySelector(".splash-news-date")!.TextContent.Trim()); // German: "1 März 2026"
+        }
+        finally
+        {
+            CultureInfo.DefaultThreadCurrentCulture = culture;
+            CultureInfo.DefaultThreadCurrentUICulture = ui;
         }
     }
 }

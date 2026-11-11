@@ -41,8 +41,9 @@ var processEnv = new Dictionary<string, string?>
 if (await CommandLine.RunVerbAsync(args, processEnv, Console.Out, CancellationToken.None) is { } verbExit)
     return verbExit;
 
-// Staff pages stay in English whatever the operating system's language: only resident pages get ResidentLanguageFilter, which
-// sets the culture for its own request. (CurrentCulture, for dates and numbers, is left as the system has it.)
+// Staff pages stay in English whatever the operating system's language, words, dates and numbers alike (spec section 2): only
+// resident pages get ResidentLanguageFilter, which sets the culture for its own request.
+System.Globalization.CultureInfo.DefaultThreadCurrentCulture = System.Globalization.CultureInfo.GetCultureInfo("en");
 System.Globalization.CultureInfo.DefaultThreadCurrentUICulture = System.Globalization.CultureInfo.GetCultureInfo("en");
 
 var builder = WebApplication.CreateBuilder(args);
