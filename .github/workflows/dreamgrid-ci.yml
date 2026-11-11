@@ -84,6 +84,14 @@ jobs:
         env:
           RAPIER_TEST_THREADS: '2'
 
+      # The model converter's tests. The larger glTF samples are downloaded first (git-ignored; a test skips without its model).
+      - name: Fetch model import test models
+        shell: bash
+        run: bash tests/GridGate.ModelImport.Tests/fetch-models.sh
+
+      - name: Model import tests
+        run: dotnet test --project tests/GridGate.ModelImport.Tests -c Release
+
       - name: Smoke (ubODE)
         run: dotnet run --project tests/DreamGrid.Smoke -c Release -- --bin bin --keep --physics ubODE
         env:
@@ -158,6 +166,14 @@ jobs:
         run: dotnet test --project tests/DreamGrid.Physics.Rapier.Tests -c Release --no-build
         env:
           RAPIER_TEST_THREADS: '2'
+
+      # The model converter's tests. The larger glTF samples are downloaded first (git-ignored; a test skips without its model).
+      - name: Fetch model import test models
+        shell: bash
+        run: bash tests/GridGate.ModelImport.Tests/fetch-models.sh
+
+      - name: Model import tests
+        run: dotnet test --project tests/GridGate.ModelImport.Tests -c Release
 
       - name: Smoke (ubODE)
         run: dotnet run --project tests/DreamGrid.Smoke -c Release -- --bin bin --keep --physics ubODE
