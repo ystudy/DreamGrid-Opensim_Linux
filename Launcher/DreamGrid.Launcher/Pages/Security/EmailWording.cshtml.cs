@@ -134,7 +134,11 @@ public sealed class EmailWordingModel(IGridController grid, Func<LauncherSetting
     public override void OnPageHandlerExecuting(Microsoft.AspNetCore.Mvc.Filters.PageHandlerExecutingContext context)
     {
         Choices = offeredLanguages.All();
-        Language = Choices.FirstOrDefault(c => string.Equals(c, Lang, StringComparison.OrdinalIgnoreCase)) ?? offeredLanguages.Default();
+        var asked = Choices.FirstOrDefault(c => string.Equals(c, Lang, StringComparison.OrdinalIgnoreCase));
+        Language = asked ?? offeredLanguages.Default();
+        // A post for a language deleted in another tab must not land on the default language's wording.
+        if (asked is null && !string.IsNullOrEmpty(Lang) && HttpMethods.IsPost(Request.Method))
+            context.Result = NotFound();
     }
 
     /// <summary>The templates on the page: every one in English, the emails to residents in any other language.</summary>

@@ -36,7 +36,7 @@ public sealed class OwnerLanguages(string folder, TimeProvider time, ILogger<Own
 
     /// <summary>
     /// The normalised culture name for what the owner typed ("IT" gives "it", "pt-pt" gives "pt-PT"), or null when the system doesn't
-    /// know it, it isn't plainly a language tag, or it is one of <see cref="Languages.BuiltIn"/>.
+    /// know it, it isn't plainly a language tag, or it is one of <see cref="Languages.BuiltIn"/> or the culture one of them runs as ("pt-BR").
     /// </summary>
     public static string? CodeFor(string? typed)
     {
@@ -52,7 +52,9 @@ public sealed class OwnerLanguages(string folder, TimeProvider time, ILogger<Own
         {
             return null;
         }
-        return name.Length == 0 || Languages.BuiltIn.Contains(name, StringComparer.OrdinalIgnoreCase) ? null : name;
+        // A built-in language's own culture is taken too: built-in Portuguese runs as "pt-BR", so an added "pt-BR" would take its pages over.
+        return name.Length == 0 || Languages.BuiltIn.Any(b => string.Equals(name, b, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(name, Languages.Culture(b).Name, StringComparison.OrdinalIgnoreCase)) ? null : name;
     }
 
     /// <summary>

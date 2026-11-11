@@ -71,6 +71,8 @@ public sealed class OwnerLanguagesTests : IDisposable
     [InlineData("pt-PT", "pt-PT")]
     [InlineData("ar", "ar")]
     [InlineData("de", null)]
+    [InlineData("pt-BR", null)] // built-in Portuguese runs as pt-BR
+    [InlineData("PT-br", null)]
     [InlineData("en", null)]
     [InlineData("xx", null)]
     [InlineData("../x", null)]

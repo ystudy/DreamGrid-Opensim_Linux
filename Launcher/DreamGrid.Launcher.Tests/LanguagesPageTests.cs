@@ -381,6 +381,26 @@ public sealed class LanguagesPageTests
     }
 
     [Fact]
+    public async Task Upload_checks_an_email_against_the_half_already_saved()
+    {
+        // Saved (by a hand edit of the file; the site's checks don't make this): {Link} in the subject, not in the body. The file
+        // gives only a subject without {Link}: checked against the English body it passes, but merged with the saved body the
+        // email would have no link.
+        await using var f = Factory();
+        var bodyWithoutLink = Catalog(f).EnglishEmail("confirm-email.Body").Replace("{Link}", "", StringComparison.Ordinal);
+        Add(f, "it", email: new() { ["confirm-email.Subject"] = "Conferma su {GridName} {Link}", ["confirm-email.Body"] = bodyWithoutLink });
+        var owner = await OwnerAsync(f);
+        var file = FileOf(new { code = "it", email = new Dictionary<string, string> { ["confirm-email.Subject"] = "Conferma su {GridName}" } });
+        using var r = await UploadAsync(owner, "it", file);
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        var problems = Parser.ParseDocument(await r.Content.ReadAsStringAsync(Ct)).QuerySelector("#upload-problems")!.TextContent;
+        Assert.Contains("confirm-email.Subject", problems);
+        Assert.Contains("can't be sent without", problems);
+        Assert.Equal("Conferma su {GridName} {Link}", Store(f).Get("it")!.Email["confirm-email.Subject"]);
+        Assert.DoesNotContain("language-uploaded", Audit(f));
+    }
+
+    [Fact]
     public async Task Delete_refuses_an_offered_language()
     {
         await using var f = Factory(offered: [.. Languages.BuiltIn, "it"]);

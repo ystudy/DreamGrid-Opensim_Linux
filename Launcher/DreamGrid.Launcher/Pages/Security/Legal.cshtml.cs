@@ -93,7 +93,8 @@ public sealed class LegalModel(IGridController grid, Func<LauncherSettings> sett
 
     public IActionResult OnPostSave()
     {
-        Resolve();
+        // A language deleted in another tab must not fall back to the source: that would write its text over the default's pages.
+        if (!Resolve()) return NotFound();
         return IsSource ? SaveSource() : SaveTranslation();
     }
 
@@ -277,13 +278,19 @@ public sealed class LegalModel(IGridController grid, Func<LauncherSettings> sett
         SetGate();
     }
 
-    /// <summary>Sets <see cref="Source"/> and <see cref="Language"/> from the settings and <see cref="Lang"/>.</summary>
-    private void Resolve()
+    /// <summary>
+    /// Sets <see cref="Source"/> and <see cref="Language"/> from the settings and <see cref="Lang"/>. False when <see cref="Lang"/> names
+    /// a language that isn't built in or added (any more); <see cref="Language"/> is then the source, which is right for showing
+    /// the page and wrong for saving.
+    /// </summary>
+    private bool Resolve()
     {
         var all = offeredLanguages.All();
         var source = LegalPages.Source(settings());
         Source = all.FirstOrDefault(c => string.Equals(c, source, StringComparison.OrdinalIgnoreCase)) ?? source;
-        Language = all.FirstOrDefault(c => string.Equals(c, Lang, StringComparison.OrdinalIgnoreCase)) ?? Source;
+        var asked = all.FirstOrDefault(c => string.Equals(c, Lang, StringComparison.OrdinalIgnoreCase));
+        Language = asked ?? Source;
+        return asked is not null || string.IsNullOrEmpty(Lang);
     }
 
     /// <summary>The selector's languages, and the pages of the one edited that are behind the source.</summary>

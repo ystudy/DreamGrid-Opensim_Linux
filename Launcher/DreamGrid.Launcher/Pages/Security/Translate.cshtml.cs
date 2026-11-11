@@ -119,15 +119,17 @@ public sealed class TranslateModel(OwnerLanguages added, LanguageCatalog catalog
             await using var stream = file.OpenReadStream();
             var (read, found) = LanguageFile.Read(stream, language.Code, catalog, time);
             problems = found;
-            if (read is not null && problems.Count == 0)
+            // The texts the file gives replace those saved; the rest are kept.
+            var merged = read is null ? null : language with
             {
-                // The texts the file gives replace those saved; the rest are kept.
-                var merged = language with
-                {
-                    Page = Merge(language.Page, read.Page),
-                    Email = Merge(language.Email, read.Email),
-                    Saved = read.Saved,
-                };
+                Page = Merge(language.Page, read.Page),
+                Email = Merge(language.Email, read.Email),
+                Saved = read.Saved,
+            };
+            if (read is not null && merged is not null && problems.Count == 0)
+                problems = MergedEmailProblems(read.Email.Keys, merged.Email);
+            if (read is not null && merged is not null && problems.Count == 0)
+            {
                 added.Save(merged);
                 Write("language-uploaded", language.Code);
                 var count = read.Page.Count + read.Email.Count;
@@ -155,6 +157,18 @@ public sealed class TranslateModel(OwnerLanguages added, LanguageCatalog catalog
         }
         texts[key] = text;
     }
+
+    /// <summary>
+    /// The file checked each half of an email against the file's own other half (or the English). Once merged, the other half may be
+    /// the one already saved, so each email the file touched must still keep its needed words, as Save checks.
+    /// </summary>
+    private IReadOnlyList<LanguageFileProblem> MergedEmailProblems(IEnumerable<string> given, IReadOnlyDictionary<string, string> merged) =>
+        [.. given
+            .Where(k => LanguageFile.Pair(k) is not null && merged.ContainsKey(k))
+            .Select(k => (Key: k, Problem: LanguageFile.Check(catalog, LanguageFile.Section.Email, k, merged[k],
+                merged.GetValueOrDefault(LanguageFile.Pair(k)!))))
+            .Where(p => p.Problem is not null)
+            .Select(p => new LanguageFileProblem(p.Key, p.Problem!))];
 
     private static IReadOnlyDictionary<string, string> Merge(IReadOnlyDictionary<string, string> kept, IReadOnlyDictionary<string, string> given)
     {

@@ -78,6 +78,19 @@ public sealed class EmailWordingPageTests
     }
 
     [Fact]
+    public async Task A_post_for_a_language_that_is_gone_saves_nothing()
+    {
+        // The owner had ?lang=it open and deleted Italian in another tab: the save must not land on the default's wording.
+        await using var f = Factory();
+        var owner = await OwnerAsync(f);
+        using var r = await PostAsync(owner, "Save&lang=it", EmailTemplates.ConfirmEmail,
+            new() { ["Subject"] = "Conferma su {GridName}", ["Body"] = "Ciao {AvatarName}: {Link} ({ExpiresIn})" });
+        Assert.Equal(HttpStatusCode.NotFound, r.StatusCode);
+        Assert.True(f.Store.LoadOrCreate().Email.Templates is null or { Count: 0 });
+        Assert.DoesNotContain("email-template-saved", Audit(f));
+    }
+
+    [Fact]
     public async Task Page_says_which_language_the_wording_is_for()
     {
         await using var f = Factory();

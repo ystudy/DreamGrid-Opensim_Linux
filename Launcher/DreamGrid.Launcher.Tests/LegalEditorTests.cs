@@ -363,6 +363,19 @@ public sealed class LegalEditorTests
         LegalPages.Exact(f.Store.LoadOrCreate(), page, language);
 
     [Fact]
+    public async Task A_save_for_a_language_that_is_gone_never_writes_the_source()
+    {
+        // The owner had ?lang=it open and deleted Italian in another tab: the save must not overwrite the default's Terms.
+        await using var f = Factory();
+        var owner = await SignedInAsync(f);
+        using var one = await SaveAsync(owner, "terms", "Test terms one.");
+        using var it = await PostAsync(owner, "Save&lang=it", new() { ["Texts[terms]"] = "Termini di prova." }, "/security/legal");
+        Assert.Equal(HttpStatusCode.NotFound, it.StatusCode);
+        Assert.Equal(("Test terms one.", 1), (Exact(f, "en", "terms")!.Markdown, Exact(f, "en", "terms")!.Version));
+        Assert.Null(Exact(f, "it", "terms"));
+    }
+
+    [Fact]
     public async Task Saving_a_translation_stamps_the_source_version()
     {
         await using var f = Factory();
