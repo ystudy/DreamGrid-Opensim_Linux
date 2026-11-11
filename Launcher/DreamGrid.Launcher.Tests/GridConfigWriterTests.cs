@@ -930,6 +930,48 @@ public sealed class GridConfigWriterTests : IDisposable
         }
     }
 
+    /// <summary>Landing regions (2.14) go in the "Set by Dreamgrid" slot of [GridService], between its START and END lines.</summary>
+    [Fact]
+    public void Landing_lines_fill_the_grid_service_slot()
+    {
+        var first = Guid.Parse("11111111-2222-3333-4444-555555555555");
+        var other = Guid.Parse("99999999-2222-3333-4444-555555555555");
+        var s = Make() with
+        {
+            Regions = [.. Make().Regions, new RegionSettings("Region1", "Beach", other, 1001, 1001, UdpPort: 8005)],
+            Landing = new LandingSettings(other, [first]),
+        };
+
+        Write(s);
+
+        var r = Robust();
+        Assert.Equal("DefaultRegion, DefaultHGRegion, -FallbackRegion", r.Get("GridService", $"Region_{other}"));
+        Assert.Equal("FallbackRegion, -DefaultRegion, -DefaultHGRegion", r.Get("GridService", $"Region_{first}"));
+        var lines = File.ReadAllLines(Path.Combine(_paths.RuntimeOpenSim, "Robust.HG.ini")).Select(l => l.Trim()).ToList();
+        var start = lines.IndexOf("; START  <= Leave this line");
+        Assert.StartsWith($"Region_{first}", lines[start + 1]);
+        Assert.StartsWith($"Region_{other}", lines[start + 2]);
+        Assert.Equal("; END  <= Leave this line", lines[start + 3]);
+    }
+
+    [Fact]
+    public void Without_a_landing_choice_the_first_region_is_the_default()
+    {
+        Write(Make());
+
+        Assert.Equal("DefaultRegion, DefaultHGRegion, -FallbackRegion",
+            Robust().Get("GridService", "Region_11111111-2222-3333-4444-555555555555"));
+    }
+
+    /// <summary>A Region Server's regions land wherever the grid it joined says; its own Robust INI is never run.</summary>
+    [Fact]
+    public void A_region_server_writes_no_landing_lines()
+    {
+        Write(RegionServer(hypergrid: false));
+
+        Assert.Null(Robust().Get("GridService", "Region_11111111-2222-3333-4444-555555555555"));
+    }
+
     private static string Normalize(string text, bool slashes = false) =>
         (slashes ? text.Replace(Path.DirectorySeparatorChar, (char)47) : text).ReplaceLineEndings(((char)10).ToString());
 }

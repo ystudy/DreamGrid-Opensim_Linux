@@ -111,6 +111,39 @@
     }
 </section>
 
+@if (Model.LandingShown && Model.Rows.Count > 0)
+{
+    <section class="work-panel mb-3 form-panel" id="landing">
+        <h2 class="panel-title">Landing<help-tip class="help-start">Where people arrive when their home or last region can't take them, for example because it is stopped. Hypergrid visitors who name no region arrive at the default region too.</help-tip></h2>
+        <form method="post" action="/regions?handler=landing" asp-antiforgery="true">
+            <div class="mb-3">
+                <label class="form-label fw-semibold" for="LandingDefault">Default region</label>
+                <select class="form-select" id="LandingDefault" name="LandingDefault">
+                    <option value="" selected="@(Model.LandingDefault == "")">Automatic: @Model.AutomaticName</option>
+                    @foreach (var r in Model.Rows)
+                    {
+                        <option value="@r.Id" selected="@(Model.LandingDefault == r.Id.ToString())">@r.Name</option>
+                    }
+                </select>
+                <p class="hint form-text">Automatic uses your first region.</p>
+            </div>
+            <fieldset class="mb-3">
+                <legend class="form-label fw-semibold fs-6">Fallback regions</legend>
+                @foreach (var r in Model.Rows)
+                {
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="LandingFallbacks" id="LandingFallbacks-@r.Id" value="@r.Id" checked="@Model.LandingFallbacks.Contains(r.Id.ToString())">
+                        <label class="form-check-label" for="LandingFallbacks-@r.Id">@r.Name</label>
+                    </div>
+                }
+                <p class="hint form-text">Tried when the default region is down too. The nearest running one is used. The default region is never its own fallback.</p>
+            </fieldset>
+            <p class="hint form-text">A change applies when your world restarts.</p>
+            <div class="form-actions"><button type="submit" class="btn btn-primary" icon="save">Save landing</button></div>
+        </form>
+    </section>
+}
+
 @section Scripts {
 <script src="/js/map.js"></script>
 <script src="/js/img-fallback.js"></script>
