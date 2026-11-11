@@ -3,6 +3,7 @@ using System.Net;
 using System.Text.Json;
 using AngleSharp.Html.Dom;
 using AngleSharp.Html.Parser;
+using DreamGrid.Launcher.Core;
 using DreamGrid.Launcher.Core.Grid;
 using DreamGrid.Launcher.Core.Processes;
 using DreamGrid.Launcher.Core.Settings;
@@ -194,6 +195,31 @@ public sealed class MyRegionsTests : IAsyncLifetime
         Assert.True(await WaitForCallAsync($"RegionPower Restart {SunsetId}"));
         AssertAudit(Assert.Single(Audit("region-restart")), "Sunset Shore", "ok");
         Assert.Contains("Restarting Sunset Shore. It can take a minute or two.", Text(await DocAsync(client, "/guest/regions")));
+    }
+
+    // The restart runs in BackgroundWork after the page has answered; it must not carry the German page's culture into the grid's
+    // long-lived work (a region monitor started by the restart lives far longer than the request).
+    [Fact]
+    public async Task Restart_from_a_German_page_runs_in_English()
+    {
+        SetStatus(RegionState.Failed);
+        Rights.Grant(SunsetId, TestAuth.GuestId, "Test Guest");
+        _f.Services.GetRequiredService<ResidentLanguages>().Set(TestAuth.GuestId, "de");
+        var seen = new TaskCompletionSource<(string Culture, string UiCulture)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _f.Grid.OnComponent = _ =>
+        {
+            seen.TrySetResult((CultureInfo.CurrentCulture.Name, CultureInfo.CurrentUICulture.Name));
+            return Task.CompletedTask;
+        };
+        using var client = await GuestAsync();
+        Assert.Equal("de", (await DocAsync(client, "/guest/regions")).DocumentElement.GetAttribute("lang")); // the page is German
+
+        using var r = await RestartAsync(client, SunsetId);
+
+        Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
+        var (culture, ui) = await seen.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
+        Assert.Contains(culture, new[] { "", "en" });
+        Assert.Equal("en", ui);
     }
 
     [Fact]

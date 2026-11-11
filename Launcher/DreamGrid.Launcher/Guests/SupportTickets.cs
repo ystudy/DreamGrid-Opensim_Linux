@@ -186,6 +186,7 @@ public sealed class SupportTickets(TicketStore store, EmailTokens tokens, EmailS
         // [S] In the background, so the page answers in the same time whether or not the address has tickets.
         _ = Task.Run(() =>
         {
+            BackgroundWork.UseStaffCulture(); // not the language of the page that asked; each email names its own
             try
             {
                 var mine = store.All().Where(t => t.State != TicketState.Unconfirmed && string.Equals(t.Sender.Email, to, StringComparison.OrdinalIgnoreCase)

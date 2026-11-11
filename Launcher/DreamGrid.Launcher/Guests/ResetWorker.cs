@@ -30,6 +30,7 @@ public sealed class ResetWorker(ILogger<ResetWorker> log) : BackgroundService, I
         {
             try
             {
+                BackgroundWork.UseStaffCulture(); // the email's language is passed to the work; nothing else is in the resident's
                 await work();
             }
             catch (Exception e) when (e is not OperationCanceledException)
