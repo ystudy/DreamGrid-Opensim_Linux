@@ -99,7 +99,7 @@ public sealed partial class SignUpsTests
     {
         await using var rig = Factory(open: false);
 
-        var r = await rig.SignUps.SubmitAsync(Form(), Caller, Ct);
+        var r = await rig.SignUps.SubmitAsync(Form(), Caller, Ct, "en");
 
         Assert.Equal(SignUpOutcome.Closed, r.Outcome);
         Assert.DoesNotContain(rig.F.Robust.All, a => a.FirstName == "Bea");
@@ -110,15 +110,15 @@ public sealed partial class SignUpsTests
     {
         await using var rig = Factory();
 
-        var r = await rig.SignUps.SubmitAsync(Form(first: "Be a", password: "short", email: "nope", terms: false), Caller, Ct);
+        var r = await rig.SignUps.SubmitAsync(Form(first: "Be a", password: "short", email: "nope", terms: false), Caller, Ct, "en");
 
         Assert.Equal(SignUpOutcome.Invalid, r.Outcome);
         Assert.Equal(SignUpRules.NameProblem("Be a", "Example", rig.F.Store.LoadOrCreate()), r.Problem);
-        r = await rig.SignUps.SubmitAsync(Form(password: "short", email: "nope", terms: false), Caller, Ct);
+        r = await rig.SignUps.SubmitAsync(Form(password: "short", email: "nope", terms: false), Caller, Ct, "en");
         Assert.Equal("Use at least 8 characters.", r.Problem);
-        r = await rig.SignUps.SubmitAsync(Form(email: "nope", terms: false), Caller, Ct);
+        r = await rig.SignUps.SubmitAsync(Form(email: "nope", terms: false), Caller, Ct, "en");
         Assert.Equal(SignUpRules.EmailProblem("nope"), r.Problem);
-        r = await rig.SignUps.SubmitAsync(Form(terms: false), Caller, Ct);
+        r = await rig.SignUps.SubmitAsync(Form(terms: false), Caller, Ct, "en");
         Assert.Equal("Tick the box to accept the Terms of Service and the Privacy notice.", r.Problem);
         Assert.DoesNotContain(rig.F.Robust.All, a => a.FirstName == "Bea");
     }
@@ -128,7 +128,7 @@ public sealed partial class SignUpsTests
     {
         await using var rig = Factory();
 
-        var r = await rig.SignUps.SubmitAsync(Form(first: "ann", last: "smith", email: "other@example.com"), Caller, Ct);
+        var r = await rig.SignUps.SubmitAsync(Form(first: "ann", last: "smith", email: "other@example.com"), Caller, Ct, "en");
 
         Assert.Equal(SignUpOutcome.NameTaken, r.Outcome);
         Assert.Equal("That name is taken. Try another.", r.Problem);
@@ -139,7 +139,7 @@ public sealed partial class SignUpsTests
     {
         await using var rig = Factory();
 
-        var r = await rig.SignUps.SubmitAsync(Form(email: "ann@example.com"), Caller, Ct);
+        var r = await rig.SignUps.SubmitAsync(Form(email: "ann@example.com"), Caller, Ct, "en");
 
         Assert.Equal(SignUpOutcome.CheckEmail, r.Outcome);
         await Task.Delay(200, Ct);
@@ -154,7 +154,7 @@ public sealed partial class SignUpsTests
     {
         await using var rig = Factory();
 
-        var r = await rig.SignUps.SubmitAsync(Form(email: "  ANN@Example.com "), Caller, Ct);
+        var r = await rig.SignUps.SubmitAsync(Form(email: "  ANN@Example.com "), Caller, Ct, "en");
 
         Assert.Equal(SignUpOutcome.CheckEmail, r.Outcome);
         await Task.Delay(200, Ct);
@@ -165,10 +165,10 @@ public sealed partial class SignUpsTests
     public async Task Email_taken_holds_the_name_like_any_sign_up()
     {
         await using var rig = Factory();
-        await rig.SignUps.SubmitAsync(Form(email: "ann@example.com"), Caller, Ct);
+        await rig.SignUps.SubmitAsync(Form(email: "ann@example.com"), Caller, Ct, "en");
 
         // Had the address been free, the name would be held now; it must be held either way.
-        var again = await rig.SignUps.SubmitAsync(Form(email: "fresh@example.com"), Caller, Ct);
+        var again = await rig.SignUps.SubmitAsync(Form(email: "fresh@example.com"), Caller, Ct, "en");
 
         Assert.Equal(SignUpOutcome.NameTaken, again.Outcome);
         var bea = rig.F.Robust.All.Single(a => a.FirstName == "Bea");
@@ -185,7 +185,7 @@ public sealed partial class SignUpsTests
         rig.F.Robust.PasswordsDown = true;
         rig.F.Remover.Down = true;
 
-        Assert.Equal(SignUpOutcome.Busy, (await rig.SignUps.SubmitAsync(Form(), Caller, Ct)).Outcome);
+        Assert.Equal(SignUpOutcome.Busy, (await rig.SignUps.SubmitAsync(Form(), Caller, Ct, "en")).Outcome);
 
         var bea = rig.F.Robust.All.Single(a => a.FirstName == "Bea");
         Assert.Equal(-1, bea.UserLevel);
@@ -196,7 +196,7 @@ public sealed partial class SignUpsTests
     public async Task Unreadable_pending_list_is_busy_and_keeps_the_link()
     {
         await using var rig = Factory();
-        await rig.SignUps.SubmitAsync(Form(), Caller, Ct);
+        await rig.SignUps.SubmitAsync(Form(), Caller, Ct, "en");
         var token = LinkToken(Assert.Single(await SentAsync(rig, 1)).Email);
         var file = Path.Combine(rig.F.Paths.Guests, "pending-signups.json");
         var saved = File.ReadAllText(file);
@@ -215,7 +215,7 @@ public sealed partial class SignUpsTests
     {
         await using var rig = Factory();
 
-        var r = await rig.SignUps.SubmitAsync(Form(), Caller, Ct);
+        var r = await rig.SignUps.SubmitAsync(Form(), Caller, Ct, "en");
 
         Assert.Equal(SignUpOutcome.CheckEmail, r.Outcome);
         var bea = rig.F.Robust.All.Single(a => a.FirstName == "Bea");
@@ -233,7 +233,7 @@ public sealed partial class SignUpsTests
     {
         await using var rig = Factory(email: false);
 
-        var r = await rig.SignUps.SubmitAsync(Form(email: "ann@example.com"), Caller, Ct);
+        var r = await rig.SignUps.SubmitAsync(Form(email: "ann@example.com"), Caller, Ct, "en");
 
         Assert.Equal(SignUpOutcome.SignedUp, r.Outcome);
         Assert.NotNull(r.Account);
@@ -247,7 +247,7 @@ public sealed partial class SignUpsTests
     {
         await using var rig = Factory(email: false);
 
-        var r = await rig.SignUps.SubmitAsync(Form(), Caller, Ct);
+        var r = await rig.SignUps.SubmitAsync(Form(), Caller, Ct, "en");
 
         Assert.True(rig.F.Services.GetRequiredService<TermsAcceptances>().HasAccepted(r.Account!.PrincipalId, 4));
     }
@@ -258,7 +258,7 @@ public sealed partial class SignUpsTests
         await using var rig = Factory();
         rig.F.Robust.PasswordsDown = true;
 
-        var r = await rig.SignUps.SubmitAsync(Form(), Caller, Ct);
+        var r = await rig.SignUps.SubmitAsync(Form(), Caller, Ct, "en");
 
         Assert.Equal(SignUpOutcome.Busy, r.Outcome);
         Assert.DoesNotContain(rig.F.Robust.All, a => a.FirstName == "Bea");
@@ -272,14 +272,14 @@ public sealed partial class SignUpsTests
         await using var rig = Factory();
         rig.F.Grid.OnCreateResident = (_, _, _, _) => throw new HttpRequestException("Connection refused");
 
-        Assert.Equal(SignUpOutcome.Busy, (await rig.SignUps.SubmitAsync(Form(), Caller, Ct)).Outcome);
+        Assert.Equal(SignUpOutcome.Busy, (await rig.SignUps.SubmitAsync(Form(), Caller, Ct, "en")).Outcome);
     }
 
     [Fact]
     public async Task Confirm_raises_level_and_spends_link()
     {
         await using var rig = Factory();
-        await rig.SignUps.SubmitAsync(Form(), Caller, Ct);
+        await rig.SignUps.SubmitAsync(Form(), Caller, Ct, "en");
         var token = LinkToken(Assert.Single(await SentAsync(rig, 1)).Email);
 
         var (_, account) = await rig.SignUps.ConfirmAsync(token, Caller, Ct);
@@ -295,7 +295,7 @@ public sealed partial class SignUpsTests
     public async Task Confirm_failure_keeps_link()
     {
         await using var rig = Factory();
-        await rig.SignUps.SubmitAsync(Form(), Caller, Ct);
+        await rig.SignUps.SubmitAsync(Form(), Caller, Ct, "en");
         var token = LinkToken(Assert.Single(await SentAsync(rig, 1)).Email);
         rig.F.Grid.SetUserLevelError = new HttpRequestException("Connection refused");
 
@@ -309,7 +309,7 @@ public sealed partial class SignUpsTests
     public async Task Confirm_refuses_unlisted_principal()
     {
         await using var rig = Factory();
-        await rig.SignUps.SubmitAsync(Form(), Caller, Ct);
+        await rig.SignUps.SubmitAsync(Form(), Caller, Ct, "en");
         var token = LinkToken(Assert.Single(await SentAsync(rig, 1)).Email);
         var bea = rig.F.Robust.All.Single(a => a.FirstName == "Bea");
         rig.Pending.Remove(bea.PrincipalId);
@@ -322,10 +322,10 @@ public sealed partial class SignUpsTests
     public async Task Resend_replaces_link_and_counts()
     {
         await using var rig = Factory();
-        await rig.SignUps.SubmitAsync(Form(), Caller, Ct);
+        await rig.SignUps.SubmitAsync(Form(), Caller, Ct, "en");
         var first = LinkToken(Assert.Single(await SentAsync(rig, 1)).Email);
 
-        Assert.Equal(SignUpOutcome.CheckEmail, await rig.SignUps.ResendAsync("Bea", "Example", Caller, Ct));
+        Assert.Equal(SignUpOutcome.CheckEmail, await rig.SignUps.ResendAsync("Bea", "Example", Caller, Ct, "en"));
 
         var sent = await SentAsync(rig, 2);
         Assert.Equal(2, sent.Count);
@@ -338,8 +338,8 @@ public sealed partial class SignUpsTests
     {
         await using var rig = Factory();
 
-        Assert.Equal(SignUpOutcome.CheckEmail, await rig.SignUps.ResendAsync("Ann", "Smith", Caller, Ct));
-        Assert.Equal(SignUpOutcome.CheckEmail, await rig.SignUps.ResendAsync("No", "Body", Caller, Ct));
+        Assert.Equal(SignUpOutcome.CheckEmail, await rig.SignUps.ResendAsync("Ann", "Smith", Caller, Ct, "en"));
+        Assert.Equal(SignUpOutcome.CheckEmail, await rig.SignUps.ResendAsync("No", "Body", Caller, Ct, "en"));
         Assert.Empty(await SentAsync(rig, 1));
     }
 
@@ -348,19 +348,19 @@ public sealed partial class SignUpsTests
     {
         await using var rig = Factory(email: false);
 
-        Assert.Equal(SignUpOutcome.Busy, await rig.SignUps.ResendAsync("Bea", "Example", Caller, Ct));
+        Assert.Equal(SignUpOutcome.Busy, await rig.SignUps.ResendAsync("Bea", "Example", Caller, Ct, "en"));
     }
 
     [Fact]
     public async Task Fourth_email_in_an_hour_not_sent()
     {
         await using var rig = Factory();
-        await rig.SignUps.SubmitAsync(Form(), Caller, Ct);
-        await rig.SignUps.ResendAsync("Bea", "Example", Caller, Ct);
-        await rig.SignUps.ResendAsync("Bea", "Example", Caller, Ct);
+        await rig.SignUps.SubmitAsync(Form(), Caller, Ct, "en");
+        await rig.SignUps.ResendAsync("Bea", "Example", Caller, Ct, "en");
+        await rig.SignUps.ResendAsync("Bea", "Example", Caller, Ct, "en");
         Assert.Equal(3, (await SentAsync(rig, 3)).Count);
 
-        Assert.Equal(SignUpOutcome.CheckEmail, await rig.SignUps.ResendAsync("Bea", "Example", Caller, Ct));
+        Assert.Equal(SignUpOutcome.CheckEmail, await rig.SignUps.ResendAsync("Bea", "Example", Caller, Ct, "en"));
 
         await Task.Delay(200, Ct);
         Assert.Equal(3, (await SentAsync(rig, 4)).Count);
@@ -370,10 +370,10 @@ public sealed partial class SignUpsTests
     public async Task Nothing_secret_audited()
     {
         await using var rig = Factory();
-        await rig.SignUps.SubmitAsync(Form(), Caller, Ct);
+        await rig.SignUps.SubmitAsync(Form(), Caller, Ct, "en");
         var token = LinkToken(Assert.Single(await SentAsync(rig, 1)).Email);
         await rig.SignUps.ConfirmAsync(token, Caller, Ct);
-        await rig.SignUps.SubmitAsync(Form(first: "Cy", email: "ann@example.com"), Caller, Ct);
+        await rig.SignUps.SubmitAsync(Form(first: "Cy", email: "ann@example.com"), Caller, Ct, "en");
 
         var text = AuditText(rig.F);
         Assert.Contains("signup-made", Actions(rig.F));

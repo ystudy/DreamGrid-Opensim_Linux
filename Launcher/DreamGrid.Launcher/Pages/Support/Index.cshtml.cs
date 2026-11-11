@@ -1,8 +1,10 @@
+using DreamGrid.Launcher.Email;
 using DreamGrid.Launcher.Core.OpenSim;
 using DreamGrid.Launcher.Core.Tickets;
 using DreamGrid.Launcher.Guests;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Localization;
 
 namespace DreamGrid.Launcher.Pages.Support;
 
@@ -10,10 +12,9 @@ namespace DreamGrid.Launcher.Pages.Support;
 /// Sending a support ticket (design 2026-11-05-support-tickets, "Sending a ticket"). A signed-in resident sends at once and sees
 /// their own tickets here; someone not signed in gives a name and email and confirms it. Bot protection: form <c>support</c>.
 /// </summary>
-public sealed class IndexModel(SupportTickets tickets, BotGuard bots, IRobustClient robust, TicketCookie cookie) : PageModel
+public sealed class IndexModel(SupportTickets tickets, BotGuard bots, IRobustClient robust, TicketCookie cookie,
+    EmailLanguage emailLanguage, IStringLocalizer<ResidentText> t) : PageModel
 {
-    public const string BotFailed = "The form couldn't check that you're a person. Try again.";
-
     [BindProperty] public string? Name { get; set; }
     [BindProperty] public string? Email { get; set; }
     [BindProperty] public string? Category { get; set; }
@@ -36,10 +37,11 @@ public sealed class IndexModel(SupportTickets tickets, BotGuard bots, IRobustCli
         var check = Account is null ? bots.Check(HttpContext, "support") : bots.CheckRate(HttpContext, "support");
         if (!check.Passed)
         {
-            Error = BotFailed;
+            Error = t["Common.BotFailed"];
             return Page();
         }
-        var r = tickets.Send(new TicketForm(Name, Email, Category, Subject, Message, Evidence, Logs), Account, HttpContext.Connection.RemoteIpAddress);
+        var r = tickets.Send(new TicketForm(Name, Email, Category, Subject, Message, Evidence, Logs), Account, HttpContext.Connection.RemoteIpAddress,
+            emailLanguage.ForRequest(HttpContext));
         switch (r.Outcome)
         {
             case TicketSendOutcome.Opened:
@@ -49,7 +51,7 @@ public sealed class IndexModel(SupportTickets tickets, BotGuard bots, IRobustCli
                 CheckEmail = true;
                 return Page();
             default:
-                Error = r.Problem;
+                Error = (r.Message ?? new ResidentMessage("Support.Busy")).In(t);
                 return Page();
         }
     }

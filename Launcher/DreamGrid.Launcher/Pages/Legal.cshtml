@@ -5,5 +5,9 @@
     ViewData["Title"] = Model.PageTitle;
 }
 <h1>@Model.PageTitle</h1>
-<p class="text-body-secondary">Version @Model.Version, @Model.Saved</p>
+@if (Model.ShownIn is not null)
+{
+    <div class="alert alert-info" role="note">@Model.ShownIn</div>
+}
+<p class="text-body-secondary">@T["Legal.VersionSaved", Model.Version, Model.Saved]</p>
 <article>@Html.Raw(Model.Html)</article>

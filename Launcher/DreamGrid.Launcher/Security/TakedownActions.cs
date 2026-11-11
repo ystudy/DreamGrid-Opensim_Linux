@@ -21,7 +21,7 @@ public sealed record CopyRow(InventoryHolding Holding, string? Refusal);
 /// names and the case number only; the notice, notes and reasons stay in the case.
 /// </summary>
 public sealed class TakedownActions(PeopleActions people, IInventoryStore inventory, TakedownStore store, EvidenceCopier evidence,
-    EmailSender sender, AuditLog audit, TimeProvider time, ILogger<TakedownActions> log)
+    EmailSender sender, EmailLanguage emailLanguage, AuditLog audit, TimeProvider time, ILogger<TakedownActions> log)
 {
     public const int CopiesShown = 200;
     public const string Closed = "This case is closed.";
@@ -348,12 +348,13 @@ public sealed class TakedownActions(PeopleActions people, IInventoryStore invent
     private bool Email(PersonView person, string template, TakedownCase c, IReadOnlyList<string> items)
     {
         if (!TakedownRules.MayTell(c.Notice.Reason) || person.Row.Account.Email.Trim() is not { Length: > 0 } to) return false;
-        return sender.Queue(template, to, person.FullName, new Dictionary<string, string>
+        var language = emailLanguage.ForResident(person.Row.Account.PrincipalId);
+        return sender.Queue(template, language, to, person.FullName, new Dictionary<string, string>
         {
             ["AvatarName"] = person.FullName,
             ["CaseNumber"] = c.Number,
             ["Items"] = string.Join(", ", items),
-            ["Reason"] = TakedownRules.ReasonWords(c.Notice.Reason),
+            ["Reason"] = EmailTemplates.Words("Reason." + c.Notice.Reason, language),
         }) == QueueResult.Queued;
     }
 

@@ -20,8 +20,11 @@ public sealed record SignUpForm(string? First, string? Last, string? Email, stri
 /// <summary>How a sign-up post or a "send the link again" went.</summary>
 public enum SignUpOutcome { Closed, Invalid, NameTaken, CheckEmail, SignedUp, WaitingForStaff, Busy }
 
-/// <summary>A sign-up's outcome; <c>Problem</c> is the sentence to show, <c>Account</c> the avatar when it can be used at once.</summary>
-public sealed record SignUpResult(SignUpOutcome Outcome, string? Problem = null, RobustAccount? Account = null);
+/// <summary>
+/// A sign-up's outcome; <c>Problem</c> is the sentence (English), <c>Message</c> the same for the page to say in its language,
+/// <c>Account</c> the avatar when it can be used at once.
+/// </summary>
+public sealed record SignUpResult(SignUpOutcome Outcome, string? Problem = null, RobustAccount? Account = null, ResidentMessage? Message = null);
 
 /// <summary>How a confirm link went: the account is in now, staff had already let it in, or the link is used, expired or unknown.</summary>
 public enum ConfirmResult { Confirmed, AlreadyApproved, Bad }
@@ -46,11 +49,12 @@ public sealed record SignUpLimits(ResetLimits Counts);
 /// </summary>
 public sealed class SignUps(Func<LauncherSettings> settings, IGridController grid, IRobustClient robust, IStaffDirectory directory,
     IAccountRemover remover, IRobustPasswords passwords, SignUpBoard pending, SignUpLimits limits, EmailTokens tokens,
-    EmailSender sender, TermsAcceptances terms, SignUpLock gate, AuditLog audit, GroupsAdmin groups, HeldNames heldNames, ILogger<SignUps> log)
+    EmailSender sender, EmailLanguage emailLanguage, ResidentLanguages residentLanguages, TermsAcceptances terms, SignUpLock gate, AuditLog audit, GroupsAdmin groups, HeldNames heldNames, ILogger<SignUps> log)
 {
     public const string Purpose = "confirm-signup";
     public static readonly TimeSpan LinkLifetime = TimeSpan.FromHours(24);
-    public const string ExpiresIn = "24 hours";
+    /// <summary>The <c>EmailText</c> key of "24 hours", read in the email's language by <see cref="EmailTemplates.Words(string, string)"/>.</summary>
+    public const string ExpiresIn = "ExpiresIn.24h";
     public const string ConfirmPath = "/guest/confirm";
     public const string NameTaken = "That name is taken. Try another.";
     public const string TermsProblem = "Tick the box to accept the Terms of Service and the Privacy notice.";
@@ -58,25 +62,36 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
 
     private ResetLimits Counts => limits.Counts;
 
-    public async Task<SignUpResult> SubmitAsync(SignUpForm form, IPAddress? ip, CancellationToken ct)
+    /// <summary>Signs someone up; the emails go out in <paramref name="language"/>, the language of the page.</summary>
+    public async Task<SignUpResult> SubmitAsync(SignUpForm form, IPAddress? ip, CancellationToken ct, string language)
     {
         var s = settings();
         if (!SignUpRules.IsOpen(s)) return new(SignUpOutcome.Closed);
         if (!Counts.AddressAllowed(ip))
         {
             Refused(form, ip, "address limit");
-            return new(SignUpOutcome.Invalid, AddressProblem);
+            return new(SignUpOutcome.Invalid, AddressProblem, Message: new("SignUp.AddressLimit"));
         }
         Counts.CountAddress(ip);
 
         var first = form.First?.Trim() ?? "";
         var last = form.Last?.Trim() ?? "";
+        var nameFault = SignUpRules.NameCheck(first, last, s, heldNames.IsHeld);
+        var passwordFault = nameFault is null ? PasswordRules.Check(form.Password, form.Again, first, last) : null;
+        var emailFault = nameFault is null && passwordFault is null ? SignUpRules.EmailCheck(form.Email) : null;
         var problem = SignUpRules.NameProblem(first, last, s, heldNames.IsHeld)
             ?? PasswordRules.Problem(form.Password, form.Again, first, last)
             ?? SignUpRules.EmailProblem(form.Email)
             ?? (form.AcceptTerms ? null : TermsProblem);
         if (problem is not null)
-            return problem == NameTaken ? Taken(form, ip) : new(SignUpOutcome.Invalid, problem);
+        {
+            if (nameFault == SignUpRules.NameFault.Taken) return Taken(form, ip);
+            var message = nameFault is { } nf ? NameMessage(nf)
+                : passwordFault is { } pf ? PasswordFaultText.Message(pf)
+                : emailFault is { } ef ? EmailMessage(ef)
+                : new ResidentMessage("SignUp.TermsProblem");
+            return new(SignUpOutcome.Invalid, problem, Message: message);
+        }
         var email = SignUpRules.NormalEmail(form.Email!);
         var withEmail = sender.IsReady;
 
@@ -141,10 +156,13 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
             return new(SignUpOutcome.Busy);
         }
 
-        if (LegalPages.Get(s, LegalPages.Terms) is { } t) terms.Accept(account.PrincipalId, t.Version, ip?.ToString());
+        // The language of the page they signed up from is theirs from the start, in every mode. An address already on the grid made a
+        // decoy that is never shown or approved, so it gets none.
+        if (owner is null) residentLanguages.Set(account.PrincipalId, language);
+        if (LegalPages.Get(s, LegalPages.Terms, s.Languages.Default) is { } t) terms.Accept(account.PrincipalId, t.Version, ip?.ToString());
         if (owner is not null)
         {
-            NoticeOwner(s, owner, email);
+            NoticeOwner(s, owner, email, language);
             Refused(form, ip, "email taken");
             return new(SignUpOutcome.CheckEmail);
         }
@@ -159,7 +177,7 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
             return new(SignUpOutcome.SignedUp, Account: account);
         }
 
-        SendLink(s, account, email);
+        SendLink(s, account, email, language);
         return new(SignUpOutcome.CheckEmail);
     }
 
@@ -210,7 +228,7 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
     /// limits. Answers <see cref="SignUpOutcome.CheckEmail"/> whatever the name, and <see cref="SignUpOutcome.Busy"/> only when the
     /// grid can't send email.
     /// </summary>
-    public async Task<SignUpOutcome> ResendAsync(string? first, string? last, IPAddress? ip, CancellationToken ct)
+    public async Task<SignUpOutcome> ResendAsync(string? first, string? last, IPAddress? ip, CancellationToken ct, string language)
     {
         if (!sender.IsReady) return SignUpOutcome.Busy;
         if (!Counts.AddressAllowed(ip)) return SignUpOutcome.CheckEmail;
@@ -229,11 +247,11 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
         }
         // Only a sign-up waiting for its email gets a link: never a decoy, whose address belongs to someone else.
         if (account is not null && pending.Get(account.PrincipalId)?.State == SignUpState.WaitingForEmail && account.Email.Trim().Length > 0)
-            SendLink(settings(), account, SignUpRules.NormalEmail(account.Email));
+            SendLink(settings(), account, SignUpRules.NormalEmail(account.Email), language);
         return SignUpOutcome.CheckEmail;
     }
 
-    private void SendLink(LauncherSettings s, RobustAccount account, string email)
+    private void SendLink(LauncherSettings s, RobustAccount account, string email, string language)
     {
         if (!Counts.SendAllowed(account.PrincipalId, email)) return;
         Counts.CountSend(account.PrincipalId, email);
@@ -242,26 +260,44 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
         pending.Linked(account.PrincipalId);
         var link = $"{Site(s)}{ConfirmPath}?token={token}";
         var full = Full(account);
-        var queued = sender.Queue(EmailTemplates.ConfirmEmail, email, full,
-            new Dictionary<string, string> { ["AvatarName"] = full, ["Link"] = link, ["ExpiresIn"] = ExpiresIn }, LinkLifetime);
+        var queued = sender.Queue(EmailTemplates.ConfirmEmail, language, email, full,
+            new Dictionary<string, string> { ["AvatarName"] = full, ["Link"] = link, ["ExpiresIn"] = EmailTemplates.Words(ExpiresIn, language) }, LinkLifetime);
         if (queued != QueueResult.Queued)
             log.LogWarning("Sign-up: the confirm email for first name {First} couldn't be queued: {Result}", LogText.Clean(account.FirstName, 32), queued);
     }
 
-    private void NoticeOwner(LauncherSettings s, RobustAccount owner, string email)
+    private void NoticeOwner(LauncherSettings s, RobustAccount owner, string email, string language)
     {
         if (!Counts.SendAllowed(owner.PrincipalId, email)) return;
         Counts.CountSend(owner.PrincipalId, email);
         var full = Full(owner);
-        sender.Queue(EmailTemplates.AlreadyHaveAccount, email, full,
+        // To the account's owner: their saved language if the grid offers it, else the page it was typed on.
+        sender.Queue(EmailTemplates.AlreadyHaveAccount, emailLanguage.ForResident(owner.PrincipalId, language), email, full,
             new Dictionary<string, string> { ["AvatarName"] = full, ["Link"] = $"{Site(s)}{PasswordResets.AskPath}" });
     }
 
     private SignUpResult Taken(SignUpForm form, IPAddress? ip)
     {
         Refused(form, ip, "name taken");
-        return new(SignUpOutcome.NameTaken, NameTaken);
+        return new(SignUpOutcome.NameTaken, NameTaken, Message: NameMessage(SignUpRules.NameFault.Taken));
     }
+
+    /// <summary>What a page says about a name that can't be used.</summary>
+    public static ResidentMessage NameMessage(SignUpRules.NameFault fault) => fault switch
+    {
+        SignUpRules.NameFault.Missing => new("SignUp.NameMissing"),
+        SignUpRules.NameFault.TooLong => new("SignUp.NameTooLong", SignUpRules.MaxNamePart),
+        SignUpRules.NameFault.BadCharacters => new("SignUp.NameBadCharacters"),
+        _ => new("SignUp.NameTaken"),
+    };
+
+    /// <summary>What a page says about an email address that can't be used.</summary>
+    public static ResidentMessage EmailMessage(SignUpRules.EmailFault fault) => fault switch
+    {
+        SignUpRules.EmailFault.Missing => new("SignUp.EmailMissing"),
+        SignUpRules.EmailFault.TooLong => new("SignUp.EmailTooLong", SignUpRules.MaxEmail),
+        _ => new("SignUp.EmailBadShape"),
+    };
 
     private void Refused(SignUpForm form, IPAddress? ip, string reason) =>
         audit.Write(new AuditEntry(LogText.Clean($"{form.First} {form.Last}".Trim(), 64), null, StaffRole.None.AuditName(), ip?.ToString(),

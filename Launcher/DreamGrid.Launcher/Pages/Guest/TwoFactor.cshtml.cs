@@ -8,6 +8,7 @@ using DreamGrid.Launcher.Security;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Localization;
 
 namespace DreamGrid.Launcher.Pages.Guest;
 
@@ -20,9 +21,8 @@ namespace DreamGrid.Launcher.Pages.Guest;
 /// throttle for the name at the guest door and the address; while locked, no code is checked. Secrets and codes are never logged.
 /// </summary>
 public sealed class TwoFactorModel(ResidentTwoFactor residents, Func<LauncherSettings> settings, AuditLog audit, IDataProtectionProvider dp,
-    LoginThrottle throttle, ILogger<TwoFactorModel> log) : PageModel
+    LoginThrottle throttle, ILogger<TwoFactorModel> log, IStringLocalizer<ResidentText> t) : PageModel
 {
-    public const string WrongCode = "That code isn't right. Try again.";
     private const string ShownPurpose = "DreamGrid.GuestTwoFactorSetup.v1";
 
     [BindProperty] public string? Code { get; set; }
@@ -53,7 +53,7 @@ public sealed class TwoFactorModel(ResidentTwoFactor residents, Func<LauncherSet
         if (State != TwoFactorState.Off) return Page();
         if (Unprotect(principal, Shown) is not { } shown)
         {
-            Notice = "Setup started again. Scan the new code below.";
+            Notice = t["TwoFactor.StartedAgain"];
             StartEnrol(principal);
             return Page();
         }
@@ -72,12 +72,12 @@ public sealed class TwoFactorModel(ResidentTwoFactor residents, Func<LauncherSet
         {
             if (Store.IsPending(principal, shown))
             {
-                Error = WrongCode;
+                Error = t["Common.WrongCode"];
                 ShowSecret(principal, shown);
             }
             else
             {
-                Notice = "Setup was started again somewhere else. Scan the new code below.";
+                Notice = t["TwoFactor.StartedElsewhere"];
                 StartEnrol(principal);
             }
             return Page();
@@ -142,7 +142,7 @@ public sealed class TwoFactorModel(ResidentTwoFactor residents, Func<LauncherSet
     private bool Locked()
     {
         if (!throttle.IsLocked(SignInDoor.Guest, ThrottleKey, HttpContext.Connection.RemoteIpAddress)) return false;
-        Error = "Too many attempts. Try again in a few minutes.";
+        Error = t["Common.TooManyAttempts"];
         return true;
     }
 
@@ -150,7 +150,7 @@ public sealed class TwoFactorModel(ResidentTwoFactor residents, Func<LauncherSet
     {
         throttle.RecordFailure(SignInDoor.Guest, ThrottleKey, HttpContext.Connection.RemoteIpAddress);
         audit.Write(Entry(principal, "sign-in-refused", "two-factor code", "refused"));
-        Error = WrongCode;
+        Error = t["Common.WrongCode"];
         return Page();
     }
 
@@ -201,7 +201,7 @@ public sealed class TwoFactorModel(ResidentTwoFactor residents, Func<LauncherSet
         if (e is not (IOException or UnauthorizedAccessException)) return false;
         log.LogWarning("Resident two-factor: a change for first name {First} couldn't be saved: {Message}",
             AvatarName.Parse(User.Identity?.Name).ForLog, e.Message);
-        Error = TwoFactorStore.SaveFailed;
+        Error = t["SignIn.SaveFailed"];
         return true;
     }
 

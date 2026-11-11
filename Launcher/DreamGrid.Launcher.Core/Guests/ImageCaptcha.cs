@@ -10,7 +10,9 @@ namespace DreamGrid.Launcher.Core.Guests;
 /// <param name="Svg">The picture: five stroked glyphs and some noise lines, with no <c>&lt;text&gt;</c> element.</param>
 /// <param name="Question">The text alternative, for example "What is four plus seven?".</param>
 /// <param name="Token">What the form posts back with the answers (base64url).</param>
-public sealed record CaptchaChallenge(string Svg, string Question, string Token);
+/// <param name="First">The first number of the sum, so a page can write the question in its own language.</param>
+/// <param name="Second">The second number of the sum.</param>
+public sealed record CaptchaChallenge(string Svg, string Question, string Token, int First, int Second);
 
 /// <summary>What <see cref="ImageCaptcha.Check"/> found.</summary>
 public enum CaptchaResult
@@ -75,7 +77,7 @@ public sealed class ImageCaptcha(byte[] key, TimeProvider time)
         var token = new byte[BodyBytes + HashBytes];
         body.CopyTo(token, 0);
         Sign(body).CopyTo(token.AsSpan(BodyBytes));
-        return new CaptchaChallenge(Draw(letters), $"What is {Words[first]} plus {Words[second]}?", Base64Url.EncodeToString(token));
+        return new CaptchaChallenge(Draw(letters), $"What is {Words[first]} plus {Words[second]}?", Base64Url.EncodeToString(token), first, second);
     }
 
     /// <summary>True when the token is good and either answer is right (letters in any case, the sum as digits or as a word).</summary>

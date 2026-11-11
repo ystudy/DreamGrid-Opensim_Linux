@@ -1,7 +1,9 @@
+using DreamGrid.Launcher.Email;
 using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Guests;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Localization;
 
 namespace DreamGrid.Launcher.Pages.Guest;
 
@@ -11,10 +13,8 @@ namespace DreamGrid.Launcher.Pages.Guest;
 /// (<see cref="PasswordResets.ResetAsync"/>). A used, expired or unknown link, or one whose rule is now off, says so and offers a
 /// new one. The page only changes a password; it never signs anyone in. Typed passwords are never put back into the page.
 /// </summary>
-public sealed class ResetPasswordModel(PasswordResets resets) : PageModel
+public sealed class ResetPasswordModel(PasswordResets resets, EmailLanguage emailLanguage, IStringLocalizer<ResidentText> t) : PageModel
 {
-    public const string ExpiredText = "This link has expired or was already used. Ask for a new one.";
-
     [BindProperty(SupportsGet = true)] public string? Token { get; set; }
     [BindProperty] public string? Code { get; set; }
     [BindProperty] public string? Password { get; set; }
@@ -40,7 +40,7 @@ public sealed class ResetPasswordModel(PasswordResets resets) : PageModel
 
     public async Task<IActionResult> OnPostAsync(CancellationToken ct)
     {
-        var (result, link, problem) = await resets.ResetAsync(Token, Code, Password, Again, HttpContext.Connection.RemoteIpAddress, ct);
+        var (result, link, problem) = await resets.ResetAsync(Token, Code, Password, Again, HttpContext.Connection.RemoteIpAddress, ct, emailLanguage.ForRequest(HttpContext));
         if (link is not null) Show(link);
         switch (result)
         {
@@ -51,19 +51,19 @@ public sealed class ResetPasswordModel(PasswordResets resets) : PageModel
                 Expired = true;
                 break;
             case ResetResult.WrongCode:
-                Error = "That code isn't right. Try again, or use a backup code.";
+                Error = t["ResetPassword.WrongCode"];
                 break;
             case ResetResult.Locked:
-                Error = "Too many attempts. Try again in a few minutes.";
+                Error = t["Common.TooManyAttempts"];
                 break;
             case ResetResult.CodeUnknown:
-                Error = "Two-factor sign-in can't be checked right now. Contact the grid owner.";
+                Error = t["SignIn.CodeUnknown"];
                 break;
             case ResetResult.BadPassword:
-                Error = problem;
+                Error = PasswordFaultText.For(t, problem!.Value);
                 break;
             case ResetResult.WriteFailed:
-                Error = "Couldn't change the password right now. Try again in a few minutes.";
+                Error = t["Common.PasswordWriteFailed"];
                 break;
         }
         return Page();

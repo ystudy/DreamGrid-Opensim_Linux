@@ -20,9 +20,10 @@ public sealed class TermsGate : IAsyncPageFilter
     {
         var http = context.HttpContext;
         var page = context.ActionDescriptor.ViewEnginePath;
+        var settings = http.RequestServices.GetRequiredService<Func<LauncherSettings>>()();
         if (!Open.Contains(page, StringComparer.OrdinalIgnoreCase)
             && GuestSignIn.Read(http.User) is { } guest
-            && LegalPages.Get(http.RequestServices.GetRequiredService<Func<LauncherSettings>>()(), LegalPages.Terms) is { } terms
+            && LegalPages.Get(settings, LegalPages.Terms, settings.Languages.Default) is { } terms
             && !http.RequestServices.GetRequiredService<TermsAcceptances>().HasAccepted(guest.Principal, terms.Version))
         {
             // Back to the same page afterwards, but only for a GET: a POST can't be repeated by a redirect.

@@ -54,7 +54,7 @@ public sealed class LegalPagesTests
     {
         var s = Settings(Legal(true, "terms", "privacy", "cookies"));
 
-        Assert.Null(LegalPages.Get(s, LegalPages.Contact));
+        Assert.Null(LegalPages.Get(s, LegalPages.Contact, "en"));
         Assert.True(LegalPages.SignUpGateOpen(s));
         Assert.DoesNotContain("contact", LegalPages.Missing(s));
     }
@@ -76,7 +76,7 @@ public sealed class LegalPagesTests
         };
         var s = Settings(new LegalSettings(texts, true, Saved));
 
-        Assert.Null(LegalPages.Get(s, "privacy"));
+        Assert.Null(LegalPages.Get(s, "privacy", "en"));
         Assert.Equal(["privacy"], LegalPages.Missing(s));
         Assert.False(LegalPages.SignUpGateOpen(s));
     }
@@ -89,7 +89,7 @@ public sealed class LegalPagesTests
             ["de"] = new Dictionary<string, LegalText> { ["terms"] = new("Test terms one.", 1, Saved) },
         };
 
-        Assert.Null(LegalPages.Get(Settings(new LegalSettings(texts)), "terms"));
+        Assert.Null(LegalPages.Get(Settings(new LegalSettings(texts)), "terms", "en"));
     }
 
     // ---- the pages ----
@@ -207,7 +207,7 @@ public sealed class LegalPagesTests
             Assert.Equal(HttpStatusCode.OK, r.StatusCode);
             var page = new HtmlParser().ParseDocument(await r.Content.ReadAsStringAsync(Ct));
             Assert.Contains("This grid isn't open for sign-ups yet.", page.QuerySelector("main")!.TextContent);
-            Assert.Empty(page.QuerySelectorAll("form"));
+            Assert.Empty(page.QuerySelectorAll("main form"));
         }
     }
 
@@ -295,5 +295,87 @@ public sealed class LegalPagesTests
         await using var f = Factory(new LegalSettings());
         using var r = await Client(f).GetAsync("/", Ct);
         Assert.Null(new HtmlParser().ParseDocument(await r.Content.ReadAsStringAsync(Ct)).QuerySelector("#front-legal"));
+    }
+
+    // ---- the language a legal page is shown in ----
+
+    private static LegalSettings Written(params (string Language, string Text)[] pages) => new(
+        pages.ToDictionary(p => p.Language, p => (IReadOnlyDictionary<string, LegalText>)new Dictionary<string, LegalText> { ["terms"] = new(p.Text, 2, Saved) }),
+        true,
+        Saved);
+
+    private static async Task<AngleSharp.Html.Dom.IHtmlDocument> TermsAsync(LauncherFactory f, string? cookie)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/terms");
+        if (cookie is not null) request.Headers.Add("Cookie", "dg-lang=" + cookie);
+        using var r = await Client(f).SendAsync(request, Ct);
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        return new HtmlParser().ParseDocument(await r.Content.ReadAsStringAsync(Ct));
+    }
+
+    [Fact]
+    public async Task Legal_page_falls_back_to_the_default_language_with_a_note()
+    {
+        // The grid's default is German and only German is written; an English reader gets the German text and is told.
+        await using var f = Factory(Written(("de", "Test Bedingungen.")), s => s with { Languages = s.Languages with { Default = "de" } });
+
+        var english = await TermsAsync(f, "en");
+
+        Assert.Equal("This page is shown in Deutsch.", english.QuerySelector("main [role=note]")!.TextContent.Trim());
+        Assert.Contains("Test Bedingungen.", english.QuerySelector("main article")!.TextContent);
+
+        // A German reader reads their own language and needs no note.
+        var german = await TermsAsync(f, "de");
+        Assert.Null(german.QuerySelector("main [role=note]"));
+        Assert.Contains("Test Bedingungen.", german.QuerySelector("main article")!.TextContent);
+    }
+
+    [Fact]
+    public async Task Legal_page_in_the_readers_language_has_no_note()
+    {
+        await using var f = Factory(Written(("en", "Test terms."), ("de", "Test Bedingungen.")));
+
+        Assert.Null((await TermsAsync(f, "en")).QuerySelector("main [role=note]"));
+        Assert.Null((await TermsAsync(f, "de")).QuerySelector("main [role=note]"));
+        Assert.Contains("Test Bedingungen.", (await TermsAsync(f, "de")).QuerySelector("main article")!.TextContent);
+    }
+
+    [Fact]
+    public async Task Legal_page_falls_back_to_English_when_the_default_has_no_text_either()
+    {
+        await using var f = Factory(Written(("en", "Test terms.")), s => s with { Languages = s.Languages with { Default = "de" } });
+
+        var page = await TermsAsync(f, "de");
+
+        // The note is in the reader's language (German); the language it names is given in its own name.
+        Assert.Equal("Diese Seite wird in folgender Sprache angezeigt: English.", page.QuerySelector("main [role=note]")!.TextContent.Trim());
+        Assert.Contains("Test terms.", page.QuerySelector("main article")!.TextContent);
+    }
+
+    [Fact]
+    public void Get_tries_the_language_then_the_default_then_English()
+    {
+        var s = Settings(Written(("en", "English."), ("de", "Deutsch."), ("fr", "Francais."))) with { Languages = new LanguageSettings { Default = "fr" } };
+
+        Assert.Equal("Deutsch.", LegalPages.Get(s, "terms", "de")!.Markdown);
+        Assert.Equal("Francais.", LegalPages.Get(s, "terms", "es")!.Markdown); // the default's
+        var onlyEnglish = Settings(Written(("en", "English."))) with { Languages = new LanguageSettings { Default = "fr" } };
+        Assert.Equal("English.", LegalPages.Get(onlyEnglish, "terms", "es")!.Markdown);
+        Assert.Equal(("fr", "Francais."), (LegalPages.Find(s, "terms", "es")!.Value.Language, LegalPages.Find(s, "terms", "es")!.Value.Text.Markdown));
+        Assert.Null(LegalPages.Get(onlyEnglish, "privacy", "de"));
+    }
+
+    [Fact]
+    public void The_sign_up_gate_still_reads_English_only()
+    {
+        // As before: Terms, Privacy and Cookies written in the default language "en" open the gate; German texts alone do not.
+        var german = new Dictionary<string, IReadOnlyDictionary<string, LegalText>>
+        {
+            ["de"] = new[] { "terms", "privacy", "cookies" }.ToDictionary(p => p, p => new LegalText("Test.", 1, Saved)),
+        };
+        var s = Settings(new LegalSettings(german, true, Saved)) with { Languages = new LanguageSettings { Default = "de" } };
+
+        Assert.False(LegalPages.SignUpGateOpen(s));
+        Assert.Equal(["terms", "privacy", "cookies"], LegalPages.Missing(s));
     }
 }

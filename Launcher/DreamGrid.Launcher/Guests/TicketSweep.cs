@@ -6,6 +6,7 @@ using DreamGrid.Launcher.Core.OpenSim;
 using DreamGrid.Launcher.Core.Security;
 using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Core.Tickets;
+using DreamGrid.Launcher.Core;
 using DreamGrid.Launcher.Email;
 
 namespace DreamGrid.Launcher.Guests;
@@ -142,7 +143,7 @@ public sealed class TicketSweep(TicketStore store, TicketNotices notices, Takedo
     {
         var lines = list.Take(MaxNamed).Select(t => $"{t.Number} ({TicketCategories.Title(t.Category)}): {t.Subject}").ToList();
         if (list.Count > MaxNamed) lines.Add($"and {list.Count - MaxNamed} more");
-        var result = sender.Queue(template, to, name, new Dictionary<string, string>
+        var result = sender.Queue(template, Languages.English, to, name, new Dictionary<string, string>
         {
             ["Count"] = list.Count.ToString(System.Globalization.CultureInfo.InvariantCulture),
             ["Numbers"] = string.Join(", ", list.Take(MaxNamed).Select(t => t.Number)) + (list.Count > MaxNamed ? ", …" : ""),

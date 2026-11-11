@@ -1,27 +1,27 @@
 @page "/support/lost-link"
 @model DreamGrid.Launcher.Pages.Support.LostLinkModel
 @{
-    ViewData["Title"] = "Lost your ticket link";
+    ViewData["Title"] = T["Support.LostTitle"].Value;
 }
 <div class="card card-body shadow-sm mx-auto sign-in-card">
-<h1>Lost your ticket link?</h1>
+<h1>@T["Support.LostHeading"]</h1>
 @if (Model.Sent)
 {
-    <p id="lost-link-reply" role="status">@DreamGrid.Launcher.Pages.Support.LostLinkModel.Reply</p>
-    <p class="mb-0"><a href="/support">Ask for help</a></p>
+    <p id="lost-link-reply" role="status">@T["Support.LostSent"]</p>
+    <p class="mb-0"><a href="/support">@T["Support.Title"]</a></p>
 }
 else
 {
-    <p>Give the email address you sent your ticket from, and we'll send a new link.</p>
+    <p>@T["Support.LostIntro"]</p>
     @if (Model.Error is not null)
     {
         <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
     }
     <form id="lost-link" method="post">
-        <label class="form-label" asp-for="Email">Email</label>
+        <label class="form-label" asp-for="Email">@T["Common.Email"]</label>
         <input class="form-control" asp-for="Email" type="email" maxlength="254" autocomplete="email" required>
         <partial name="_BotFields" />
-        <button type="submit" class="btn btn-primary w-100 mt-3">Send me a new link</button>
+        <button type="submit" class="btn btn-primary w-100 mt-3">@T["Support.SendNewLink"]</button>
     </form>
 }
 </div>

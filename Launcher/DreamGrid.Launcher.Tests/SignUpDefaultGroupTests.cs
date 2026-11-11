@@ -37,7 +37,7 @@ public sealed class SignUpDefaultGroupTests
     {
         var (rig, group) = Rig(email: false);
         await using var _ = rig;
-        var r = await rig.SignUps.SubmitAsync(SignUpsTests.Form(), Caller, Ct);
+        var r = await rig.SignUps.SubmitAsync(SignUpsTests.Form(), Caller, Ct, "en");
         Assert.Equal(SignUpOutcome.SignedUp, r.Outcome);
         Assert.True(rig.F.Groups.IsMember(group, Bea(rig)));
     }
@@ -47,7 +47,7 @@ public sealed class SignUpDefaultGroupTests
     {
         var (rig, group) = Rig();
         await using var _ = rig;
-        await rig.SignUps.SubmitAsync(SignUpsTests.Form(), Caller, Ct);
+        await rig.SignUps.SubmitAsync(SignUpsTests.Form(), Caller, Ct, "en");
         Assert.False(rig.F.Groups.IsMember(group, Bea(rig)));
 
         var token = SignUpsTests.LinkToken(Assert.Single(await SignUpsTests.SentAsync(rig, 1)).Email);
@@ -62,7 +62,7 @@ public sealed class SignUpDefaultGroupTests
     {
         var (rig, group) = Rig(email: false, approval: true);
         await using var _ = rig;
-        await rig.SignUps.SubmitAsync(SignUpsTests.Form(), Caller, Ct);
+        await rig.SignUps.SubmitAsync(SignUpsTests.Form(), Caller, Ct, "en");
         Assert.False(rig.F.Groups.IsMember(group, Bea(rig)));
 
         var approvals = rig.F.Services.GetRequiredService<SignUpApprovals>();
@@ -76,7 +76,7 @@ public sealed class SignUpDefaultGroupTests
     {
         var (rig, group) = Rig(email: false, approval: true);
         await using var _ = rig;
-        await rig.SignUps.SubmitAsync(SignUpsTests.Form(), Caller, Ct);
+        await rig.SignUps.SubmitAsync(SignUpsTests.Form(), Caller, Ct, "en");
         var bea = Bea(rig);
         var approvals = rig.F.Services.GetRequiredService<SignUpApprovals>();
         Assert.Equal(ApprovalResult.Done, (await approvals.DenyAsync(bea, "Test Owner", StaffRole.Owner, null, Caller, Ct)).Result);
@@ -89,7 +89,7 @@ public sealed class SignUpDefaultGroupTests
         var (rig, group) = Rig();
         await using var _ = rig;
         // ann@example.com is already on the grid (the rig's existing resident), so this sign-up is a decoy.
-        await rig.SignUps.SubmitAsync(SignUpsTests.Form(email: "ann@example.com"), Caller, Ct);
+        await rig.SignUps.SubmitAsync(SignUpsTests.Form(email: "ann@example.com"), Caller, Ct, "en");
         Assert.False(rig.F.Groups.IsMember(group, Bea(rig)));
     }
 
@@ -116,7 +116,7 @@ public sealed class SignUpDefaultGroupTests
         var (rig, group) = Rig(email: false);
         await using var _ = rig;
         rig.F.Groups.FailAfter(0);
-        var r = await rig.SignUps.SubmitAsync(SignUpsTests.Form(), Caller, Ct);
+        var r = await rig.SignUps.SubmitAsync(SignUpsTests.Form(), Caller, Ct, "en");
         rig.F.Groups.FailAfter(null);
         Assert.Equal(SignUpOutcome.SignedUp, r.Outcome);
         Assert.False(rig.F.Groups.IsMember(group, Bea(rig)));
@@ -128,7 +128,7 @@ public sealed class SignUpDefaultGroupTests
         var (rig, group) = Rig(email: false);
         await using var _ = rig;
         rig.F.Groups.Drop(group);
-        var r = await rig.SignUps.SubmitAsync(SignUpsTests.Form(), Caller, Ct);
+        var r = await rig.SignUps.SubmitAsync(SignUpsTests.Form(), Caller, Ct, "en");
         Assert.Equal(SignUpOutcome.SignedUp, r.Outcome);
         Assert.Null(rig.F.Services.GetRequiredService<GroupJoins>().Default());
     }

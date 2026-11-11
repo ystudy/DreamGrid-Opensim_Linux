@@ -2,39 +2,51 @@
 @model DreamGrid.Launcher.Pages.Guest.AccountModel
 @using DreamGrid.Launcher.Guests
 @{
-    ViewData["Title"] = "Account settings";
+    ViewData["Title"] = T["Account.Title"].Value;
 }
-<h1>Account settings</h1>
+<h1>@T["Account.Title"]</h1>
 @if (Model.Account is not { } a)
 {
     <div class="error-box error alert alert-danger" role="alert">@Model.Unavailable</div>
 }
 else
 {
-    <h2>Your details</h2>
+    <h2>@T["Account.Details"]</h2>
     <dl class="row">
-        <dt class="col-sm-3">Avatar name</dt>
+        <dt class="col-sm-3">@T["Common.AvatarName"]</dt>
         <dd class="col-sm-9" id="account-name">@a.FirstName @a.LastName</dd>
-        <dt class="col-sm-3">Email address</dt>
-        <dd class="col-sm-9" id="account-email">@(string.IsNullOrWhiteSpace(a.Email) ? "No email address" : a.Email.Trim())</dd>
-        <dt class="col-sm-3">Role</dt>
+        <dt class="col-sm-3">@T["Account.EmailAddress"]</dt>
+        <dd class="col-sm-9" id="account-email">@(string.IsNullOrWhiteSpace(a.Email) ? T["Account.NoEmailAddress"].Value : a.Email.Trim())</dd>
+        <dt class="col-sm-3">@T["Account.Role"]</dt>
         <dd class="col-sm-9" id="account-role">@Model.Role</dd>
         @if (Model.Created is not null)
         {
-            <dt class="col-sm-3">Account made</dt>
+            <dt class="col-sm-3">@T["Account.Made"]</dt>
             <dd class="col-sm-9" id="account-created">@Model.Created</dd>
         }
     </dl>
     @if (Model.TwoFactorLink)
     {
-        <p><a href="/guest/two-factor">Two-factor sign-in</a></p>
+        <p><a href="/guest/two-factor">@T["Common.TwoFactorSignIn"]</a></p>
     }
     @if (Model.OwnsRegions)
     {
-        <p><a href="/guest/regions">My regions</a></p>
+        <p><a href="/guest/regions">@T["Regions.Title"]</a></p>
     }
 
-    <h2>Change password</h2>
+    <h2>@T["Account.Language"]</h2>
+    <form id="change-language" method="post" asp-page-handler="Language" class="mb-4">
+        <label class="form-label" for="account-language">@T["Account.LanguageLabel"]</label>
+        <select class="form-select mb-3 w-auto" id="account-language" name="language">
+            @foreach (var (code, name) in Model.LanguageChoices)
+            {
+                <option value="@code" selected="@(code == Model.SelectedLanguage)">@name</option>
+            }
+        </select>
+        <button type="submit" class="btn btn-primary">@T["Account.SaveLanguage"]</button>
+    </form>
+
+    <h2>@T["Common.ChangePassword"]</h2>
     <form id="change-password" method="post" asp-page-handler="Password" class="mb-4">
         @if (Model.PasswordError is not null)
         {
@@ -44,24 +56,24 @@ else
         {
             <div class="alert alert-success" role="status">@Model.PasswordNotice</div>
         }
-        <label class="form-label" for="password-current">Current password</label>
+        <label class="form-label" for="password-current">@T["Account.CurrentPassword"]</label>
         <input class="form-control mb-3" id="password-current" name="Current" type="password" value="" autocomplete="current-password" required>
         @if (Model.NeedsCode)
         {
-            <label class="form-label" for="password-code">Code from your authenticator app, or a backup code</label>
+            <label class="form-label" for="password-code">@T["Common.CodeLabel"]</label>
             <input class="form-control mb-3 code-input" id="password-code" name="Code" value="" maxlength="32" autocomplete="one-time-code" required>
         }
-        <label class="form-label" for="password-new">New password</label>
+        <label class="form-label" for="password-new">@T["Common.NewPassword"]</label>
         <input class="form-control mb-3" id="password-new" name="Password" type="password" value="" autocomplete="new-password" required>
-        <label class="form-label" for="password-again">New password again</label>
+        <label class="form-label" for="password-again">@T["Common.NewPasswordAgain"]</label>
         <input class="form-control mb-3" id="password-again" name="Again" type="password" value="" autocomplete="new-password" required>
-        <button type="submit" class="btn btn-primary">Change password</button>
+        <button type="submit" class="btn btn-primary">@T["Common.ChangePassword"]</button>
     </form>
 
-    <h2>Change email</h2>
+    <h2>@T["Account.ChangeEmail"]</h2>
     @if (!Model.EmailChangeAvailable)
     {
-        <p>@AccountChanges.NoEmailText</p>
+        <p>@T["Account.NoEmail"]</p>
     }
     else
     {
@@ -74,17 +86,17 @@ else
             {
                 <div class="alert alert-success" role="status">@Model.EmailNotice</div>
             }
-            <label class="form-label" for="email-new">New email address</label>
+            <label class="form-label" for="email-new">@T["Account.NewEmail"]</label>
             <input class="form-control mb-3" id="email-new" name="NewEmail" type="email" value="@Model.NewEmail" maxlength="254" autocomplete="email" required>
-            <label class="form-label" for="email-current">Current password</label>
+            <label class="form-label" for="email-current">@T["Account.CurrentPassword"]</label>
             <input class="form-control mb-3" id="email-current" name="Current" type="password" value="" autocomplete="current-password" required>
             @if (Model.NeedsCode)
             {
-                <label class="form-label" for="email-code">Code from your authenticator app, or a backup code</label>
+                <label class="form-label" for="email-code">@T["Common.CodeLabel"]</label>
                 <input class="form-control mb-3 code-input" id="email-code" name="Code" value="" maxlength="32" autocomplete="one-time-code" required>
             }
-            <button type="submit" class="btn btn-primary">Send the link</button>
+            <button type="submit" class="btn btn-primary">@T["Common.SendLink"]</button>
         </form>
     }
 }
-<p class="mt-4"><a href="/guest">Back to your account</a></p>
+<p class="mt-4"><a href="/guest">@T["Common.BackToAccount"]</a></p>

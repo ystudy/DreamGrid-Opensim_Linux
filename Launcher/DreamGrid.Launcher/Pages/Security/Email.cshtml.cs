@@ -98,7 +98,7 @@ public sealed class EmailModel(EmailAccounts accounts, EmailSender sender, Email
             return Reopen(null, TooManyTests);
 
         var s = settings();
-        var email = EmailTemplates.Render(EmailTemplates.Test, EmailTemplates.Current(s, EmailTemplates.Test), EmailTemplates.Sample(EmailTemplates.Test, s.GridName));
+        var email = EmailTemplates.Render(EmailTemplates.Test, EmailTemplates.Current(s, EmailTemplates.Test, EmailTemplates.DefaultLanguage), EmailTemplates.Sample(EmailTemplates.Test, s.GridName));
         var outcome = await sender.SendTestAsync(account, password, to, email, ct);
         Write("email-test-sent", Target(account), outcome.Result == SendResult.Sent ? "ok" : outcome.Result.ToString());
         // A test of the saved account, as saved, that went through shows the account works again.

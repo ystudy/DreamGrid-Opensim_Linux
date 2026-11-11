@@ -9,21 +9,35 @@ namespace DreamGrid.Launcher.Core.Security;
 /// </summary>
 public static class PasswordRules
 {
+    /// <summary>What is wrong with a new password, so a page can say it in the reader's language (<see cref="Problem"/> says it in English).</summary>
+    public enum Fault { Mismatch, TooShort, TooCommon, IsName }
+
     public const int MinLength = 8;
 
     private static readonly Lazy<HashSet<string>> Common = new(LoadCommon);
 
-    /// <summary>Null when the password is fine, otherwise one plain sentence saying what to change.</summary>
-    public static string? Problem(string? password, string? again, string first, string last)
+    /// <summary>Null when the password is fine, otherwise one plain sentence (English) saying what to change.</summary>
+    public static string? Problem(string? password, string? again, string first, string last) =>
+        Check(password, again, first, last) switch
+        {
+            Fault.Mismatch => "Type the same password twice.",
+            Fault.TooShort => "Use at least 8 characters.",
+            Fault.TooCommon => "That password is too common. Choose another.",
+            Fault.IsName => "Don't use your avatar's name as the password.",
+            _ => null,
+        };
+
+    /// <summary>Null when the password is fine, otherwise the first thing wrong with it.</summary>
+    public static Fault? Check(string? password, string? again, string first, string last)
     {
         password ??= "";
-        if (password != (again ?? "")) return "Type the same password twice.";
-        if (password.Length < MinLength) return "Use at least 8 characters.";
-        if (Common.Value.Contains(password)) return "That password is too common. Choose another.";
+        if (password != (again ?? "")) return Fault.Mismatch;
+        if (password.Length < MinLength) return Fault.TooShort;
+        if (Common.Value.Contains(password)) return Fault.TooCommon;
         var p = password.Trim();
         if (p.Equals(first, StringComparison.OrdinalIgnoreCase) || p.Equals(last, StringComparison.OrdinalIgnoreCase)
             || p.Equals($"{first} {last}", StringComparison.OrdinalIgnoreCase))
-            return "Don't use your avatar's name as the password.";
+            return Fault.IsName;
         return null;
     }
 

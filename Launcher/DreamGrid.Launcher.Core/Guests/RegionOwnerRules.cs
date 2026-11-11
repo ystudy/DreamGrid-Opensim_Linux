@@ -6,12 +6,17 @@ namespace DreamGrid.Launcher.Core.Guests;
 
 /// <summary>
 /// Whether a restart is offered for a region (<see cref="Shown"/>), whether the person may use it now (<see cref="Allowed"/>,
-/// else <see cref="Reason"/> says why) and what it does (<see cref="Action"/>, null when not shown).
+/// else <see cref="Reason"/> says why, in English; <see cref="Why"/> and <see cref="Again"/> let a page say it in its own language)
+/// and what it does (<see cref="Action"/>, null when not shown).
 /// </summary>
-public sealed record RestartOffer(bool Shown, bool Allowed, string? Reason, RegionPower? Action)
+public sealed record RestartOffer(bool Shown, bool Allowed, string? Reason, RegionPower? Action,
+    RestartWhy Why = RestartWhy.None, string? Again = null)
 {
     public static readonly RestartOffer None = new(false, false, null, null);
 }
+
+/// <summary>Why a restart is not allowed now.</summary>
+public enum RestartWhy { None, SharedProgram, RestartedRecently }
 
 /// <summary>What a region owner may do about a stuck region. Pure: the caller supplies the status, the owners and the clock.</summary>
 public static class RegionOwnerRules
@@ -43,12 +48,13 @@ public static class RegionOwnerRules
         var shared = status.Programs.FirstOrDefault(p => p.Regions.Contains(region.Id))?.Regions
             .Any(other => other != region.Id && ownerOf(other) != owner) ?? false;
         if (shared)
-            return new RestartOffer(true, false, "This region runs with regions that aren't yours. To restart it, contact the grid's staff.", action);
+            return new RestartOffer(true, false, "This region runs with regions that aren't yours. To restart it, contact the grid's staff.", action, RestartWhy.SharedProgram);
 
         if (lastRestart is { } last && now - last < RestartGap)
         {
             var again = (last + RestartGap).UtcDateTime.ToString("HH:mm", CultureInfo.InvariantCulture);
-            return new RestartOffer(true, false, $"This region was restarted a few minutes ago. Try again after {again} (UTC).", action);
+            return new RestartOffer(true, false, $"This region was restarted a few minutes ago. Try again after {again} (UTC).", action,
+                RestartWhy.RestartedRecently, again);
         }
 
         return new RestartOffer(true, true, null, action);

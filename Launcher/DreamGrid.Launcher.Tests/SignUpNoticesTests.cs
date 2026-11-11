@@ -26,7 +26,7 @@ public sealed class SignUpNoticesTests
             }
         });
         rig.F.Store.Save(rig.F.Store.LoadOrCreate() is var s ? s with { Bots = s.Bots with { Approvers = who } } : null!);
-        await rig.SignUps.SubmitAsync(SignUpsTests.Form(), null, Ct);
+        await rig.SignUps.SubmitAsync(SignUpsTests.Form(), null, Ct, "en");
         await SignUpsTests.SentAsync(rig, 1);
         return rig;
     }
@@ -55,7 +55,7 @@ public sealed class SignUpNoticesTests
         Assert.Equal("1 waiting for approval on Avalon", first.Subject);
 
         rig.F.Time.Advance(TimeSpan.FromMinutes(10));
-        await rig.SignUps.SubmitAsync(SignUpsTests.Form(first: "Cy", email: "cy@example.com"), null, Ct);
+        await rig.SignUps.SubmitAsync(SignUpsTests.Form(first: "Cy", email: "cy@example.com"), null, Ct, "en");
         await Notices(rig).RunAsync(Ct);
         await Task.Delay(200, Ct);
         Assert.Single(StaffMail(rig));
@@ -79,7 +79,7 @@ public sealed class SignUpNoticesTests
 
         // The next hourly pass starts 59 minutes after this one finished: a full hour after the last one started.
         rig.F.Time.Advance(TimeSpan.FromMinutes(59));
-        await rig.SignUps.SubmitAsync(SignUpsTests.Form(first: "Cy", email: "cy@example.com"), null, Ct);
+        await rig.SignUps.SubmitAsync(SignUpsTests.Form(first: "Cy", email: "cy@example.com"), null, Ct, "en");
         await Notices(rig).RunAsync(Ct);
 
         Assert.Equal(2, (await StaffMailAsync(rig, 2)).Count);
@@ -128,7 +128,7 @@ public sealed class SignUpNoticesTests
     public async Task Unlisted_not_in_staff_email()
     {
         await using var rig = await WaitingAsync(SignUpApprovers.Owner);
-        await rig.SignUps.SubmitAsync(SignUpsTests.Form(first: "Dee", email: "ann@example.com"), null, Ct);
+        await rig.SignUps.SubmitAsync(SignUpsTests.Form(first: "Dee", email: "ann@example.com"), null, Ct, "en");
 
         await Notices(rig).RunAsync(Ct);
 
@@ -145,7 +145,7 @@ public sealed class SignUpNoticesTests
             var a = TestAuth.Account(StaffRole.Owner);
             f.Robust.Add(a.FirstName, a.LastName, a.UserLevel, "pass-word1", a.PrincipalId, email: "owner@staff.example");
         });
-        await rig.SignUps.SubmitAsync(SignUpsTests.Form(email: "ann@example.com"), null, Ct);
+        await rig.SignUps.SubmitAsync(SignUpsTests.Form(email: "ann@example.com"), null, Ct, "en");
 
         await Notices(rig).RunAsync(Ct);
         await Task.Delay(200, Ct);
@@ -181,7 +181,7 @@ public sealed class SignUpNoticesTests
     {
         await using var rig = SignUpsTests.Factory(email: false);
         rig.F.Store.Save(rig.F.Store.LoadOrCreate() is var s ? s with { Bots = s.Bots with { AdminApproval = true } } : null!);
-        await rig.SignUps.SubmitAsync(SignUpsTests.Form(), null, Ct);
+        await rig.SignUps.SubmitAsync(SignUpsTests.Form(), null, Ct, "en");
 
         await Notices(rig).RunAsync(Ct);
 

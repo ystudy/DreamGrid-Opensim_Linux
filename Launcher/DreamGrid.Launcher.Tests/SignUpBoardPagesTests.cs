@@ -30,7 +30,7 @@ public sealed class SignUpBoardPagesTests
         for (var i = 0; i < n; i++)
         {
             var first = (i < 26 ? "A" : "B") + (char)('a' + i % 26);
-            await rig.SignUps.SubmitAsync(SignUpsTests.Form(first: first, email: $"{first}@example.com"), null, Ct);
+            await rig.SignUps.SubmitAsync(SignUpsTests.Form(first: first, email: $"{first}@example.com"), null, Ct, "en");
             ids.Add(rig.F.Robust.All.Single(a => a.FirstName == first).PrincipalId);
             rig.F.Time.Advance(TimeSpan.FromMinutes(1));
         }
@@ -118,7 +118,7 @@ public sealed class SignUpBoardPagesTests
     public async Task Card_hides_unlisted()
     {
         await using var rig = SignUpsTests.Factory();
-        await rig.SignUps.SubmitAsync(SignUpsTests.Form(email: "ann@example.com"), null, Ct);
+        await rig.SignUps.SubmitAsync(SignUpsTests.Form(email: "ann@example.com"), null, Ct, "en");
         var owner = await SignedInAsync(rig, "owner");
 
         var page = await PageAsync(owner, "/");

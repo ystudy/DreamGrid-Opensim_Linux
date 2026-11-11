@@ -67,16 +67,17 @@ public sealed class EmailSender(
     public bool IsReady => accounts.IsReady;
 
     /// <summary>
-    /// Renders the template (the owner's wording, <c>{GridName}</c> filled in from settings) and puts it in the outbox, valid for
-    /// <paramref name="validFor"/> (24 hours by default).
+    /// Renders the template in <paramref name="language"/> (the owner's wording in that language, else the built-in wording;
+    /// <c>{GridName}</c> filled in from settings) and puts it in the outbox, valid for <paramref name="validFor"/> (24 hours by
+    /// default). An email to staff is English whatever the language; pass <see cref="Languages.English"/>.
     /// </summary>
-    public QueueResult Queue(string templateId, string to, string? avatarName, IReadOnlyDictionary<string, string> values, TimeSpan? validFor = null)
+    public QueueResult Queue(string templateId, string language, string to, string? avatarName, IReadOnlyDictionary<string, string> values, TimeSpan? validFor = null)
     {
         if (!accounts.IsReady) return QueueResult.NotReady;
         var s = settings();
         var all = new Dictionary<string, string>(values);
         all.TryAdd("GridName", s.GridName);
-        var email = EmailTemplates.Render(templateId, EmailTemplates.Current(s, templateId), all);
+        var email = EmailTemplates.Render(templateId, EmailTemplates.Current(s, templateId, language), all);
         var expires = time.GetUtcNow() + (validFor ?? DefaultValidFor);
         if (!outbox.Add(templateId, avatarName, new OutboxMessage(to, email.Subject, email.Text, email.Html), expires))
         {

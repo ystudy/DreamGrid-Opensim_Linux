@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text.Json;
+using DreamGrid.Launcher.Core;
 using DreamGrid.Launcher.Core.Database;
 using DreamGrid.Launcher.Core.Guests;
 using DreamGrid.Launcher.Core.Security;
@@ -125,6 +126,18 @@ public sealed class PeopleDeleteTests
         Assert.False(f.Services.GetRequiredService<HeldNames>().IsHeld("Sue Old"));
         Assert.DoesNotContain(f.Robust.All, a => a.PrincipalId == SueId);
         Assert.Equal("ok", Assert.Single(Audit(f, "deleted")).GetProperty("result").GetString());
+    }
+
+    [Fact]
+    public async Task Delete_forgets_their_saved_language()
+    {
+        await using var f = Factory();
+        var languages = f.Services.GetRequiredService<ResidentLanguages>();
+        languages.Set(SueId, "de");
+
+        Assert.True((await Actions(f).DeleteAsync(Admin(), null, SueId, Ct)).Done);
+
+        Assert.Null(languages.Get(SueId));
     }
 
     [Fact]

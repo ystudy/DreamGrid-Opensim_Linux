@@ -27,7 +27,7 @@ public sealed class SignUpApprovalsTests
     {
         var rig = SignUpsTests.Factory(email: email);
         if (approval) Set(rig, b => b with { AdminApproval = true });
-        await rig.SignUps.SubmitAsync(SignUpsTests.Form(), Caller, Ct);
+        await rig.SignUps.SubmitAsync(SignUpsTests.Form(), Caller, Ct, "en");
         return (rig, rig.F.Robust.All.Single(a => a.FirstName == "Bea").PrincipalId);
     }
 
@@ -60,7 +60,7 @@ public sealed class SignUpApprovalsTests
     public async Task Decoy_is_unlisted()
     {
         await using var rig = SignUpsTests.Factory();
-        await rig.SignUps.SubmitAsync(SignUpsTests.Form(email: "ann@example.com"), Caller, Ct);
+        await rig.SignUps.SubmitAsync(SignUpsTests.Form(email: "ann@example.com"), Caller, Ct, "en");
         var bea = rig.F.Robust.All.Single(a => a.FirstName == "Bea").PrincipalId;
 
         Assert.Equal(SignUpState.Unlisted, rig.Pending.Get(bea)!.State);
@@ -73,7 +73,7 @@ public sealed class SignUpApprovalsTests
         await using var rig = SignUpsTests.Factory(email: false);
         Set(rig, b => b with { AdminApproval = true });
 
-        var r = await rig.SignUps.SubmitAsync(SignUpsTests.Form(), Caller, Ct);
+        var r = await rig.SignUps.SubmitAsync(SignUpsTests.Form(), Caller, Ct, "en");
 
         var bea = rig.F.Robust.All.Single(a => a.FirstName == "Bea").PrincipalId;
         Assert.Equal(SignUpOutcome.WaitingForStaff, r.Outcome);
@@ -101,7 +101,7 @@ public sealed class SignUpApprovalsTests
         var made = rig.Pending.Get(bea)!.Made;
         rig.F.Time.Advance(TimeSpan.FromHours(2));
 
-        await rig.SignUps.ResendAsync("Bea", "Example", Caller, Ct);
+        await rig.SignUps.ResendAsync("Bea", "Example", Caller, Ct, "en");
 
         Assert.Equal(made, rig.Pending.Get(bea)!.Made);
         Assert.Equal(rig.F.Time.GetUtcNow(), rig.Pending.Get(bea)!.LastLink);
@@ -272,7 +272,7 @@ public sealed class SignUpApprovalsTests
     public async Task Unlisted_cannot_be_approved()
     {
         await using var rig = SignUpsTests.Factory();
-        await rig.SignUps.SubmitAsync(SignUpsTests.Form(email: "ann@example.com"), Caller, Ct);
+        await rig.SignUps.SubmitAsync(SignUpsTests.Form(email: "ann@example.com"), Caller, Ct, "en");
         var bea = rig.F.Robust.All.Single(a => a.FirstName == "Bea").PrincipalId;
 
         Assert.Equal(ApprovalResult.NotFound, (await Approvals(rig).ApproveAsync(bea, Staff, StaffRole.Owner, Caller, Ct)).Result);

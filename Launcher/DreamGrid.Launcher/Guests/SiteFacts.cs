@@ -16,6 +16,7 @@ public static class SiteFacts
         ("dg-af", "Protects forms from being sent by other websites."),
         ("dg-notice", "Carries a one-time message to the next page after a form was sent."),
         ("dg-ticket", "Opens the one support ticket a private link was used for. It lasts 8 hours from its last use."),
+        ("dg-lang", "Remembers the language a visitor picked for the guest pages. It lasts a year."),
     ];
 
     /// <summary>What the software stores about people, and where.</summary>
@@ -36,7 +37,8 @@ public static class SiteFacts
         ("Emails waiting to be sent: the address and the message (encrypted), until sent or expired", "email/outbox.json."),
         ("Emails that couldn't be sent: when, which email, the avatar name and why, for 7 days", "email/problems.json."),
         ("Support tickets: the sender's name and email (and account id when signed in), the messages, any evidence link and logs, "
-            + "and the private links (only as hashes), until a year after the ticket is closed", "tickets/<id>.json."),
+            + "the language the ticket was sent in, and the private links (only as hashes), until a year after the ticket is closed", "tickets/<id>.json."),
         ("Which staff switched on the support ticket emails, by account id, with when their last one went out", "guests/ticket-notices.json."),
+        ("The language each resident chose, by account id", "guests/languages.json."),
     ];
 }

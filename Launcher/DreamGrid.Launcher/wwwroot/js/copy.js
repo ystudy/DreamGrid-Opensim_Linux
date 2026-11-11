@@ -12,10 +12,10 @@ function copyButton(source, button) {
     button.hidden = false;
     button.addEventListener("click", function () {
         if (navigator.clipboard && window.isSecureContext) {
-            navigator.clipboard.writeText(source.textContent).then(function () { setButtonText(button, "Copied"); }, select);
+            navigator.clipboard.writeText(source.textContent).then(function () { setButtonText(button, button.dataset.copied || "Copied"); }, select);
         } else {
             select();
-            setButtonText(button, "Selected: press Ctrl+C");
+            setButtonText(button, button.dataset.selected || "Selected: press Ctrl+C");
         }
     });
 }
