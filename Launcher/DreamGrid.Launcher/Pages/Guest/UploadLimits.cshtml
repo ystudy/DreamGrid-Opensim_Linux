@@ -1,0 +1,23 @@
+@page "/guest/upload/limits"
+@model DreamGrid.Launcher.Pages.Guest.UploadLimitsModel
+@{
+    ViewData["Title"] = "Limits on this grid";
+}
+<h1>Limits on this grid</h1>
+<p>Every model is checked against these before it is made.</p>
+@if (Model.JoinedRegionsUnchecked)
+{
+    <p class="joined-regions alert alert-info">These are the limits of this computer's own regions. Regions on computers that joined the grid aren't checked, and one with stricter settings could refuse the item.</p>
+}
+<table class="table limits">
+    <thead>
+        <tr><th scope="col">Limit</th><th scope="col">On this grid</th><th scope="col">Why</th><th scope="col">In Blender</th></tr>
+    </thead>
+    <tbody>
+        @foreach (var limit in Model.Limits)
+        {
+            <tr><th scope="row">@limit.Name</th><td>@limit.Value</td><td>@limit.Why</td><td>@limit.Tip</td></tr>
+        }
+    </tbody>
+</table>
+<p><a href="/guest/upload">Upload a model</a></p>

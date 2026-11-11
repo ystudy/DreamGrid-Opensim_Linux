@@ -377,6 +377,9 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<SignUpCleanup>());
 builder.Services.AddSingleton(sp => new ImportJobs(paths, sp.GetRequiredService<TimeProvider>()));
 builder.Services.AddSingleton<IModelConverter>(sp => new ModelConverter(paths, sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<ModelConverter>>()));
 builder.Services.AddHostedService<ImportJobSweep>();
+// The payment hook for Make the item: free in the proof of concept.
+builder.Services.AddSingleton<IUploadCharge, FreeUploads>();
+builder.Services.AddSingleton<ModelUploads>();
 builder.Services.AddSingleton<TicketSweep>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<TicketSweep>());
 // Registered after GridHostedService, so it stops first: running work is awaited before the controller detaches.

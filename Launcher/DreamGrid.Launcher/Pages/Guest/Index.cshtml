@@ -21,6 +21,10 @@
 {
     <p><a href="/guest/regions">My regions</a></p>
 }
+@if (Model.UploadLink)
+{
+    <p><a href="/guest/upload">Upload a model</a></p>
+}
 @if (Model.TwoFactorLink)
 {
     <p><a href="/guest/two-factor">Two-factor sign-in</a></p>
