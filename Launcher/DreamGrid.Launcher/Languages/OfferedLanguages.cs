@@ -13,9 +13,12 @@ namespace DreamGrid.Launcher.Resident;
 public sealed class OfferedLanguages(Func<LauncherSettings> settings, OwnerLanguages added)
 {
     /// <summary>The languages offered now, in the owner's order.</summary>
-    public IReadOnlyList<string> Current()
+    public IReadOnlyList<string> Current() => Current(settings());
+
+    /// <summary>Like <see cref="Current()"/>, for <paramref name="settings"/> (a copy being saved).</summary>
+    public IReadOnlyList<string> Current(LauncherSettings settings)
     {
-        var s = settings().Languages;
+        var s = settings.Languages;
         var addedNow = added.Codes();
         var listed = s.Offered ?? Languages.BuiltIn;
         return [.. s.OfferedOrDefault(addedNow)

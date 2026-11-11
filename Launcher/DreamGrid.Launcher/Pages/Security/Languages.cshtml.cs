@@ -22,9 +22,10 @@ namespace DreamGrid.Launcher.Pages.Security;
 /// 400); the default is offered; an added language being turned on has nothing left to translate (one already on stays on after an
 /// update adds texts); a new default has its legal pages at the source's versions (<see cref="LegalPages.UpToDate"/>), so nothing is
 /// renumbered and Terms acceptances stand; turning off a language residents chose asks first, with how many. Audited as
-/// <c>languages-offered-changed</c> (the code list) and <c>language-default-changed</c> (from → to).
+/// <c>languages-offered-changed</c> (the code list) and <c>language-default-changed</c> (from → to). Rules 2 to 5 are checked inside the
+/// settings update, against the copy being saved.
 /// </summary>
-public sealed class LanguagesModel(IGridController grid, Func<LauncherSettings> settings, OwnerLanguages added, LanguageCatalog catalog,
+public sealed class LanguagesModel(IGridController grid, OwnerLanguages added, LanguageCatalog catalog,
     OfferedLanguages offeredLanguages, ResidentLanguages residents, AuditLog audit) : PageModel
 {
     /// <summary>One language's row of the table.</summary>
@@ -81,10 +82,21 @@ public sealed class LanguagesModel(IGridController grid, Func<LauncherSettings> 
         }
         if (!added.Delete(name))
             return Refuse($"{Languages.NativeName(name)} could not be deleted. Try again in a moment.");
-        // All its translations go, the owner's page wording in it too, so adding it again starts empty.
-        grid.UpdateSettings(s => s.Wording.Keys.Any(k => string.Equals(k, name, StringComparison.OrdinalIgnoreCase))
-            ? s with { Wording = s.Wording.Where(l => !string.Equals(l.Key, name, StringComparison.OrdinalIgnoreCase)).ToDictionary(l => l.Key, l => l.Value, StringComparer.Ordinal) }
-            : s, writeConfig: false);
+        // All its translations go, the owner's page wording, email wording and legal texts in it too, so adding it again starts empty.
+        bool Its(string key) => string.Equals(key, name, StringComparison.OrdinalIgnoreCase);
+        grid.UpdateSettings(s =>
+        {
+            if (s.Wording.Keys.Any(Its))
+                s = s with { Wording = s.Wording.Where(l => !Its(l.Key)).ToDictionary(l => l.Key, l => l.Value, StringComparer.Ordinal) };
+            if (s.Email.Templates is { } templates && templates.Keys.Any(Its))
+            {
+                var kept = templates.Where(l => !Its(l.Key)).ToDictionary(l => l.Key, l => l.Value);
+                s = s with { Email = s.Email with { Templates = kept.Count == 0 ? null : kept } };
+            }
+            if (s.Legal.Texts is { } texts && texts.Keys.Any(Its))
+                s = s with { Legal = s.Legal with { Texts = texts.Where(l => !Its(l.Key)).ToDictionary(l => l.Key, l => l.Value) } };
+            return s;
+        }, writeConfig: false);
         Write("language-deleted", name);
         Notice = $"Deleted {Languages.NativeName(name)}.";
         return Redirect("/security/languages");
@@ -104,54 +116,81 @@ public sealed class LanguagesModel(IGridController grid, Func<LauncherSettings> 
         if (Known(@default) is not { } chosen) return BadRequest();
         List<string> picked = [.. all.Where(wanted.Contains)];
 
-        // 2. The default is one of the offered.
-        if (!picked.Contains(chosen))
-            return Refuse($"Turn on {Languages.NativeName(chosen)} before making it the default.");
-
-        // 3. An added language is turned on only once it is fully translated; one already on stays on with new texts.
-        var before = offeredLanguages.Current();
-        foreach (var code in picked.Where(c => !offeredLanguages.IsBuiltIn(c) && !before.Contains(c, StringComparer.OrdinalIgnoreCase)))
-            if (catalog.Missing(code) is > 0 and var n)
-                return Refuse($"{Languages.NativeName(code)} still has {n} texts to translate.");
-
-        // 4. A new default must have its legal pages at the source's versions: the numbers carry over, so acceptances stand.
-        var s = settings();
-        var oldDefault = offeredLanguages.Default();
-        if (!string.Equals(chosen, oldDefault, StringComparison.OrdinalIgnoreCase) && Behind(s, chosen))
+        // Rules 2 to 5 are checked against the copy being saved, so nothing saved breaks one.
+        string? error = null;
+        string? legal = null;
+        IReadOnlyList<string> lines = [];
+        IReadOnlyList<string> before = [];
+        var oldDefault = "";
+        var saved = false;
+        grid.UpdateSettings(x =>
         {
-            var refused = Refuse($"Write the Terms, Privacy and Cookies pages in {Languages.NativeName(chosen)} first");
-            LegalLanguage = chosen;
+            (error, legal, lines, saved) = (null, null, [], false);
+            before = offeredLanguages.Current(x);
+            oldDefault = LegalPages.Source(x); // the one default the legal rules and the audit read
+            error = Check(x, picked, chosen, before, oldDefault, out legal, out var off);
+            if (error is not null) return x;
+            if (off.Count > 0 && !confirm)
+            {
+                lines = off;
+                return x;
+            }
+            saved = true;
+            return x with { Languages = x.Languages with { Offered = picked, Default = chosen } };
+        }, writeConfig: false);
+
+        if (error is not null)
+        {
+            var refused = Refuse(error);
+            LegalLanguage = legal;
             return refused;
         }
-
-        // 5. Turning off a language residents chose asks first; their saved choice stays and reads as the default.
-        var lines = before.Where(c => !picked.Contains(c, StringComparer.OrdinalIgnoreCase))
-            .Select(c => (Code: c, Count: residents.CountUsing(c))).Where(c => c.Count > 0)
-            .Select(c => $"{(c.Count == 1 ? "1 resident uses" : $"{c.Count} residents use")} {Languages.NativeName(c.Code)}. They will see {Languages.NativeName(chosen)} instead.")
-            .ToList();
-        if (lines.Count > 0 && !confirm)
+        if (!saved)
         {
             Fill();
             ConfirmChoose = new PendingChoice(picked, chosen, lines);
             return Page();
         }
-
-        grid.UpdateSettings(x => x with { Languages = x.Languages with { Offered = picked, Default = chosen } }, writeConfig: false);
         if (!before.SequenceEqual(picked, StringComparer.OrdinalIgnoreCase))
             Write("languages-offered-changed", string.Join(",", picked));
         if (!string.Equals(chosen, oldDefault, StringComparison.OrdinalIgnoreCase))
-            Write("language-default-changed", $"{oldDefault} → {chosen}");
+            Write("language-default-changed", $"{oldDefault} \u2192 {chosen}");
         Notice = "Saved.";
         return Redirect("/security/languages");
     }
 
     /// <summary>
-    /// Whether <paramref name="language"/>'s legal pages hold back making it the default: while sign-up can open, any of Terms, Privacy
-    /// and Cookies missing or at another version than the source's; at any time, one it has at another version (it would become the
-    /// source with an older number).
+    /// Rules 2 to 4 of <see cref="OnPostChoose"/> against <paramref name="s"/>: the refusal, or null. <paramref name="legal"/> is the
+    /// language whose legal pages must be written first; <paramref name="off"/> the confirmation lines for languages residents use
+    /// that are being turned off (rule 5).
     /// </summary>
-    private static bool Behind(LauncherSettings s, string language) =>
-        LegalPages.UpToDate(s, language).Any(p => LegalPages.SignUpGateOpen(s) || LegalPages.Exact(s, p, language) is not null);
+    private string? Check(LauncherSettings s, IReadOnlyList<string> picked, string chosen, IReadOnlyList<string> before, string oldDefault,
+        out string? legal, out IReadOnlyList<string> off)
+    {
+        legal = null;
+        off = [];
+        // 2. The default is one of the offered.
+        if (!picked.Contains(chosen))
+            return $"Turn on {Languages.NativeName(chosen)} before making it the default.";
+
+        // 3. An added language is turned on only once it is fully translated; one already on stays on with new texts.
+        foreach (var code in picked.Where(c => !offeredLanguages.IsBuiltIn(c) && !before.Contains(c, StringComparer.OrdinalIgnoreCase)))
+            if (catalog.Missing(code) is > 0 and var n)
+                return $"{Languages.NativeName(code)} still has {n} texts to translate.";
+
+        // 4. A new default must keep each legal page's source at its version: the numbers carry over, so acceptances stand.
+        if (!string.Equals(chosen, oldDefault, StringComparison.OrdinalIgnoreCase) && LegalPages.DefaultBlockers(s, chosen) is { Count: > 0 } pages)
+        {
+            legal = chosen;
+            return $"Write the {LegalPages.Titles(pages)} {(pages.Count == 1 ? "page" : "pages")} in {Languages.NativeName(chosen)} first";
+        }
+
+        // 5. Turning off a language residents chose asks first; their saved choice stays and reads as the default.
+        off = [.. before.Where(c => !picked.Contains(c, StringComparer.OrdinalIgnoreCase))
+            .Select(c => (Code: c, Count: residents.CountUsing(c))).Where(c => c.Count > 0)
+            .Select(c => $"{(c.Count == 1 ? "1 resident uses" : $"{c.Count} residents use")} {Languages.NativeName(c.Code)}. They will see {Languages.NativeName(chosen)} instead.")];
+        return null;
+    }
 
     private IActionResult Refuse(string error)
     {

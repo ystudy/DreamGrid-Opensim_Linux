@@ -65,7 +65,7 @@ public static partial class LanguageFile
             return Refused("", "The file is not UTF-8 text. Save it as UTF-8 and upload it again.");
         }
         // A UTF-8 byte-order mark (U+FEFF) at the start is allowed: some editors write one.
-        if (text.Length > 0 && text[0] == '﻿')
+        if (text.Length > 0 && text[0] == '\uFEFF')
             text = text[1..];
 
         JsonDocument doc;

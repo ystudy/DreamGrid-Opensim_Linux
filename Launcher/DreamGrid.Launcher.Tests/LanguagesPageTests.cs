@@ -443,6 +443,12 @@ public sealed class LanguagesPageTests
                 ["IT"] = new Dictionary<string, string> { ["Home.Title"] = "Vecchio" },
                 ["de"] = new Dictionary<string, string> { ["Home.Title"] = "Bleibt" },
             },
+            Email = new EmailSettings(new Dictionary<string, IReadOnlyDictionary<string, Core.Email.EmailTemplateText>>
+            {
+                ["It"] = new Dictionary<string, Core.Email.EmailTemplateText> { ["confirm-email"] = new("Vecchio", "{Link} {ExpiresIn}", LegalSaved) },
+                ["de"] = new Dictionary<string, Core.Email.EmailTemplateText> { ["confirm-email"] = new("Bleibt", "{Link} {ExpiresIn}", LegalSaved) },
+            }),
+            Legal = Legal(("it", "terms", 2), ("en", "terms", 2)),
         }, writeConfig: false);
         var owner = await OwnerAsync(f);
         using (var r = await PostAsync(owner, Page, "Delete", new() { ["code"] = "it", ["confirm"] = "true" }))
@@ -450,6 +456,10 @@ public sealed class LanguagesPageTests
         var wording = f.Services.GetRequiredService<Func<LauncherSettings>>()().Wording;
         Assert.DoesNotContain(wording.Keys, k => string.Equals(k, "it", StringComparison.OrdinalIgnoreCase));
         Assert.Equal("Bleibt", wording["de"]["Home.Title"]);
+        // Its email wording and legal texts go too, whatever the case of the key.
+        var after = f.Services.GetRequiredService<Func<LauncherSettings>>()();
+        Assert.Equal(["de"], after.Email.Templates!.Keys);
+        Assert.Equal(["en"], after.Legal.Texts!.Keys);
 
         // Added again, it starts empty: the old wording doesn't come back.
         using (var r = await PostAsync(owner, Page, "Add", new() { ["code"] = "it" }))
@@ -701,7 +711,7 @@ public sealed class LanguagesPageTests
         var page = await HtmlAsync(await ChooseAsync(await OwnerAsync(f), Languages.BuiltIn, "de"));
 
         var alert = page.QuerySelector("[role=alert]")!;
-        Assert.StartsWith("Write the Terms, Privacy and Cookies pages in Deutsch first", alert.TextContent.Trim());
+        Assert.StartsWith("Write the Privacy and Cookies pages in Deutsch first", alert.TextContent.Trim());
         Assert.Equal("/security/legal?lang=de", alert.QuerySelector("a")!.GetAttribute("href"));
         Assert.Equal(before, Snapshot(f));
     }
@@ -768,6 +778,61 @@ public sealed class LanguagesPageTests
 
         Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
         Assert.Equal(["en", "de"], Saved(f).Offered);
+    }
+
+    private static async Task<HttpStatusCode> GuestHomeAsync(LauncherFactory f)
+    {
+        var guest = f.CreateClient(new() { AllowAutoRedirect = false });
+        (await guest.GetAsync("/__test/guest-signin", Ct)).Dispose();
+        using var home = await guest.GetAsync("/guest", Ct);
+        return home.StatusCode;
+    }
+
+    [Fact]
+    public async Task Path_B_a_default_with_an_older_terms_than_the_English_stand_in_is_refused()
+    {
+        // The default is German with no legal records, so English Terms v5 stands in. French has Terms v2: as the default it would
+        // take Terms back to v2, and a guest who accepted v2 would be waved through.
+        await using var f = Factory(legal: Legal(("en", "terms", 5), ("fr", "terms", 2)) with { OperatorResponsible = false });
+        f.Store.Save(f.Store.LoadOrCreate() is var s ? s with { Languages = s.Languages with { Default = "de" } } : null!);
+        f.Services.GetRequiredService<DreamGrid.Launcher.Guests.TermsAcceptances>().Accept(TestAuth.GuestId, 2, "203.0.113.9");
+        Assert.Equal(5, Core.Guests.LegalPages.Get(f.Store.LoadOrCreate(), "terms", "de")!.Version);
+
+        var page = await HtmlAsync(await ChooseAsync(await OwnerAsync(f), Languages.BuiltIn, "fr"));
+
+        Assert.StartsWith("Write the Terms page in Fran", page.QuerySelector("[role=alert]")!.TextContent.Trim());
+        Assert.Equal("de", Saved(f).Default);
+        Assert.Equal(5, Core.Guests.LegalPages.Get(f.Store.LoadOrCreate(), "terms", "fr")!.Version);
+        Assert.Equal(HttpStatusCode.Redirect, await GuestHomeAsync(f));
+    }
+
+    [Fact]
+    public async Task A_default_without_legal_records_is_allowed_while_English_stands_in()
+    {
+        // Sign-up can't open; German has no pages, so English keeps standing in at the same numbers.
+        await using var f = Factory(legal: Legal(("en", "terms", 5)) with { OperatorResponsible = false });
+        f.Services.GetRequiredService<DreamGrid.Launcher.Guests.TermsAcceptances>().Accept(TestAuth.GuestId, 5, "203.0.113.9");
+
+        using var r = await ChooseAsync(await OwnerAsync(f), Languages.BuiltIn, "de");
+
+        Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
+        Assert.Equal(5, Core.Guests.LegalPages.Get(f.Store.LoadOrCreate(), "terms", "de")!.Version);
+        Assert.Equal(HttpStatusCode.OK, await GuestHomeAsync(f));
+    }
+
+    [Fact]
+    public async Task A_hand_edited_default_still_goes_through_rule_4_and_the_audit()
+    {
+        // The saved default is Italian, added once and since deleted: the pages read English, but the legal source is still "it".
+        await using var f = Factory(legal: Legal(("it", "terms", 4), ("en", "terms", 4), ("de", "terms", 2)) with { OperatorResponsible = false });
+        f.Store.Save(f.Store.LoadOrCreate() is var s ? s with { Languages = s.Languages with { Default = "it" } } : null!);
+
+        var page = await HtmlAsync(await ChooseAsync(await OwnerAsync(f), Languages.BuiltIn, "de"));
+        Assert.StartsWith("Write the Terms page in Deutsch first", page.QuerySelector("[role=alert]")!.TextContent.Trim());
+
+        using var r = await ChooseAsync(await OwnerAsync(f), Languages.BuiltIn, "en");
+        Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
+        Assert.Contains("it \u2192 en", Audit(f).Replace("\\u2192", "\u2192"));
     }
 
     /// <summary>The <c>lang</c> of the front page for a visitor whose language cookie is <paramref name="cookie"/>.</summary>

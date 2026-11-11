@@ -52,6 +52,12 @@ public sealed class LegalModel(IGridController grid, Func<LauncherSettings> sett
     /// <summary>The pages of a translation whose version is not the source's.</summary>
     public IReadOnlySet<string> OutOfDate { get; private set; } = new HashSet<string>();
 
+    /// <summary>
+    /// The pages of a translation the owner ticked as still matching the current version: unchanged, they take the source's version
+    /// anyway. Shown only on pages that are out of date; never shown ticked.
+    /// </summary>
+    [BindProperty] public Dictionary<string, bool> Matches { get; set; } = [];
+
     /// <summary>Why a save was refused, or null.</summary>
     public string? Error { get; private set; }
 
@@ -121,7 +127,8 @@ public sealed class LegalModel(IGridController grid, Func<LauncherSettings> sett
                 {
                     // A small fix to a written page keeps its number: what people accepted still stands.
                     var keep = SmallFix && before is not null && !string.IsNullOrWhiteSpace(before.Markdown);
-                    var version = keep ? before!.Version : (before?.Version ?? 0) + 1;
+                    // Otherwise one more than the page's highest number in any language: never reused, never backwards.
+                    var version = keep ? before!.Version : LegalPages.NextVersion(s, id);
                     pages[id] = new LegalText(markdown, version, now);
                     changes.Add(($"{id} v{version}" + (keep ? " small fix" : ""), "ok"));
                 }
@@ -141,29 +148,20 @@ public sealed class LegalModel(IGridController grid, Func<LauncherSettings> sett
     }
 
     /// <summary>
-    /// Saves a translation: each page whose text changed, or that is behind the source, takes the source's current version. A page
-    /// the source hasn't written is refused, and then nothing is saved.
+    /// Saves a translation. A page whose text changed takes the source's current version (<see cref="LegalPages.SourceOf"/>); an
+    /// unchanged page keeps its version unless the owner ticked that it still matches the current version (<see cref="Matches"/>).
+    /// A page the source hasn't written is refused, and then nothing is saved. The checks run against the copy being saved.
     /// </summary>
     private IActionResult SaveTranslation()
     {
         var language = Language;
-        var source = Source;
-        var unwritten = LegalPages.All
-            .Where(id => Texts.TryGetValue(id, out var t) && !string.IsNullOrWhiteSpace(t) && LegalPages.Exact(settings(), id, source) is null)
-            .ToList();
-        if (unwritten.Count > 0)
-        {
-            Error = string.Join(" ", unwritten.Select(id => $"Write {LegalPages.Title(id)} in {Core.Languages.NativeName(source)} first, then translate it."));
-            SetChoices(settings());
-            SetGate();
-            return Page();
-        }
-
         var changes = new List<string>();
+        var unwritten = new List<string>();
         var now = time.GetUtcNow();
         grid.UpdateSettings(s =>
         {
             changes.Clear(); // the update may run again against a newer copy
+            unwritten.Clear();
             var all = s.Legal.Texts?.ToDictionary(l => l.Key, l => l.Value) ?? [];
             var pages = all.TryGetValue(language, out var current) ? new Dictionary<string, LegalText>(current) : [];
             foreach (var id in LegalPages.All)
@@ -171,26 +169,45 @@ public sealed class LegalModel(IGridController grid, Func<LauncherSettings> sett
                 if (!Texts.TryGetValue(id, out var typed)) continue; // not on the form: left alone
                 var markdown = Normalize(typed);
                 pages.TryGetValue(id, out var before);
+                var written = before is not null && !string.IsNullOrWhiteSpace(before.Markdown);
+                var changed = !written || Normalize(before!.Markdown) != markdown;
                 if (string.IsNullOrWhiteSpace(markdown))
                 {
-                    if (before is not null && !string.IsNullOrWhiteSpace(before.Markdown))
+                    if (written)
                     {
-                        pages[id] = new LegalText("", before.Version, now);
+                        pages[id] = new LegalText("", before!.Version, now);
                         changes.Add($"{language} {id} cleared");
                     }
+                    continue;
                 }
-                else if (LegalPages.Exact(s, id, source) is { } original
-                    && (before is null || Normalize(before.Markdown) != markdown || before.Version != original.Version))
+                var (code, original) = LegalPages.SourceOf(s, id);
+                if (original is null)
                 {
-                    pages[id] = new LegalText(markdown, original.Version, now);
-                    changes.Add($"{language} {id} v{original.Version}");
+                    unwritten.Add(id);
+                    continue;
+                }
+                // English standing in for a default with no record of the page: it is the source of that page, numbered as one.
+                var version = string.Equals(code, language, StringComparison.OrdinalIgnoreCase)
+                    ? (changed ? LegalPages.NextVersion(s, id) : before!.Version)
+                    : original.Version;
+                if (changed || (Matches.GetValueOrDefault(id) && before!.Version != version))
+                {
+                    pages[id] = new LegalText(markdown, version, now);
+                    changes.Add($"{language} {id} v{version}");
                 }
             }
-            if (changes.Count == 0) return s;
+            if (unwritten.Count > 0 || changes.Count == 0) return s;
             all[language] = pages;
             return s with { Legal = s.Legal with { Texts = all } };
         }, writeConfig: false);
 
+        if (unwritten.Count > 0)
+        {
+            Error = string.Join(" ", unwritten.Select(id => $"Write {LegalPages.Title(id)} in {Core.Languages.NativeName(Source)} first, then translate it."));
+            SetChoices(settings());
+            SetGate();
+            return Page();
+        }
         foreach (var target in changes)
             Write("legal-text-saved", target, "ok");
         Notice = changes.Count == 0 ? "Nothing changed." : "Saved. The pages are live now.";
@@ -272,8 +289,9 @@ public sealed class LegalModel(IGridController grid, Func<LauncherSettings> sett
     /// <summary>The selector's languages, and the pages of the one edited that are behind the source.</summary>
     private void SetChoices(LauncherSettings s)
     {
-        IEnumerable<string> Behind(string code) => string.Equals(code, Source, StringComparison.OrdinalIgnoreCase) ? []
-            : LegalPages.All.Where(id => LegalPages.Exact(s, id, code) is { } t && LegalPages.Exact(s, id, Source) is { } src && t.Version != src.Version);
+        IEnumerable<string> Behind(string code) => LegalPages.All.Where(id => LegalPages.SourceOf(s, id) is var (from, src)
+            && !string.Equals(code, from, StringComparison.OrdinalIgnoreCase)
+            && LegalPages.Exact(s, id, code) is { } t && src is not null && t.Version != src.Version);
         Choices = [.. offeredLanguages.All().Select(c => new LanguageChoice(c, Core.Languages.NativeName(c), Behind(c).Any()))];
         OutOfDate = Behind(Language).ToHashSet();
     }

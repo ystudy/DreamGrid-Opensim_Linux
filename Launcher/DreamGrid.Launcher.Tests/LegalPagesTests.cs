@@ -378,10 +378,43 @@ public sealed class LegalPagesTests
         Assert.True(LegalPages.SignUpGateOpen(s));
         Assert.Empty(LegalPages.Missing(s));
 
+        // German as the default with no legal records at all: English stands in as the source, gate included.
         var english = Settings(Legal(true, "terms", "privacy", "cookies")) with { Languages = new LanguageSettings { Default = "de" } };
-        Assert.False(LegalPages.SignUpGateOpen(english));
-        Assert.Equal(["terms", "privacy", "cookies"], LegalPages.Missing(english));
-        Assert.True(LegalPages.SignUpGateOpen(english with { Languages = new LanguageSettings { Default = "en" } }));
+        Assert.True(LegalPages.SignUpGateOpen(english));
+        Assert.Equal(("en", 3), (LegalPages.SourceOf(english, "terms").Language, LegalPages.SourceOf(english, "terms").Text!.Version));
+
+        // A cleared German Terms is "no text": English does not take over, and the gate asks for Terms again.
+        var cleared = Versions("de", ("de", "privacy", 1), ("de", "cookies", 1), ("en", "terms", 3)) is var v
+            ? v with { Legal = v.Legal with { Texts = v.Legal.Texts!.ToDictionary(l => l.Key, l => l.Key == "de"
+                ? (IReadOnlyDictionary<string, LegalText>)new Dictionary<string, LegalText>(l.Value) { ["terms"] = new("", 6, Saved) }
+                : l.Value) } }
+            : null!;
+        Assert.Equal(("de", null), (LegalPages.SourceOf(cleared, "terms").Language, LegalPages.SourceOf(cleared, "terms").Text));
+        Assert.Null(LegalPages.Get(cleared, "terms", "en"));
+        Assert.Equal(["terms"], LegalPages.Missing(cleared));
+        Assert.Equal(7, LegalPages.NextVersion(cleared, "terms")); // past the cleared v6
+    }
+
+    [Fact]
+    public void Next_version_is_past_every_language_and_never_reused()
+    {
+        var s = Versions("de", ("en", "terms", 5), ("de", "terms", 2), ("fr", "terms", 4));
+        Assert.Equal(6, LegalPages.NextVersion(s, "terms"));
+        Assert.Equal(1, LegalPages.NextVersion(s, "privacy"));
+        Assert.Equal(1, LegalPages.NextVersion(Settings(new LegalSettings()), "terms"));
+    }
+
+    [Fact]
+    public void Up_to_date_and_default_blockers_compare_with_the_effective_source()
+    {
+        // Path B: German default without records, English Terms v5 standing in, French Terms v2.
+        var s = Versions("de", ("en", "terms", 5), ("fr", "terms", 2)) with { Legal = Versions("de", ("en", "terms", 5), ("fr", "terms", 2)).Legal with { OperatorResponsible = false } };
+        Assert.Contains("terms", LegalPages.UpToDate(s, "fr"));
+        Assert.Equal(["terms"], LegalPages.DefaultBlockers(s, "fr"));
+        Assert.Empty(LegalPages.DefaultBlockers(s, "es")); // no records: English keeps standing in at v5
+        Assert.Equal("Terms, Privacy and Cookies", LegalPages.Titles(["terms", "privacy", "cookies"]));
+        Assert.Equal("Privacy and Cookies", LegalPages.Titles(["privacy", "cookies"]));
+        Assert.Equal("Terms", LegalPages.Titles(["terms"]));
     }
 
     // ---- legal versions: the default language is the source, a translation is shown only at the source's version ----

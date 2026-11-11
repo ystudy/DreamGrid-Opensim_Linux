@@ -297,4 +297,38 @@ public sealed class EmailTemplatesTests
         Assert.Equal(EmailTemplates.Default("confirm-email", "de"), EmailTemplates.Default("confirm-email", "de", store));
         Assert.Equal("24 hours", EmailTemplates.Words("ExpiresIn.24h", "it"));
     }
+
+    /// <summary>A logger that keeps what it is told.</summary>
+    private sealed class ListLogger : Microsoft.Extensions.Logging.ILogger
+    {
+        public List<(Microsoft.Extensions.Logging.LogLevel Level, string Message)> Lines { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state,
+            Exception? exception, Func<TState, Exception?, string> formatter) => Lines.Add((logLevel, formatter(state, exception)));
+    }
+
+    [Fact]
+    public void Added_language_text_without_a_needed_word_falls_back_to_the_built_in_wording()
+    {
+        // A hand-edited it.json whose confirm-email lost {Link}: the email must not go out without it.
+        var store = Italian(new()
+        {
+            ["confirm-email.Subject"] = "Conferma su {GridName}",
+            ["confirm-email.Body"] = "Ciao {AvatarName}, entro {ExpiresIn}. SEGRETO",
+        });
+        var log = new ListLogger();
+
+        var it = EmailTemplates.Default("confirm-email", "it", store, log);
+
+        Assert.Equal(EmailTemplates.Default("confirm-email", "en"), it);
+        Assert.Empty(EmailTemplates.MissingWords("confirm-email", it.Subject, it.Body));
+        var line = Assert.Single(log.Lines);
+        Assert.Equal(Microsoft.Extensions.Logging.LogLevel.Warning, line.Level);
+        Assert.Contains("it", line.Message);
+        Assert.Contains("confirm-email", line.Message);
+        Assert.DoesNotContain("SEGRETO", line.Message);
+        Assert.DoesNotContain("Conferma", line.Message);
+        Assert.Equal(EmailTemplates.Default("confirm-email", "en"), EmailTemplates.Current(TestSettings.Create(), "confirm-email", "it", store, log));
+    }
 }

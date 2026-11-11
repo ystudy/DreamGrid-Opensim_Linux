@@ -85,7 +85,7 @@ public sealed class EmailSender(
         var s = settings();
         var all = new Dictionary<string, string>(values);
         all.TryAdd("GridName", s.GridName);
-        var email = EmailTemplates.Render(templateId, EmailTemplates.Current(s, templateId, language, added), all);
+        var email = EmailTemplates.Render(templateId, EmailTemplates.Current(s, templateId, language, added, log), all);
         var expires = time.GetUtcNow() + (validFor ?? DefaultValidFor);
         if (!outbox.Add(templateId, avatarName, new OutboxMessage(to, email.Subject, email.Text, email.Html), expires))
         {

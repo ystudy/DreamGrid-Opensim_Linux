@@ -3,6 +3,7 @@ using System.Net;
 using System.Resources;
 using DreamGrid.Launcher.Core.Guests;
 using DreamGrid.Launcher.Core.Settings;
+using Microsoft.Extensions.Logging;
 
 namespace DreamGrid.Launcher.Core.Email;
 
@@ -117,15 +118,24 @@ public static class EmailTemplates
 
     /// <summary>
     /// Like <see cref="Default(string, string)"/>, and for a language the owner added (<paramref name="added"/>, not built in) the
-    /// subject and body come from its file, each one in English where the file has no text for it.
+    /// subject and body come from its file, each one in English where the file has no text for it. When what that gives leaves out a
+    /// needed fill-in word (a hand-edited file without <c>{Link}</c>, say), the built-in wording is used instead and
+    /// <paramref name="log"/> gets a warning naming the language and the email, never the text.
     /// </summary>
-    public static EmailTemplateText Default(string id, string language, OwnerLanguages? added)
+    public static EmailTemplateText Default(string id, string language, OwnerLanguages? added, ILogger? log = null)
     {
         var t = Get(id);
         if (IsStaffEmail(id)) return new(t.Subject, t.Body, Shipped);
-        var file = Added(language, added);
         var culture = CultureFor(language);
-        return new(Lookup(id + ".Subject", culture, file), Lookup(id + ".Body", culture, file), Shipped);
+        if (Added(language, added) is { } file)
+        {
+            var subject = Lookup(id + ".Subject", culture, file);
+            var body = Lookup(id + ".Body", culture, file);
+            if (MissingWords(id, subject, body).Count == 0)
+                return new(subject, body, Shipped);
+            log?.LogWarning("The {Language} wording of email {Template} leaves out a needed fill-in word; the built-in wording is used", language, id);
+        }
+        return new(Resource(id + ".Subject", culture), Resource(id + ".Body", culture), Shipped);
     }
 
     /// <summary>
@@ -148,12 +158,12 @@ public static class EmailTemplates
     public static EmailTemplateText Current(LauncherSettings s, string id, string language) => Current(s, id, language, null);
 
     /// <summary>Like <see cref="Current(LauncherSettings, string, string)"/>, with the built-in wording of a language the owner added read from its file (<see cref="Default(string, string, OwnerLanguages?)"/>).</summary>
-    public static EmailTemplateText Current(LauncherSettings s, string id, string language, OwnerLanguages? added)
+    public static EmailTemplateText Current(LauncherSettings s, string id, string language, OwnerLanguages? added, ILogger? log = null)
     {
         if (IsStaffEmail(id)) language = Languages.English;
         return s.Email.Templates is { } all && all.TryGetValue(language, out var texts) && texts.TryGetValue(id, out var t)
             ? t
-            : Default(id, language, added);
+            : Default(id, language, added, log);
     }
 
     /// <summary>

@@ -76,6 +76,13 @@ else
                 }</label>
             <textarea class="form-control" id="text-@id" name="Texts[@id]" rows="10" autocomplete="off" spellcheck="true">
 @(Model.Texts.GetValueOrDefault(id))</textarea>
+            @if (Model.OutOfDate.Contains(id))
+            {
+                <div class="form-check mt-1">
+                    <input class="form-check-input" type="checkbox" id="matches-@id" name="Matches[@id]" value="true">
+                    <label class="form-check-label" for="matches-@id">This translation still matches the current version</label>
+                </div>
+            }
         </div>
     }
     @if (Model.IsSource)
