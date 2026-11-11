@@ -34,9 +34,9 @@ public static class LanguagePick
     /// Every candidate, saved values included, goes through <see cref="Languages.Match"/>, so junk is skipped and the result is
     /// always a language <see cref="Core.Languages.Culture"/> knows.
     /// </summary>
-    public static string For(HttpContext ctx, LanguageSettings s, ResidentLanguages saved, ClaimsPrincipal? guest, bool welcome)
+    public static string For(HttpContext ctx, OfferedLanguages offeredLanguages, ResidentLanguages saved, ClaimsPrincipal? guest, bool welcome)
     {
-        var offered = OfferedLanguages.Of(s);
+        var offered = offeredLanguages.Current();
         string? Try(string? tag) => Core.Languages.Match(tag, offered);
 
         if (welcome)
@@ -54,6 +54,6 @@ public static class LanguagePick
                     if (Try(entry.Value.Value) is { } a) return a;
             }
         }
-        return OfferedLanguages.DefaultOf(s);
+        return offeredLanguages.Default();
     }
 }

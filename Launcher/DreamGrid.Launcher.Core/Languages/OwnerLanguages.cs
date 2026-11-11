@@ -25,6 +25,14 @@ public sealed class OwnerLanguages(string folder, TimeProvider time, ILogger<Own
 
     private readonly Lock _gate = new();
     private readonly Dictionary<string, Cached> _cache = new(StringComparer.Ordinal);
+    private IReadOnlyList<string>? _codes;
+    private DateTimeOffset _scanned;
+
+    private static readonly TimeSpan ScanEvery = TimeSpan.FromSeconds(1);
+
+    // Seams for tests: the folder listing and the file removal.
+    internal Func<string, IEnumerable<string>> ListFiles { get; set; } = dir => Directory.EnumerateFiles(dir, "*.json");
+    internal Action<string> RemoveFile { get; set; } = File.Delete;
 
     /// <summary>
     /// The normalised culture name for what the owner typed ("IT" gives "it", "pt-pt" gives "pt-PT"), or null when the system doesn't
@@ -47,23 +55,38 @@ public sealed class OwnerLanguages(string folder, TimeProvider time, ILogger<Own
         return name.Length == 0 || Languages.BuiltIn.Contains(name, StringComparer.OrdinalIgnoreCase) ? null : name;
     }
 
-    /// <summary>The codes of the saved languages, in order.</summary>
+    /// <summary>
+    /// The codes of the saved languages, in order. The folder is looked at again at most once a second (<see cref="Save"/> and
+    /// <see cref="Delete"/> refresh it at once). A folder that can't be read gives an empty list and a warning, never an exception.
+    /// </summary>
     public IReadOnlyList<string> Codes()
     {
         lock (_gate)
         {
-            List<string> found = [];
-            if (Directory.Exists(folder))
-                foreach (var file in Directory.EnumerateFiles(folder, "*.json"))
-                {
-                    var code = Path.GetFileNameWithoutExtension(file);
-                    if (CodeFor(code) == code && Load(code) is not null)
-                        found.Add(code);
-                }
-            foreach (var stale in _cache.Keys.Where(k => !found.Contains(k)).ToList())
-                _cache.Remove(stale);
-            found.Sort(StringComparer.Ordinal);
-            return found;
+            var now = time.GetUtcNow();
+            if (_codes is not null && now - _scanned < ScanEvery && now >= _scanned)
+                return _codes;
+            _scanned = now;
+            try
+            {
+                List<string> found = [];
+                if (Directory.Exists(folder))
+                    foreach (var file in ListFiles(folder))
+                    {
+                        var code = Path.GetFileNameWithoutExtension(file);
+                        if (CodeFor(code) == code && Load(code) is not null)
+                            found.Add(code);
+                    }
+                foreach (var stale in _cache.Keys.Where(k => !found.Contains(k)).ToList())
+                    _cache.Remove(stale);
+                found.Sort(StringComparer.Ordinal);
+                return _codes = found;
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                log?.LogWarning("The language folder {Folder} could not be read ({Error}); no added languages are listed.", folder, e.GetType().Name);
+                return _codes = [];
+            }
         }
     }
 
@@ -89,10 +112,11 @@ public sealed class OwnerLanguages(string folder, TimeProvider time, ILogger<Own
             Directory.CreateDirectory(folder);
             AtomicFile.WriteAllText(PathOf(name), JsonSerializer.Serialize(stored, Options));
             _cache.Remove(name);
+            _codes = null;
         }
     }
 
-    /// <summary>Removes the saved language with <paramref name="code"/>; false when there was none.</summary>
+    /// <summary>Removes the saved language with <paramref name="code"/>; false when there was none or the file could not be removed (a warning is logged).</summary>
     public bool Delete(string code)
     {
         if (CodeFor(code) is not { } name)
@@ -100,11 +124,20 @@ public sealed class OwnerLanguages(string folder, TimeProvider time, ILogger<Own
         lock (_gate)
         {
             _cache.Remove(name);
+            _codes = null;
             var path = PathOf(name);
-            if (!File.Exists(path))
+            try
+            {
+                if (!File.Exists(path))
+                    return false;
+                RemoveFile(path);
+                return true;
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                log?.LogWarning("The language file {Path} could not be removed ({Error}).", path, e.GetType().Name);
                 return false;
-            File.Delete(path);
-            return true;
+            }
         }
     }
 
@@ -156,6 +189,12 @@ public sealed class OwnerLanguages(string folder, TimeProvider time, ILogger<Own
             _cache.Remove(name);
             return null;
         }
+        // A null wording in the file reads as absent.
+        language = language with
+        {
+            Page = language.Page.Where(p => p.Value is not null).ToDictionary(p => p.Key, p => p.Value),
+            Email = language.Email.Where(p => p.Value is not null).ToDictionary(p => p.Key, p => p.Value),
+        };
         _cache[name] = new Cached(info.Length, info.LastWriteTimeUtc, language);
         return language;
     }

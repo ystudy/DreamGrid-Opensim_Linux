@@ -45,7 +45,9 @@ public sealed class LanguagePickTests
         if (cookie is not null) ctx.Request.Headers.Cookie = $"{LanguagePick.Cookie}={cookie}";
         if (accept is not null) ctx.Request.Headers.AcceptLanguage = accept;
         if (query is not null) ctx.Request.QueryString = new QueryString($"?lang={query}");
-        return LanguagePick.For(ctx, s ?? new LanguageSettings(), saved ?? Saved(), guest, welcome);
+        var none = new OwnerLanguages(Path.Combine(Path.GetTempPath(), "dg-none-" + Guid.NewGuid().ToString("N")), TimeProvider.System);
+        var settings = TestSettings.Create() with { Languages = s ?? new LanguageSettings() };
+        return LanguagePick.For(ctx, new OfferedLanguages(() => settings, none), saved ?? Saved(), guest, welcome);
     }
 
     [Fact]

@@ -143,6 +143,30 @@ public static class EmailTemplates
             : Default(id, language);
     }
 
+    /// <summary>
+    /// Every key of the resident emails' wording, in order: <c>&lt;id&gt;.Subject</c> and <c>&lt;id&gt;.Body</c> for each email to a
+    /// resident, then <c>ExpiresIn.*</c> and <c>Reason.*</c> (what an owner-added language has to translate). Read once from the
+    /// English resource; never a staff email.
+    /// </summary>
+    public static IReadOnlyList<string> ResidentTextKeys() => ResidentKeys.Value;
+
+    /// <summary>The English wording of <paramref name="key"/> (one of <see cref="ResidentTextKeys"/>).</summary>
+    public static string EnglishText(string key) =>
+        Text.GetString(key, CultureInfo.InvariantCulture) ?? throw new ArgumentException($"No email word \"{key}\".", nameof(key));
+
+    private static readonly Lazy<IReadOnlyList<string>> ResidentKeys = new(() =>
+    {
+        var set = Text.GetResourceSet(CultureInfo.InvariantCulture, createIfNotExists: true, tryParents: false);
+        List<string> keys = [];
+        if (set is not null)
+            foreach (System.Collections.DictionaryEntry e in set)
+                if (e.Key is string k && e.Value is string && (k.StartsWith("ExpiresIn.", StringComparison.Ordinal)
+                    || k.StartsWith("Reason.", StringComparison.Ordinal) || !IsStaffEmail(k[..Math.Max(k.LastIndexOf('.'), 0)])))
+                    keys.Add(k);
+        keys.Sort(StringComparer.Ordinal);
+        return keys;
+    });
+
     /// <summary>A text of <c>EmailText</c> in <paramref name="culture"/>; a key it lacks is a bug, never an empty email.</summary>
     internal static string Resource(string key, CultureInfo culture) =>
         Text.GetString(key, culture) ?? throw new InvalidOperationException($"EmailText has no \"{key}\".");

@@ -8,7 +8,7 @@ namespace DreamGrid.Launcher.Tests;
 /// <summary>The one offered-languages rule every picker, page and email uses.</summary>
 public sealed class OfferedLanguagesTests
 {
-    private static OfferedLanguages For(LanguageSettings l) => new(() => TestSettings.Create() with { Languages = l });
+    private static OfferedLanguages For(LanguageSettings l) => new(() => TestSettings.Create() with { Languages = l }, new OwnerLanguages(Path.Combine(Path.GetTempPath(), "dg-none-" + Guid.NewGuid().ToString("N")), TimeProvider.System));
 
     [Fact]
     public void All_built_in_languages_are_offered_by_default_and_English_is_the_default()
@@ -40,13 +40,5 @@ public sealed class OfferedLanguagesTests
         var o = For(new LanguageSettings { Offered = ["en"], Default = "ar" });
         Assert.Equal(["en", "ar"], o.Current().ToList());
         Assert.Equal("ar", o.Default());
-    }
-
-    [Fact]
-    public void Static_and_injected_forms_agree()
-    {
-        var l = new LanguageSettings { Offered = ["ru", "es"], Default = "es" };
-        Assert.Equal(OfferedLanguages.Of(l).ToList(), For(l).Current().ToList());
-        Assert.Equal(OfferedLanguages.DefaultOf(l), For(l).Default());
     }
 }

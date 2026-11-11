@@ -19,7 +19,7 @@ namespace DreamGrid.Launcher.Pages.Guest;
 /// the new stamp, so it stays signed in while every other session ends.
 /// </summary>
 public sealed class AccountModel(AccountChanges changes, IRobustClient robust, Func<LauncherSettings> settings, RegionRights rights,
-    ResidentTwoFactor residents, EmailLanguage emailLanguage, ResidentLanguages languages, ILogger<AccountModel> log, IStringLocalizer<ResidentText> t) : PageModel
+    ResidentTwoFactor residents, EmailLanguage emailLanguage, OfferedLanguages offeredLanguages, ResidentLanguages languages, ILogger<AccountModel> log, IStringLocalizer<ResidentText> t) : PageModel
 {
     [BindProperty] public string? Current { get; set; }
     [BindProperty] public string? Code { get; set; }
@@ -90,7 +90,7 @@ public sealed class AccountModel(AccountChanges changes, IRobustClient robust, F
     public Task<IActionResult> OnPostLanguageAsync(string? language)
     {
         if (GuestSignIn.Read(User) is not { } guest) return Task.FromResult<IActionResult>(Challenge());
-        var offered = OfferedLanguages.Of(settings().Languages);
+        var offered = offeredLanguages.Current();
         if (Core.Languages.Match(language, offered) is not { } chosen) return Task.FromResult<IActionResult>(BadRequest());
         languages.Set(guest.Principal, chosen);
         LanguagePick.SetCookie(HttpContext, chosen);
@@ -127,7 +127,7 @@ public sealed class AccountModel(AccountChanges changes, IRobustClient robust, F
         EmailChangeAvailable = changes.EmailChangeAvailable();
         TwoFactorLink = ResidentTwoFactor.PageShown(s, residents.Store.StateOf(principal));
         OwnsRegions = rights.OwnedBy(principal).Count > 0;
-        var offered = OfferedLanguages.Of(s.Languages);
+        var offered = offeredLanguages.Current();
         LanguageChoices = [.. offered.Select(c => (c, Core.Languages.NativeName(c)))];
         SelectedLanguage = Core.Languages.Match(languages.Get(principal), offered) ?? ResidentLanguageFilter.Current(HttpContext);
     }

@@ -1,6 +1,7 @@
 using DreamGrid.Launcher.Core;
 using DreamGrid.Launcher.Core.Settings;
 using Microsoft.Extensions.Time.Testing;
+using Microsoft.Extensions.Logging;
 using Xunit;
 
 namespace DreamGrid.Launcher.Tests;
@@ -124,5 +125,79 @@ public sealed class OwnerLanguagesTests : IDisposable
         var s = new LanguageSettings { Offered = ["en", "it"] };
         Assert.Contains("it", s.OfferedOrDefault(["it"]));
         Assert.DoesNotContain("it", s.OfferedOrDefault([]));
+    }
+
+    [Fact]
+    public void A_null_wording_in_the_file_reads_as_absent()
+    {
+        Directory.CreateDirectory(Folder);
+        File.WriteAllText(Path.Combine(Folder, "it.json"),
+            """{"code":"it","page":{"a":"Uno","b":null},"email":{"c":null,"d":"Quattro"},"saved":"2026-11-11T12:00:00+00:00"}""");
+        var got = new OwnerLanguages(Folder, _time).Get("it")!;
+        Assert.Equal(["a"], got.Page.Keys);
+        Assert.Equal(["d"], got.Email.Keys);
+    }
+
+    [Fact]
+    public void Codes_looks_at_the_folder_once_a_second()
+    {
+        var store = new OwnerLanguages(Folder, _time);
+        Assert.Empty(store.Codes());
+        // Another process (here: another instance) adds a file.
+        new OwnerLanguages(Folder, _time).Save(Sample("it"));
+        Assert.Empty(store.Codes());
+        _time.Advance(TimeSpan.FromMilliseconds(999));
+        Assert.Empty(store.Codes());
+        _time.Advance(TimeSpan.FromMilliseconds(1));
+        Assert.Equal(["it"], store.Codes());
+    }
+
+    [Fact]
+    public void Save_and_Delete_refresh_the_list_at_once()
+    {
+        var store = new OwnerLanguages(Folder, _time);
+        Assert.Empty(store.Codes());
+        store.Save(Sample("it"));
+        Assert.Equal(["it"], store.Codes());
+        Assert.True(store.Delete("it"));
+        Assert.Empty(store.Codes());
+    }
+
+    private sealed class Warnings : ILogger<OwnerLanguages>
+    {
+        public int Count;
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (logLevel == LogLevel.Warning) Count++;
+        }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Codes_survives_an_unreadable_folder(bool denied)
+    {
+        var log = new Warnings();
+        var store = new OwnerLanguages(Folder, _time, log);
+        store.Save(Sample("it"));
+        store.ListFiles = _ => throw (denied ? new UnauthorizedAccessException() : new IOException("disk"));
+        _time.Advance(TimeSpan.FromSeconds(2));
+        Assert.Empty(store.Codes());
+        Assert.Equal(1, log.Count);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Delete_survives_a_file_that_cannot_be_removed(bool denied)
+    {
+        var log = new Warnings();
+        var store = new OwnerLanguages(Folder, _time, log);
+        store.Save(Sample("it"));
+        store.RemoveFile = _ => throw (denied ? new UnauthorizedAccessException() : new IOException("locked"));
+        Assert.False(store.Delete("it"));
+        Assert.Equal(1, log.Count);
     }
 }

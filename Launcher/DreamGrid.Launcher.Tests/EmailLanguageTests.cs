@@ -1,6 +1,7 @@
 using DreamGrid.Launcher.Core;
 using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Email;
+using DreamGrid.Launcher.Resident;
 using Microsoft.AspNetCore.Http;
 using Xunit;
 
@@ -21,7 +22,8 @@ public sealed class EmailLanguageTests : IDisposable
     {
         var saved = new ResidentLanguages(_file);
         var s = TestSettings.Create() with { Languages = new LanguageSettings { Offered = offered ?? ["en", "de", "fr"], Default = defaultLanguage } };
-        return (new EmailLanguage(() => s, saved), saved);
+        var none = new OwnerLanguages(Path.Combine(Path.GetTempPath(), "dg-none-" + Guid.NewGuid().ToString("N")), TimeProvider.System);
+        return (new EmailLanguage(new OfferedLanguages(() => s, none), saved), saved);
     }
 
     [Fact]

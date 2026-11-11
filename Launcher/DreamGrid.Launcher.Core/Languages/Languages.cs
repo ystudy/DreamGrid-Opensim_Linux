@@ -13,7 +13,7 @@ public static class Languages
     private const int LongestTag = 35;
 
     /// <summary>
-    /// The offered language that fits a language tag such as "de-AT" or "pt-BR", or null if none does. A tag with anything other than
+    /// The offered language that fits a language tag such as "de-AT" or "pt-BR" (the case of the tag doesn't matter), or null if none does. A tag with anything other than
     /// letters, digits and "-" in it, or longer than 35 characters, never matches.
     /// </summary>
     public static string? Match(string? tag, IReadOnlyCollection<string> offered)
@@ -21,12 +21,12 @@ public static class Languages
         tag = tag?.Trim();
         if (string.IsNullOrEmpty(tag) || tag.Length > LongestTag || !tag.All(c => char.IsAsciiLetterOrDigit(c) || c == '-'))
             return null;
-        tag = tag.ToLowerInvariant();
-        if (offered.Contains(tag))
-            return tag;
+        // The offered code is returned as it is written there ("pt-PT"), so an owner-added regional code can match.
+        string? Find(string code) => offered.FirstOrDefault(o => string.Equals(o, code, StringComparison.OrdinalIgnoreCase));
+        if (Find(tag) is { } exact)
+            return exact;
         var dash = tag.IndexOf('-');
-        var primary = dash > 0 ? tag[..dash] : null;
-        return primary is not null && offered.Contains(primary) ? primary : null;
+        return dash > 0 ? Find(tag[..dash]) : null;
     }
 
     private static string CultureName(string code) => code == "pt" ? "pt-BR" : code;
