@@ -129,7 +129,29 @@ public static partial class GridConsoleCommands
         }
     }
 
+    /// <summary>
+    /// A running program's <c>login status</c> reply, for a launcher that adopts it. A slow console can answer after the
+    /// settle time, leaving the reply without an answer; the region's one-time alert was sent before this launcher was
+    /// listening, so taking that for "disabled" would leave the region starting for good. The command is therefore
+    /// repeated until the reply holds an answer or <paramref name="wait"/> (default <see cref="AdoptedLoginStatusWait"/>) has
+    /// passed; the last reply then.
+    /// </summary>
+    public static async Task<IReadOnlyList<string>> AdoptedLoginStatusAsync(RestConsoleClient console, TimeSpan settle, TimeProvider time,
+        CancellationToken ct, TimeSpan? wait = null)
+    {
+        var deadline = time.GetUtcNow() + (wait ?? AdoptedLoginStatusWait);
+        while (true)
+        {
+            var lines = await console.RunAsync("login status", settle, ct);
+            if (ParseLoginStatus(lines).Count > 0 || ParseLoginsEnabled(lines) is not null) return lines;
+            if (time.GetUtcNow() >= deadline) return lines;
+        }
+    }
+
     private static readonly TimeSpan ShowRegionsWait = TimeSpan.FromSeconds(30);
+
+    /// <summary>As long as <c>show regions</c> is waited for.</summary>
+    public static readonly TimeSpan AdoptedLoginStatusWait = ShowRegionsWait;
 
     [GeneratedRegex(@"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b")]
     private static partial Regex RegionIdPattern();

@@ -247,7 +247,11 @@ public sealed partial class LauncherEndToEndTests : IDisposable
             var launcher = StartLauncher(paths);
             await WaitForLogAsync(launcher, GridRunning);
             foreach (var name in new[] { "Welcome", "Isle" })
-                await WaitForAsync(launcher, async () => await GetAsync(s, "?command=RegionStatus&RegionName=" + name) == "Running", name + " == Running");
+            {
+                string? last = null;
+                await WaitForAsync(launcher, async () => (last = await GetAsync(s, "?command=RegionStatus&RegionName=" + name)) == "Running",
+                    name + " == Running", () => $"Last answer: {last ?? "(none)"}.");
+            }
 
             Assert.Equal(pids, instances.Select(i => LivePid(paths, i + ".pid")).ToList());
             Assert.Equal(2, CountProcessesMatching(Path.Combine(paths.RuntimeOpenSim, "OpenSim.dll")));

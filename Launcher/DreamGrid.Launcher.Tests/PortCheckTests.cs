@@ -17,7 +17,11 @@ public class PortCheckTests
         return port;
     }
 
-    /// <summary>Settings whose ports are all free (distinct ephemeral ports).</summary>
+    /// <summary>
+    /// Settings whose ports were all free when chosen (distinct ephemeral ports). They are let go at once, so a test
+    /// running at the same time may take one before the check: tests that expect one conflict check only the port they
+    /// took (<see cref="AllBut"/>).
+    /// </summary>
     private static LauncherSettings FreeSettings()
     {
         var ports = new HashSet<int>();
@@ -33,6 +37,19 @@ public class PortCheckTests
         };
     }
 
+    /// <summary>Every port <paramref name="s"/> uses except <paramref name="taken"/>: the skip set that checks only the port a test took.</summary>
+    private static HashSet<int> AllBut(LauncherSettings s, int taken)
+    {
+        var ports = new HashSet<int>
+        {
+            s.WebPort, s.RobustPublicPort, s.RobustPrivatePort, s.RegionPort, s.MariaDbPort, s.RobustConsolePort, s.RegionConsolePort,
+        };
+        foreach (var p in s.Programs) { ports.Add(p.HttpPort); ports.Add(p.ConsolePort); }
+        foreach (var r in s.Regions) ports.Add(r.UdpPort);
+        ports.Remove(taken);
+        return ports;
+    }
+
     [Fact]
     public void PortCheck_reports_first_busy_port_by_name()
     {
@@ -42,7 +59,7 @@ public class PortCheckTests
         try
         {
             Assert.Equal($"Port {s.RobustPublicPort} (Robust public) is already in use by another program.",
-                PortCheck.FindConflict(s));
+                PortCheck.FindConflict(s, AllBut(s, s.RobustPublicPort)));
         }
         finally { holder.Stop(); }
     }
@@ -50,7 +67,12 @@ public class PortCheckTests
     [Fact]
     public void PortCheck_is_null_when_every_port_is_free()
     {
-        Assert.Null(PortCheck.FindConflict(FreeSettings()));
+        // A port another test takes between FreeSettings and the check is reported, rightly: fresh ports then. The same
+        // stranger never holds a fresh set three times running; a real fault fails every time.
+        string? conflict = null;
+        for (var attempt = 0; attempt < 3; attempt++)
+            if ((conflict = PortCheck.FindConflict(FreeSettings())) is null) break;
+        Assert.Null(conflict);
     }
 
     [Fact]
@@ -63,20 +85,24 @@ public class PortCheckTests
             Regions = [new RegionSettings("Welcome", "Welcome", Guid.NewGuid(), UdpPort: free.RegionPort)],
         };
         using var holder = new UdpClient(new IPEndPoint(IPAddress.Any, s.RegionPort));
-        Assert.Equal($"Port {s.RegionPort} (Region Welcome UDP) is already in use by another program.", PortCheck.FindConflict(s));
+        Assert.Equal($"Port {s.RegionPort} (Region Welcome UDP) is already in use by another program.",
+            PortCheck.FindConflict(s, AllBut(s, s.RegionPort)));
     }
 
     [Fact]
     public void PortCheck_skips_ports_held_by_children_about_to_be_adopted()
     {
-        var s = FreeSettings();
-        var holder = new TcpListener(IPAddress.Any, s.RobustPublicPort);
-        holder.Start();
-        try
+        // Every other port is checked too, so a stranger taking one of them means fresh ports (as above).
+        string? conflict = null;
+        for (var attempt = 0; attempt < 3 && (attempt == 0 || conflict is not null); attempt++)
         {
-            Assert.Null(PortCheck.FindConflict(s, new HashSet<int> { s.RobustPublicPort }));
+            var s = FreeSettings();
+            var holder = new TcpListener(IPAddress.Any, s.RobustPublicPort);
+            holder.Start();
+            try { conflict = PortCheck.FindConflict(s, new HashSet<int> { s.RobustPublicPort }); }
+            finally { holder.Stop(); }
         }
-        finally { holder.Stop(); }
+        Assert.Null(conflict);
     }
 
     [Fact]
@@ -87,7 +113,8 @@ public class PortCheckTests
         holder.Start();
         try
         {
-            Assert.Equal($"Port {s.MariaDbPort} (MariaDB) is already in use by another program.", PortCheck.FindConflict(s));
+            Assert.Equal($"Port {s.MariaDbPort} (MariaDB) is already in use by another program.",
+                PortCheck.FindConflict(s, AllBut(s, s.MariaDbPort)));
         }
         finally { holder.Stop(); }
     }
@@ -105,7 +132,7 @@ public class PortCheckTests
         holder.Start();
         try
         {
-            Assert.Equal($"Port {port} ({name}) is already in use by another program.", PortCheck.FindConflict(s));
+            Assert.Equal($"Port {port} ({name}) is already in use by another program.", PortCheck.FindConflict(s, AllBut(s, port)));
         }
         finally { holder.Stop(); }
     }
@@ -124,11 +151,12 @@ public class PortCheckTests
         holder.Start();
         try
         {
-            var conflict = PortCheck.FindConflictPort(s, new HashSet<int>(), new HashSet<string> { "Home" });
+            var others = AllBut(s, http);
+            var conflict = PortCheck.FindConflictPort(s, others, new HashSet<string> { "Home" });
 
             Assert.Equal(http, conflict?.Port);
             Assert.Contains("(Region Beach)", conflict?.Message);
-            Assert.Null(PortCheck.FindConflictPort(s, new HashSet<int>(), new HashSet<string>()));
+            Assert.Null(PortCheck.FindConflictPort(s, others, new HashSet<string>()));
         }
         finally { holder.Stop(); }
     }

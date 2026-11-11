@@ -44,6 +44,8 @@ public sealed partial class GridController(
 
     /// <summary>How long a region's island terrain may take to show in <c>terrain stats</c>; tests of a failed load shorten it.</summary>
     internal TimeSpan IslandTerrainWait { get; set; } = GridConsoleCommands.TerrainStatsWait;
+    /// <summary>How long an adopted program's <c>login status</c> is asked again while its reply holds no answer.</summary>
+    internal TimeSpan AdoptedLoginStatusWait { get; set; } = GridConsoleCommands.AdoptedLoginStatusWait;
     private static readonly TimeSpan LoginPoll = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan AccountWait = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan AccountPoll = TimeSpan.FromMilliseconds(500);
@@ -1669,7 +1671,7 @@ public sealed partial class GridController(
 
         var seen = regions.ToDictionary(r => r.Uuid, r => _logins.Version(r.Uuid));
         SetLoaded(instance, await GridConsoleCommands.LoadedRegionsAsync(program.Console!, ConsoleSettle, time, ct));
-        var lines = await program.Console!.RunAsync("login status", ConsoleSettle, ct);
+        var lines = await GridConsoleCommands.AdoptedLoginStatusAsync(program.Console!, ConsoleSettle, time, ct, AdoptedLoginStatusWait);
         var byName = GridConsoleCommands.ParseLoginStatus(lines);
         var any = GridConsoleCommands.ParseLoginsEnabled(lines) ?? false;
         foreach (var r in regions)
