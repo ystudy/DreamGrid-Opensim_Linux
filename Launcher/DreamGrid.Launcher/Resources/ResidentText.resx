@@ -558,4 +558,5 @@
   <data name="Iar.Refused.LowDisk" xml:space="preserve"><value>The grid is short of disk space. Try again later.</value></data>
   <data name="Iar.Refused.NoRegion" xml:space="preserve"><value>No region is running right now. Try again later.</value></data>
   <data name="Iar.Refused.TakedownsUnreadable" xml:space="preserve"><value>Uploads can't be checked right now. Try again later.</value></data>
+  <data name="Iar.Stage.Receiving" xml:space="preserve"><value>Receiving the file…</value></data>
 </root>

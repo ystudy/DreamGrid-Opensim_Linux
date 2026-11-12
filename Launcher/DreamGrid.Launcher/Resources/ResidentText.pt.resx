@@ -558,4 +558,5 @@
   <data name="Iar.Refused.LowDisk" xml:space="preserve"><value>A grid tem pouco espaço em disco. Tente mais tarde.</value></data>
   <data name="Iar.Refused.NoRegion" xml:space="preserve"><value>Neste momento não há nenhuma região a funcionar. Tente mais tarde.</value></data>
   <data name="Iar.Refused.TakedownsUnreadable" xml:space="preserve"><value>Neste momento não é possível verificar envios. Tente mais tarde.</value></data>
+  <data name="Iar.Stage.Receiving" xml:space="preserve"><value>A receber o ficheiro…</value></data>
 </root>

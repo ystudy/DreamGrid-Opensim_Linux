@@ -42,11 +42,12 @@ public sealed class IarFiles
         Directory.CreateDirectory(_paths.IarsReady);
         var name = Guid.NewGuid().ToString("N") + ".iar";
         var bytes = new FileInfo(staged).Length;
-        File.Move(staged, Path.Combine(_paths.IarsReady, name));
         var token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
         var ready = new IarReadyFile(owner, name, token, stamp, _time.GetUtcNow() + life, leftOut, items, bytes);
         lock (_gate)
         {
+            // Moved under the lock, so a sweep never sees the file before it is known (final review, minor 1).
+            File.Move(staged, Path.Combine(_paths.IarsReady, name));
             foreach (var old in _ready.Where(r => r.Owner == owner).ToList())
             {
                 Delete(old);

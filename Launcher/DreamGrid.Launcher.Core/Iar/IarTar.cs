@@ -46,34 +46,48 @@ internal sealed class IarTarReader : IDisposable
         if (!Fill(header)) return null;
         if (header.All(b => b == 0)) return null;
 
+        // Strict, so this reader and OpenSim's TarArchiveReader always see the same entries (final review, Critical 2): one GNU
+        // long name at most; no pax headers (OpenSim would read one as a file); no ustar prefix (OpenSim ignores it); the size
+        // in OpenSim's 11 digits with a NUL or space after; plain ASCII names; files and folders only.
         string? longName = null;
-        while (header[156] is (byte)'L' or (byte)'x' or (byte)'g')
+        if (header[156] == (byte)'L')
         {
-            var size = Octal(header, 124, 12);
+            var size = Size(header);
+            if (size > MaxLongName) throw new InvalidDataException("A long name in the archive is too long.");
             var data = new byte[size];
             if (!Fill(data)) throw new InvalidDataException("The archive ends inside a header.");
             SkipBytes(Pad(size));
-            if (header[156] == (byte)'L') longName = Encoding.Latin1.GetString(data).TrimEnd('\0');
+            longName = Encoding.Latin1.GetString(data).TrimEnd('\0');
             if (!Fill(header)) throw new InvalidDataException("The archive ends after a long name.");
         }
+        if (header[156] is not (0 or (byte)'0' or (byte)'5'))
+            throw new InvalidDataException("The archive has an entry of a kind OpenSim doesn't read the same way.");
 
         var name = longName ?? Text(header, 0, 100);
-        if (longName is null && Encoding.ASCII.GetString(header, 257, 5) == "ustar" && header[263] == (byte)'0')
-        {
-            var prefix = Text(header, 345, 155);
-            if (prefix.Length > 0) name = prefix + "/" + name;
-        }
-        var entrySize = Octal(header, 124, 12);
+        if (Encoding.ASCII.GetString(header, 257, 5) == "ustar" && Text(header, 345, 155).Length > 0)
+            throw new InvalidDataException("The archive uses a name prefix OpenSim ignores.");
+        if (name.Any(c => c is < ' ' or > '~')) throw new InvalidDataException("The archive has a name that isn't plain ASCII.");
+        var entrySize = Size(header);
         _pendingData = entrySize;
         _pendingPad = Pad(entrySize);
         var type = header[156] == 0 ? '0' : (char)header[156];
         return new IarTarEntry(name, type, entrySize);
     }
 
-    /// <summary>The current entry's data, all of it.</summary>
-    public byte[] ReadData()
+    /// <summary>The longest GNU long name read; OpenSim's own paths are far shorter.</summary>
+    private const int MaxLongName = 64 * 1024;
+
+    /// <summary>The size as OpenSim reads it: 11 octal digits, then a NUL or a space.</summary>
+    private static long Size(byte[] header)
     {
-        if (_pendingData > int.MaxValue) throw new InvalidDataException("An entry is too big to read at once.");
+        if (header[135] is not (0 or (byte)' ')) throw new InvalidDataException("A size in the archive isn't written the way OpenSim reads it.");
+        return Octal(header, 124, 11);
+    }
+
+    /// <summary>The current entry's data, all of it; over <paramref name="max"/> bytes it is refused before anything is allocated.</summary>
+    public byte[] ReadData(long max = 1L << 20)
+    {
+        if (_pendingData > max) throw new InvalidDataException("An entry in the archive is too big to read.");
         var data = new byte[_pendingData];
         if (!Fill(data)) throw new InvalidDataException("The archive ends inside an entry.");
         _pendingData = 0;

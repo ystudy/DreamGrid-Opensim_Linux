@@ -429,6 +429,7 @@ builder.Services.AddSingleton(sp => new IarJobs(sp.GetRequiredService<IGridContr
     sp.GetRequiredService<IInventoryStore>(), paths, sp.GetRequiredService<BackgroundWork>(), sp.GetRequiredService<IIarNotifier>(),
     sp.GetRequiredService<AuditLog>(), sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<IarJobs>>()));
 builder.Services.AddSingleton(sp => new IarStaffRecords(paths));
+builder.Services.AddSingleton<IarDownloadGate>();
 builder.Services.AddSingleton(sp => new IarStaffJobs(sp.GetRequiredService<IGridController>(), sp.GetRequiredService<IarStaffRecords>(),
     sp.GetRequiredService<IInventoryStore>(), paths, sp.GetRequiredService<BackgroundWork>(), sp.GetRequiredService<AuditLog>(),
     sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<IarStaffJobs>>()));

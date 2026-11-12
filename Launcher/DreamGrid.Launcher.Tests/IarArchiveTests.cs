@@ -151,7 +151,7 @@ public sealed class IarArchiveTests : IDisposable
     }
 
     [Fact]
-    public void Rewrite_keeps_folders_and_other_entries()
+    public void Rewrite_keeps_folders_and_drops_entries_opensim_doesnt_load()
     {
         var b = new IarBuilder();
         b.Folder("Empty/Inner");
@@ -161,7 +161,7 @@ public sealed class IarArchiveTests : IDisposable
         IarArchive.Rewrite(source, P("b.iar"), new HashSet<string>());
 
         var names = Names(P("b.iar"));
-        Assert.Contains("userprofiles/x.xml", names);
+        Assert.DoesNotContain("userprofiles/x.xml", names);
         Assert.Equal(2, names.Count(n => n.StartsWith("inventory/", StringComparison.Ordinal) && n.EndsWith('/')));
     }
 

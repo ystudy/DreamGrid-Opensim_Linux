@@ -558,4 +558,5 @@
   <data name="Iar.Refused.LowDisk" xml:space="preserve"><value>La grille manque d'espace disque. Réessayez plus tard.</value></data>
   <data name="Iar.Refused.NoRegion" xml:space="preserve"><value>Aucune région ne tourne en ce moment. Réessayez plus tard.</value></data>
   <data name="Iar.Refused.TakedownsUnreadable" xml:space="preserve"><value>Les envois ne peuvent pas être vérifiés pour le moment. Réessayez plus tard.</value></data>
+  <data name="Iar.Stage.Receiving" xml:space="preserve"><value>Réception du fichier…</value></data>
 </root>

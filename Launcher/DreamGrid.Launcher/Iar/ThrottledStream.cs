@@ -5,13 +5,13 @@ namespace DreamGrid.Launcher.Iar;
 /// doesn't use up the grid's upload). Seekable when <c>inner</c> is, so range requests keep working; the rate counts from the first
 /// read after each seek.
 /// </summary>
-public sealed class ThrottledStream(Stream inner, int bytesPerSecond, TimeProvider time) : Stream
+public sealed class ThrottledStream(Stream inner, long bytesPerSecond, TimeProvider time, Action? onDispose = null) : Stream
 {
     private long _sent;
     private long _since = -1;
 
     /// <summary>How long to wait before more may be sent, when <paramref name="sent"/> bytes went in <paramref name="elapsed"/>.</summary>
-    public static TimeSpan WaitFor(long sent, TimeSpan elapsed, int bytesPerSecond)
+    public static TimeSpan WaitFor(long sent, TimeSpan elapsed, long bytesPerSecond)
     {
         var due = TimeSpan.FromSeconds((double)sent / bytesPerSecond);
         return due > elapsed ? due - elapsed : TimeSpan.Zero;
@@ -23,7 +23,7 @@ public sealed class ThrottledStream(Stream inner, int bytesPerSecond, TimeProvid
         var wait = WaitFor(_sent, time.GetElapsedTime(_since), bytesPerSecond);
         if (wait > TimeSpan.Zero) await Task.Delay(wait, time, cancellationToken);
         // At most a quarter second's worth at a time, so the pace stays even.
-        var n = await inner.ReadAsync(buffer[..Math.Min(buffer.Length, Math.Max(1, bytesPerSecond / 4))], cancellationToken);
+        var n = await inner.ReadAsync(buffer[..(int)Math.Min(buffer.Length, Math.Max(1, bytesPerSecond / 4))], cancellationToken);
         _sent += n;
         return n;
     }
@@ -63,7 +63,7 @@ public sealed class ThrottledStream(Stream inner, int bytesPerSecond, TimeProvid
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) inner.Dispose();
+        if (disposing) { inner.Dispose(); onDispose?.Invoke(); }
         base.Dispose(disposing);
     }
 }

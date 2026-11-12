@@ -149,7 +149,44 @@ public sealed class IarJobsTests : IDisposable
         Assert.Equal(IarJobs.DownloadTooBig, s.ErrorKey);
         Assert.Empty(Directory.GetFiles(_paths.IarsSaving));
         Assert.Empty(Directory.GetFiles(_paths.IarsReady));
-        Assert.Equal(0, Used(IarJobKind.Save));
+        Assert.Equal(1, Used(IarJobKind.Save)); // kept: each try is a full save, so it isn't free (final review, Important 4)
+    }
+
+    [Fact]
+    public async Task Upload_always_loads_a_rewritten_copy_never_the_raw_file()
+    {
+        string? loaded = null;
+        _grid.OnIarJob = (r, _, _) => { loaded = r.File; return Task.FromResult(1); };
+        var raw = Upload(b => b.Notecard("Notes", "n", "x"));
+        var jobs = Jobs();
+        jobs.TryStartUpload(Ann, "Ann", "Lee", raw, null);
+        Assert.Null((await Done(jobs, Ann)).ErrorKey);
+        Assert.NotNull(loaded);
+        Assert.NotEqual(raw, loaded);
+    }
+
+    [Fact]
+    public void Begin_upload_reserves_the_slot_and_the_count_before_any_byte_arrives()
+    {
+        var jobs = Jobs();
+        Assert.Null(jobs.BeginUpload(Ann, "Ann", "Lee", null));
+        Assert.Equal(IarRefusal.Busy, jobs.BeginUpload(Ann, "Ann", "Lee", null));
+        Assert.Equal(IarRefusal.GridBusy, jobs.BeginUpload(Guid.NewGuid(), "Bob", "Lee", null));
+        Assert.Equal(1, Used(IarJobKind.Load));
+        jobs.AbandonUpload(Ann, "Ann Lee", IarUploadProblem.Stopped, null); // the browser went away: the count comes back
+        Assert.Equal(0, Used(IarJobKind.Load));
+        Assert.Null(jobs.BeginUpload(Ann, "Ann", "Lee", null));
+        jobs.AbandonUpload(Ann, "Ann Lee", IarUploadProblem.TooBig, null); // the file was too big: it doesn't
+        Assert.Equal(1, Used(IarJobKind.Load));
+        Assert.False(jobs.For(Ann)!.Running);
+    }
+
+    [Fact]
+    public void An_upload_needs_room_for_the_largest_file_on_top_of_the_free_disk_floor()
+    {
+        _free = (5L << 30) + (100L << 20); // 5 GB floor + 100 MB, below 5 GB + the 500 MB largest upload
+        Assert.Equal(IarRefusal.LowDisk, Jobs().BeginUpload(Ann, "Ann", "Lee", null));
+        Assert.Null(Jobs().Check(Ann, IarJobKind.Save));
     }
 
     [Fact]

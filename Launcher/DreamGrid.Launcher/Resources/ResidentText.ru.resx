@@ -558,4 +558,5 @@
   <data name="Iar.Refused.LowDisk" xml:space="preserve"><value>На гриде мало места на диске. Попробуйте позже.</value></data>
   <data name="Iar.Refused.NoRegion" xml:space="preserve"><value>Сейчас не работает ни один регион. Попробуйте позже.</value></data>
   <data name="Iar.Refused.TakedownsUnreadable" xml:space="preserve"><value>Сейчас загрузки нельзя проверить. Попробуйте позже.</value></data>
+  <data name="Iar.Stage.Receiving" xml:space="preserve"><value>Получаем файл…</value></data>
 </root>

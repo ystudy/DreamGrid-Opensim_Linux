@@ -63,7 +63,8 @@ public sealed class IarBannedFilterTests : IDisposable
         var c = Case(store, asset);
         var iar = Archive(b => { b.Texture("Pics", "logo copy", asset: asset); b.Texture("Pics", "mine"); });
 
-        var matches = IarBannedFilter.Find(iar, await store.BannedAssetsAsync(Inventory(), Ct), store.Unreadable);
+        var banned = await store.BannedAssetsAsync(Inventory(), Ct);
+        var matches = IarBannedFilter.Find(iar, banned, store.Unreadable);
 
         Assert.Equal([("logo copy", c.Number)], matches.Select(m => (m.ItemName, m.CaseNumber)));
     }
@@ -125,16 +126,17 @@ public sealed class IarBannedFilterTests : IDisposable
     }
 
     [Fact]
-    public async Task Remove_leaves_out_matches_and_keeps_the_rest()
+    public async Task Clean_leaves_out_matches_and_keeps_the_rest()
     {
         var store = Store();
         var asset = Guid.NewGuid();
         Case(store, asset);
         var iar = Archive(b => { b.Texture("Pics", "logo", asset: asset); b.Notecard("Notes", "mine", "x"); });
-        var matches = IarBannedFilter.Find(iar, await store.BannedAssetsAsync(Inventory(), Ct), store.Unreadable);
+        var banned = await store.BannedAssetsAsync(Inventory(), Ct);
+        var matches = IarBannedFilter.Find(iar, banned, store.Unreadable);
 
         var clean = Path.Combine(_dir, "clean.iar");
-        IarBannedFilter.Remove(iar, clean, matches);
+        IarBannedFilter.Clean(iar, clean, matches, banned);
 
         var kept = IarArchive.Inspect(clean, 1 << 20, 100);
         Assert.Equal(["mine"], kept.Items.Select(i => i.Name));

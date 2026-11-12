@@ -18,8 +18,8 @@ public static partial class IarFolderNames
             if (!names.Contains($"{baseName} ({n})")) return $"{baseName} ({n})";
     }
 
-    /// <summary>Letters, digits, spaces and <c>. _ ( ) -</c>, 1 to 64 characters, not starting with <c>--</c> (an option).</summary>
-    public static bool IsSafe(string name) => SafeName().IsMatch(name) && !name.StartsWith("--", StringComparison.Ordinal);
+    /// <summary>Letters, digits, spaces and <c>. _ ( ) -</c>, 1 to 64 characters, not starting with <c>-</c> (OpenSim would read an option).</summary>
+    public static bool IsSafe(string name) => SafeName().IsMatch(name) && !name.StartsWith('-');
 
     [GeneratedRegex(@"^[\p{L}\p{N} ._()-]{1,64}$")]
     private static partial Regex SafeName();

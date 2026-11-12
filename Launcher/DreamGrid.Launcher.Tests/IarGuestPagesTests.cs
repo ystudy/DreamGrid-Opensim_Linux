@@ -157,6 +157,18 @@ public sealed class IarGuestPagesTests
     }
 
     [Fact]
+    public async Task Link_refused_once_the_resident_is_named_in_an_open_case()
+    {
+        await using var f = Factory();
+        var c = await GuestAsync(f);
+        var ready = await BackedUpAsync(f, c);
+        f.Services.GetRequiredService<TakedownStore>().Open(new TakedownNotice(TakedownReason.Rules, "Staff", null, null, null, new DateOnly(2026, 11, 1), "x"),
+            false, n => TakedownStoreTests.Build(n, Guest));
+        using var r = await c.GetAsync($"/guest/inventory/file/{ready.Token}", Ct);
+        Assert.Equal(HttpStatusCode.NotFound, r.StatusCode);
+    }
+
+    [Fact]
     public async Task Link_refused_for_other_resident_unknown_token_and_after_stamp_changes()
     {
         await using var f = Factory();

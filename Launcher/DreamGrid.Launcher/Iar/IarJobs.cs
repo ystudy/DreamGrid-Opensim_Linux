@@ -36,6 +36,7 @@ public sealed class IarJobs(IGridController grid, Func<LauncherSettings> setting
 {
     // Resident text keys for stages and errors.
     public const string Waiting = "Iar.Stage.Waiting";
+    public const string Receiving = "Iar.Stage.Receiving";
     public const string Saving = "Iar.Stage.Saving";
     public const string Checking = "Iar.Stage.Checking";
     public const string Loading = "Iar.Stage.Loading";
@@ -98,14 +99,39 @@ public sealed class IarJobs(IGridController grid, Func<LauncherSettings> setting
     /// </summary>
     public IarRefusal? TryStartUpload(Guid principal, string first, string last, string staged, string? ip)
     {
-        var name = $"{first} {last}";
-        if (Start(principal, IarJobKind.Load, name, ip) is { } refusal)
+        if (BeginUpload(principal, first, last, ip) is { } refusal)
         {
             TryDelete(staged);
             return refusal;
         }
-        background.Run("Inventory upload", ct => RunUploadAsync(principal, first, last, staged, ip, ct));
+        ContinueUpload(principal, first, last, staged, ip);
         return null;
+    }
+
+    /// <summary>
+    /// Reserves an upload before any byte arrives (final review, Important 2): the rules are checked, the day's count is used and
+    /// the resident's job slot is taken, so parallel uploads are refused instead of all being written to disk. Follow it with
+    /// <see cref="ContinueUpload"/> or <see cref="AbandonUpload"/>.
+    /// </summary>
+    public IarRefusal? BeginUpload(Guid principal, string first, string last, string? ip)
+    {
+        var refusal = Start(principal, IarJobKind.Load, $"{first} {last}", ip);
+        if (refusal is null) Set(principal, j => j.Stage = Receiving);
+        return refusal;
+    }
+
+    /// <summary>Starts the reserved upload's checks and load in the background.</summary>
+    public void ContinueUpload(Guid principal, string first, string last, string staged, string? ip) =>
+        background.Run("Inventory upload", ct => RunUploadAsync(principal, first, last, staged, ip, ct));
+
+    /// <summary>Ends a reserved upload that never arrived whole. The count comes back only when the browser went away or the disk was full.</summary>
+    public void AbandonUpload(Guid principal, string name, IarUploadProblem problem, string? ip)
+    {
+        if (problem is IarUploadProblem.Stopped or IarUploadProblem.NoSpace or IarUploadProblem.BadRequest or IarUploadProblem.NoFile)
+            counts.GiveBack(principal, IarJobKind.Load);
+        Fail(principal, name, ip, problem == IarUploadProblem.TooBig ? TooBig : problem == IarUploadProblem.NotAnIar ? NotInventory : Stopped,
+            "upload: " + problem);
+        Set(principal, j => j.Running = false);
     }
 
     private IarRefusal? Start(Guid principal, IarJobKind kind, string name, string? ip)
@@ -130,7 +156,9 @@ public sealed class IarJobs(IGridController grid, Func<LauncherSettings> setting
         var effective = IarRights.Effective(settings().Iar, person);
         var personOn = kind == IarJobKind.Save ? !person.DownloadOff : !person.UploadOff;
         return IarRules.Refusal(kind, effective, personOn, takedowns.NamedInOpenCase(principal), counts.UsedToday(principal, kind),
-            _jobs.TryGetValue(principal, out var mine) && mine.Running, _jobs.Values.Count(j => j.Running), FreeDisk(), !takedowns.Unreadable);
+            _jobs.TryGetValue(principal, out var mine) && mine.Running, _jobs.Values.Count(j => j.Running),
+            // An upload needs room for the largest file it may bring on top of the floor.
+            FreeDisk() - (kind == IarJobKind.Load ? effective.MaxUploadMb * Mb : 0), !takedowns.Unreadable);
     }
 
     private async Task RunDownloadAsync(Guid principal, string first, string last, string stamp, string? ip, CancellationToken ct)
@@ -149,7 +177,7 @@ public sealed class IarJobs(IGridController grid, Func<LauncherSettings> setting
             var s = IarRights.Effective(settings().Iar, rights.For(principal));
             if (new FileInfo(filtered).Length > s.MaxDownloadMb * Mb)
             {
-                giveBack = true;
+                // The count is kept: each try is a whole save on a region (final review, Important 4).
                 Fail(principal, name, ip, DownloadTooBig, "too big after filtering");
                 return;
             }
@@ -204,12 +232,14 @@ public sealed class IarJobs(IGridController grid, Func<LauncherSettings> setting
                 return;
             }
 
-            var file = staged;
-            var matches = IarBannedFilter.Find(staged, await takedowns.BannedAssetsAsync(inventory, ct), takedowns.Unreadable);
-            if (matches.Count > 0)
+            // The upload is never loaded as it came: it is always rewritten, without banned items and assets, into a file written
+            // the way OpenSim reads archives, so what OpenSim loads is exactly what was checked (final review, Critical 2 and 3).
+            var banned = await takedowns.BannedAssetsAsync(inventory, ct);
+            var matches = IarBannedFilter.Find(staged, banned, takedowns.Unreadable);
+            var dropped = IarBannedFilter.Clean(staged, clean, matches, banned);
+            var file = clean;
+            if (dropped > 0)
             {
-                IarBannedFilter.Remove(staged, clean, matches);
-                file = clean;
                 foreach (var group in matches.GroupBy(m => m.CaseNumber))
                     takedowns.AppendUploadMatch(group.Key, principal, name, group.Count(), time.GetUtcNow());
                 Write(name, principal, ip, "iar-banned-removed", $"{name}: {matches.Count} items", "ok");
