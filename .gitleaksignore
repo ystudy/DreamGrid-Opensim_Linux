@@ -25,3 +25,5 @@ c7ab982cd8a249dcb92849681a7af074697c4f0a:ThirdParty/rapier/Cargo.lock:generic-ap
 # commit replaced those lines, so only that commit carries them.
 24f78b16495518e39dac6707db8a10d8dea96a99:tests/DreamGrid.Physics.Rapier.Tests/LibraryChoiceTests.cs:generic-api-key:68
 24f78b16495518e39dac6707db8a10d8dea96a99:tests/DreamGrid.Physics.Rapier.Tests/LibraryChoiceTests.cs:generic-api-key:69
+# A password alphabet (not a secret) in ab3ebab0; 44ba5915 replaced it with Secrets.NewPassword.
+ab3ebab043951cbeb0584364cf4b30ebfcd412b8:Launcher/DreamGrid.Launcher/Pages/Security/StarterAvatars.Models.cs:generic-api-key:18
