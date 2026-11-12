@@ -464,6 +464,7 @@ RegionsApi.Map(app);
 LibraryApi.Map(app);
 IarStaffApi.Map(app);
 IarGuestApi.Map(app);
+StarterSnapshotApi.Map(app);
 StatusApi.Map(app);
 DashboardApi.Map(app);
 SetupApi.Map(app);

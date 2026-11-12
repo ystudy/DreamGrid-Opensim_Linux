@@ -144,6 +144,11 @@
   <data name="SignUp.TermsOfService" xml:space="preserve"><value>Условия обслуживания</value></data>
   <data name="SignUp.PrivacyNotice" xml:space="preserve"><value>Уведомление о конфиденциальности</value></data>
   <data name="SignUp.CreateAvatar" xml:space="preserve"><value>Создать аватар</value></data>
+  <data name="SignUp.Next" xml:space="preserve"><value>Далее</value></data>
+  <data name="SignUp.Back" xml:space="preserve"><value>Назад</value></data>
+  <data name="SignUp.ChooseAvatar" xml:space="preserve"><value>Выберите аватар</value></data>
+  <data name="SignUp.ChooseAvatarHint" xml:space="preserve"><value>Одежду можно сменить позже в инвентаре.</value></data>
+  <data name="SignUp.Step" xml:space="preserve"><value>Шаг {0} из {1}</value></data>
   <data name="SignUp.AddressLimit" xml:space="preserve"><value>Слишком много регистраций с вашего адреса. Попробуйте ещё раз через час.</value></data>
   <data name="SignUp.TermsProblem" xml:space="preserve"><value>Отметьте флажок, чтобы принять Условия обслуживания и Уведомление о конфиденциальности.</value></data>
   <data name="SignUp.NameMissing" xml:space="preserve"><value>Введите имя и фамилию.</value></data>
