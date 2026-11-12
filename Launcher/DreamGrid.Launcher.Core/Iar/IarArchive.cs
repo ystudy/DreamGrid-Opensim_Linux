@@ -144,6 +144,9 @@ public static partial class IarArchive
         return ids;
     }
 
+    /// <summary>Whether an asset entry's data can name other assets (an object, notecard, wearable and so on).</summary>
+    internal static bool IsLinking(string entry) => Linking.Any(x => entry.EndsWith(x, StringComparison.OrdinalIgnoreCase));
+
     internal static bool IsFolder(IarTarEntry e) => e.IsDirectory;
 
     internal static bool IsItem(IarTarEntry e) =>

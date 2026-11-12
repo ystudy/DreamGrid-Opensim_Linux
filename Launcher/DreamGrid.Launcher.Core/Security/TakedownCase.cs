@@ -25,10 +25,32 @@ public sealed record CaseItem(Guid ItemId, Guid Holder, string Name, string? Des
 
 /// <summary>
 /// One thing that happened on a case, by whom, with the why where there is one. <see cref="What"/> is <c>opened</c>,
-/// <c>removed</c>, <c>copies-searched</c>, <c>put-back</c>, <c>note</c>, <c>emailed</c> or <c>closed</c>.
+/// <c>removed</c>, <c>copies-searched</c>, <c>put-back</c>, <c>note</c>, <c>emailed</c>, <c>closed</c> or
+/// <see cref="TakedownCase.UploadMatch"/>.
 /// </summary>
 public sealed record CaseEvent(DateTimeOffset At, string Staff, Guid? StaffId, string What, string? Why);
 
 /// <summary>A takedown case (spec 2026-11-04-inventory-takedown-design): kept in <c>case.json</c> in its own folder.</summary>
 public sealed record TakedownCase(string Number, bool Open, TakedownNotice Notice, bool TellResident, IReadOnlyList<CasePerson> People,
-    IReadOnlyList<CaseItem> Items, IReadOnlyList<CaseEvent> Events, string? Outcome);
+    IReadOnlyList<CaseItem> Items, IReadOnlyList<CaseEvent> Events, string? Outcome)
+{
+    /// <summary>
+    /// The event added when taken-down content comes back in an upload and is removed (spec 2026-11-11-iar-backups-design §6.4): the
+    /// only change a closed case takes, and it never reopens it.
+    /// </summary>
+    public const string UploadMatch = "upload-match";
+
+    /// <summary>A closed case that an upload has matched since it was closed (the case list says so).</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool MatchedSinceClosed
+    {
+        get
+        {
+            if (Open) return false;
+            var closed = -1;
+            for (var i = 0; i < Events.Count; i++)
+                if (Events[i].What == "closed") closed = i;
+            return Events.Skip(closed + 1).Any(e => e.What == UploadMatch);
+        }
+    }
+}

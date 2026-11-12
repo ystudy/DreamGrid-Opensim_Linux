@@ -65,6 +65,48 @@ public sealed class TakedownStore
 
     public string CaseFolder(string number) => Path.Combine(_root, number);
 
+    private readonly Dictionary<string, string?> _hashes = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Every item taken down in any case, open or closed, that hasn't been put back (spec 2026-11-11-iar-backups-design §6.4): a
+    /// removed item can never be uploaded again. <see cref="Core.Iar.BannedAsset.Hash"/> is FSAssets' own hash of the data, read
+    /// once per asset and kept (an asset's data never changes).
+    /// </summary>
+    public async Task<IReadOnlyList<Core.Iar.BannedAsset>> BannedAssetsAsync(Database.IInventoryStore inventory, CancellationToken ct)
+    {
+        var banned = new List<Core.Iar.BannedAsset>();
+        foreach (var c in All())
+        {
+            foreach (var item in c.Items)
+            {
+                if (item.PutBackAt is not null || !Guid.TryParse(item.AssetId, out var asset)) continue;
+                string? hash;
+                lock (_gate) _hashes.TryGetValue(item.AssetId!, out hash);
+                if (hash is null)
+                {
+                    hash = await inventory.AssetHashAsync(item.AssetId!, ct);
+                    if (hash is not null) lock (_gate) _hashes[item.AssetId!] = hash;
+                }
+                banned.Add(new Core.Iar.BannedAsset(asset, hash?.ToLowerInvariant(), c.Number));
+            }
+        }
+        return banned;
+    }
+
+    /// <summary>
+    /// Notes on the case that <paramref name="items"/> of its taken-down items came back in an upload from
+    /// <paramref name="uploaderName"/> and were removed. It is the only change a closed case takes, and it never reopens it.
+    /// Returns the saved case, or null when there is no such case or it couldn't be written.
+    /// </summary>
+    public TakedownCase? AppendUploadMatch(string caseNumber, Guid uploader, string uploaderName, int items, DateTimeOffset at)
+    {
+        _ = uploader;
+        var why = items == 1
+            ? $"1 item came back in an upload from {uploaderName} and was removed."
+            : $"{items} items came back in an upload from {uploaderName} and were removed.";
+        return Update(caseNumber, c => c with { Events = [.. c.Events, new CaseEvent(at, "GridGate", null, TakedownCase.UploadMatch, why)] });
+    }
+
     /// <summary>
     /// Gives out the next number (<c>TD-&lt;year&gt;-&lt;count:D3&gt;</c>, the count restarting each UTC year), makes its folder and
     /// saves what <paramref name="build"/> makes of it, all under one lock. Throws <see cref="IOException"/> when it can't be saved.
