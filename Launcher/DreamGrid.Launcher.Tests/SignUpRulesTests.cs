@@ -23,6 +23,12 @@ public sealed class SignUpRulesTests
         Setup = new() { Owner = new OwnerInfo("Gwen", "Holloway", Guid.NewGuid()) },
     };
 
+    [Theory]
+    [InlineData("Starter07", "Avatar")]
+    [InlineData("starter01", "AVATAR")]
+    public void Model_names_are_refused_at_sign_up(string first, string last) =>
+        Assert.Equal(SignUpRules.NameFault.Taken, SignUpRules.NameCheck(first, last, Settings()));
+
     [Fact]
     public void Null_settings_is_closed() => Assert.False(SignUpRules.IsOpen(Settings(signUp: null)));
 

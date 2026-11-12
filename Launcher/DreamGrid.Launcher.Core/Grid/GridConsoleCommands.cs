@@ -40,14 +40,22 @@ public static partial class GridConsoleCommands
 
     /// <summary>
     /// <c>create user</c> with all eight arguments (an empty model means the default appearance), so Robust should
-    /// not prompt. A line the server marks as an interactive prompt is still answered with an empty line (its
-    /// default). Returns the console transcript.
+    /// not prompt. <paramref name="model"/>, "First Last" of a starter avatar's model account, makes Robust copy that
+    /// account's outfit (spec 2026-11-11-starter-avatars-design §5.4); it must be two valid name parts, else
+    /// <see cref="ArgumentException"/> before anything is sent. A line the server marks as an interactive prompt is still
+    /// answered with an empty line (its default). Returns the console transcript.
     /// </summary>
     public static async Task<IReadOnlyList<string>> CreateUserAsync(RestConsoleClient console, string first, string last,
-        string password, string? email, Guid id, TimeSpan settle, CancellationToken ct)
+        string password, string? email, Guid id, TimeSpan settle, CancellationToken ct, string? model = null)
     {
+        if (!string.IsNullOrEmpty(model))
+        {
+            var parts = model.Split(' ');
+            if (parts.Length != 2) throw new ArgumentException("A model is \"First Last\".", nameof(model));
+            ValidateAvatarName(parts[0], parts[1]);
+        }
         var transcript = new List<string>();
-        var output = await console.RunLinesAsync($"create user {first} {last} {password} \"{email ?? ""}\" {id} \"\"", settle, ct);
+        var output = await console.RunLinesAsync($"create user {first} {last} {password} \"{email ?? ""}\" {id} \"{model ?? ""}\"", settle, ct);
         transcript.AddRange(output.Select(l => l.Text));
         for (var i = 0; i < MaxPromptAnswers && output.Count > 0 && output[^1].IsPrompt; i++)
         {

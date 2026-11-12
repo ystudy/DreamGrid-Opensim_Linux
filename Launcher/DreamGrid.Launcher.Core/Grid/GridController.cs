@@ -884,7 +884,7 @@ public sealed partial class GridController(
         finally { _ops.Release(); }
     }
 
-    public async Task<RobustAccount> CreateResidentAsync(string first, string last, string? email, int level, CancellationToken ct)
+    public async Task<RobustAccount> CreateResidentAsync(string first, string last, string? email, int level, CancellationToken ct, string? model = null)
     {
         GridConsoleCommands.ValidateAvatarName(first, last);
 
@@ -894,7 +894,7 @@ public sealed partial class GridController(
             ThrowIfNoGridService(LoadSettings());
             // Its own remover: one from the container would need the settings, which come from this controller.
             var avatars = new ResidentAvatars(robust, new AccountRemover(LoadSettings), time, ConsoleSettle, AccountWait, AccountPoll);
-            return await avatars.CreateAsync(_robust!.Console!, first, last, email, level, ct);
+            return await avatars.CreateAsync(_robust!.Console!, first, last, email, level, ct, model);
         }
         finally { _ops.Release(); }
     }

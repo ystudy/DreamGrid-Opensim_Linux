@@ -41,9 +41,10 @@ public interface IGridController
     /// email link) and a random password the caller replaces (<see cref="ResidentAvatars"/>). Throws <see cref="NameTakenException"/>
     /// when the name is on the grid, <see cref="ArgumentException"/> for a name the console would split,
     /// <see cref="InvalidOperationException"/> when this computer runs no grid service or Robust didn't finish (then the avatar is
-    /// deleted again), and <see cref="HttpRequestException"/> when Robust isn't running.
+    /// deleted again), and <see cref="HttpRequestException"/> when Robust isn't running. <paramref name="model"/> ("First Last" of a
+    /// starter avatar's model account) makes Robust copy that account's outfit.
     /// </summary>
-    Task<RobustAccount> CreateResidentAsync(string first, string last, string? email, int level, CancellationToken ct);
+    Task<RobustAccount> CreateResidentAsync(string first, string last, string? email, int level, CancellationToken ct, string? model = null);
 
     /// <summary>
     /// Makes the avatar called <paramref name="first"/> <paramref name="last"/> on the grid the estate owner, without a

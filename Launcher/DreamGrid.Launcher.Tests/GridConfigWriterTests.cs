@@ -74,6 +74,14 @@ public sealed class GridConfigWriterTests : IDisposable
     private IniDocument Flotsam() => IniDocument.Load(Path.Combine(_paths.RuntimeOpenSim, "config-include", "FlotsamCache.ini"));
 
     [Fact]
+    public void Written_robust_ini_keeps_default_avatar_entries()
+    {
+        // Starter avatars need it: without it Robust ignores create user's model (spec 2026-11-11-starter-avatars-design §5.4).
+        Write(Make());
+        Assert.Equal("true", Robust().Get("UserAccountService", "CreateDefaultAvatarEntries")?.Trim().ToLowerInvariant());
+    }
+
+    [Fact]
     public void Hypergrid_off_by_default_uses_grid_architecture_and_closes_the_gatekeeper()
     {
         Write(Make());

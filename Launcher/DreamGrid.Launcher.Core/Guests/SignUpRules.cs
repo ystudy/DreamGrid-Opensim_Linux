@@ -50,7 +50,7 @@ public static class SignUpRules
         catch (ArgumentException) { return NameFault.BadCharacters; }
         var full = first + " " + last;
         if (s.Setup.Owner is { } owner && string.Equals(full, owner.FirstName + " " + owner.LastName, StringComparison.OrdinalIgnoreCase)
-            || Reserved.Contains(full) || held?.Invoke(full) == true)
+            || Reserved.Contains(full) || held?.Invoke(full) == true || Starter.StarterNames.IsModelName(first, last))
             return NameFault.Taken;
         return null;
     }
