@@ -215,26 +215,30 @@ Each item says what Wifi did, how v7 should do it better, and the security rules
 
 Do this only after Phase 2 has shipped the features people use, and after 2.2's migration has run.
 
-- [ ] Remove the projects from `DreamGrid.sln` and delete the folders: `addon-modules/21Wifi`, `20WifiScriptEngine`, `ProcessorTest`, `00DivaInterfaces`, `01DivaUtils`, `02AddinExample`, `00Data` (`Diva.Data`, `.MySQL`, `.SQLite`).
-  - [ ] Also delete `1DivaOpenSimServices`, once the launcher's group actions (2.8) work and landing regions (2.14) replace its fallback regions.
-  - [ ] Before deleting, prove nothing else references them.
-- [ ] Remove jOpenSim too. It is end of life: the last release was 0.3.2.0 for Joomla 3, October 2020, and no public source repository could be found.
-  - [ ] Remove `jOpenSimSearch` from `DreamGrid.sln`, and delete `addon-modules/jOpenSimSearch` and `addon-modules/jOpenSimProfile` (the profile module isn't in the solution).
-  - [ ] Delete `jOpensimURL` from `bin/config-include/Proto/*/OpenSim.ini` and from `Robust.HG.ini.proto` (with its "Apache Port for Jopensim" comments). Also delete the commented `data_services=…/JOpensim/…registersearch.php` line, which has a hard-coded LAN address.
+Removed on branch `chore/remove-wifi-diva` (2026-11-12). What went and why is in `docs/wifi-diva-removal-log.md`; the CI check `.github/scripts/check-retired-names.sh` keeps the names from coming back.
+
+- [x] Remove the projects from `DreamGrid.sln` and delete the folders: `addon-modules/21Wifi`, `20WifiScriptEngine`, `ProcessorTest`, `00DivaInterfaces`, `01DivaUtils`, `02AddinExample`, `00Data` (`Diva.Data`, `.MySQL`, `.SQLite`).
+  - [x] Also delete `1DivaOpenSimServices`, once the launcher's group actions (2.8) work and landing regions (2.14) replace its fallback regions.
+  - [x] Before deleting, prove nothing else references them. (See the log.)
+- [x] Remove jOpenSim too. It is end of life: the last release was 0.3.2.0 for Joomla 3, October 2020, and no public source repository could be found.
+  - [x] Remove `jOpenSimSearch` from `DreamGrid.sln`, and delete `addon-modules/jOpenSimSearch` and `addon-modules/jOpenSimProfile` (the profile module isn't in the solution).
+  - [x] Delete `jOpensimURL` from `bin/config-include/Proto/*/OpenSim.ini` and from `Robust.HG.ini.proto` (with its "Apache Port for Jopensim" comments). Also delete the commented `data_services=…/JOpensim/…registersearch.php` line, which has a hard-coded LAN address.
   - [ ] Profiles keep working through OpenSim's built-in profiles service, already set up in the templates (`[UserProfilesService]` in Robust, `[UserProfiles] ProfileServiceURL` for regions). Check that the generated INIs have it switched on and that a profile edit is saved, on Windows and on Debian.
-- [ ] Delete from `bin/`: `Wifi.ini`, `config-addon-opensim/Wifi.*`, `config-addon-robust/Wifi.ini`, `WifiPages-*`, `Diva.*.dll/.pdb`, `Diva.Wifi.pot`, `Diva.Wifi.ProcessorTest.*`.
-- [ ] Remove the Wifi lines from `.gitignore`, from `bin/config-include/Proto/*/OpenSim.ini`, and from `bin/OpenSim.ConsoleClient.ini`.
-- [ ] `Robust.HG.ini.proto`: the `register=` and `password=` lines point to the new pages (2.1, 2.3).
-- [ ] `GridConfigWriter.SetSmartStartAndWifi`: stop writing `[WifiService]`; rename the method; update `GridConfigWriterTests`.
-- [ ] `tests/DreamGrid.Smoke/SmokeRun.cs`: remove the `[WifiService]` stub and check that nothing merges a leftover `Wifi.ini`.
-- [ ] Upgrades: the Windows installer and the `.deb` delete old Wifi files and DLLs from an existing install, so OpenSim doesn't load a stale add-in.
-- [ ] Database (decided: clean it up on upgrade). Wifi has no tables of its own. Its only schema change is a `TOS` column added to the core `GridUser` table, through its own `GridUserStore` migration version 2 (core OpenSim's version 2 is empty).
-  - [ ] Move the `TOS` values into the new acceptance table (2.6), then drop the `GridUser.TOS` column.
-  - [ ] Leave the `migrations` row for `GridUserStore` alone, so core OpenSim doesn't try to run its migrations again.
-  - [ ] Make sure Robust's `[DatabaseService] StorageProvider` is the core `OpenSim.Data.MySQL.dll`, not `Diva.Data.MySQL.dll`. Wifi's `Wifi.ini` switches it, as the smoke test notes.
-  - [ ] Before any of this, back up the Robust database.
-- [ ] Update the spec (section 4.8 and the feature inventory) and the user manual pages that mention Wifi.
-- [ ] A final `grep -ri wifi` in CI that finds nothing outside the release notes.
+    - [x] Generated INIs: covered by the `Region_profiles_point_at_robust` test.
+    - [ ] A profile edit is saved: the owner's Firestorm check.
+- [x] Delete from `bin/`: `Wifi.ini`, `config-addon-opensim/Wifi.*`, `config-addon-robust/Wifi.ini`, `WifiPages-*`, `Diva.*.dll/.pdb`, `Diva.Wifi.pot`, `Diva.Wifi.ProcessorTest.*`.
+- [x] Remove the Wifi lines from `.gitignore`, from `bin/config-include/Proto/*/OpenSim.ini`, and from `bin/OpenSim.ConsoleClient.ini`.
+- [x] `Robust.HG.ini.proto`: the `register=` and `password=` lines point to the new pages (2.1, 2.3). The proto defaults are now empty, and the launcher writes GridGate's pages where this computer runs the staff pages.
+- [x] `GridConfigWriter.SetSmartStartAndWifi`: stop writing `[WifiService]`; rename the method; update `GridConfigWriterTests`.
+- [x] `tests/DreamGrid.Smoke/SmokeRun.cs`: remove the `[WifiService]` stub and check that nothing merges a leftover `Wifi.ini`.
+- [x] Upgrades: the Windows installer and the `.deb` delete old Wifi files and DLLs from an existing install, so OpenSim doesn't load a stale add-in. Not needed (2026-11-12): no install other than the owner's VM exists. The installers already replace the program folders, and the VM's Robust never used Diva's database provider, so there is no `GridUser.TOS` column. (The leftover guard in `RetiredFiles.cs` and `package.ps1` still keeps the retired names out of staging and packages.)
+- [x] Database. Not needed (2026-11-12): no install other than the owner's VM exists. The installers already replace the program folders, and the VM's Robust never used Diva's database provider, so there is no `GridUser.TOS` column. Wifi has no tables of its own. Its only schema change is a `TOS` column added to the core `GridUser` table, through its own `GridUserStore` migration version 2 (core OpenSim's version 2 is empty).
+  - [x] Move the `TOS` values into the new acceptance table (2.6), then drop the `GridUser.TOS` column. Not needed (2026-11-12): see above.
+  - [x] Leave the `migrations` row for `GridUserStore` alone, so core OpenSim doesn't try to run its migrations again. Not needed (2026-11-12): see above.
+  - [x] Make sure Robust's `[DatabaseService] StorageProvider` is the core `OpenSim.Data.MySQL.dll`, not `Diva.Data.MySQL.dll`. Not needed (2026-11-12): see above.
+  - [x] Before any of this, back up the Robust database. Not needed (2026-11-12): see above.
+- [x] Update the spec (section 4.8 and the feature inventory) and the user manual pages that mention Wifi. The CI check found no tracked file outside `docs/superpowers/` and the allow-list that mentions Wifi; the only places left are history docs.
+- [x] A final `grep -ri wifi` in CI that finds nothing outside the release notes. (`.github/scripts/check-retired-names.sh`, job `retired-names`; it also covers Diva and jOpenSim.)
 
 ## Phase 4 — Works on Windows, Debian 12 and Debian 13
 
