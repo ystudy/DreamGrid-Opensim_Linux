@@ -1,7 +1,3 @@
-WifiPages/*
-WifiPages-Custom/*
-bin/WifiPages/*
-bin/WifiPages-Custom/*
 bin/fsassets/*
 .project
 .settings
@@ -135,11 +131,10 @@ bin/System.Drawing.Common.dll
 /bin/pCampBot
 /bin/OpenSim.ConsoleClient
 /bin/OpenSim.Tools.Configger
-/bin/Diva.Wifi.ProcessorTest
 
-# Live Wifi configs hold secrets; only Wifi.ini.proto is tracked
-bin/config-addon-opensim/Wifi.ini
-bin/config-addon-robust/Wifi.ini
+# Live add-on configs hold secrets; only the .proto files are tracked
+bin/config-addon-*/*.ini
+
 
 # Superpowers brainstorm mockups and plan ledgers (local scratch)
 .superpowers/

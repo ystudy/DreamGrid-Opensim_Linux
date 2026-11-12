@@ -1,6 +1,4 @@
 
-This folder is served to the web at the path http://yoururls:8002/bin/data  by Divi's Wifi program via robust.
-
 The following file types are supported:
 
 .jpg image/jpg
