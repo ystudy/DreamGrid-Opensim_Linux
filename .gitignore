@@ -135,7 +135,6 @@ bin/System.Drawing.Common.dll
 # Live add-on configs hold secrets; only the .proto files are tracked
 bin/config-addon-*/*.ini
 
-
 # Superpowers brainstorm mockups and plan ledgers (local scratch)
 .superpowers/
 

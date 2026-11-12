@@ -1,4 +1,3 @@
-
 The following file types are supported:
 
 .jpg image/jpg

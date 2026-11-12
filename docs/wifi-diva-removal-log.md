@@ -46,7 +46,7 @@ Counts are from `git ls-tree -r --name-only 9f84ef76 -- <path>`.
 | `bin/{de,en,es,fr,pt}/Diva.Wifi.resources.dll` | 5 | Wifi translations |
 | `bin/Diva.Wifi.pot` | 1 | Wifi translation template |
 | `bin/Diva.Wifi.ProcessorTest.exe.config` | 1 | Config for the removed test program |
-| `bin/AddinExample.html`, `bin/data/AddinExample.html` | 2 | Pages of the sample add-in |
+| `bin/AddinExample.html`, `bin/data/AddinExample.html`, `bin/AddinExample.ini` | 3 | Pages and config of the sample add-in |
 | `bin/WhoGotWhat.html`, `bin/WhoGotWhat.ini`, `bin/WhoGotWhat.csv`, `bin/data/WhoGotWhat.html` | 4 | Page, config and data of WhoGotWhat |
 | `bin/config-include/GridCommon-GridServer-JOpensim.ini` | 1 | jOpenSim grid config; nothing includes it |
 | `bin/Robust.HG.ini` | 1 | Stale generated copy. Decision: deleted. `git grep -n -i -E "Joomla\|GridServer-JOpensim" -- Launcher setup tests` found nothing, and `git grep -n "Robust.HG.ini\b" -- Launcher setup tests` found only the runtime path (`GridConfigWriter`), `GridController`'s `-inifile` argument and tests that use the staged copy. Task 4 therefore does not edit it; the tracked `bin/Robust.HG.ini.example` and `.proto` stay |
@@ -55,3 +55,5 @@ Also changed:
 
 - `bin/data/About this folder.txt`: removed the sentence saying Wifi serves the folder. The rest is still true, so the file stays. Other files in `bin/data` are untouched.
 - `.gitignore`: removed the `WifiPages*` entries, `/bin/Diva.Wifi.ProcessorTest` and the two live Wifi config lines. `bin/config-addon-opensim/Wifi.ini` and `bin/config-addon-robust/Wifi.ini` were then no longer ignored (only `bin/Wifi.ini` was, by `bin/*.ini`), so one generic line, `bin/config-addon-*/*.ini`, now covers them. Checked with `git check-ignore -v` in the shared checkout before the edit (Wifi.ini ignored by the removed line 141, `bin/Wifi.ini` by `bin/*.ini`) and in this worktree after it.
+
+Also removed from `.gitleaksignore`: the entry for `bin/Robust.HG.ini:...:922`, dead now that the file is deleted. The `2c0fcab6` history entry stays, and its comment now says the tree no longer has the file.
