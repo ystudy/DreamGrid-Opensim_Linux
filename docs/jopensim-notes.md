@@ -6,7 +6,7 @@ Date: 2026-11-06. Status: reference notes, not a plan. Nothing here is decided.
 
 jOpenSim was a free Joomla extension (GPL v2) by FoTo50 that gave an OpenSim grid a website. It created in-world accounts from the site, linked existing avatars to Joomla accounts, managed groups (Flotsam groups), and fed in-world Profiles and Search through two OpenSim DLL modules. It is end of life: the last release was 0.3.2.0 for Joomla 3, in October 2020, and jopensim.com now shows only an "EOL, 2010 to 2025" notice with no downloads.
 
-In our tree only the OpenSim-side pieces are left: `addon-modules/jOpenSimSearch` and `addon-modules/jOpenSimProfile`, plus `jOpensimURL` lines in the INI templates and `bin/config-include/GridCommon-GridServer-JOpensim.ini`. They are removed in Phase 3 of the work list (`docs/superpowers/plans/2026-10-28-wifi-replacement-worklist.md`). Removed on 2026-11-12; see `docs/wifi-diva-removal-log.md`.
+In our tree only the OpenSim-side pieces were left: `addon-modules/jOpenSimSearch` and `addon-modules/jOpenSimProfile`, plus `jOpensimURL` lines in the INI templates and `bin/config-include/GridCommon-GridServer-JOpensim.ini`. They stayed until 2026-11-12, when Phase 3 of the work list (`docs/superpowers/plans/2026-10-28-wifi-replacement-worklist.md`) removed them; see `docs/wifi-diva-removal-log.md`.
 
 We keep these notes because jOpenSim shows what a grid website was expected to do. Some of its parts are ideas for GridGate.
 

@@ -109,6 +109,7 @@ Follow Fred's fork, not upstream OpenSim directly; his fork already carries the 
 
 ### 4.8 Old Wifi: kept in the repo, switched off
 The Diva Wifi add-on (`addon-modules/21Wifi` and friends) stays in the tree but is disabled in generated configs. The new web site, named **GridGate** (owner, 2026-11-03), rebuilds its features one at a time (user accounts first, when internet access arrives). Wifi is deleted once nothing useful in it remains.
+Update 2026-11-12: Wifi, the other Diva add-ons and jOpenSim were removed from the tree; see `docs/wifi-diva-removal-log.md`.
 
 ### 4.9 `System.Drawing` on Linux: keep the workaround, test it first, SkiaSharp as fallback
 OpenSim uses `System.Drawing` in ~52 files (map tiles, terrain import/export, meshing/sculpts, dynamic textures, archives). The repo works around Microsoft's Windows-only restriction by shipping a Linux build (`bin/System.Drawing.Common.dll.linux`) and setting `System.Drawing.EnableUnixSupport` in the runtimeconfig files.
@@ -402,6 +403,7 @@ UI technology inside ASP.NET Core (Razor Pages, Blazor Server, or an API plus a 
   - Plain-text copies: `.ref/txt/` in this checkout. This folder is untracked; regenerate with `.ref/docx2txt.py`.
   - Key ones: `SmartStart.txt`, `API.txt`, `MCP.txt`, `Ports.txt`, `Region.txt`, `Startup.txt`, `Restart.txt`, `DreamGrid Service.txt`, `Modifying INI Files.txt`, `Database.txt`.
 - **Feature inventory** of the old launcher (summary of the manuals): areas are install/updates, process supervision, service mode, region management, INI prototypes and overrides, database and backups, users and estates, network (DNS/ports/firewall/SSL/loopback), web (Wifi/Apache/Joomla/WordPress), in-world extras, monitoring/logging. Version 1 covers only the core of supervision, INI generation, users (owner only) and a minimal network setting.
+  Update 2026-11-12: Wifi, the other Diva add-ons and jOpenSim were removed from the tree; see `docs/wifi-diva-removal-log.md`.
 - **Prototype templates:** `bin/config-include/Proto/`.
 - **DreamGrid patch points in OpenSim:**
   - `OpenSim/Framework/SmartStartAltClient.cs`

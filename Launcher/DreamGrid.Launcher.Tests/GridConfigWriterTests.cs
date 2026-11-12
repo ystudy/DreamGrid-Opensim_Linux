@@ -176,8 +176,13 @@ public sealed class GridConfigWriterTests : IDisposable
     [Fact]
     public void Region_profiles_point_at_robust()
     {
-        Write(Make());
-        Assert.False(string.IsNullOrWhiteSpace(Region().Get("UserProfiles", "ProfileServiceURL")));
+        var settings = Make();
+        Write(settings);
+        var url = Region().Get("UserProfiles", "ProfileServiceURL");
+        Assert.False(string.IsNullOrWhiteSpace(url));
+        // The profile URL is "${Const|BaseURL}:${Const|PublicPort}"; the region file's PublicPort is Robust's.
+        Assert.EndsWith(":${Const|PublicPort}", url);
+        Assert.Equal(settings.RobustPublicPort.ToString(), Region().Get("Const", "PublicPort"));
     }
 
     [Fact]

@@ -219,10 +219,12 @@ public sealed class SmokeRun
         return port;
     }
 
-    // Skips state a previous run may have left in bin/: the Mono.Addins registry, the asset cache, logs, databases.
+    // Skips state a previous run may have left in bin/: the Mono.Addins registry, the asset cache, logs, databases, and output of retired add-ons.
     static bool Skip(string name, bool isDir) =>
         isDir ? name.StartsWith("addin-db-", StringComparison.OrdinalIgnoreCase) || name.Equals("assetcache", StringComparison.OrdinalIgnoreCase)
-              : name.EndsWith(".log", StringComparison.OrdinalIgnoreCase) || name.EndsWith(".db", StringComparison.OrdinalIgnoreCase);
+              || DreamGrid.Launcher.Core.Runtime.RetiredFiles.IsRetiredDirectory(name)
+              : name.EndsWith(".log", StringComparison.OrdinalIgnoreCase) || name.EndsWith(".db", StringComparison.OrdinalIgnoreCase)
+                || DreamGrid.Launcher.Core.Runtime.RetiredFiles.IsRetiredFile(name);
 
     static void CopyDirectory(string from, string to)
     {

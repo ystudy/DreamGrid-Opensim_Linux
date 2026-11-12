@@ -25,9 +25,13 @@ $Out = [IO.Path]::GetFullPath($Out)
 $pkg = Join-Path $Out 'dreamgrid'
 $cache = Join-Path ([IO.Path]::GetTempPath()) 'dreamgrid-package-cache'
 
+# Same folders and files RuntimeStager leaves out of the staged runtime copy (assetcache, addin-db-* ...).
+$excludedDirectories = @('assetcache', 'Regions', 'ScriptEngines', 'fsassets', 'MeshCache', 'j2kDecodeCache', 'maptiles', 'bakes')
+
 # --- Retired add-on files ---------------------------------------------------------------------------------------
 # The Wifi, Diva and jOpenSim add-ons were removed; a bin/ built before then still holds their output. Same names as
 # Launcher/DreamGrid.Launcher.Core/Runtime/RetiredFiles.cs. Checked first so a dirty folder fails in seconds.
+# Folders the package leaves out anyway (Copy-Bin's rule below) are not scanned: leftovers in them never ship.
 $retiredFilePrefixes = @('Diva.', 'Wifi.', 'WhoGotWhat.', 'jOpenSim')
 $retiredDirectories = @('DivaUploads')
 $retiredDirectoryPrefixes = @('WifiPages')
@@ -35,18 +39,24 @@ $binRoot = Join-Path $repo 'bin'
 $retired = @()
 if (Test-Path -LiteralPath $binRoot) {
     $prefixLength = $binRoot.TrimEnd([char[]]'\/').Length + 1
-    foreach ($item in (Get-ChildItem -LiteralPath $binRoot -Recurse -Force)) {
-        $name = $item.Name
-        $isRetired = $false
-        if ($item.PSIsContainer) {
-            $isRetired = ($retiredDirectories -icontains $name)
-            foreach ($prefix in $retiredDirectoryPrefixes) { if ($name.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { $isRetired = $true } }
+    function Find-Retired([string]$Folder) {
+        foreach ($item in (Get-ChildItem -LiteralPath $Folder -Force)) {
+            $name = $item.Name
+            $isRetired = $false
+            if ($item.PSIsContainer) {
+                if ($name.StartsWith('addin-db-', [StringComparison]::OrdinalIgnoreCase)) { continue }
+                if ($excludedDirectories -icontains $name) { continue }
+                $isRetired = ($retiredDirectories -icontains $name)
+                foreach ($prefix in $retiredDirectoryPrefixes) { if ($name.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { $isRetired = $true } }
+            }
+            else {
+                foreach ($prefix in $retiredFilePrefixes) { if ($name.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { $isRetired = $true } }
+            }
+            if ($isRetired) { $script:retired += $item.FullName.Substring($prefixLength).Replace([string][char]92, '/') }
+            elseif ($item.PSIsContainer) { Find-Retired $item.FullName }
         }
-        else {
-            foreach ($prefix in $retiredFilePrefixes) { if ($name.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { $isRetired = $true } }
-        }
-        if ($isRetired) { $retired += $item.FullName.Substring($prefixLength).Replace([string][char]92, '/') }
     }
+    Find-Retired $binRoot
 }
 if ($retired.Count -gt 0) {
     throw ("bin/ holds build output from before Wifi and Diva were removed; delete these files and build again:`n  " + ($retired -join "`n  "))
@@ -93,8 +103,6 @@ try {
 finally { Pop-Location }
 
 # --- bin/ -------------------------------------------------------------------------------------------------------
-# Same folders and files RuntimeStager leaves out of the staged runtime copy (assetcache, addin-db-* ...).
-$excludedDirectories = @('assetcache', 'Regions', 'ScriptEngines', 'fsassets', 'MeshCache', 'j2kDecodeCache', 'maptiles', 'bakes')
 $excludedFiles = @('Gloebit.dll')
 $excludedExtensions = @('.pdb', '.log', '.pid', '.db')
 # Windows-only native binaries, dropped from the linux-x64 package (paths relative to bin/, '/'-separated):

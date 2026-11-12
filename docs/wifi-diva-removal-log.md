@@ -25,11 +25,11 @@ Folders under `addon-modules/`. File counts are from `git ls-tree -r --name-only
 
 ## Guard
 
-A checkout built before this change keeps old Diva build output in `bin/`. To stop that output reaching a package:
+A checkout built before this change keeps old Diva build output in `bin/`. To stop that output reaching the staged runtime folder or a package:
 
 - `Launcher/DreamGrid.Launcher.Core/Runtime/RetiredFiles.cs` (`IsRetiredFile`, `IsRetiredDirectory`) names the retired items. Files: names starting with `Diva.`, `Wifi.`, `WhoGotWhat.` or `jOpenSim`. Folders: `DivaUploads`, and names starting with `WifiPages`. Matching ignores case.
 - `RuntimeStager` skips them when staging.
-- `setup/package.ps1` throws before building if `bin/` holds any of them.
+- `setup/package.ps1` throws before building if `bin/` holds any of them. Its scan skips the folders the package leaves out anyway (`assetcache`, `addin-db-*` and the rest of `Copy-Bin`'s list), so leftovers there do not stop a build.
 
 ## Files in bin/ and at the top level
 
@@ -49,11 +49,12 @@ Counts are from `git ls-tree -r --name-only 9f84ef76 -- <path>`.
 | `bin/AddinExample.html`, `bin/data/AddinExample.html`, `bin/AddinExample.ini` | 3 | Pages and config of the sample add-in |
 | `bin/WhoGotWhat.html`, `bin/WhoGotWhat.ini`, `bin/WhoGotWhat.csv`, `bin/data/WhoGotWhat.html` | 4 | Page, config and data of WhoGotWhat |
 | `bin/config-include/GridCommon-GridServer-JOpensim.ini` | 1 | jOpenSim grid config; nothing includes it |
+| `bin/Names.csv`, `bin/CsvHelper.dll` | 2 | `Names.csv` was AddinExample's data file (header only); `CsvHelper.dll` was referenced only by AddinExample and WhoGotWhat (`git grep -i csvhelper` finds nothing else). CsvHelper is not in the guard: it is a generic third-party name |
 | `bin/Robust.HG.ini` | 1 | Stale generated copy. Decision: deleted. `git grep -n -i -E "Joomla\|GridServer-JOpensim" -- Launcher setup tests` found nothing, and `git grep -n "Robust.HG.ini\b" -- Launcher setup tests` found only the runtime path (`GridConfigWriter`), `GridController`'s `-inifile` argument and tests that use the staged copy. Task 4 therefore does not edit it; the tracked `bin/Robust.HG.ini.example` and `.proto` stay |
 
 Also changed:
 
-- `bin/data/About this folder.txt`: removed the sentence saying Wifi serves the folder. The rest is still true, so the file stays. Other files in `bin/data` are untouched.
+- `bin/data/About this folder.txt`: rewritten in two sentences. It said which file types Wifi's file server handled, and nothing serves the folder over HTTP now; it says what the folder holds and that nothing serves it. Other files in `bin/data` are untouched.
 - `.gitignore`: removed the `WifiPages*` entries, `/bin/Diva.Wifi.ProcessorTest` and the two live Wifi config lines. `bin/config-addon-opensim/Wifi.ini` and `bin/config-addon-robust/Wifi.ini` were then no longer ignored (only `bin/Wifi.ini` was, by `bin/*.ini`), so one generic line, `bin/config-addon-*/*.ini`, now covers them. Checked with `git check-ignore -v` in the shared checkout before the edit (Wifi.ini ignored by the removed line 141, `bin/Wifi.ini` by `bin/*.ini`) and in this worktree after it.
 
 Also removed from `.gitleaksignore`: the entry for `bin/Robust.HG.ini:...:922`, dead now that the file is deleted. The `2c0fcab6` history entry stays, and its comment now says the tree no longer has the file.
@@ -88,9 +89,10 @@ Old lines, verbatim. `Robust.HG.ini.proto` is `bin/Robust.HG.ini.proto`; the thr
 ## Launcher code
 
 - `GridConfigWriter.SetSmartStartAndWifi` is now `SetSmartStart` (private; both call sites changed) and no longer writes `[WifiService]`. The "not Wifi's" remark in the forgot-password comment is gone.
-- `GridConfigWriterTests`: `SmartStart_disabled_and_Wifi_disabled_in_both` is `SmartStart_disabled_in_both`, without the `[WifiService]` assert. `Register_no_longer_points_at_wifi` is `Register_and_password_point_at_the_website`: `register` ends with `/signup` and `password` equals `WebsiteAddress.ForgotPassword`. New `Region_profiles_point_at_robust` checks `[UserProfiles] ProfileServiceURL` is not blank. They passed before the template edits as guards.
+- `GridConfigWriterTests`: `SmartStart_disabled_and_Wifi_disabled_in_both` is `SmartStart_disabled_in_both`, without the `[WifiService]` assert. `Register_no_longer_points_at_wifi` is `Register_and_password_point_at_the_website`: `register` ends with `/signup` and `password` equals `WebsiteAddress.ForgotPassword`. New `Region_profiles_point_at_robust` checks `[UserProfiles] ProfileServiceURL` is not blank.
 - Snapshots `{grid-asset,local,simple-public}.OpenSim.ini` regenerated (`DG_CAPTURE_SNAPSHOTS=1`, test class `GridConfigWriterTests`). Per file, the diff is exactly: the `GridName` comment, the `jOpensimURL` block, the commented `data_services` line, the reworded groups comment and the `[WifiService]` section. Nothing else changed.
-- `tests/DreamGrid.Smoke/SmokeRun.cs`: the `[WifiService] Enabled = false` stub and its two comment lines are gone from the INI text the smoke run writes.
+- `tests/DreamGrid.Smoke/SmokeRun.cs`: the `[WifiService] Enabled = false` stub and its two comment lines are gone from the INI text the smoke run writes. The sandbox copy of `bin/` now skips the retired files and folders too (`RetiredFiles.cs` is linked into the smoke project), so a stale checkout cannot boot old Diva output.
+- `GridConfigWriterTests.Region_profiles_point_at_robust` also asserts that the profile URL ends with `:${Const|PublicPort}` (the template keeps the constant) and that the region file's `[Const] PublicPort` equals the settings' Robust public port.
 
 ## Names and comments
 
@@ -102,18 +104,18 @@ Old lines, verbatim. `Robust.HG.ini.proto` is `bin/Robust.HG.ini.proto`; the thr
 
 ## CI check
 
-`.github/scripts/check-retired-names.sh` runs in the `retired-names` job of `dreamgrid-ci.yml` (right after `secret-scan`). It runs `git grep -n -I -i -E 'wifi|diva|jopensim'` over the tracked files, ignoring binary files, and fails with `path:line:text` for each match. It exits 0 when clean and 1 when it finds a match; any other `git grep` error code is passed through.
+`.github/scripts/check-retired-names.sh` runs in the `retired-names` job of `dreamgrid-ci.yml` (right after `secret-scan`). It has two passes. The content pass runs `git grep -n -I -i -E 'wifi|diva|jopensim'` over the tracked files, ignoring binary files, and prints `path:line:text` for each match. The path pass greps `git ls-files` for `wifi|diva|jopensim|whogotwhat` (case-insensitive), so a retired name in a file name is caught too. Both passes use the allow-list below (for the path pass the entries are matched as path prefixes). The script prints each pass's matches under its own heading and exits 1 if either finds anything, 0 when both are clean; any other `git grep` error code is passed through.
 
 Allow-list (the only files and folders allowed to mention the names):
 
 | Entry | Why |
 |---|---|
-| `CONTRIBUTORS.txt` | Credits Diva's contributors; their line stays |
+| `CONTRIBUTORS.txt` | Credits Diva (Crista Lopes) as an OpenSim core developer; the line stays |
 | `OpenSim/` | Upstream OpenSim source, not ours to edit |
 | `docs/superpowers/` | Plans and specs that describe this removal |
 | `docs/jopensim-notes.md`, `docs/opensim-search-notes.md` | Reference notes, kept on purpose |
 | `docs/wifi-diva-removal-log.md` | This log |
-| `Launcher/DreamGrid.Launcher.Core/Runtime/RetiredFiles.cs` | The list of retired files the stager deletes from old installs |
+| `Launcher/DreamGrid.Launcher.Core/Runtime/RetiredFiles.cs` | The list of retired files the stager skips; the full restage clears the runtime folder |
 | `Launcher/DreamGrid.Launcher.Tests/RuntimeStagerTests.cs` | Tests that list is applied |
 | `setup/package.ps1` | The packaging guard that fails when a retired file or folder reaches a package |
 | `.github/scripts/check-retired-names.sh` | The script itself holds the pattern |

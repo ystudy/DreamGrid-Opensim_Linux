@@ -9,4 +9,9 @@
     <RootNamespace>DreamGrid.Smoke</RootNamespace>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- Same retired-file rules as the stager, so the sandbox copy of bin/ never boots stale add-on output. -->
+    <Compile Include="..\..\Launcher\DreamGrid.Launcher.Core\Runtime\RetiredFiles.cs" Link="RetiredFiles.cs" />
+  </ItemGroup>
+
 </Project>
