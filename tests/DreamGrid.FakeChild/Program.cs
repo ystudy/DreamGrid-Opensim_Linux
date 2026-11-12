@@ -30,7 +30,13 @@ switch (args[0])
         return 0;
 
     case "--import-hang":
-        if (args.Length >= 2) File.WriteAllText(args[1], Environment.ProcessId.ToString());
+        if (args.Length >= 2)
+        {
+            // Write aside, then rename: the tests poll for this file, and on Windows a read while
+            // WriteAllText still holds it open fails with a sharing violation.
+            File.WriteAllText(args[1] + ".tmp", Environment.ProcessId.ToString());
+            File.Move(args[1] + ".tmp", args[1], overwrite: true);
+        }
         await Task.Delay(Timeout.Infinite);
         return 0;
 
