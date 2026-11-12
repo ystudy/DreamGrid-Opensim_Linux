@@ -63,6 +63,14 @@ public sealed class TakedownStore
     /// <summary>The cases that list <paramref name="principal"/> as a person.</summary>
     public IReadOnlyList<TakedownCase> Naming(Guid principal) => [.. All().Where(c => c.People.Any(p => p.Principal == principal))];
 
+    /// <summary>
+    /// Whether an open case is about <paramref name="principal"/> (<see cref="PersonOnCase.Named"/>), so their inventory backups
+    /// wait (spec 2026-11-11-iar-backups-design §5.1). Copy holders, often innocent buyers, are not; nor is anyone just because a
+    /// case file can't be read.
+    /// </summary>
+    public bool NamedInOpenCase(Guid principal) =>
+        All().Any(c => c.Open && c.People.Any(p => p.Principal == principal && p.Kind == PersonOnCase.Named));
+
     public string CaseFolder(string number) => Path.Combine(_root, number);
 
     private readonly Dictionary<string, string?> _hashes = new(StringComparer.OrdinalIgnoreCase);
