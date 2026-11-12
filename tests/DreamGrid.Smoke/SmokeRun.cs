@@ -120,11 +120,6 @@ public sealed class SmokeRun
             [RegionReady]
                 enabled = true
 
-            ; Version 1 runs with the old Wifi off (spec section 4.8). Having this section also stops WifiModule from
-            ; merging bin/Wifi.ini, which would switch [DatabaseService] to Diva.Data.MySQL.
-            [WifiService]
-                Enabled = false
-
             {{EstateSection}}
 
             [Modules]

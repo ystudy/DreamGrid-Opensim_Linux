@@ -54,10 +54,10 @@ public sealed class GridConfigWriter(LauncherPaths paths)
         robust.Set("DatabaseService", "ConnectionString", $"\"{DbConn(s, "robust", "robustuser", s.Db.RobustPassword)}\"");
         SetNetwork(robust, s, "ConsolePort", s.RobustConsolePort);
         SetFsAssetsDirectories(robust);
-        SetSmartStartAndWifi(robust, s);
+        SetSmartStart(robust, s);
         robust.Set("GatekeeperService", "ForeignAgentsAllowed", Bool(hypergrid));
         robust.Set("GridInfoService", "welcome", WebsiteAddress.Welcome(s));
-        // The viewer's "forgot password" link: the website's page, not Wifi's. Robust's own setpassword (AllowSetPassword) stays
+        // The viewer's "forgot password" link: the website's page. Robust's own setpassword (AllowSetPassword) stays
         // off: the website writes the new password itself.
         // The viewer's "create account" link: the website's sign-up page (it says so when sign-up is closed).
         if (AdminRule.HasStaffPages(s))
@@ -162,7 +162,7 @@ public sealed class GridConfigWriter(LauncherPaths paths)
         }
         os.Set("RegionReady", "enabled", "true");
         os.Set("RegionReady", "alert_uri", $"http://127.0.0.1:{s.WebPort}/dreamgrid/regionready");
-        SetSmartStartAndWifi(os, s);
+        SetSmartStart(os, s);
         os.Set("YEngine", "ScriptEnginesPath", Fwd(paths.ScriptEngines));
         Finish(os, "region", extra, Path.Combine(paths.RegionDir(instance), "OpenSim.ini"));
 
@@ -306,12 +306,11 @@ public sealed class GridConfigWriter(LauncherPaths paths)
         doc.Set("Network", portKey, consolePort.ToString());
     }
 
-    private static void SetSmartStartAndWifi(IniDocument doc, LauncherSettings s)
+    private static void SetSmartStart(IniDocument doc, LauncherSettings s)
     {
         doc.Set("SmartStart", "Enabled", "False");
         doc.Set("SmartStart", "URL", $"http://127.0.0.1:{s.WebPort}");
         doc.Set("SmartStart", "MachineID", s.MachineId);
-        doc.Set("WifiService", "Enabled", "false");
     }
 
     /// <summary>Sets the FSAssets directories in the section whose BaseDirectory points at fsassets, leaving the bakes one alone.</summary>

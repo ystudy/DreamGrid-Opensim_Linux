@@ -44,13 +44,11 @@ PrivatePort=8003
 DiagnosticsPort=8001
 
 ;; Set by Dreamgrid
-;Apache Port for Jopensim and others, 
+;Apache port
 ApachePort=80
 ;
 ;Password from DYN DNS
 MachineID=
-;
-jOpensimURL= 
 
 
 ; * The startup section lists all the connectors to start up in this server
@@ -137,7 +135,7 @@ GroupsServiceConnector="${Const|PrivatePort}/OpenSim.Addons.Groups.dll:GroupsSer
 BakedTextureService="${Const|PrivatePort}/OpenSim.Server.Handlers.dll:XBakesConnector"
 
 
-; set by Dreamgrid for jOpensim and others
+; set by Dreamgrid
 ;; Uncomment for UserProfiles see [UserProfilesService] to configure...
 UserProfilesServiceConnector="${Const|PublicPort}/OpenSim.Server.Handlers.dll:UserProfilesConnector"
 
@@ -157,7 +155,7 @@ HGAssetServiceConnector="HGAssetService@${Const|PublicPort}/OpenSim.Server.Handl
 ;; Uncomment this if you want Groups V2, HG to work
 HGGroupsServiceConnector="${Const|PublicPort}/OpenSim.Addons.Groups.dll:HGGroupsServiceRobustConnector"
 
-;; needed for JOpensim profile pictures
+;; Serves textures to viewers over HTTP
 GetTextureConnector="${Const|PublicPort}/OpenSim.Capabilities.Handlers.dll:GetTextureServerConnector"
 
 ; * This is common for all services, it's the network setup for the entire
@@ -560,12 +558,10 @@ AllowRemoteSetLoginLevel="false"
 MapTileURL="${Const|BaseURL}:${Const|PublicPort}/"
 
 ; Url to search service
-;SearchURL = "${Const|BaseURL}:${Const|PublicPort}/JOpensim/index.php?option=com_opensim&view=inworldsearch&task=viewersearch&tmpl=component&"
 ;SearchURL=http://www.outworldz.com/Search/query.php
 SearchURL=http://www.outworldz.com/Search/query.php
 
 ; For V3 destination guide
-;DestinationGuide = "${Const|BaseURL}:${Const|PublicPort}/JOpensim//index.php?option=com_opensim&view=guide&tmpl=component"
 ;DestinationGuideURI="http://www.outworldz.com/destination-guide/"
 DestinationGuide="http://www.outworldz.com/destination-guide/"
 
@@ -654,12 +650,10 @@ gridnick=${Const|GridName}
 ; login page: optional: if it exists it will be used to tell the client to use
 ;                       this as splash page
 ;; Set by Dreamgrid
-;welcome = ${Const|BaseURL}:${Const|PublicPort}/JOpensim/index.php?option=com_opensim
 welcome=http://www.outworldz.com/Outworldz_installer/Welcome.htm
 
 ; helper uri: optional: if it exists it will be used to tell the client to use
 ;                       this for all economy related things
-;economy = ${Const|BaseURL}:${Const|PublicPort}/JOpensim/components/com_opensim/
 ;economy = ${Const|BaseURL):${Const|PublicPort}
 economy=${Const|BaseURL}:${Const|PublicPort}
 
@@ -667,13 +661,13 @@ economy=${Const|BaseURL}:${Const|PublicPort}
 ;about = ${Const|BaseURL}/about
 ; account creation: optional: page providing further information about obtaining
 ;                             a user account on your grid
-register=${Const|BaseURL}:${Const|PublicPort}/wifi/user/account/
+register=
 
 ; help: optional: page providing further assistance for users of your grid
 ; help = ${Const|BaseURL}:${Const|PublicPort}//
 ; help="https://www.outworldz.com/Outworldz_installer/Manual_TroubleShooting.htm"
 ; password help: optional: page providing password assistance for users of your grid
-password=${Const|BaseURL}:${Const|PublicPort}/wifi/forgotpassword
+password=
 
 ; HG address of the gatekeeper, if you have one
 ; this is the entry point for all the regions of the world
@@ -882,7 +876,6 @@ UserAccountService="OpenSim.Services.UserAccountService.dll:UserAccountService"
 Enabled = true
 Module = GroupsModule
 ServicesConnectorModule = XmlRpcGroupsServicesConnector
-GroupsServerURI = "${Const|jOpensimURL}/index.php?option=com_opensim&view=interface"
 ; Optional:
 ;MessagingEnabled = true
 ;MessagingModule = GroupsMessagingModule
@@ -924,7 +917,6 @@ Enabled=False
 URL=
 MachineID=
 
-;; For Joomla/jOpensim
 [CapsService]
 AssetService = "OpenSim.Services.FSAssetService.dll:FSAssetConnector"
 

@@ -57,3 +57,37 @@ Also changed:
 - `.gitignore`: removed the `WifiPages*` entries, `/bin/Diva.Wifi.ProcessorTest` and the two live Wifi config lines. `bin/config-addon-opensim/Wifi.ini` and `bin/config-addon-robust/Wifi.ini` were then no longer ignored (only `bin/Wifi.ini` was, by `bin/*.ini`), so one generic line, `bin/config-addon-*/*.ini`, now covers them. Checked with `git check-ignore -v` in the shared checkout before the edit (Wifi.ini ignored by the removed line 141, `bin/Wifi.ini` by `bin/*.ini`) and in this worktree after it.
 
 Also removed from `.gitleaksignore`: the entry for `bin/Robust.HG.ini:...:922`, dead now that the file is deleted. The `2c0fcab6` history entry stays, and its comment now says the tree no longer has the file.
+
+## Config lines
+
+Old lines, verbatim. `Robust.HG.ini.proto` is `bin/Robust.HG.ini.proto`; the three `OpenSim.ini` files are under `bin/config-include/Proto/`.
+
+| File | Old line | Why |
+| --- | --- | --- |
+| `Robust.HG.ini.proto` | `;Apache Port for Jopensim and others, ` | Reworded to `;Apache port`; `ApachePort` itself stays (the region `OpenSim.ini` uses it for `MuteListURL`) |
+| `Robust.HG.ini.proto` | `jOpensimURL= ` (and the lone `;` above it) | jOpenSim's URL constant; nothing else reads it once `[Groups]` stops |
+| `Robust.HG.ini.proto` | `; set by Dreamgrid for jOpensim and others` | Reworded to `; set by Dreamgrid`; heads `UserProfilesServiceConnector`, which stays |
+| `Robust.HG.ini.proto` | `;; needed for JOpensim profile pictures` | Reworded to `;; Serves textures to viewers over HTTP`; heads `GetTextureConnector`, which stays |
+| `Robust.HG.ini.proto` | `;SearchURL = "${Const\|BaseURL}:${Const\|PublicPort}/JOpensim/index.php?option=com_opensim&view=inworldsearch&task=viewersearch&tmpl=component&"` | Commented jOpenSim search address |
+| `Robust.HG.ini.proto` | `;DestinationGuide = "${Const\|BaseURL}:${Const\|PublicPort}/JOpensim//index.php?option=com_opensim&view=guide&tmpl=component"` | Commented jOpenSim guide address |
+| `Robust.HG.ini.proto` | `;welcome = ${Const\|BaseURL}:${Const\|PublicPort}/JOpensim/index.php?option=com_opensim` | Commented jOpenSim welcome page |
+| `Robust.HG.ini.proto` | `;economy = ${Const\|BaseURL}:${Const\|PublicPort}/JOpensim/components/com_opensim/` | Commented jOpenSim economy address |
+| `Robust.HG.ini.proto` | `register=${Const\|BaseURL}:${Const\|PublicPort}/wifi/user/account/` | Now `register=`; the launcher sets the website's sign-up page when the grid has staff pages |
+| `Robust.HG.ini.proto` | `password=${Const\|BaseURL}:${Const\|PublicPort}/wifi/forgotpassword` | Now `password=`; the launcher sets the website's forgot-password page when the grid has staff pages |
+| `Robust.HG.ini.proto` | `GroupsServerURI = "${Const\|jOpensimURL}/index.php?option=com_opensim&view=interface"` | Only this line of `[Groups]`; it was built from the removed constant, and Robust loads the other Groups settings as before |
+| `Robust.HG.ini.proto` | `;; For Joomla/jOpensim` | Comment above `[CapsService]`; nothing to describe |
+| `Region/OpenSim.ini`, `Robust/OpenSim.ini` | `;# Grid Name for Wifi to show` | Comment above `GridName` |
+| `Region/OpenSim.ini`, `Robust/OpenSim.ini` | `jOpensimURL=http://${Const\|BaseHostname}:${Const\|ApachePort}/JOpensim/index.php?option=com_opensim` (with its `; Automatically changed by Dreamworld - do not change this` heading and the `;` after it) | jOpenSim's URL constant |
+| `Region/OpenSim.ini`, `Robust/OpenSim.ini` | `; data_services=http://192.168.2.100:80/JOpensim/components/com_opensim/registersearch.php` | Commented search registration with a hard-coded LAN address |
+| `Region/OpenSim.ini`, `Robust/OpenSim.ini` | `; Used by JOpensim, from Groups` | Reworded to `; Keys for the XmlRpc groups service`; heads `XmlRpcServiceReadKey` and `XmlRpcServiceWriteKey`, which stay |
+| `OsGrid/OpenSim.ini` | `;# Grid Name for Wifi to show` | Comment above `GridName` |
+| `bin/OpenSim.ConsoleClient.ini` | `user=Wifi Admin` | Now `user=Console Admin` |
+
+`bin/Robust.HG.ini` is gone (Task 3), so it has no edits here.
+
+## Launcher code
+
+- `GridConfigWriter.SetSmartStartAndWifi` is now `SetSmartStart` (private; both call sites changed) and no longer writes `[WifiService]`. The "not Wifi's" remark in the forgot-password comment is gone.
+- `GridConfigWriterTests`: `SmartStart_disabled_and_Wifi_disabled_in_both` is `SmartStart_disabled_in_both`, without the `[WifiService]` assert. `Register_no_longer_points_at_wifi` is `Register_and_password_point_at_the_website`: `register` ends with `/signup` and `password` equals `WebsiteAddress.ForgotPassword`. New `Region_profiles_point_at_robust` checks `[UserProfiles] ProfileServiceURL` is not blank. They passed before the template edits as guards.
+- Snapshots `{grid-asset,local,simple-public}.OpenSim.ini` regenerated (`DG_CAPTURE_SNAPSHOTS=1`, test class `GridConfigWriterTests`). Per file, the diff is exactly: the `GridName` comment, the `jOpensimURL` block, the commented `data_services` line, the reworded groups comment and the `[WifiService]` section. Nothing else changed.
+- `tests/DreamGrid.Smoke/SmokeRun.cs`: the `[WifiService] Enabled = false` stub and its two comment lines are gone from the INI text the smoke run writes.

@@ -165,10 +165,19 @@ public sealed class GridConfigWriterTests : IDisposable
     }
 
     [Fact]
-    public void Register_no_longer_points_at_wifi()
+    public void Register_and_password_point_at_the_website()
+    {
+        var settings = Make();
+        Write(settings);
+        Assert.EndsWith("/signup", Robust().Get("GridInfoService", "register"));
+        Assert.Equal(WebsiteAddress.ForgotPassword(settings), Robust().Get("GridInfoService", "password"));
+    }
+
+    [Fact]
+    public void Region_profiles_point_at_robust()
     {
         Write(Make());
-        Assert.DoesNotContain("/wifi/", Robust().Get("GridInfoService", "register") ?? "");
+        Assert.False(string.IsNullOrWhiteSpace(Region().Get("UserProfiles", "ProfileServiceURL")));
     }
 
     [Fact]
@@ -317,7 +326,7 @@ public sealed class GridConfigWriterTests : IDisposable
     }
 
     [Fact]
-    public void SmartStart_disabled_and_Wifi_disabled_in_both()
+    public void SmartStart_disabled_in_both()
     {
         Write(Make());
         foreach (var doc in new[] { Robust(), Region() })
@@ -325,7 +334,6 @@ public sealed class GridConfigWriterTests : IDisposable
             Assert.Equal("False", doc.Get("SmartStart", "Enabled"));
             Assert.Equal("http://127.0.0.1:8001", doc.Get("SmartStart", "URL"));
             Assert.Equal("machine-1", doc.Get("SmartStart", "MachineID"));
-            Assert.Equal("false", doc.Get("WifiService", "Enabled"));
         }
     }
 
