@@ -14,7 +14,8 @@ namespace DreamGrid.Launcher.Pages.Security;
 /// hide and show, remove). Every change is in the audit log as <c>starter-avatar-*</c>.
 /// </summary>
 public partial class StarterAvatarsModel(StarterAvatarList starters, LauncherPaths paths, IAccountRemover remover, AuditLog audit,
-    Starter.StarterImport import, ILogger<StarterAvatarsModel> log) : PageModel
+    Starter.StarterImport import, IAppearanceStore looks, IInventoryStore inventory, Core.OpenSim.IRobustPasswords passwords,
+    ILogger<StarterAvatarsModel> log) : PageModel
 {
     public const int MaxName = 64;
 

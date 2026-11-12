@@ -1,5 +1,6 @@
 @page "/people/{id:guid}"
 @model DreamGrid.Launcher.Pages.People.PersonModel
+@inject DreamGrid.Launcher.Core.Starter.StarterAvatarList Starters
 @{
     ViewData["Title"] = Model.Person?.FullName ?? "Person";
 }
@@ -33,6 +34,16 @@ else
     <dd class="col-sm-9">@DreamGrid.Launcher.Pages.People.IndexModel.RoleWord(p)</dd>
     <dt class="col-sm-3">Level</dt>
     <dd class="col-sm-9">@a.UserLevel</dd>
+    @if (Starters.IsModel(a.PrincipalId))
+    {
+        <dt class="col-sm-3">Starter avatar</dt>
+        <dd class="col-sm-9">This is a starter avatar's model account. <a href="/security/starter-avatars">Starter avatars</a></dd>
+    }
+    else if (Starters.PickOf(a.PrincipalId) is { } pick)
+    {
+        <dt class="col-sm-3">Starter avatar</dt>
+        <dd class="col-sm-9">@pick.Name, picked at sign-up</dd>
+    }
     <dt class="col-sm-3">Email</dt>
     <dd class="col-sm-9">@(string.IsNullOrWhiteSpace(a.Email) ? "None" : a.Email)</dd>
     <dt class="col-sm-3">Created</dt>

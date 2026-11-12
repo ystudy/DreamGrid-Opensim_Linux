@@ -14,7 +14,7 @@ namespace DreamGrid.Launcher.Tests;
 public sealed class StarterAvatarsPageTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
-    private const string Url = "/security/starter-avatars";
+    internal const string Url = "/security/starter-avatars";
 
     internal static LauncherFactory Factory(OwnerPlan? plan = OwnerPlan.Local)
     {

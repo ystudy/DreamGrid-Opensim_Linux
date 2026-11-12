@@ -21,6 +21,31 @@
     <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
 }
 
+@if (Model.LoginShown is { } login)
+{
+    <section class="card card-body mb-3 border-primary" id="model-login">
+        <h2 class="h5">Log in as @login.Avatar's model</h2>
+        <p class="mb-1">Name: <code>@login.ModelName</code></p>
+        <p>Password: <code class="model-password">@login.Password</code> (shown only now)</p>
+        <p class="mb-0">Log in with a viewer, open the folder <strong>@login.Folder</strong> in your inventory, choose Replace Outfit, wait until you look right, then log out. Then press <strong>Check it</strong>.</p>
+    </section>
+}
+@if (Model.CheckShown is { } check)
+{
+    <section class="card card-body mb-3" id="check-result">
+        <h2 class="h5">@check.Avatar: @(check.Result.Passed ? "the check passed" : "the check failed")</h2>
+        @if (check.Result.Missing.Count > 0)
+        {
+            <p class="mb-1">Missing from the model's inventory, or not stored:</p>
+            <ul>@foreach (var m in check.Result.Missing) { <li>@m</li> }</ul>
+        }
+        @if (check.Result.PermissionWarnings.Count > 0)
+        {
+            <p class="mb-1">Residents get these with limited permissions:</p>
+            <ul class="mb-0">@foreach (var w in check.Result.PermissionWarnings) { <li>@w</li> }</ul>
+        }
+    </section>
+}
 @if (Model.Progress is { } progress)
 {
     <section class="card card-body mb-3" id="import-progress">
@@ -108,6 +133,10 @@ else if (Model.Pending is null)
                 {
                     <div class="alert alert-warning py-2 small" role="alert">@a.Warning</div>
                 }
+                <div class="d-flex flex-wrap gap-2 mb-2">
+                    <form method="post" asp-page-handler="Login"><input type="hidden" name="id" value="@a.Id"><button class="btn btn-sm btn-outline-primary" type="submit">Log in as this model</button></form>
+                    <form method="post" asp-page-handler="Check"><input type="hidden" name="id" value="@a.Id"><button class="btn btn-sm btn-primary" type="submit">Check it</button></form>
+                </div>
                 <form method="post" asp-page-handler="Snapshot" enctype="multipart/form-data" class="d-flex flex-wrap gap-2 align-items-center mb-2">
                     <input type="hidden" name="id" value="@a.Id">
                     <label class="visually-hidden" for="file-@a.Id">Snapshot for @a.Name</label>

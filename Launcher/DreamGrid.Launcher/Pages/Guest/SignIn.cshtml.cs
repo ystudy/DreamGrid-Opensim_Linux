@@ -21,7 +21,7 @@ namespace DreamGrid.Launcher.Pages.Guest;
 /// the staff door, and a right password here can't clear the staff count of wrong two-factor codes; the address count is shared,
 /// so an address gets 20 failures in all, whichever door. The password is never logged; only the cleaned first name is.
 /// </summary>
-public sealed class SignInModel(IRobustClient robust, LoginThrottle throttle, AuditLog audit, ResidentTwoFactor residents,
+public sealed class SignInModel(Core.Starter.StarterAvatarList starters, IRobustClient robust, LoginThrottle throttle, AuditLog audit, ResidentTwoFactor residents,
     SignUpBoard pending, Func<LauncherSettings> settings, ILogger<SignInModel> log, IStringLocalizer<ResidentText> t) : PageModel
 {
     [BindProperty] public string? Name { get; set; }
@@ -59,7 +59,8 @@ public sealed class SignInModel(IRobustClient robust, LoginThrottle throttle, Au
             // The strict lookup: an unusable reply is the service failing, never a wrong password counted by the throttle.
             account = await robust.FindAccountAsync(name.First, name.Last, ct);
             var rightPassword = account is not null && await robust.AuthenticateAsync(account.PrincipalId, Password ?? "", ct);
-            allowed = rightPassword && account!.UserLevel >= 0;
+            // A starter avatar's model is for dressing in a viewer only, never for the resident pages: the same reply as a wrong password.
+            allowed = rightPassword && account!.UserLevel >= 0 && !starters.IsModel(account.PrincipalId);
             // Only someone who knows the password learns that the account waits for its email or for staff (a suspended one doesn't).
             if (rightPassword && !allowed && pending.Contains(account!.PrincipalId))
             {

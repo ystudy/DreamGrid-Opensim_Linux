@@ -38,7 +38,10 @@ public sealed class WorldCounter(Func<LauncherSettings> settings, ILogger<WorldC
 
     // OpenSim's own "GRID SERVICES" account (Constants.servicesAgentIDString), which Robust makes on its first start: no
     // person, so never a resident.
-    private const string Person = "u.`PrincipalID` <> '6571e388-6218-4574-87db-f9379718315e'";
+    // Not the library owner, and not a starter avatar's model (spec 2026-11-11-starter-avatars-design §6.5): sign-up refuses names
+    // in that pattern, so only models have them.
+    internal const string Person = "u.`PrincipalID` <> '6571e388-6218-4574-87db-f9379718315e' " +
+        "AND NOT (u.`LastName` = 'Avatar' AND u.`FirstName` REGEXP '^Starter[0-9]{2}$')";
 
     // A hypergrid link is a regions row with the Hyperlink flag (512).
     private const string NotLink = "(`flags` & 512) = 0";

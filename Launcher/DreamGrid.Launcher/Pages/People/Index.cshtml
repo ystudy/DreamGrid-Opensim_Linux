@@ -1,5 +1,6 @@
 @page "/people"
 @model DreamGrid.Launcher.Pages.People.IndexModel
+@inject DreamGrid.Launcher.Core.Starter.StarterAvatarList Starters
 @using DreamGrid.Launcher.Core.Database
 @using DreamGrid.Launcher.Pages.People
 @{
@@ -48,6 +49,7 @@
                             <td>
                                 <a class="person-name fw-semibold" href="/people/@account.PrincipalId">@row.FullName</a>
                                 @if (row.Role.IsOwner) { <span class="badge text-bg-primary ms-1">Owner</span> }
+                                @if (Starters.IsModel(account.PrincipalId)) { <span class="badge text-bg-info ms-1">Starter avatar</span> }
                                 @if (row.Facts.Waiting) { <span class="badge text-bg-secondary ms-1">Waiting for approval</span> }
                                 else if (row.Facts.Suspended) { <span class="badge text-bg-danger ms-1">Suspended</span> }
                             </td>
