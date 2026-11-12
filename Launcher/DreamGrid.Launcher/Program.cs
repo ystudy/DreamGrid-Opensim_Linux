@@ -93,6 +93,7 @@ try
     LauncherPaths.CreateOwnerOnly(paths.Guests);
     LauncherPaths.CreateOwnerOnly(paths.Email);
     LauncherPaths.CreateOwnerOnly(paths.Tickets);
+    DreamGrid.Launcher.Core.Iar.IarFolders.Prepare(paths);
 }
 catch (Exception e) when (e is ArgumentException or SettingsCorruptException or IOException or UnauthorizedAccessException)
 {
@@ -217,6 +218,7 @@ builder.Services.AddRazorPages(o =>
     o.Conventions.AddFolderApplicationModelConvention("/GuestPages", m => m.Filters.Add(new GuestSideOnly()));
     // The same for the bot-protection page.
     o.Conventions.AddPageApplicationModelConvention("/Security/Bots", m => m.Filters.Add(new GuestSideOnly()));
+    o.Conventions.AddPageApplicationModelConvention("/Security/Iar", m => m.Filters.Add(new GuestSideOnly()));
     o.Conventions.AddPageApplicationModelConvention("/People/SignUps", m => m.Filters.Add(new GuestSideOnly()));
     o.Conventions.AddPageApplicationModelConvention("/People/Deny", m => m.Filters.Add(new GuestSideOnly()));
     // The same for the Email pages: email is for the guest side's sign-up and password reset.
@@ -287,6 +289,7 @@ builder.Services.AddSingleton(sp => new HeldNames(Path.Combine(paths.Guests, "he
 builder.Services.AddSingleton<IRobustNames>(sp => new RobustNames(sp.GetRequiredService<Func<LauncherSettings>>()));
 builder.Services.AddSingleton(sp => new RegionRights(Path.Combine(paths.Guests, "region-rights.json"), sp.GetRequiredService<TimeProvider>(),
     sp.GetRequiredService<ILogger<RegionRights>>()));
+builder.Services.AddSingleton(sp => new IarRights(Path.Combine(paths.Guests, "iar-rights.json"), sp.GetRequiredService<ILogger<IarRights>>()));
 builder.Services.AddSingleton(sp => new UploadRights(Path.Combine(paths.Guests, "upload-rights.json"), sp.GetRequiredService<TimeProvider>(),
     sp.GetRequiredService<ILogger<UploadRights>>()));
 builder.Services.AddSingleton(sp => new EmailTokens(Path.Combine(paths.Guests, "email-tokens.json"), sp.GetRequiredService<TimeProvider>(),

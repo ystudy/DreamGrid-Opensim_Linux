@@ -66,6 +66,47 @@ else
         </form>
     }
 </div>
+@if (Model.Iar is { } iar)
+{
+    var g = Model.GridIar;
+    <section id="person-iar" class="card card-body mb-3">
+        <h2 class="h6">Inventory backups</h2>
+        <p class="small mb-2">For the whole grid, downloads are @(g.DownloadsOn ? "on" : "off") and uploads are @(g.UploadsOn ? "on" : "off"). These switches can only turn them off for this person.</p>
+        @if (Model.IarEditable)
+        {
+            <form method="post" action="/people/@a.PrincipalId?handler=Iar" asp-antiforgery="true">
+                <input type="hidden" name="id" value="@a.PrincipalId">
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" role="switch" id="IarDownloadOn" name="IarDownloadOn" value="true" checked="@(!iar.DownloadOff)">
+                    <label class="form-check-label" for="IarDownloadOn">May back up (download) their inventory</label>
+                </div>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" role="switch" id="IarUploadOn" name="IarUploadOn" value="true" checked="@(!iar.UploadOff)">
+                    <label class="form-check-label" for="IarUploadOn">May bring in (upload) inventory</label>
+                </div>
+                <p class="small mt-2 mb-1">Their own limits. Leave a box empty to use the grid's.</p>
+                @foreach (var (field, label, own, grid) in new (string, string, int?, int)[]
+                {
+                    ("IarMaxUploadMb", "Largest upload (MB)", iar.MaxUploadMb, g.MaxUploadMb),
+                    ("IarMaxDownloadMb", "Largest download (MB)", iar.MaxDownloadMb, g.MaxDownloadMb),
+                    ("IarDownloadsPerDay", "Downloads per day", iar.DownloadsPerDay, g.DownloadsPerDay),
+                    ("IarUploadsPerDay", "Uploads per day", iar.UploadsPerDay, g.UploadsPerDay),
+                    ("IarDownloadKbPerSecond", "Download speed (KB a second)", iar.DownloadKbPerSecond, g.DownloadKbPerSecond),
+                })
+                {
+                    <label class="form-label small mb-0 mt-1" for="@field">@label</label>
+                    <input class="form-control form-control-sm w-auto" type="number" id="@field" name="@field" value="@own" placeholder="@grid" autocomplete="off">
+                    <span class="form-text small">Use the grid's (@grid)</span>
+                }
+                <button type="submit" class="btn btn-sm btn-outline-primary mt-2">Save inventory backup settings</button>
+            </form>
+        }
+        else
+        {
+            <p class="small mb-0">Download: @(iar.DownloadOff ? "off for them" : "as the grid") · Upload: @(iar.UploadOff ? "off for them" : "as the grid")</p>
+        }
+    </section>
+}
 <partial name="_TaskIcons" model="Model.Icons" />
 <h2 class="h4 mt-4">Recent changes</h2>
 <div id="person-history">
