@@ -23,7 +23,7 @@ public sealed class LegacyCommandApiTests : IDisposable
 
     private readonly FakeGridController _grid = new();
     private readonly FakeRobustAccounts _robust = new FakeRobustAccounts()
-        .Add("Diva", "Admin", 100, "divapw")
+        .Add("Dana", "Admin", 100, "danapw")
         .Add("God", "Owner", 200, "godpw");
     private LauncherSettings _settings = new()
     {
@@ -102,7 +102,7 @@ public sealed class LegacyCommandApiTests : IDisposable
     [Fact]
     public async Task Refused_and_open_commands_are_not_audited()
     {
-        await Api().HandleAsync(Req("StopRobust", "Diva Admin", "divapw"), null, Ct); // level 100: refused
+        await Api().HandleAsync(Req("StopRobust", "Dana Admin", "danapw"), null, Ct); // level 100: refused
         await Api().HandleAsync(Req("StopRobust", "God Owner", "wrong"), null, Ct);
         await Api().HandleAsync(Req("RegionStatus"), null, Ct); // needs no level
         await Api().HandleAsync(Req("regionlist"), null, Ct);
@@ -184,8 +184,8 @@ public sealed class LegacyCommandApiTests : IDisposable
     [Fact]
     public async Task Avatar_level_100_cannot_StopRobust_but_level_200_can()
     {
-        var diva = await Api().HandleAsync(Req("StopRobust", "Diva Admin", "divapw"), null, Ct);
-        Assert.StartsWith("NAK You do not have permission to StopRobust", diva);
+        var dana = await Api().HandleAsync(Req("StopRobust", "Dana Admin", "danapw"), null, Ct);
+        Assert.StartsWith("NAK You do not have permission to StopRobust", dana);
         Assert.Empty(_grid.Snapshot());
 
         var god = await Api().HandleAsync(Req("StopRobust", "God Owner", "godpw"), null, Ct);
@@ -512,12 +512,12 @@ public sealed class LegacyCommandApiTests : IDisposable
     }
 
     private static readonly Guid GodId = Guid.Parse("0a000000-0000-0000-0000-000000000001");
-    private static readonly Guid DivaId = Guid.Parse("0a000000-0000-0000-0000-000000000002");
+    private static readonly Guid DanaId = Guid.Parse("0a000000-0000-0000-0000-000000000002");
     private static readonly Guid BossId = Guid.Parse("0a000000-0000-0000-0000-000000000003");
 
     private void KnownIds()
     {
-        _robust.Add("God", "Owner", 200, "godpw", GodId).Add("Diva", "Admin", 100, "divapw", DivaId)
+        _robust.Add("God", "Owner", 200, "godpw", GodId).Add("Dana", "Admin", 100, "danapw", DanaId)
             .Add("Boss", "Person", 0, "bosspw", BossId);
         _settings = _settings with
         {
@@ -555,15 +555,15 @@ public sealed class LegacyCommandApiTests : IDisposable
     {
         // Otherwise a known password sent here would reset the name's count between guesses at the two-factor code.
         KnownIds();
-        _twoFactor.Set(DivaId, state);
+        _twoFactor.Set(DanaId, state);
         if (required) RequireTwoFactor();
         var api = Api();
-        for (var i = 0; i < LoginThrottle.NameMaxFailures - 1; i++) _throttle.RecordFailure(SignInDoor.Staff, "Diva Admin", null);
+        for (var i = 0; i < LoginThrottle.NameMaxFailures - 1; i++) _throttle.RecordFailure(SignInDoor.Staff, "Dana Admin", null);
 
-        Assert.StartsWith("NAK You do not have permission to StopRobust", await api.HandleAsync(Req("StopRobust", "Diva Admin", "divapw"), null, Ct));
-        _throttle.RecordFailure(SignInDoor.Staff, "Diva Admin", null);
+        Assert.StartsWith("NAK You do not have permission to StopRobust", await api.HandleAsync(Req("StopRobust", "Dana Admin", "danapw"), null, Ct));
+        _throttle.RecordFailure(SignInDoor.Staff, "Dana Admin", null);
 
-        Assert.True(_throttle.IsLocked(SignInDoor.Staff, "Diva Admin", null));
+        Assert.True(_throttle.IsLocked(SignInDoor.Staff, "Dana Admin", null));
     }
 
     [Fact]
@@ -628,11 +628,11 @@ public sealed class LegacyCommandApiTests : IDisposable
     {
         KnownIds();
         var api = Api(new PeekModule());
-        Assert.Equal("seen", await api.HandleAsync(Req("Peek", "Diva Admin", "divapw"), null, Ct));
+        Assert.Equal("seen", await api.HandleAsync(Req("Peek", "Dana Admin", "danapw"), null, Ct));
 
         RequireTwoFactor();
 
-        Assert.StartsWith("NAK You do not have permission to Peek", await api.HandleAsync(Req("Peek", "Diva Admin", "divapw"), null, Ct));
+        Assert.StartsWith("NAK You do not have permission to Peek", await api.HandleAsync(Req("Peek", "Dana Admin", "danapw"), null, Ct));
     }
 
     [Fact]
@@ -650,7 +650,7 @@ public sealed class LegacyCommandApiTests : IDisposable
     {
         KnownIds();
         RequireTwoFactor();
-        foreach (var id in new[] { GodId, DivaId, BossId }) _twoFactor.Set(id, TwoFactorState.Unknown);
+        foreach (var id in new[] { GodId, DanaId, BossId }) _twoFactor.Set(id, TwoFactorState.Unknown);
 
         Assert.Equal("ACK", await Api().HandleAsync(Req("StopMysql", password: MachineId), null, Ct));
         Assert.Equal(0, _robust.Lookups);

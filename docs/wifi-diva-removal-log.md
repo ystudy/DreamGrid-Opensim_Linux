@@ -91,3 +91,11 @@ Old lines, verbatim. `Robust.HG.ini.proto` is `bin/Robust.HG.ini.proto`; the thr
 - `GridConfigWriterTests`: `SmartStart_disabled_and_Wifi_disabled_in_both` is `SmartStart_disabled_in_both`, without the `[WifiService]` assert. `Register_no_longer_points_at_wifi` is `Register_and_password_point_at_the_website`: `register` ends with `/signup` and `password` equals `WebsiteAddress.ForgotPassword`. New `Region_profiles_point_at_robust` checks `[UserProfiles] ProfileServiceURL` is not blank. They passed before the template edits as guards.
 - Snapshots `{grid-asset,local,simple-public}.OpenSim.ini` regenerated (`DG_CAPTURE_SNAPSHOTS=1`, test class `GridConfigWriterTests`). Per file, the diff is exactly: the `GridName` comment, the `jOpensimURL` block, the commented `data_services` line, the reworded groups comment and the `[WifiService]` section. Nothing else changed.
 - `tests/DreamGrid.Smoke/SmokeRun.cs`: the `[WifiService] Enabled = false` stub and its two comment lines are gone from the INI text the smoke run writes.
+
+## Names and comments
+
+- `LegacyCommandApiTests`: the test avatar "Diva Admin" is now "Dana Admin" (password `danapw`, field `DanaId`, local `dana`). The Guid and level 100 are unchanged. No other test file used these names.
+- `RegionSettingsTests`: the comment about OpenSim start-up errors no longer mentions jOpenSimSearch, which is gone; it now names only the PID file error.
+- `.github/workflows/dreamgrid-ci.yml`: "the Wifi secrets in it" is now "the old INI secrets in it".
+- `.gitleaks.toml`: the comment now says "passwords OpenSim's INI files used to hold". No rule, regex or allow-list entry changed.
+- `docs/jopensim-notes.md`, `docs/opensim-search-notes.md`: each has one added line saying the modules were removed on 2026-11-12. These notes stay as reference.
