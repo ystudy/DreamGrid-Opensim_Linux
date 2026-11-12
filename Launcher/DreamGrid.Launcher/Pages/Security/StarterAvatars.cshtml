@@ -3,6 +3,12 @@
 @{
     ViewData["Title"] = "Starter avatars";
 }
+@section Head {
+    @if (Model.Progress is { Running: true })
+    {
+        <meta http-equiv="refresh" content="3">
+    }
+}
 <p class="back-link"><a href="/guest-pages">‹ Guest pages</a></p>
 <h1>Starter avatars</h1>
 <p>New residents choose one of these on the second step of signing up, and log in wearing it with copies of everything it wears in their inventory. An avatar is on the sign-up page once it has a snapshot and its model passed <strong>Check it</strong>.</p>
@@ -15,6 +21,62 @@
     <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
 }
 
+@if (Model.Progress is { } progress)
+{
+    <section class="card card-body mb-3" id="import-progress">
+        <h2 class="h5">@(progress.Running ? "Loading avatars…" : "Loading finished")</h2>
+        <ul class="list-unstyled mb-0">
+            @foreach (var line in progress.Lines)
+            {
+                <li>@line.Name: @line.Stage@if (line.Error is not null) { <span class="text-danger"> — @line.Error</span> }</li>
+            }
+        </ul>
+    </section>
+}
+
+@if (Model.Candidates.Count > 0)
+{
+    <section class="card card-body mb-3" id="archive-picks">
+        <h2 class="h5">Avatars in the archive</h2>
+        <p class="small">Tick the ones to add. Each gets its own model account, and its folder is loaded into it. Taken-down items are left out.</p>
+        <form method="post" asp-page-handler="Import">
+            <input type="hidden" name="Pending" value="@Model.Pending">
+            @for (var i = 0; i < Model.Candidates.Count; i++)
+            {
+                var c = Model.Candidates[i];
+                <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+                    <input type="hidden" name="Picks[@i].Folder" value="@c.FolderPath">
+                    <input class="form-check-input" type="checkbox" name="Picks[@i].On" value="true" id="pick-@i" checked>
+                    <label class="form-check-label small" for="pick-@i">@c.FolderPath (@c.Items items)</label>
+                    <label class="visually-hidden" for="pick-name-@i">Name for @c.FolderPath</label>
+                    <input class="form-control form-control-sm w-auto" id="pick-name-@i" name="Picks[@i].Name" value="@c.Name" maxlength="@StarterAvatarsModel.MaxName" required>
+                </div>
+            }
+            <button class="btn btn-primary" type="submit">Add the ticked avatars</button>
+        </form>
+    </section>
+}
+else if (Model.Pending is null)
+{
+    <section class="card card-body mb-3" id="archive-upload">
+        <h2 class="h5">Load avatars from an archive</h2>
+        <form method="post" action="/security/starter-avatars/upload" enctype="multipart/form-data" asp-antiforgery="true">
+            <label class="form-label" for="iar-file">An IAR whose avatars are folders two levels down, such as FULLAVATARS/Lyra (no size limit)</label>
+            <input class="form-control" type="file" id="iar-file" name="iar" accept=".iar" required>
+            <button type="submit" class="btn btn-outline-primary mt-2">Upload</button>
+        </form>
+        <details class="mt-3">
+            <summary>Or add an account you already dressed</summary>
+            <form method="post" asp-page-handler="AddExisting" class="row g-2 mt-1">
+                <div class="col-auto"><label class="form-label small" for="add-first">First name</label><input class="form-control form-control-sm" id="add-first" name="first" required></div>
+                <div class="col-auto"><label class="form-label small" for="add-last">Last name</label><input class="form-control form-control-sm" id="add-last" name="last" required></div>
+                <div class="col-auto"><label class="form-label small" for="add-name">Name at sign-up</label><input class="form-control form-control-sm" id="add-name" name="name" maxlength="@StarterAvatarsModel.MaxName"></div>
+                <div class="col-auto align-self-end"><button class="btn btn-sm btn-outline-primary" type="submit">Add</button></div>
+            </form>
+        </details>
+    </section>
+}
+
 @if (Model.Avatars.Count == 0)
 {
     <p class="text-body-secondary">There are no starter avatars yet, so new residents get the plain avatar.</p>
@@ -24,7 +86,7 @@
     var a = Model.Avatars[i];
     <section class="card card-body mb-3 starter-row" id="avatar-@a.Id.ToString("N")">
         <div class="d-flex flex-wrap gap-3">
-            <div style="width:120px">
+            <div class="starter-thumb">
                 @if (a.Snapshot is not null)
                 {
                     <img class="img-fluid rounded border" src="/security/starter-avatars?handler=Picture&id=@a.Id" alt="@a.Name">

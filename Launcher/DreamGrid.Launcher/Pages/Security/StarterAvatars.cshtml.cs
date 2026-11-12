@@ -14,7 +14,7 @@ namespace DreamGrid.Launcher.Pages.Security;
 /// hide and show, remove). Every change is in the audit log as <c>starter-avatar-*</c>.
 /// </summary>
 public partial class StarterAvatarsModel(StarterAvatarList starters, LauncherPaths paths, IAccountRemover remover, AuditLog audit,
-    ILogger<StarterAvatarsModel> log) : PageModel
+    Starter.StarterImport import, ILogger<StarterAvatarsModel> log) : PageModel
 {
     public const int MaxName = 64;
 
@@ -26,13 +26,17 @@ public partial class StarterAvatarsModel(StarterAvatarList starters, LauncherPat
     /// <summary>The avatar sign-up checks when the page opens: the owner's default if ready, else the first ready one.</summary>
     public Guid? EffectiveDefault { get; private set; }
 
-    public virtual void OnGet() => Load();
+    public void OnGet()
+    {
+        Load();
+        LoadImport();
+    }
 
-    /// <summary>Any avatar's snapshot (or suggestion), for this page: the public path only serves ready ones.</summary>
-    public IActionResult OnGetPicture(Guid id, bool suggested = false)
+    /// <summary>Any avatar's snapshot, for this page: the public path only serves ready ones.</summary>
+    public IActionResult OnGetPicture(Guid id)
     {
         if (starters.All().FirstOrDefault(a => a.Id == id) is null) return NotFound();
-        var path = Path.Combine(paths.StarterAvatars, id + (suggested ? ".suggested.webp" : ".webp"));
+        var path = Path.Combine(paths.StarterAvatars, id + ".webp");
         return System.IO.File.Exists(path) ? PhysicalFile(path, "image/webp") : NotFound();
     }
 
@@ -83,8 +87,7 @@ public partial class StarterAvatarsModel(StarterAvatarList starters, LauncherPat
     {
         if (Find(id) is not { } a) return Gone();
         starters.Remove(id);
-        foreach (var f in new[] { ".webp", ".suggested.webp" })
-            TryDelete(Path.Combine(paths.StarterAvatars, a.Id + f));
+        TryDelete(Path.Combine(paths.StarterAvatars, a.Id + ".webp"));
         var result = "ok";
         if (deleteModel)
         {
@@ -132,6 +135,7 @@ public partial class StarterAvatarsModel(StarterAvatarList starters, LauncherPat
     {
         Error = message;
         Load();
+        LoadImport();
         return Page();
     }
 

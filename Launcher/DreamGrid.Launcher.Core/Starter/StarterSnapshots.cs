@@ -20,10 +20,10 @@ public static class StarterSnapshots
     public const string Damaged = "That picture couldn't be read; it may be damaged.";
 
     /// <summary>
-    /// Saves <paramref name="input"/> as <c>&lt;id&gt;.webp</c> in <paramref name="folder"/> (<c>&lt;id&gt;.suggested.webp</c> when
-    /// <paramref name="suggested"/>), replacing one already there. Returns the file name, or null with <paramref name="problem"/>.
+    /// Saves <paramref name="input"/> as <c>&lt;id&gt;.webp</c> in <paramref name="folder"/>, replacing one already there. Returns
+    /// the file name, or null with <paramref name="problem"/>.
     /// </summary>
-    public static string? Save(Stream input, string folder, Guid id, out string? problem, bool suggested = false)
+    public static string? Save(Stream input, string folder, Guid id, out string? problem)
     {
         var bytes = ReadAtMost(input, MaxBytes);
         if (bytes is null)
@@ -78,7 +78,7 @@ public static class StarterSnapshots
         }
 
         Directory.CreateDirectory(folder);
-        var name = id + (suggested ? ".suggested.webp" : ".webp");
+        var name = id + ".webp";
         var path = Path.Combine(folder, name);
         var tmp = path + ".tmp";
         File.WriteAllBytes(tmp, webp.ToArray());

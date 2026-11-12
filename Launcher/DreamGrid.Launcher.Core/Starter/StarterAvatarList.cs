@@ -7,8 +7,10 @@ namespace DreamGrid.Launcher.Core.Starter;
 /// One starter avatar (spec 2026-11-11-starter-avatars-design §6.6): its display name, its model account, its place in the list,
 /// whether the owner hid it, its snapshot's file name, its last check and the warning a failed copy left.
 /// </summary>
+/// <param name="OutfitFolder">Where the outfit is in the model's inventory ("Lyra/FULLAVATARS/Lyra complete female avatar") when it
+/// was loaded from an archive, for the owner's dressing instructions.</param>
 public sealed record StarterAvatar(Guid Id, string Name, Guid Model, string ModelFirst, string ModelLast, int Order, bool Hidden,
-    string? Snapshot, DateTimeOffset? CheckedAt, bool CheckPassed, string? Warning)
+    string? Snapshot, DateTimeOffset? CheckedAt, bool CheckPassed, string? Warning, string? OutfitFolder = null)
 {
     /// <summary>Shown at sign-up: not hidden, has a snapshot, passed its check and has no warning since.</summary>
     public bool IsReady => !Hidden && Snapshot is not null && CheckPassed && Warning is null;
@@ -67,12 +69,12 @@ public sealed class StarterAvatarList
         picked is { } id && Ready().FirstOrDefault(a => a.Id == id) is { } a ? a : Default();
 
     /// <summary>Adds a new, not yet ready avatar at the end of the list.</summary>
-    public StarterAvatar Add(string name, Guid model, string first, string last)
+    public StarterAvatar Add(string name, Guid model, string first, string last, string? outfitFolder = null)
     {
         lock (_gate)
         {
             var order = _state.Avatars.Count == 0 ? 0 : _state.Avatars.Max(a => a.Order) + 1;
-            var a = new StarterAvatar(Guid.NewGuid(), name.Trim(), model, first, last, order, false, null, null, false, null);
+            var a = new StarterAvatar(Guid.NewGuid(), name.Trim(), model, first, last, order, false, null, null, false, null, outfitFolder);
             Swap(_state with { Avatars = [.. _state.Avatars, a] });
             return a;
         }

@@ -405,3 +405,4 @@ header .signout { margin: 0; }
 .starter-card img { aspect-ratio: 3 / 4; object-fit: cover; background: var(--bs-secondary-bg); }
 .btn-check:checked + .starter-card { border-color: var(--bs-primary); box-shadow: 0 0 0 .2rem rgba(var(--bs-primary-rgb), .25); }
 .btn-check:focus-visible + .starter-card { outline: 2px solid var(--bs-primary); outline-offset: 2px; }
+.starter-thumb { width: 120px; }

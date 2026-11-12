@@ -46,11 +46,11 @@ public sealed class StarterSnapshotsTests : IDisposable
     }
 
     [Fact]
-    public void Small_snapshot_keeps_its_size_and_a_suggestion_has_its_own_name()
+    public void Small_snapshot_keeps_its_size()
     {
         var id = Guid.NewGuid();
-        var name = StarterSnapshots.Save(new MemoryStream(Png(300, 400)), _dir, id, out _, suggested: true);
-        Assert.Equal(id + ".suggested.webp", name);
+        var name = StarterSnapshots.Save(new MemoryStream(Png(300, 400)), _dir, id, out _);
+        Assert.Equal(id + ".webp", name);
         using var codec = SKCodec.Create(Path.Combine(_dir, name!));
         Assert.Equal((300, 400), (codec.Info.Width, codec.Info.Height));
     }

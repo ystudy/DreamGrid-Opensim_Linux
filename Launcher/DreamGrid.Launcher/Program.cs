@@ -281,6 +281,7 @@ builder.Services.AddSingleton<IAppearanceStore>(sp => new AppearanceStore(sp.Get
 builder.Services.AddSingleton(sp => new DreamGrid.Launcher.Core.Starter.StarterAvatarList(Path.Combine(paths.StarterAvatars, "avatars.json"),
     sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<DreamGrid.Launcher.Core.Starter.StarterAvatarList>>()));
 builder.Services.AddSingleton<DreamGrid.Launcher.Starter.StarterCopyCheck>();
+builder.Services.AddSingleton<DreamGrid.Launcher.Starter.StarterImport>();
 builder.Services.AddSingleton(sp => new TakedownStore(paths.Takedowns, sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<TakedownStore>>()));
 builder.Services.AddSingleton(new EvidenceCopier(paths.FsAssetsData));
 builder.Services.AddSingleton<IEstateRemover>(sp => new EstateRemover(sp.GetRequiredService<Func<LauncherSettings>>()));
@@ -466,6 +467,7 @@ LibraryApi.Map(app);
 IarStaffApi.Map(app);
 IarGuestApi.Map(app);
 StarterSnapshotApi.Map(app);
+StarterApi.Map(app);
 StatusApi.Map(app);
 DashboardApi.Map(app);
 SetupApi.Map(app);
