@@ -23,6 +23,8 @@ using DreamGrid.Launcher.Splash;
 using DreamGrid.Launcher.Email;
 using DreamGrid.Launcher.Groups;
 using DreamGrid.Launcher.Guests;
+using DreamGrid.Launcher.Iar;
+using DreamGrid.Launcher.Core.Iar;
 using DreamGrid.Launcher.ModelImport;
 using DreamGrid.Launcher.Resident;
 using DreamGrid.Launcher.Setup;
@@ -93,6 +95,7 @@ try
     LauncherPaths.CreateOwnerOnly(paths.Guests);
     LauncherPaths.CreateOwnerOnly(paths.Email);
     LauncherPaths.CreateOwnerOnly(paths.Tickets);
+    DreamGrid.Launcher.Core.Iar.IarFolders.Prepare(paths);
 }
 catch (Exception e) when (e is ArgumentException or SettingsCorruptException or IOException or UnauthorizedAccessException)
 {
@@ -217,6 +220,7 @@ builder.Services.AddRazorPages(o =>
     o.Conventions.AddFolderApplicationModelConvention("/GuestPages", m => m.Filters.Add(new GuestSideOnly()));
     // The same for the bot-protection page.
     o.Conventions.AddPageApplicationModelConvention("/Security/Bots", m => m.Filters.Add(new GuestSideOnly()));
+    o.Conventions.AddPageApplicationModelConvention("/Security/Iar", m => m.Filters.Add(new GuestSideOnly()));
     o.Conventions.AddPageApplicationModelConvention("/People/SignUps", m => m.Filters.Add(new GuestSideOnly()));
     o.Conventions.AddPageApplicationModelConvention("/People/Deny", m => m.Filters.Add(new GuestSideOnly()));
     // The same for the Email pages: email is for the guest side's sign-up and password reset.
@@ -287,6 +291,7 @@ builder.Services.AddSingleton(sp => new HeldNames(Path.Combine(paths.Guests, "he
 builder.Services.AddSingleton<IRobustNames>(sp => new RobustNames(sp.GetRequiredService<Func<LauncherSettings>>()));
 builder.Services.AddSingleton(sp => new RegionRights(Path.Combine(paths.Guests, "region-rights.json"), sp.GetRequiredService<TimeProvider>(),
     sp.GetRequiredService<ILogger<RegionRights>>()));
+builder.Services.AddSingleton(sp => new IarRights(Path.Combine(paths.Guests, "iar-rights.json"), sp.GetRequiredService<ILogger<IarRights>>()));
 builder.Services.AddSingleton(sp => new UploadRights(Path.Combine(paths.Guests, "upload-rights.json"), sp.GetRequiredService<TimeProvider>(),
     sp.GetRequiredService<ILogger<UploadRights>>()));
 builder.Services.AddSingleton(sp => new EmailTokens(Path.Combine(paths.Guests, "email-tokens.json"), sp.GetRequiredService<TimeProvider>(),
@@ -414,6 +419,20 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<TicketSweep>());
 builder.Services.AddSingleton<BackgroundWork>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<BackgroundWork>());
 builder.Services.AddSingleton<OarJobs>();
+// Inventory backups (spec 2026-11-11-iar-backups-design).
+builder.Services.AddSingleton(sp => new IarCounts(Path.Combine(paths.Security, "iar-counts.json"), sp.GetRequiredService<TimeProvider>(),
+    sp.GetRequiredService<ILogger<IarCounts>>()));
+builder.Services.AddSingleton(sp => new IarFiles(paths, sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<IarFiles>>()));
+builder.Services.AddSingleton<IIarNotifier, IarEmailNotifier>();
+builder.Services.AddSingleton(sp => new IarJobs(sp.GetRequiredService<IGridController>(), sp.GetRequiredService<Func<LauncherSettings>>(),
+    sp.GetRequiredService<IarRights>(), sp.GetRequiredService<IarCounts>(), sp.GetRequiredService<IarFiles>(), sp.GetRequiredService<TakedownStore>(),
+    sp.GetRequiredService<IInventoryStore>(), paths, sp.GetRequiredService<BackgroundWork>(), sp.GetRequiredService<IIarNotifier>(),
+    sp.GetRequiredService<AuditLog>(), sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<IarJobs>>()));
+builder.Services.AddSingleton(sp => new IarStaffRecords(paths));
+builder.Services.AddSingleton<IarDownloadGate>();
+builder.Services.AddSingleton(sp => new IarStaffJobs(sp.GetRequiredService<IGridController>(), sp.GetRequiredService<IarStaffRecords>(),
+    sp.GetRequiredService<IInventoryStore>(), paths, sp.GetRequiredService<BackgroundWork>(), sp.GetRequiredService<AuditLog>(),
+    sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<IarStaffJobs>>()));
 
 var app = builder.Build();
 // Routing is stated twice, so the endpoint is known to everything below (ApiEndpoint.Is) and picked again once SetupGate has
@@ -437,6 +456,8 @@ LogsApi.Map(app);
 BotsApi.Map(app);
 RegionsApi.Map(app);
 LibraryApi.Map(app);
+IarStaffApi.Map(app);
+IarGuestApi.Map(app);
 StatusApi.Map(app);
 DashboardApi.Map(app);
 SetupApi.Map(app);
@@ -454,6 +475,18 @@ app.Lifetime.ApplicationStarted.Register(() =>
 
 // Uploads and saves cut off by the last stop leave parts behind; nothing is using them yet.
 app.Services.GetRequiredService<OarLibrary>().ClearStaging();
+// Residents' expired backups go now and every 10 minutes after.
+var iarFiles = app.Services.GetRequiredService<IarFiles>();
+iarFiles.Sweep();
+app.Services.GetRequiredService<BackgroundWork>().Run("Inventory backup sweep", async ct =>
+{
+    while (!ct.IsCancellationRequested)
+    {
+        await Task.Delay(TimeSpan.FromMinutes(10), ct);
+        iarFiles.Sweep();
+    }
+});
+
 
 try
 {

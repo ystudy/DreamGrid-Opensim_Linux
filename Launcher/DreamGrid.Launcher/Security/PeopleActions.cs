@@ -29,7 +29,7 @@ public sealed record PersonView(PersonRow Row, PersonFacts Facts, RoleView Role)
 public sealed class PeopleActions(IPeopleDirectory people, StaffActions staff, Func<LauncherSettings> settings, SignUpBoard pending,
     EmailSender sender, IRobustClient robust, IRobustNames names, IRobustEmails emails, IStaffDirectory directory, HeldNames held,
     PasswordResets resets, StaffSessions sessions, GuestStamps stamps, IGridController grid, IAccountRemover remover, IEstateRemover estates,
-    RegionRights rights, UploadRights uploads, AccountHolds holds, SuspendedStore suspended, EmailTokens tokens, PendingEmailChanges emailChanges, AuditLog audit,
+    RegionRights rights, UploadRights uploads, IarRights iarRights, AccountHolds holds, SuspendedStore suspended, EmailTokens tokens, PendingEmailChanges emailChanges, AuditLog audit,
     ResidentLanguages languages, EmailLanguage emailLanguage, ILogger<PeopleActions> log)
 {
     public const string OnHold = "This account is on hold.";
@@ -238,6 +238,56 @@ public sealed class PeopleActions(IPeopleDirectory people, StaffActions staff, F
         else uploads.Remove(principal);
         Write(actor, ip, "upload-right-changed", $"{LogText.Clean(name, 64)}: {(allow ? "off -> on" : "on -> off")}", "ok");
         return new(true, allow ? $"{name} may upload models now." : $"{name} may not upload models any more.");
+    }
+
+    /// <summary>The person's inventory backup switches and own limits.</summary>
+    public IarPersonRights IarRightsOf(Guid principal) => iarRights.For(principal);
+
+    /// <summary>
+    /// Saves the person's inventory backup switches and own limits (the rule of <see cref="PersonTask.IarRights"/>: the owner for
+    /// anyone, admins for residents and themselves). Each change is audited as <c>iar-rights-changed</c>, for example
+    /// <c>"Ann Lee: download on -> off"</c> or <c>"Ann Lee: UploadsPerDay grid -> 10"</c>; nothing changed is not audited.
+    /// A limit out of the grid settings' range is refused and nothing is saved.
+    /// </summary>
+    public async Task<ChangeOutcome> SetIarRightsAsync(ClaimsPrincipal actor, string? ip, Guid principal, bool downloadOn, bool uploadOn,
+        int? maxUploadMb, int? maxDownloadMb, int? downloadsPerDay, int? uploadsPerDay, int? downloadKbPerSecond, CancellationToken ct)
+    {
+        var (person, problem) = await LookAsync(actor, principal, ct);
+        if (person is null) return new(false, problem ?? Gone);
+        var name = LogText.Clean(person.FullName, 64);
+        if (Refusal(actor, person, PersonTask.IarRights) is { } refusal)
+        {
+            Write(actor, ip, "iar-rights-changed", name, "refused");
+            return new(false, refusal);
+        }
+        var wanted = new IarPersonRights(principal, !downloadOn, !uploadOn, maxUploadMb, maxDownloadMb, downloadsPerDay, uploadsPerDay,
+            downloadKbPerSecond);
+        // The person's limits are checked as the grid's would be, field by field, against a copy of the grid's settings.
+        var check = SettingsValidator.Iar(IarRights.Effective(settings().Iar, wanted));
+        if (!check.Ok) return new(false, string.Join(" ", check.Errors.Values));
+
+        var before = iarRights.For(principal);
+        var changes = new List<string>();
+        if (before.DownloadOff != wanted.DownloadOff) changes.Add($"download {OnOff(!before.DownloadOff)} -> {OnOff(downloadOn)}");
+        if (before.UploadOff != wanted.UploadOff) changes.Add($"upload {OnOff(!before.UploadOff)} -> {OnOff(uploadOn)}");
+        Limit(nameof(IarSettings.MaxUploadMb), before.MaxUploadMb, wanted.MaxUploadMb);
+        Limit(nameof(IarSettings.MaxDownloadMb), before.MaxDownloadMb, wanted.MaxDownloadMb);
+        Limit(nameof(IarSettings.DownloadsPerDay), before.DownloadsPerDay, wanted.DownloadsPerDay);
+        Limit(nameof(IarSettings.UploadsPerDay), before.UploadsPerDay, wanted.UploadsPerDay);
+        Limit(nameof(IarSettings.DownloadKbPerSecond), before.DownloadKbPerSecond, wanted.DownloadKbPerSecond);
+        if (changes.Count == 0) return new(true, "Nothing changed.");
+
+        iarRights.Set(wanted);
+        foreach (var change in changes)
+            Write(actor, ip, "iar-rights-changed", $"{name}: {change}", "ok");
+        return new(true, $"Saved {person.FullName}'s inventory backup settings.");
+
+        void Limit(string field, int? was, int? now)
+        {
+            if (was != now) changes.Add($"{field} {(was?.ToString() ?? "grid")} -> {(now?.ToString() ?? "grid")}");
+        }
+
+        static string OnOff(bool on) => on ? "on" : "off";
     }
 
     public Task<ChangeOutcome> SuspendAsync(ClaimsPrincipal actor, string? ip, Guid principal, CancellationToken ct) =>

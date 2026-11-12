@@ -31,7 +31,7 @@ else
                         <td>@c.Notice.SenderName</td>
                         <td>@c.Items.Count</td>
                         <td>@c.People.Count</td>
-                        <td>@(c.Open ? "Open" : "Closed")</td>
+                        <td>@(c.Open ? "Open" : c.MatchedSinceClosed ? "Closed (match since closed)" : "Closed")</td>
                     </tr>
                 }
             </tbody>

@@ -8,7 +8,8 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 namespace DreamGrid.Launcher.Pages.Guest;
 
 /// <summary>A signed-in guest's home (<c>AuthSchemes.GuestPolicy</c>, by the /Guest folder convention): who they are and how to connect with Firestorm.</summary>
-public sealed class IndexModel(Func<LauncherSettings> settings, RegionRights rights, ResidentTwoFactor residents, UploadRights uploads) : PageModel
+public sealed class IndexModel(Func<LauncherSettings> settings, RegionRights rights, ResidentTwoFactor residents, UploadRights uploads,
+    DreamGrid.Launcher.Guests.IarRights iarRights) : PageModel
 {
     /// <summary>Whether the page links to the resident's two-factor page (<see cref="ResidentTwoFactor.PageShown"/>).</summary>
     public bool TwoFactorLink { get; private set; }
@@ -24,6 +25,7 @@ public sealed class IndexModel(Func<LauncherSettings> settings, RegionRights rig
 
     /// <summary>Whether the guest may upload models here (the same rule as the upload pages, <see cref="UploadPagesOnlyAttribute"/>).</summary>
     public bool UploadLink { get; private set; }
+    public bool InventoryLink { get; private set; }
 
     public void OnGet()
     {
@@ -31,6 +33,7 @@ public sealed class IndexModel(Func<LauncherSettings> settings, RegionRights rig
         var s = settings();
         TwoFactorLink = GuestSignIn.Read(User) is { } me && ResidentTwoFactor.PageShown(s, residents.Store.StateOf(me.Principal));
         UploadLink = UploadPagesOnlyAttribute.Shown(s, uploads, User);
+        InventoryLink = DreamGrid.Launcher.Iar.IarPagesOnlyAttribute.Shown(s, iarRights, User);
         DisplayName = User.Identity?.Name ?? "";
         GridName = s.GridName;
         LoginUri = GridEndpoints.LoginUri(s, HostAddress.Effective(s.Hostname));

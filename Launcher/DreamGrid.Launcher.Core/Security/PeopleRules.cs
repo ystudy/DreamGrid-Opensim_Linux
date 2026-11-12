@@ -1,7 +1,7 @@
 namespace DreamGrid.Launcher.Core.Security;
 
 /// <summary>A task on the People list and a person's page.</summary>
-public enum PersonTask { Edit, ResetLink, SignOut, Suspend, Unsuspend, Delete, Inventory, AllowUpload, StopUpload }
+public enum PersonTask { Edit, ResetLink, SignOut, Suspend, Unsuspend, Delete, Inventory, AllowUpload, StopUpload, IarRights }
 
 /// <summary>
 /// What the rules need to know about a person: the role they are judged by (the higher of their current role and the one they
@@ -32,7 +32,7 @@ public static class PeopleRules
     /// <summary>Null when <paramref name="actor"/> may do <paramref name="task"/> to <paramref name="target"/>, else the sentence to show.</summary>
     public static string? Refusal(StaffRole actor, PersonFacts target, PersonTask task)
     {
-        if (task is PersonTask.AllowUpload or PersonTask.StopUpload) return UploadRefusal(actor, target);
+        if (task is PersonTask.AllowUpload or PersonTask.StopUpload or PersonTask.IarRights) return UploadRefusal(actor, target);
         if (target.IsOwner) return StaffChanges.OwnerRefusal;
         if (target.Waiting) return Waiting;
         if (task is PersonTask.Suspend or PersonTask.Unsuspend)
@@ -51,7 +51,8 @@ public static class PeopleRules
         };
     }
 
-    // The upload right is not a change to the person's account: the owner may switch it for anyone, themself and staff included;
+    // The upload right (and the inventory backup switches and limits, which follow the same rule) is not a change to the person's
+    // account: the owner may switch it for anyone, themself and staff included;
     // an admin for residents and for themself. A sign-up still waiting has no account to give it to.
     private static string? UploadRefusal(StaffRole actor, PersonFacts target)
     {

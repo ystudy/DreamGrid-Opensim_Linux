@@ -38,6 +38,17 @@ public sealed record LauncherPaths(string Data, string OpenSimProgram, string? M
     /// <summary>Where a region's saved OAR is written before it is moved into <see cref="Oars"/>.</summary>
     public string OarsSaving => Path.Combine(Oars, ".saving");
 
+    /// <summary>Inventory archives (IAR): owner-only, files named by random ids only, never by avatar names.</summary>
+    public string Iars => Path.Combine(Data, "iars");
+    /// <summary>Where an uploaded IAR is written while it streams in (emptied at start-up).</summary>
+    public string IarsIncoming => Path.Combine(Iars, ".incoming");
+    /// <summary>Where a region writes a saved IAR, and the filtered copy is made (emptied at start-up).</summary>
+    public string IarsSaving => Path.Combine(Iars, ".saving");
+    /// <summary>Residents' finished backups, waiting for their download link (swept at expiry).</summary>
+    public string IarsReady => Path.Combine(Iars, "ready");
+    /// <summary>Owner and admin saves kept as evidence, and their records; never swept.</summary>
+    public string IarsStaff => Path.Combine(Iars, "staff");
+
     /// <summary>The viewer splash page: its draft and published design (and, with plan 12b, its pictures).</summary>
     public string Splash => Path.Combine(Data, "splash");
     /// <summary>The splash page's pictures (redrawn uploads under the launcher's own names, with their index).</summary>

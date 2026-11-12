@@ -144,7 +144,8 @@ Each item says what Wifi did, how v7 should do it better, and the security rules
   - [x] Saving a small fix to the Terms shouldn't make everyone accept again: a "small fix, don't ask again" choice when saving. (A "Small fix only" tick on the Legal page keeps a written page's version; audited with "small fix".)
   - [x] Try it with a real Firestorm. (2026-11-01: Firestorm 7.2.5 on Windows against a Debian 12 grid: the Terms window showed the page, "I agree" logged in, and the acceptance was recorded as "in the viewer"; the owner and admins weren't asked.)
   - [ ] A grid on Windows, and what other viewers (Singularity, Cool VL Viewer) show for a `tos` reply.
-  - [ ] Store acceptance in a launcher-owned table: avatar, ToS version, time, IP. Move existing values from `GridUser.TOS` into it during the upgrade (Phase 3).
+  - [x] Store acceptance in a launcher-owned table: avatar, ToS version, time, IP. (Done: `Guests/TermsAcceptances.cs`, `<data>/guests/terms.json`.)
+  - [ ] Move existing values from `GridUser.TOS` into it during the upgrade (Phase 3).
 
 ### 2.7 Viewer splash page (Wifi: `splash`, `welcome`)
 > Redesigned with the owner (design `docs/superpowers/specs/2026-11-01-viewer-splash-design.md`): the owner (or an admin) builds the page from blocks placed anywhere, with an optional snap grid; it shrinks to a readable size and then scrolls. Three plans: 12a the stored design and the public page (done, `docs/superpowers/plans/2026-11-01-plan12a-splash-page.md`), 12b pictures (done), 12c the block editor (done, `docs/superpowers/plans/2026-11-02-plan12c-splash-editor.md`).
@@ -176,9 +177,19 @@ Each item says what Wifi did, how v7 should do it better, and the security rules
 - [ ] The owner's check on the VM, in Firestorm: add a manager and see them in the Region/Estate window without a restart; change an estate's owner; move a region into a new estate; delete the empty one.
 
 ### 2.11 Inventory backups (Wifi: `iars.html`, `inventorylist`)
-- [ ] Resident: download their own inventory as an IAR. Admin: load or save an IAR for any avatar.
-- [ ] Reuse the OAR library's streamed upload and download pattern (size limits, staging folder, safe names).
-- [ ] **[S]** Download links are short-lived and tied to the session; IARs are never served from a guessable path.
+> Built in the IAR plan (`docs/superpowers/plans/2026-11-11-iar-backups.md`, design `docs/superpowers/specs/2026-11-11-iar-backups-design.md`); owner docs in `docs/inventory-backups.md`.
+- [x] Resident: download their own inventory as an IAR (only full-rights items, object contents included, with a list of what was left out) and upload one into a new `Imported <date>` folder (taken-down content removed). Owner and admins: save or load an IAR for any avatar, with no limits and a full record (`/people/{id}/iar`).
+- [x] Four switches (download and upload, grid-wide and per resident) and every limit as a setting (`/security/iar`, and per resident on their People page).
+- [x] Reuse the OAR library's streamed upload and download pattern (size limits, staging folder, safe names).
+- [x] **[S]** Download links are short-lived and tied to the session; IARs are never served from a guessable path.
+- [ ] The owner's check on the Debian 12 VM, in Firestorm:
+  1. Turn downloads on, back up a resident, and read the left-out list. It must include a full-perm box holding a no-transfer item.
+  2. Upload that IAR into a second test resident, and see `Imported …` in their inventory.
+  3. Upload an IAR holding a taken-down item: it's left out, and the case shows the match.
+  4. Hit the daily limit once, and try someone else's download link.
+  5. As an admin, save a switched-off resident with a reason and a case number. See the record and the delete hold. Then load FULLAVATARS into a test account from a browser upload.
+  6. On the second grid, check that textures on a backed-up object are still there.
+  7. Back up a box received from another avatar that was never rezzed, and check what the left-out list says.
 
 ### 2.12 Notices to residents — not a Wifi feature
 - Wifi has **no** mass email. Its `notification` page is only an on-screen "done / OK" message. Wifi sends just three emails, each to one person: sign-up confirmation, password reset, and "account activated".

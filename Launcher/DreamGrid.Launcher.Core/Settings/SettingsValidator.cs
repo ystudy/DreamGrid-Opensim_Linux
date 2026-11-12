@@ -78,6 +78,29 @@ public static partial class SettingsValidator
         return new ValidationResult(errors);
     }
 
+    /// <summary>The inventory backup limits, each in its own range (one message per field that is out of range).</summary>
+    public static ValidationResult Iar(IarSettings iar)
+    {
+        var errors = new Dictionary<string, string>();
+        Range(nameof(iar.MaxUploadMb), iar.MaxUploadMb, 1, 102_400, "MB");
+        Range(nameof(iar.UnpackFactor), iar.UnpackFactor, 1, 20, "times");
+        Range(nameof(iar.MaxUploadItems), iar.MaxUploadItems, 1, 1_000_000, "items");
+        Range(nameof(iar.MaxDownloadMb), iar.MaxDownloadMb, 1, 102_400, "MB");
+        Range(nameof(iar.DownloadsPerDay), iar.DownloadsPerDay, 0, 100, "a day");
+        Range(nameof(iar.UploadsPerDay), iar.UploadsPerDay, 0, 100, "a day");
+        Range(nameof(iar.JobsAtOnce), iar.JobsAtOnce, 1, 8, "at once");
+        Range(nameof(iar.DownloadKbPerSecond), iar.DownloadKbPerSecond, 64, 10_485_760, "KB a second");
+        Range(nameof(iar.LinkHours), iar.LinkHours, 1, 168, "hours");
+        Range(nameof(iar.MinFreeDiskGb), iar.MinFreeDiskGb, 0, 10_000, "GB");
+        return new ValidationResult(errors);
+
+        void Range(string field, int value, int min, int max, string unit)
+        {
+            if (value < min || value > max)
+                errors[field] = $"Use a number from {min} to {max} ({unit}) for {field}.";
+        }
+    }
+
     /// <summary>Null when <paramref name="hostname"/> is empty (automatic), a DNS name or an IPv4 address.</summary>
     public static string? HostnameError(string? hostname)
     {

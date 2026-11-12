@@ -44,12 +44,13 @@ public static class EmailTemplates
     public const string TicketStaffReply = "ticket-staff-reply";
     public const string TicketNew = "ticket-new";
     public const string TicketReplyGuest = "ticket-reply-guest";
+    public const string IarReady = "iar-ready";
 
     private static readonly ResourceManager Text = new("DreamGrid.Launcher.Core.Resources.EmailText", typeof(EmailText).Assembly);
 
     public static IReadOnlyList<string> All { get; } = [Test, ConfirmEmail, ResetPassword, AccountApproved, PasswordChanged, AlreadyHaveAccount,
         ConfirmNewEmail, EmailChangeNotice, SignUpDenied, SignUpsWaiting, NameChanged, EmailChangedByStaff, EmailSetByStaff, StaffResetPassword,
-        TakedownRemoved, TakedownRestored, TicketConfirm, TicketAccess, TicketStaffReply, TicketNew, TicketReplyGuest];
+        TakedownRemoved, TakedownRestored, TicketConfirm, TicketAccess, TicketStaffReply, TicketNew, TicketReplyGuest, IarReady];
 
     private static readonly DateTimeOffset Shipped = DateTimeOffset.UnixEpoch;
 
@@ -78,6 +79,8 @@ public static class EmailTemplates
         [TicketStaffReply] = new("Staff answered a support ticket", ["{GridName}", "{Name}", "{TicketNumber}", "{Subject}", "{Link}"], ["{Link}"], "", ""),
         [TakedownRestored] = new("Item put back in your inventory", ["{GridName}", "{AvatarName}", "{CaseNumber}", "{Items}", "{Reason}"],
             ["{CaseNumber}", "{Items}"], "", ""),
+        // The link is the resident's own inventory page: the download needs them signed in, so it is never in the email.
+        [IarReady] = new("Inventory backup ready", ["{GridName}", "{AvatarName}", "{Link}", "{ExpiresAt}"], ["{Link}"], "", ""),
         [NameChanged] = new("Name changed by staff", ["{GridName}", "{OldName}", "{AvatarName}"], [], "", ""),
         // To the old address: never names the new one.
         [EmailChangedByStaff] = new("Email changed by staff", ["{GridName}", "{AvatarName}", "{Link}"], [], "", ""),
@@ -239,6 +242,7 @@ public static class EmailTemplates
             ["AvatarName"] = "Sample Avatar",
             ["Link"] = "https://example.com/sample-link",
             ["ExpiresIn"] = "30 minutes",
+            ["ExpiresAt"] = "2026-11-12 18:00 UTC",
             ["Note"] = "Sample note from staff.",
             ["Count"] = "2",
             ["Names"] = "Sample Avatar\nOther Avatar",

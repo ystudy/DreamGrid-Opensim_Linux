@@ -37,6 +37,23 @@ public sealed class PersonModel(PeopleActions people, RegionRights rights, Func<
     /// <summary>The task the "May upload models" button posts, or null when this staff member may not change it (the state still shows).</summary>
     public PersonTask? UploadTask { get; private set; }
 
+    /// <summary>The person's inventory backup switches and own limits, and the grid's values they fall back to.</summary>
+    public IarPersonRights? Iar { get; private set; }
+    public IarSettings GridIar { get; private set; } = new();
+
+    /// <summary>Whether this staff member may change the inventory backup panel (the owner and admins).</summary>
+    public bool IarEditable { get; private set; }
+
+    public async Task<IActionResult> OnPostIarAsync(Guid id, bool iarDownloadOn, bool iarUploadOn, int? iarMaxUploadMb, int? iarMaxDownloadMb,
+        int? iarDownloadsPerDay, int? iarUploadsPerDay, int? iarDownloadKbPerSecond, CancellationToken ct)
+    {
+        var outcome = await people.SetIarRightsAsync(User, HttpContext.Connection.RemoteIpAddress?.ToString(), id, iarDownloadOn, iarUploadOn,
+            iarMaxUploadMb, iarMaxDownloadMb, iarDownloadsPerDay, iarUploadsPerDay, iarDownloadKbPerSecond, ct);
+        if (outcome.Done) Notice = outcome.Message;
+        else Error = outcome.Message;
+        return await LoadAsync(id, ct) || Error is not null ? Page() : NotFound();
+    }
+
     public TaskIcons Icons => TaskIcons.For(people, User, Person!, $"/people/{Person!.Row.Account.PrincipalId}?handler=Task", words: true);
 
     public static string When(DateTimeOffset? at) =>
@@ -69,6 +86,9 @@ public sealed class PersonModel(PeopleActions people, RegionRights rights, Func<
         var uploadTask = MayUpload ? PersonTask.StopUpload : PersonTask.AllowUpload;
         UploadTask = people.Refusal(User, Person, uploadTask) is null ? uploadTask : null;
         var s = settings();
+        Iar = people.IarRightsOf(id);
+        GridIar = s.Iar;
+        IarEditable = people.Refusal(User, Person, PersonTask.IarRights) is null;
         var owned = rights.OwnedBy(id).Select(r => r.Region).ToHashSet();
         Regions = [.. s.Regions.Where(r => r.DeletedAt is null && owned.Contains(r.Uuid)).Select(r => r.Name).Order(StringComparer.OrdinalIgnoreCase)];
         Estate = rights.OwnerEstateOf(id)?.Name;

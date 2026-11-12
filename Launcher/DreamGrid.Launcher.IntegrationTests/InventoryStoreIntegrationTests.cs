@@ -48,6 +48,7 @@ public sealed class InventoryStoreIntegrationTests : IDisposable
         await Search_escapes_like_wildcards(inv, ann, ct);
         await Hypergrid_creator_shows_its_name_and_host(inv, ann, ct);
         Assert.Null(await inv.AssetHashAsync(Guid.NewGuid().ToString(), ct)); // Asset_hash_is_null_for_an_unknown_asset
+        await Create_folder_goes_under_my_inventory_and_raises_its_version(inv, bob, ct);
     }
 
     private async Task Remove_deletes_only_the_named_items_and_raises_their_folder_versions(InventoryStore inv, Guid owner, CancellationToken ct)
@@ -146,6 +147,18 @@ public sealed class InventoryStoreIntegrationTests : IDisposable
 
         Assert.Equal("Hal Gee (other.grid)", item.CreatorName);
         Assert.StartsWith("My Inventory", item.FolderPath);
+    }
+
+    private async Task Create_folder_goes_under_my_inventory_and_raises_its_version(InventoryStore inv, Guid owner, CancellationToken ct)
+    {
+        var root = await FolderOfTypeAsync(owner, 8, ct);
+        var before = await VersionAsync(root, ct);
+        var made = await inv.CreateFolderAsync(owner, "Imported 2026-11-11", ct);
+        var folder = Assert.Single(await inv.FoldersAsync(owner, ct), f => f.Id == made);
+        Assert.Equal((root, "Imported 2026-11-11", -1), (folder.Parent!.Value, folder.Name, folder.Type));
+        Assert.Equal(before + 1, await VersionAsync(root, ct));
+        Assert.Equal(1, await VersionAsync(made, ct));
+        await Assert.ThrowsAsync<NoInventoryException>(() => inv.CreateFolderAsync(Guid.NewGuid(), "x", ct));
     }
 
     private async Task<Guid> NewFolderAsync(Guid owner, string name, int type, CancellationToken ct)

@@ -106,6 +106,14 @@ Le numéro de dossier est {CaseNumber}. Si vous pensez qu’il s’agit d’une 
 L’équipe de {GridName} a remis ces objets dans votre inventaire : {Items}
 
 Le numéro de dossier est {CaseNumber}.</value></data>
+  <data name="iar-ready.Subject" xml:space="preserve"><value>La sauvegarde de votre inventaire {GridName} est prête</value></data>
+  <data name="iar-ready.Body" xml:space="preserve"><value>Bonjour {AvatarName},
+
+La sauvegarde de votre inventaire est prête. Connectez-vous sur le site et téléchargez-la ici :
+
+{Link}
+
+Le téléchargement fonctionne jusqu'au {ExpiresAt}. Les objets que vous ne pouvez pas copier, modifier et transférer restent sur {GridName} ; la page les indique.</value></data>
   <data name="ticket-confirm.Subject" xml:space="preserve"><value>Confirmez votre ticket d’assistance {GridName}</value></data>
   <data name="ticket-confirm.Body" xml:space="preserve"><value>Bonjour {Name},
 

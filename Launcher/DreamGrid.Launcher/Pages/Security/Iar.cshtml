@@ -1,0 +1,60 @@
+@page "/security/iar"
+@model DreamGrid.Launcher.Pages.Security.IarModel
+@{
+    ViewData["Title"] = "Inventory backups";
+}
+<p class="back-link"><a href="/guest-pages">‹ Guest pages</a></p>
+<h1>Inventory backups</h1>
+<p>Residents can back up their inventory as an IAR file and bring inventory in from other grids. Only items they can copy, modify and transfer leave the grid, and taken-down items never come back in. The owner and admins work on any resident's inventory from that resident's People page, without these limits.</p>
+@if (Model.Error is not null)
+{
+    <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
+}
+@if (Model.Notice is not null)
+{
+    <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
+}
+
+<form id="iar" method="post" action="/security/iar?handler=Save" asp-antiforgery="true">
+    <h2 class="h5 mt-3">For the whole grid</h2>
+    <p class="hint form-text">Set the limits before turning these on. You can still switch them off for one resident on their People page.</p>
+    <div class="form-check form-switch mt-2">
+        <input class="form-check-input" type="checkbox" role="switch" id="DownloadsOn" name="DownloadsOn" value="true" checked="@Model.DownloadsOn">
+        <label class="form-check-label" for="DownloadsOn">Residents can back up (download) their inventory</label>
+    </div>
+    <div class="form-check form-switch mt-2">
+        <input class="form-check-input" type="checkbox" role="switch" id="UploadsOn" name="UploadsOn" value="true" checked="@Model.UploadsOn">
+        <label class="form-check-label" for="UploadsOn">Residents can bring in (upload) inventory</label>
+    </div>
+
+    <h2 class="h5 mt-4">Uploads</h2>
+    <label class="form-label mt-2" for="MaxUploadMb">Largest upload (MB)</label>
+    <input class="form-control w-auto" type="number" id="MaxUploadMb" name="MaxUploadMb" min="1" max="102400" value="@Model.MaxUploadMb" autocomplete="off">
+    <label class="form-label mt-2" for="UnpackFactor">Largest unpacked size, as times the largest upload</label>
+    <input class="form-control w-auto" type="number" id="UnpackFactor" name="UnpackFactor" min="1" max="20" value="@Model.UnpackFactor" autocomplete="off">
+    <p class="hint form-text">Stops a small file that unpacks into something huge.</p>
+    <label class="form-label mt-2" for="MaxUploadItems">Most items in one upload</label>
+    <input class="form-control w-auto" type="number" id="MaxUploadItems" name="MaxUploadItems" min="1" max="1000000" value="@Model.MaxUploadItems" autocomplete="off">
+    <label class="form-label mt-2" for="UploadsPerDay">Uploads per resident per day</label>
+    <input class="form-control w-auto" type="number" id="UploadsPerDay" name="UploadsPerDay" min="0" max="100" value="@Model.UploadsPerDay" autocomplete="off">
+
+    <h2 class="h5 mt-4">Downloads</h2>
+    <label class="form-label mt-2" for="MaxDownloadMb">Largest download (MB)</label>
+    <input class="form-control w-auto" type="number" id="MaxDownloadMb" name="MaxDownloadMb" min="1" max="102400" value="@Model.MaxDownloadMb" autocomplete="off">
+    <p class="hint form-text">A bigger inventory is refused, and the resident is asked to contact staff.</p>
+    <label class="form-label mt-2" for="DownloadsPerDay">Downloads per resident per day</label>
+    <input class="form-control w-auto" type="number" id="DownloadsPerDay" name="DownloadsPerDay" min="0" max="100" value="@Model.DownloadsPerDay" autocomplete="off">
+    <label class="form-label mt-2" for="DownloadKbPerSecond">Download speed for each download (KB a second)</label>
+    <input class="form-control w-auto" type="number" id="DownloadKbPerSecond" name="DownloadKbPerSecond" min="64" max="10485760" value="@Model.DownloadKbPerSecond" autocomplete="off">
+    <p class="hint form-text">Keeps one big download from using all of the grid's upload bandwidth.</p>
+    <label class="form-label mt-2" for="LinkHours">A download link lasts (hours)</label>
+    <input class="form-control w-auto" type="number" id="LinkHours" name="LinkHours" min="1" max="168" value="@Model.LinkHours" autocomplete="off">
+
+    <h2 class="h5 mt-4">The grid</h2>
+    <label class="form-label mt-2" for="JobsAtOnce">Backups and uploads at once, for the whole grid</label>
+    <input class="form-control w-auto" type="number" id="JobsAtOnce" name="JobsAtOnce" min="1" max="8" value="@Model.JobsAtOnce" autocomplete="off">
+    <label class="form-label mt-2" for="MinFreeDiskGb">Refuse new jobs when free disk space is below (GB)</label>
+    <input class="form-control w-auto" type="number" id="MinFreeDiskGb" name="MinFreeDiskGb" min="0" max="10000" value="@Model.MinFreeDiskGb" autocomplete="off">
+
+    <button type="submit" class="btn btn-primary mt-3">Save</button>
+</form>

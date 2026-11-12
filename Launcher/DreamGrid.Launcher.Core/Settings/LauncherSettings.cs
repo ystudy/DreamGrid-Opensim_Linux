@@ -169,6 +169,27 @@ public sealed record BotSettings(
     bool AdminApproval = false,
     SignUpApprovers Approvers = SignUpApprovers.OwnerAndAdmins);
 
+/// <summary>
+/// Inventory backups (IAR) for residents (spec 2026-11-11-iar-backups-design §8). Both switches start off: the owner sets the
+/// limits first. Sizes are in MB, the unpacked limit of an upload is <see cref="MaxUploadMb"/> × <see cref="UnpackFactor"/>,
+/// counts per day are per account over a rolling 24 hours, <see cref="JobsAtOnce"/> is for the whole grid, and
+/// <see cref="MinFreeDiskGb"/> is the free space below which new jobs are refused. A resident's own overrides replace some of
+/// these (see <c>IarRights.Effective</c>).
+/// </summary>
+public sealed record IarSettings(
+    bool DownloadsOn = false,
+    bool UploadsOn = false,
+    int MaxUploadMb = 500,
+    int UnpackFactor = 4,
+    int MaxUploadItems = 20000,
+    int MaxDownloadMb = 2048,
+    int DownloadsPerDay = 2,
+    int UploadsPerDay = 2,
+    int JobsAtOnce = 1,
+    int DownloadKbPerSecond = 2048,
+    int LinkHours = 24,
+    int MinFreeDiskGb = 5);
+
 /// <summary>Which staff may approve or deny a sign-up (spec 2026-11-01-sign-up-approval-design §6).</summary>
 public enum SignUpApprovers { Owner, OwnerAndAdmins, OwnerAdminsAndSupervisors }
 
@@ -294,6 +315,12 @@ public sealed record LauncherSettings
     /// <summary>Bot protection for sign-up; a missing or null value reads as the defaults.</summary>
     [AllowNull]
     public BotSettings Bots { get => _bots; init => _bots = value ?? new(); }
+
+    private readonly IarSettings _iar = new();
+
+    /// <summary>Inventory backups for residents; a missing or null value reads as the defaults (both switches off).</summary>
+    [AllowNull]
+    public IarSettings Iar { get => _iar; init => _iar = value ?? new(); }
     public List<ProgramSettings> Programs { get; init; } = new();
     public List<RegionSettings> Regions { get; init; } = new();
     /// <summary>Region types made from library files, in the order they were added; a missing list reads as empty.</summary>

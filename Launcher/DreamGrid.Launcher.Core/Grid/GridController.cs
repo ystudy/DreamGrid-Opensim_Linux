@@ -1261,6 +1261,129 @@ public sealed partial class GridController(
         finally { _jobs.TryRemove(region.Instance, out _); }
     }
 
+    // ---- IAR jobs -----------------------------------------------------------------------------------
+
+    public async Task<int> RunIarJobAsync(IarJobRequest request, CancellationToken ct, IProgress<IarJobProgress>? progress = null)
+    {
+        if (!Enum.IsDefined(request.Kind)) throw new ArgumentException("There is no such inventory job.");
+        GridConsoleCommands.ValidateAvatarName(request.FirstName, request.LastName);
+        var file = Path.GetFullPath(request.File);
+        var root = Path.GetFullPath(paths.Iars).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        if (!file.StartsWith(root, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+            throw new ArgumentException("That file is not in the inventory archive folder.");
+        if (request.Kind == IarJobKind.Load)
+        {
+            if (request.Folder is not { } folder || !Iar.IarFolderNames.IsSafe(folder))
+                throw new ArgumentException("A load needs a folder name of letters, digits, spaces and . _ ( ) -.");
+            if (!File.Exists(file)) throw new ArgumentException("That file isn't there.");
+        }
+        else if (request.Folder is not null) throw new ArgumentException("Only a load names a folder.");
+
+        var (s, region, program) = await BeginIarJobAsync(request, ct);
+        try { return await IarOnRegionAsync(s, region, program, request, file, progress, ct); }
+        finally { _jobs.TryRemove(region.Instance, out _); }
+    }
+
+    /// <summary>
+    /// Under the operation lock, briefly: picks a running region program with no job (the one with the fewest regions loaded, then
+    /// the lowest instance name) and records the job in its slot. Returns the settings, a region of that program, and the program.
+    /// </summary>
+    private async Task<(LauncherSettings, RegionSettings, Component)> BeginIarJobAsync(IarJobRequest request, CancellationToken ct)
+    {
+        await _ops.WaitAsync(ct);
+        try
+        {
+            var s = LoadSettings();
+            var running = s.Regions.Where(r => r.DeletedAt is null)
+                .Select(r => (Region: r, Program: RunningProgramOf(s, r)))
+                .Where(x => x.Program is not null).ToList();
+            if (running.Count == 0) throw new InvalidOperationException(IarJobErrors.NoRegion);
+            var idle = running.Where(x => !_jobs.ContainsKey(x.Region.Instance))
+                .GroupBy(x => x.Region.Instance)
+                .OrderBy(g => g.Count()).ThenBy(g => g.Key, StringComparer.Ordinal)
+                .FirstOrDefault() ?? throw new InvalidOperationException(IarJobErrors.Busy);
+            var pick = idle.OrderBy(x => x.Region.Name, StringComparer.Ordinal).First();
+            _jobs[pick.Region.Instance] = $"Inventory backup for {request.FirstName} {request.LastName}";
+            return (s, pick.Region, pick.Program!);
+        }
+        finally { _ops.Release(); }
+    }
+
+    /// <summary>
+    /// Sends the save or load and follows the region log (OpenSim reports the end of an IAR job only there) until the archiver logs
+    /// the item count or a failure. A failed save's file is removed; when the launcher stops instead, the next start empties the
+    /// staging folder.
+    /// </summary>
+    private async Task<int> IarOnRegionAsync(LauncherSettings s, RegionSettings region, Component program, IarJobRequest request, string file,
+        IProgress<IarJobProgress>? progress, CancellationToken ct)
+    {
+        var save = request.Kind == IarJobKind.Save;
+        var name = $"{request.FirstName} {request.LastName}";
+        var home = $"http://{HostAddress.Effective(s.Hostname)}:{s.RobustPublicPort}";
+        var command = save
+            ? $"save iar --home={home} {name} / \"{Fwd(file)}\""
+            : $"load iar {name} \"{request.Folder}\" \"{Fwd(file)}\"";
+        if (save) Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        var log = new LogFollower(Path.Combine(paths.Logs, $"region-{region.Instance}.log"));
+        int? count = null;
+        try
+        {
+            await OnRegionConsoleAsync(program, region, s, async console =>
+            {
+                await console.RunAsync(command, ConsoleSettle, ct);
+                var sent = time.GetUtcNow();
+                while (true)
+                {
+                    long? bytes = save && File.Exists(file) ? new FileInfo(file).Length : null;
+                    progress?.Report(new IarJobProgress(save ? "Saving the inventory" : "Loading the inventory", bytes));
+                    foreach (var line in log.ReadNew())
+                    {
+                        if (!line.Contains("[INVENTORY ARCHIVER]:", StringComparison.Ordinal)) continue;
+                        if (IarCount(line, save ? "Saved archive with " : "Loaded ", save ? " items for " + name : " items from archive ", name) is { } n)
+                        {
+                            count = n;
+                            return;
+                        }
+                        if (line.Contains($" for {name} failed", StringComparison.Ordinal)
+                            || line.Contains($"User {name} not found", StringComparison.Ordinal)
+                            || (!save && line.Contains($"Inventory path {request.Folder} does not exist", StringComparison.Ordinal)))
+                            throw new InvalidOperationException(IarJobErrors.Failed);
+                    }
+                    if (program.Process.State != ProcessState.Running) throw new InvalidOperationException(IarJobErrors.Stopped);
+                    var now = time.GetUtcNow();
+                    if (save && !File.Exists(file) && now >= sent + SaveStartWait) throw new InvalidOperationException(IarJobErrors.NotStarted);
+                    if (now >= sent + OarJobWait) throw new InvalidOperationException(IarJobErrors.Failed);
+                    await Task.Delay(SavePoll, time, ct);
+                }
+            }, ct);
+            return count!.Value;
+        }
+        finally
+        {
+            if (save && count is null && !ct.IsCancellationRequested)
+            {
+                try { File.Delete(file); }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+            }
+        }
+    }
+
+    /// <summary>
+    /// The count in an archiver line such as <c>Saved archive with 7 items for Ann Lee</c> or
+    /// <c>Loaded 3 items from archive Imported for Ann Lee</c>, when it is about <paramref name="name"/>; otherwise null.
+    /// </summary>
+    private static int? IarCount(string line, string before, string after, string name)
+    {
+        var at = line.IndexOf("[INVENTORY ARCHIVER]: " + before, StringComparison.Ordinal);
+        if (at < 0) return null;
+        var start = at + "[INVENTORY ARCHIVER]: ".Length + before.Length;
+        var end = line.IndexOf(' ', start);
+        if (end < 0 || !int.TryParse(line.AsSpan(start, end - start), NumberStyles.None, CultureInfo.InvariantCulture, out var n)) return null;
+        var rest = line[end..].TrimEnd();
+        if (!rest.StartsWith(after, StringComparison.Ordinal)) return null;
+        return rest.EndsWith(" for " + name, StringComparison.Ordinal) || rest.Contains(" for " + name + ".", StringComparison.Ordinal) ? n : null;
+    }
+
     public string? BusyWith(string instance) => _jobs.TryGetValue(instance, out var job) ? job : null;
 
     /// <summary>

@@ -2732,6 +2732,191 @@ public sealed class GridControllerWiringTests : IDisposable
         Assert.Empty(_regionStore.Snapshot());
     }
 
+    // ---- IAR jobs (IAR plan task 6) ------------------------------------------------------------------
+
+    private static readonly Guid Ann = Guid.Parse("0c000000-0000-0000-0000-00000000000c");
+
+    /// <summary>The last quoted path in a <c>save iar</c> or <c>load iar</c> command, or null for any other command.</summary>
+    private static string? IarPath(string command, string verb) =>
+        command.StartsWith(verb + " ", StringComparison.Ordinal) && command.EndsWith('"') ? command[(command.LastIndexOf(" \"", StringComparison.Ordinal) + 2)..^1] : null;
+
+    private string IarFile(string folder)
+    {
+        Directory.CreateDirectory(folder);
+        var path = Path.Combine(folder, Guid.NewGuid().ToString("N") + ".iar");
+        WriteOar(path); // archive.xml first, as an IAR starts too
+        return path;
+    }
+
+    [Fact]
+    public async Task Iar_save_sends_command_and_returns_count_from_log()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var fakes = await RunningHomeAndBeach(_grid, shared: false);
+        var file = Path.Combine(_paths.IarsSaving, "s.iar");
+        _console = (_, command) =>
+        {
+            if (IarPath(command, "save iar") is { } path)
+            {
+                WriteOar(path);
+                AppendLog("Beach", "[INVENTORY ARCHIVER]: Saved archive with 7 items for Ann Lee");
+            }
+            return [];
+        };
+        try
+        {
+            var count = await _grid.RunIarJobAsync(new IarJobRequest(Ann, "Ann", "Lee", IarJobKind.Save, file), ct).WaitAsync(TimeSpan.FromSeconds(60), ct);
+
+            Assert.Equal(7, count);
+            var save = Assert.Single(_http.Commands(_secondConsole), c => c.StartsWith("save iar", StringComparison.Ordinal));
+            Assert.StartsWith("save iar --home=http://", save, StringComparison.Ordinal);
+            Assert.EndsWith($" Ann Lee / \"{Path.GetFullPath(file).Replace('\\', '/')}\"", save, StringComparison.Ordinal);
+            Assert.DoesNotContain("--perm", save, StringComparison.Ordinal);
+            Assert.True(File.Exists(file));
+            Assert.Null(_grid.BusyWith("Beach"));
+        }
+        finally { await EndAllAsync(_grid, fakes); }
+    }
+
+    [Fact]
+    public async Task Iar_save_failure_line_throws_and_removes_file()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var fakes = await RunningHomeAndBeach(_grid, shared: true);
+        var file = Path.Combine(_paths.IarsSaving, "s.iar");
+        _console = (_, command) =>
+        {
+            if (IarPath(command, "save iar") is { } path)
+            {
+                File.WriteAllBytes(path, [1, 2]);
+                AppendLog("Home", "[INVENTORY ARCHIVER]: Archive save for Ann Lee failed - disk full");
+            }
+            return [];
+        };
+        try
+        {
+            var e = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                _grid.RunIarJobAsync(new IarJobRequest(Ann, "Ann", "Lee", IarJobKind.Save, file), ct).WaitAsync(TimeSpan.FromSeconds(60), ct));
+            Assert.Equal(IarJobErrors.Failed, e.Message);
+            Assert.False(File.Exists(file));
+            Assert.Null(_grid.BusyWith("Home"));
+        }
+        finally { await EndAllAsync(_grid, fakes); }
+    }
+
+    [Fact]
+    public async Task Iar_load_sends_command_into_folder_and_returns_count()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var fakes = await RunningHomeAndBeach(_grid, shared: true);
+        var file = IarFile(_paths.IarsIncoming);
+        _console = (_, command) =>
+        {
+            if (IarPath(command, "load iar") is not null)
+                AppendLog("Home", "[INVENTORY ARCHIVER]: Loaded 3 items from archive Imported 2026-11-11 for Ann Lee");
+            return [];
+        };
+        try
+        {
+            var count = await _grid.RunIarJobAsync(new IarJobRequest(Ann, "Ann", "Lee", IarJobKind.Load, file, "Imported 2026-11-11"), ct)
+                .WaitAsync(TimeSpan.FromSeconds(60), ct);
+
+            Assert.Equal(3, count);
+            Assert.Contains($"load iar Ann Lee \"Imported 2026-11-11\" \"{Path.GetFullPath(file).Replace('\\', '/')}\"", _http.Commands(_store.LoadOrCreate().RegionConsolePort));
+        }
+        finally { await EndAllAsync(_grid, fakes); }
+    }
+
+    [Fact]
+    public async Task Iar_load_into_missing_folder_throws()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var fakes = await RunningHomeAndBeach(_grid, shared: true);
+        var file = IarFile(_paths.IarsIncoming);
+        _console = (_, command) =>
+        {
+            if (IarPath(command, "load iar") is not null)
+                AppendLog("Home", "[INVENTORY ARCHIVER]: Inventory path Imported 2026-11-11 does not exist");
+            return [];
+        };
+        try
+        {
+            var e = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                _grid.RunIarJobAsync(new IarJobRequest(Ann, "Ann", "Lee", IarJobKind.Load, file, "Imported 2026-11-11"), ct).WaitAsync(TimeSpan.FromSeconds(60), ct));
+            Assert.Equal(IarJobErrors.Failed, e.Message);
+        }
+        finally { await EndAllAsync(_grid, fakes); }
+    }
+
+    [Fact]
+    public async Task Iar_without_a_running_region_throws_NoRegion()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var e = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _grid.RunIarJobAsync(new IarJobRequest(Ann, "Ann", "Lee", IarJobKind.Save, Path.Combine(_paths.IarsSaving, "s.iar")), ct));
+        Assert.Equal(IarJobErrors.NoRegion, e.Message);
+    }
+
+    [Fact]
+    public async Task Iar_takes_the_program_slot_and_oar_job_is_refused_meanwhile()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var fakes = await RunningHomeAndBeach(_grid, shared: true);
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        try
+        {
+            var job = _grid.RunIarJobAsync(new IarJobRequest(Ann, "Ann", "Lee", IarJobKind.Save, Path.Combine(_paths.IarsSaving, "s.iar")), stop.Token);
+            await Until(() => _grid.BusyWith("Home") is not null, "the IAR job never started");
+            Assert.Equal("Inventory backup for Ann Lee", _grid.BusyWith("Home"));
+
+            var oar = await Assert.ThrowsAsync<InvalidOperationException>(() => _grid.RunOarJobAsync(new OarJobRequest(Home, OarJobKind.Save), ct));
+            Assert.Equal("Inventory backup for Ann Lee is still running. Try again when it finishes.", oar.Message);
+            var second = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                _grid.RunIarJobAsync(new IarJobRequest(Ann, "Ann", "Lee", IarJobKind.Save, Path.Combine(_paths.IarsSaving, "t.iar")), ct));
+            Assert.Equal(IarJobErrors.Busy, second.Message);
+
+            stop.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => job.WaitAsync(TimeSpan.FromSeconds(30), ct));
+            Assert.Null(_grid.BusyWith("Home"));
+        }
+        finally { await EndAllAsync(_grid, fakes); }
+    }
+
+    [Fact]
+    public async Task Iar_picks_an_idle_program()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var fakes = await RunningHomeAndBeach(_grid, shared: false);
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        try
+        {
+            // Each program has one region: the lowest instance name (Beach) first; while Beach is busy, Home.
+            var oar = _grid.RunOarJobAsync(new OarJobRequest(Beach, OarJobKind.Save), stop.Token);
+            await Until(() => _grid.BusyWith("Beach") is not null, "the OAR save never started");
+            var job = _grid.RunIarJobAsync(new IarJobRequest(Ann, "Ann", "Lee", IarJobKind.Save, Path.Combine(_paths.IarsSaving, "s.iar")), stop.Token);
+            await Until(() => _grid.BusyWith("Home") is not null, "the IAR job never started");
+            Assert.Equal("Inventory backup for Ann Lee", _grid.BusyWith("Home"));
+            stop.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => job.WaitAsync(TimeSpan.FromSeconds(30), ct));
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => oar.WaitAsync(TimeSpan.FromSeconds(30), ct));
+        }
+        finally { await EndAllAsync(_grid, fakes); }
+    }
+
+    [Fact]
+    public async Task Iar_file_outside_the_iars_folder_or_a_bad_folder_name_is_refused()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _grid.RunIarJobAsync(new IarJobRequest(Ann, "Ann", "Lee", IarJobKind.Save, Path.Combine(_paths.Oars, "x.iar")), ct));
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _grid.RunIarJobAsync(new IarJobRequest(Ann, "Ann", "Lee", IarJobKind.Load, Path.Combine(_paths.IarsIncoming, "x.iar"), "bad\"name"), ct));
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _grid.RunIarJobAsync(new IarJobRequest(Ann, "Ann", "Lee", IarJobKind.Load, Path.Combine(_paths.IarsIncoming, "x.iar")), ct));
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _grid.RunIarJobAsync(new IarJobRequest(Ann, "Ann Marie", "Lee", IarJobKind.Save, Path.Combine(_paths.IarsSaving, "x.iar")), ct));
+    }
+
     /// <summary>Records each call as "Deregister|Erase|Space|EstateOf &lt;ids&gt;"; space comes from <see cref="Space"/>, estates from <see cref="Estates"/>.</summary>
     private sealed class FakeRegionStore : IRegionStore
     {

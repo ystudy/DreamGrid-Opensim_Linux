@@ -508,4 +508,55 @@
   <data name="Finding.TooLarge.Upload.Title" xml:space="preserve"><value>El archivo ocupa más de {0}</value></data>
   <data name="Finding.TooLarge.Upload.Why" xml:space="preserve"><value>Es el archivo más grande que admite este grid.</value></data>
   <data name="Finding.TooLarge.Upload.Tip" xml:space="preserve"><value>En Blender, use imágenes más pequeñas y un modificador Decimate, y vuelva a exportar.</value></data>
+  <data name="Iar.Title" xml:space="preserve"><value>Copias de seguridad del inventario</value></data>
+  <data name="Iar.Intro" xml:space="preserve"><value>Haga una copia de su inventario como archivo IAR, o traiga inventario de otro grid.</value></data>
+  <data name="Iar.Backup.Heading" xml:space="preserve"><value>Hacer copia de mi inventario</value></data>
+  <data name="Iar.Backup.Help" xml:space="preserve"><value>Solo entran en el archivo los objetos que puede copiar, modificar y transferir. Lo demás se queda en {0}.</value></data>
+  <data name="Iar.Backup.Button" xml:space="preserve"><value>Hacer copia de mi inventario</value></data>
+  <data name="Iar.Backup.Download" xml:space="preserve"><value>Descargar</value></data>
+  <data name="Iar.Backup.Expires" xml:space="preserve"><value>El enlace funciona hasta {0}, y solo mientras tenga la sesión iniciada.</value></data>
+  <data name="Iar.Backup.Items" xml:space="preserve"><value>{0} objetos, {1}.</value></data>
+  <data name="Iar.LeftOut.Heading" xml:space="preserve"><value>No incluidos</value></data>
+  <data name="Iar.LeftOut.Name" xml:space="preserve"><value>Objeto</value></data>
+  <data name="Iar.LeftOut.Folder" xml:space="preserve"><value>Carpeta</value></data>
+  <data name="Iar.LeftOut.Why" xml:space="preserve"><value>Por qué</value></data>
+  <data name="Iar.LeftOut.NoCopy" xml:space="preserve"><value>No puede copiarlo</value></data>
+  <data name="Iar.LeftOut.NoModify" xml:space="preserve"><value>No puede modificarlo</value></data>
+  <data name="Iar.LeftOut.NoTransfer" xml:space="preserve"><value>No puede transferirlo</value></data>
+  <data name="Iar.LeftOut.ContentsNotFullRights" xml:space="preserve"><value>Algo de su interior no es suyo para llevárselo</value></data>
+  <data name="Iar.LeftOut.PartsNotFullRights" xml:space="preserve"><value>Una parte no es suya para llevársela</value></data>
+  <data name="Iar.Upload.Heading" xml:space="preserve"><value>Traer inventario</value></data>
+  <data name="Iar.Upload.Help" xml:space="preserve"><value>Suba un archivo IAR propio. Va a una carpeta nueva, así que no cambia nada de lo que tiene. El archivo más grande es de {0} MB.</value></data>
+  <data name="Iar.Upload.File" xml:space="preserve"><value>Archivo IAR</value></data>
+  <data name="Iar.Upload.Button" xml:space="preserve"><value>Subir</value></data>
+  <data name="Iar.Upload.Done" xml:space="preserve"><value>Se cargaron {0} objetos en la carpeta «{1}».</value></data>
+  <data name="Iar.Upload.Banned" xml:space="preserve"><value>Se dejaron fuera {0} objetos porque coinciden con contenido retirado de este grid.</value></data>
+  <data name="Iar.Upload.Relog" xml:space="preserve"><value>Si está en el mundo, vuelva a entrar para ver la carpeta nueva.</value></data>
+  <data name="Iar.Upload.TooBig" xml:space="preserve"><value>El archivo pesa más de {0} MB.</value></data>
+  <data name="Iar.Upload.Stopped" xml:space="preserve"><value>La subida se detuvo antes de terminar. Inténtelo de nuevo.</value></data>
+  <data name="Iar.Upload.NotAnIar" xml:space="preserve"><value>Ese archivo no es un archivo de inventario (IAR).</value></data>
+  <data name="Iar.NotAvailable" xml:space="preserve"><value>Las copias de seguridad del inventario no están disponibles en su cuenta ahora mismo.</value></data>
+  <data name="Iar.Stage.Waiting" xml:space="preserve"><value>Esperando para empezar…</value></data>
+  <data name="Iar.Stage.Saving" xml:space="preserve"><value>Guardando su inventario…</value></data>
+  <data name="Iar.Stage.Checking" xml:space="preserve"><value>Comprobando el archivo…</value></data>
+  <data name="Iar.Stage.Loading" xml:space="preserve"><value>Cargando en su inventario…</value></data>
+  <data name="Iar.Stage.Ready" xml:space="preserve"><value>Su copia está lista.</value></data>
+  <data name="Iar.Stage.Loaded" xml:space="preserve"><value>Hecho.</value></data>
+  <data name="Iar.Error.NoRegion" xml:space="preserve"><value>Ahora mismo no hay ninguna región en marcha. Inténtelo más tarde.</value></data>
+  <data name="Iar.Error.Failed" xml:space="preserve"><value>Algo salió mal. Inténtelo más tarde.</value></data>
+  <data name="Iar.Error.Stopped" xml:space="preserve"><value>El grid se detuvo antes de terminar. Inténtelo de nuevo.</value></data>
+  <data name="Iar.Error.TooBig" xml:space="preserve"><value>El archivo es demasiado grande al descomprimirlo o tiene demasiados objetos.</value></data>
+  <data name="Iar.Error.NotInventory" xml:space="preserve"><value>Ese archivo no es un archivo de inventario (IAR).</value></data>
+  <data name="Iar.Error.DownloadTooBig" xml:space="preserve"><value>Su inventario es demasiado grande para descargarlo aquí. Pida ayuda al equipo.</value></data>
+  <data name="Iar.Error.TakedownsUnreadable" xml:space="preserve"><value>Ahora mismo no se pueden comprobar las subidas. Inténtelo más tarde.</value></data>
+  <data name="Iar.Refused.GridOff" xml:space="preserve"><value>Esto no está activado en el grid.</value></data>
+  <data name="Iar.Refused.PersonOff" xml:space="preserve"><value>Esto está desactivado en su cuenta.</value></data>
+  <data name="Iar.Refused.NamedInCase" xml:space="preserve"><value>Las copias de seguridad del inventario no están disponibles en su cuenta ahora mismo.</value></data>
+  <data name="Iar.Refused.DailyLimit" xml:space="preserve"><value>Puede hacerlo {0} veces al día. Inténtelo mañana.</value></data>
+  <data name="Iar.Refused.Busy" xml:space="preserve"><value>Ya tiene una en marcha. Espere a que termine.</value></data>
+  <data name="Iar.Refused.GridBusy" xml:space="preserve"><value>Hay otra copia en marcha. Inténtelo dentro de unos minutos.</value></data>
+  <data name="Iar.Refused.LowDisk" xml:space="preserve"><value>Al grid le falta espacio en disco. Inténtelo más tarde.</value></data>
+  <data name="Iar.Refused.NoRegion" xml:space="preserve"><value>Ahora mismo no hay ninguna región en marcha. Inténtelo más tarde.</value></data>
+  <data name="Iar.Refused.TakedownsUnreadable" xml:space="preserve"><value>Ahora mismo no se pueden comprobar las subidas. Inténtelo más tarde.</value></data>
+  <data name="Iar.Stage.Receiving" xml:space="preserve"><value>Recibiendo el archivo…</value></data>
 </root>
