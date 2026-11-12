@@ -27,7 +27,8 @@ public sealed record IarJobSnapshot(Guid Principal, IarJobKind Kind, string Stag
 /// <see cref="IarRules"/> and counted under one lock, so a double click makes one job and one count, then runs in the background
 /// (the launcher-lifetime token, never a request's). A count is given back when a job fails because of the grid (no region, the
 /// region stopped, the launcher stopped, a download over the size limit) and kept when it fails because of the file. Every
-/// staging file is deleted however a job ends. Every step is audited with the resident as the actor.
+/// staging file is deleted however a job ends, and only then does the job show as finished. Every step is audited with the resident
+/// as the actor.
 /// </summary>
 public sealed class IarJobs(IGridController grid, Func<LauncherSettings> settings, IarRights rights, IarCounts counts, IarFiles files,
     TakedownStore takedowns, IInventoryStore inventory, LauncherPaths paths, BackgroundWork background, IIarNotifier notifier, AuditLog audit,
@@ -154,7 +155,7 @@ public sealed class IarJobs(IGridController grid, Func<LauncherSettings> setting
             }
             var items = IarArchive.Inspect(filtered, long.MaxValue, int.MaxValue).Items.Count;
             var ready = files.Publish(principal, stamp, filtered, TimeSpan.FromHours(s.LinkHours), left, items);
-            Set(principal, j => { j.Stage = Ready; j.Items = items; j.LeftOut = left; j.Bytes = ready.Bytes; j.Running = false; });
+            Set(principal, j => { j.Stage = Ready; j.Items = items; j.LeftOut = left; j.Bytes = ready.Bytes; });
             Write(name, principal, ip, "iar-download-ready", $"{name}: {items} items, {left.Count} left out", "ok");
             await notifier.NotifyReadyAsync(principal, name, ready.Expires, ct);
         }
@@ -221,7 +222,7 @@ public sealed class IarJobs(IGridController grid, Func<LauncherSettings> setting
 
             Set(principal, j => { j.Stage = Loading; j.Folder = folder; j.BannedRemoved = matches.Count; });
             var loaded = await grid.RunIarJobAsync(new IarJobRequest(principal, first, last, IarJobKind.Load, file, folder), ct, new Reporter(this, principal));
-            Set(principal, j => { j.Stage = Loaded; j.Items = loaded; j.Running = false; });
+            Set(principal, j => { j.Stage = Loaded; j.Items = loaded; });
             Write(name, principal, ip, "iar-upload-loaded", $"{name}: {loaded} items into {folder}", "ok");
         }
         catch (TakedownsUnreadableException e)
@@ -256,7 +257,7 @@ public sealed class IarJobs(IGridController grid, Func<LauncherSettings> setting
     private void Fail(Guid principal, string name, string? ip, string key, string why)
     {
         log.LogWarning("Inventory job for {Name} failed: {Why}", name, why);
-        Set(principal, j => { j.ErrorKey = key; j.Running = false; });
+        Set(principal, j => j.ErrorKey = key);
         Write(name, principal, ip, "iar-failed", $"{name}: {key}", "failed");
     }
 
