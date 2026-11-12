@@ -1,6 +1,6 @@
-using System.Security.Cryptography;
 using DreamGrid.Launcher.Core.Database;
 using DreamGrid.Launcher.Core.OpenSim;
+using DreamGrid.Launcher.Core.Settings;
 using DreamGrid.Launcher.Core.Starter;
 using Microsoft.AspNetCore.Mvc;
 
@@ -15,8 +15,6 @@ public sealed record ModelCheck(string Avatar, CheckResult Result);
 /// <summary>Dressing a model and checking it (spec §6.3).</summary>
 public partial class StarterAvatarsModel
 {
-    private const string PasswordLetters = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-
     public ModelLogin? LoginShown { get; private set; }
 
     /// <summary>
@@ -47,7 +45,7 @@ public partial class StarterAvatarsModel
     public async Task<IActionResult> OnPostLoginAsync(Guid id, CancellationToken ct)
     {
         if (Find(id) is not { } a) return Problem("That starter avatar isn't on the list any more.");
-        var password = RandomNumberGenerator.GetString(PasswordLetters, 16);
+        var password = Secrets.NewPassword(16);
         try
         {
             await passwords.SetAsync(a.Model, password, ct);
@@ -77,7 +75,7 @@ public partial class StarterAvatarsModel
             var worn = await looks.WornAsync(a.Model, ct);
             var items = worn is null ? [] : await inventory.ItemsAsync(a.Model, [.. worn.Select(w => w.ItemId)], ct);
             result = StarterCheck.Model(worn, [.. items.Select(i => i.Row)], await OutfitFoldersAsync(a, ct));
-            if (result.Passed) await passwords.SetAsync(a.Model, RandomNumberGenerator.GetString(PasswordLetters, 32), ct);
+            if (result.Passed) await passwords.SetAsync(a.Model, Secrets.NewPassword(32), ct);
         }
         catch (Exception e) when (e is StaffDirectoryUnavailableException or RobustPasswordsUnavailableException)
         {
