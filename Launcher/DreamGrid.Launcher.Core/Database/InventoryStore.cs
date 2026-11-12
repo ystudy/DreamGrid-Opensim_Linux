@@ -51,6 +51,13 @@ public interface IInventoryStore
 
     /// <summary>The asset's FSAssets hash, or null when it has no row (or the grid keeps no <c>fsassets</c> table).</summary>
     Task<string?> AssetHashAsync(string assetId, CancellationToken ct);
+
+    /// <summary>
+    /// Makes a plain folder named <paramref name="name"/> directly under the owner's My Inventory (for an IAR load to go into),
+    /// raises My Inventory's version, and returns the new folder's id. Throws <see cref="NoInventoryException"/> when the owner
+    /// has no My Inventory.
+    /// </summary>
+    Task<Guid> CreateFolderAsync(Guid owner, string name, CancellationToken ct);
 }
 
 /// <summary>A put-back found no folders at all for the owner: they were deleted.</summary>
@@ -153,6 +160,20 @@ public sealed class InventoryStore(Func<LauncherSettings> settings) : IInventory
             await Exec(conn, tx, "UPDATE robust.inventoryfolders SET version = version + 1 WHERE folderID = @f", ct, ("@f", Id(into.Id)));
             await tx.CommitAsync(ct);
             return into.Id;
+        }, ct);
+
+    public Task<Guid> CreateFolderAsync(Guid owner, string name, CancellationToken ct) =>
+        Run(async conn =>
+        {
+            await using var tx = await conn.BeginTransactionAsync(ct);
+            var root = (await FoldersAsync(conn, tx, owner, ct)).FirstOrDefault(f => f.Type == RootType) ?? throw new NoInventoryException();
+            var id = Guid.NewGuid();
+            await Exec(conn, tx,
+                "INSERT INTO robust.inventoryfolders (folderName, type, version, folderID, agentID, parentFolderID) VALUES (@n, -1, 1, @i, @o, @p)", ct,
+                ("@n", name), ("@i", Id(id)), ("@o", Id(owner)), ("@p", Id(root.Id)));
+            await Exec(conn, tx, "UPDATE robust.inventoryfolders SET version = version + 1 WHERE folderID = @f", ct, ("@f", Id(root.Id)));
+            await tx.CommitAsync(ct);
+            return id;
         }, ct);
 
     public Task<string?> AssetHashAsync(string assetId, CancellationToken ct) =>

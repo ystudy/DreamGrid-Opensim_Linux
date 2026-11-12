@@ -322,6 +322,35 @@ internal sealed class FakeGridController : IGridController
         return OarJobResult;
     }
 
+    /// <summary>Every request <see cref="RunIarJobAsync"/> got, in order.</summary>
+    public List<IarJobRequest> IarJobs { get; } = new();
+
+    /// <summary>
+    /// Runs inside <see cref="RunIarJobAsync"/> and gives its item count. The default writes a small archive for a save (archive.xml
+    /// first) and counts 1.
+    /// </summary>
+    public Func<IarJobRequest, IProgress<IarJobProgress>?, CancellationToken, Task<int>> OnIarJob { get; set; } = (r, _, _) =>
+    {
+        if (r.Kind == IarJobKind.Save) IarBuilderWrite(r.File);
+        return Task.FromResult(1);
+    };
+
+    /// <summary>A save the default <see cref="OnIarJob"/> writes: one full-rights notecard.</summary>
+    public static void IarBuilderWrite(string path)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var b = new IarBuilder();
+        b.Notecard("Notes", "hello", "hi");
+        b.Save(path);
+    }
+
+    public async Task<int> RunIarJobAsync(IarJobRequest request, CancellationToken ct, IProgress<IarJobProgress>? progress = null)
+    {
+        Record($"IarJob {request.Kind} {request.FirstName} {request.LastName} {request.Folder}".TrimEnd());
+        lock (IarJobs) IarJobs.Add(request);
+        return await OnIarJob(request, progress, ct);
+    }
+
     /// <summary>The job text <see cref="BusyWith"/> gives for each instance.</summary>
     public Dictionary<string, string> Busy { get; } = new();
 
@@ -930,5 +959,20 @@ internal sealed class FakeInventoryStore(FakeRobustAccounts robust) : IInventory
     {
         Check();
         return Task.FromResult(Hashes.GetValueOrDefault(assetId));
+    }
+
+    public Task<Guid> CreateFolderAsync(Guid owner, string name, CancellationToken ct)
+    {
+        Check();
+        lock (_gate)
+        {
+            var root = _folders.FirstOrDefault(f => _folderOwner[f.Id] == owner && f.Type == 8) ?? throw new NoInventoryException();
+            var id = Guid.NewGuid();
+            _folders.Add(new InventoryFolder(id, root.Id, name, -1));
+            _folderOwner[id] = owner;
+            _versions[id] = 1;
+            _versions[root.Id] = _versions.GetValueOrDefault(root.Id) + 1;
+            return Task.FromResult(id);
+        }
     }
 }

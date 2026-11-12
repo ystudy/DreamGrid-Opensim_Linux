@@ -226,6 +226,16 @@ public interface IGridController
     Task<string?> RunOarJobAsync(OarJobRequest request, CancellationToken ct, IProgress<OarJobProgress>? progress = null);
 
     /// <summary>
+    /// Runs OpenSim's <c>save iar</c> or <c>load iar</c> for one avatar on a running region program of this machine (spec
+    /// 2026-11-11-iar-backups-design §6.1) and returns the item count OpenSim logged. It takes that program's job slot, so OAR jobs
+    /// there are refused meanwhile, and the reverse. Throws <see cref="ArgumentException"/> for a file outside
+    /// <see cref="LauncherPaths.Iars"/>, a load without a safe folder name, or a name the console would split, and
+    /// <see cref="InvalidOperationException"/> with <see cref="IarJobErrors"/>' words when no region runs, every one is busy, the
+    /// program stops, or OpenSim logs a failure (a failed save's file is removed).
+    /// </summary>
+    Task<int> RunIarJobAsync(IarJobRequest request, CancellationToken ct, IProgress<IarJobProgress>? progress = null);
+
+    /// <summary>
     /// The text of the OAR job running in a program ("Importing castle.oar into Beach", "Saving Home as an OAR",
     /// "Making the land of Home again"), or null when it runs none.
     /// </summary>
