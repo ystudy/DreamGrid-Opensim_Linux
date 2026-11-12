@@ -93,6 +93,7 @@ try
     LauncherPaths.CreateOwnerOnly(paths.DataProtectionKeys);
     LauncherPaths.CreateOwnerOnly(paths.Security);
     LauncherPaths.CreateOwnerOnly(paths.Guests);
+    LauncherPaths.CreateOwnerOnly(paths.StarterAvatars);
     LauncherPaths.CreateOwnerOnly(paths.Email);
     LauncherPaths.CreateOwnerOnly(paths.Tickets);
     DreamGrid.Launcher.Core.Iar.IarFolders.Prepare(paths);
@@ -274,6 +275,11 @@ builder.Services.AddSingleton<IRobustPasswords>(sp => new RobustPasswords(sp.Get
 builder.Services.AddSingleton<IRobustEmails>(sp => new RobustEmails(sp.GetRequiredService<Func<LauncherSettings>>()));
 builder.Services.AddSingleton<IAccountRemover>(sp => new AccountRemover(sp.GetRequiredService<Func<LauncherSettings>>()));
 builder.Services.AddSingleton<IInventoryStore>(sp => new InventoryStore(sp.GetRequiredService<Func<LauncherSettings>>()));
+builder.Services.AddSingleton<IAppearanceStore>(sp => new AppearanceStore(sp.GetRequiredService<Func<LauncherSettings>>()));
+// Starter avatars (spec 2026-11-11-starter-avatars-design): the list, and the check of each sign-up's copy.
+builder.Services.AddSingleton(sp => new DreamGrid.Launcher.Core.Starter.StarterAvatarList(Path.Combine(paths.StarterAvatars, "avatars.json"),
+    sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<DreamGrid.Launcher.Core.Starter.StarterAvatarList>>()));
+builder.Services.AddSingleton<DreamGrid.Launcher.Starter.StarterCopyCheck>();
 builder.Services.AddSingleton(sp => new TakedownStore(paths.Takedowns, sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<TakedownStore>>()));
 builder.Services.AddSingleton(new EvidenceCopier(paths.FsAssetsData));
 builder.Services.AddSingleton<IEstateRemover>(sp => new EstateRemover(sp.GetRequiredService<Func<LauncherSettings>>()));
