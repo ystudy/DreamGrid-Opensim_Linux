@@ -106,6 +106,14 @@ Die Fallnummer lautet {CaseNumber}. Wenn Sie glauben, dass dies ein Fehler ist, 
 das Team von {GridName} hat diese Objekte wieder in Ihr Inventar gelegt: {Items}
 
 Die Fallnummer lautet {CaseNumber}.</value></data>
+  <data name="iar-ready.Subject" xml:space="preserve"><value>Ihre Inventarsicherung bei {GridName} ist fertig</value></data>
+  <data name="iar-ready.Body" xml:space="preserve"><value>Hallo {AvatarName},
+
+Ihre Inventarsicherung ist fertig. Melden Sie sich auf der Website an und laden Sie sie hier herunter:
+
+{Link}
+
+Der Download funktioniert bis {ExpiresAt}. Objekte, die Sie nicht kopieren, ändern und weitergeben dürfen, bleiben bei {GridName}; die Seite listet sie auf.</value></data>
   <data name="ticket-confirm.Subject" xml:space="preserve"><value>Bestätigen Sie Ihr Support-Ticket bei {GridName}</value></data>
   <data name="ticket-confirm.Body" xml:space="preserve"><value>Hallo {Name},
 

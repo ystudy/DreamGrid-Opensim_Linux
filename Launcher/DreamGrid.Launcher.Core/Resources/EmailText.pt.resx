@@ -106,6 +106,14 @@ O número do caso é {CaseNumber}. Se você acha que foi um engano, responda a e
 A equipe de {GridName} devolveu estes itens ao seu inventário: {Items}
 
 O número do caso é {CaseNumber}.</value></data>
+  <data name="iar-ready.Subject" xml:space="preserve"><value>A cópia de segurança do seu inventário em {GridName} está pronta</value></data>
+  <data name="iar-ready.Body" xml:space="preserve"><value>Olá, {AvatarName},
+
+A cópia de segurança do seu inventário está pronta. Entre no site e transfira-a aqui:
+
+{Link}
+
+A transferência funciona até {ExpiresAt}. Os itens que não pode copiar, modificar e transferir ficam em {GridName}; a página mostra-os.</value></data>
   <data name="ticket-confirm.Subject" xml:space="preserve"><value>Confirme seu chamado de suporte em {GridName}</value></data>
   <data name="ticket-confirm.Body" xml:space="preserve"><value>Olá, {Name},
 

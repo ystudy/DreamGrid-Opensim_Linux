@@ -106,6 +106,14 @@
 Администрация {GridName} вернула эти предметы в ваш инвентарь: {Items}
 
 Номер дела: {CaseNumber}.</value></data>
+  <data name="iar-ready.Subject" xml:space="preserve"><value>Резервная копия вашего инвентаря в {GridName} готова</value></data>
+  <data name="iar-ready.Body" xml:space="preserve"><value>Здравствуйте, {AvatarName}!
+
+Резервная копия вашего инвентаря готова. Войдите на сайт и скачайте её здесь:
+
+{Link}
+
+Скачивание работает до {ExpiresAt}. Предметы, которые вы не можете копировать, изменять и передавать, остаются в {GridName}; страница их перечисляет.</value></data>
   <data name="ticket-confirm.Subject" xml:space="preserve"><value>Подтвердите обращение в поддержку {GridName}</value></data>
   <data name="ticket-confirm.Body" xml:space="preserve"><value>Здравствуйте, {Name}!
 

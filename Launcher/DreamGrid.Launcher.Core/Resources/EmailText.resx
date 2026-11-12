@@ -106,6 +106,14 @@ The case number is {CaseNumber}. If you think this is a mistake, reply to this e
 Staff on {GridName} put these items back in your inventory: {Items}
 
 The case number is {CaseNumber}.</value></data>
+  <data name="iar-ready.Subject" xml:space="preserve"><value>Your {GridName} inventory backup is ready</value></data>
+  <data name="iar-ready.Body" xml:space="preserve"><value>Hello {AvatarName},
+
+Your inventory backup is ready. Sign in on the website and download it here:
+
+{Link}
+
+The download works until {ExpiresAt}. Items you can't copy, modify and transfer stay on {GridName}; the page lists them.</value></data>
   <data name="ticket-confirm.Subject" xml:space="preserve"><value>Confirm your {GridName} support ticket</value></data>
   <data name="ticket-confirm.Body" xml:space="preserve"><value>Hello {Name},
 

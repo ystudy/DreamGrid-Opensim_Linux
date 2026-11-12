@@ -23,6 +23,8 @@ using DreamGrid.Launcher.Splash;
 using DreamGrid.Launcher.Email;
 using DreamGrid.Launcher.Groups;
 using DreamGrid.Launcher.Guests;
+using DreamGrid.Launcher.Iar;
+using DreamGrid.Launcher.Core.Iar;
 using DreamGrid.Launcher.ModelImport;
 using DreamGrid.Launcher.Resident;
 using DreamGrid.Launcher.Setup;
@@ -417,6 +419,15 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<TicketSweep>());
 builder.Services.AddSingleton<BackgroundWork>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<BackgroundWork>());
 builder.Services.AddSingleton<OarJobs>();
+// Inventory backups (spec 2026-11-11-iar-backups-design).
+builder.Services.AddSingleton(sp => new IarCounts(Path.Combine(paths.Security, "iar-counts.json"), sp.GetRequiredService<TimeProvider>(),
+    sp.GetRequiredService<ILogger<IarCounts>>()));
+builder.Services.AddSingleton(sp => new IarFiles(paths, sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<IarFiles>>()));
+builder.Services.AddSingleton<IIarNotifier, IarEmailNotifier>();
+builder.Services.AddSingleton(sp => new IarJobs(sp.GetRequiredService<IGridController>(), sp.GetRequiredService<Func<LauncherSettings>>(),
+    sp.GetRequiredService<IarRights>(), sp.GetRequiredService<IarCounts>(), sp.GetRequiredService<IarFiles>(), sp.GetRequiredService<TakedownStore>(),
+    sp.GetRequiredService<IInventoryStore>(), paths, sp.GetRequiredService<BackgroundWork>(), sp.GetRequiredService<IIarNotifier>(),
+    sp.GetRequiredService<AuditLog>(), sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<IarJobs>>()));
 
 var app = builder.Build();
 // Routing is stated twice, so the endpoint is known to everything below (ApiEndpoint.Is) and picked again once SetupGate has
@@ -457,6 +468,18 @@ app.Lifetime.ApplicationStarted.Register(() =>
 
 // Uploads and saves cut off by the last stop leave parts behind; nothing is using them yet.
 app.Services.GetRequiredService<OarLibrary>().ClearStaging();
+// Residents' expired backups go now and every 10 minutes after.
+var iarFiles = app.Services.GetRequiredService<IarFiles>();
+iarFiles.Sweep();
+app.Services.GetRequiredService<BackgroundWork>().Run("Inventory backup sweep", async ct =>
+{
+    while (!ct.IsCancellationRequested)
+    {
+        await Task.Delay(TimeSpan.FromMinutes(10), ct);
+        iarFiles.Sweep();
+    }
+});
+
 
 try
 {

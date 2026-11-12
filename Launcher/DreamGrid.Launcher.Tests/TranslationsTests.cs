@@ -181,7 +181,7 @@ public sealed partial class TranslationsTests
     public void Every_resident_email_is_in_the_English_text_and_staff_emails_are_not()
     {
         var english = Entries(Path.Combine(EmailFolder, "EmailText.resx"));
-        Assert.Equal(17, ResidentTemplates.Length);
+        Assert.Equal(18, ResidentTemplates.Length);
         foreach (var id in EmailTemplates.All)
             Assert.Equal(!EmailTemplates.IsStaffEmail(id), english.ContainsKey(id + ".Subject") && english.ContainsKey(id + ".Body"));
     }
