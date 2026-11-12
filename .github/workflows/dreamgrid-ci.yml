@@ -53,6 +53,18 @@ jobs:
           echo "Scanning $range"
           $RUNNER_TEMP/gitleaks git . --config .gitleaks.toml --redact --no-banner --log-opts="$range"
 
+  # Guards the removal of the old add-ons: fails when one of their names comes back in a tracked text file.
+  # The allow-list and the reasons are in the removal log under docs/ (the one that says what went on 2026-11-12).
+  retired-names:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - run: bash .github/scripts/check-retired-names.sh
+
   windows:
     runs-on: windows-latest
     steps:

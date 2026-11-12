@@ -99,3 +99,23 @@ Old lines, verbatim. `Robust.HG.ini.proto` is `bin/Robust.HG.ini.proto`; the thr
 - `.github/workflows/dreamgrid-ci.yml`: "the Wifi secrets in it" is now "the old INI secrets in it".
 - `.gitleaks.toml`: the comment now says "passwords OpenSim's INI files used to hold". No rule, regex or allow-list entry changed.
 - `docs/jopensim-notes.md`, `docs/opensim-search-notes.md`: each has one added line saying the modules were removed on 2026-11-12. These notes stay as reference.
+
+## CI check
+
+`.github/scripts/check-retired-names.sh` runs in the `retired-names` job of `dreamgrid-ci.yml` (right after `secret-scan`). It runs `git grep -n -I -i -E 'wifi|diva|jopensim'` over the tracked files, ignoring binary files, and fails with `path:line:text` for each match. It exits 0 when clean and 1 when it finds a match; any other `git grep` error code is passed through.
+
+Allow-list (the only files and folders allowed to mention the names):
+
+| Entry | Why |
+|---|---|
+| `CONTRIBUTORS.txt` | Credits Diva's contributors; their line stays |
+| `OpenSim/` | Upstream OpenSim source, not ours to edit |
+| `docs/superpowers/` | Plans and specs that describe this removal |
+| `docs/jopensim-notes.md`, `docs/opensim-search-notes.md` | Reference notes, kept on purpose |
+| `docs/wifi-diva-removal-log.md` | This log |
+| `Launcher/DreamGrid.Launcher.Core/Runtime/RetiredFiles.cs` | The list of retired files the stager deletes from old installs |
+| `Launcher/DreamGrid.Launcher.Tests/RuntimeStagerTests.cs` | Tests that list is applied |
+| `setup/package.ps1` | The packaging guard that fails when a retired file or folder reaches a package |
+| `.github/scripts/check-retired-names.sh` | The script itself holds the pattern |
+
+Run it locally from any folder in the repo (Git Bash on Windows): `bash .github/scripts/check-retired-names.sh; echo rc=$?`. The workflow file has no match because its comment does not spell the names.
