@@ -508,4 +508,54 @@
   <data name="Finding.TooLarge.Upload.Title" xml:space="preserve"><value>Le fichier dépasse {0}</value></data>
   <data name="Finding.TooLarge.Upload.Why" xml:space="preserve"><value>C’est le plus gros fichier que cette grille accepte.</value></data>
   <data name="Finding.TooLarge.Upload.Tip" xml:space="preserve"><value>Dans Blender, utilisez des images plus petites et un modificateur Decimate, puis exportez à nouveau.</value></data>
+  <data name="Iar.Title" xml:space="preserve"><value>Sauvegardes de l'inventaire</value></data>
+  <data name="Iar.Intro" xml:space="preserve"><value>Sauvegardez votre inventaire dans un fichier IAR, ou apportez de l'inventaire d'une autre grille.</value></data>
+  <data name="Iar.Backup.Heading" xml:space="preserve"><value>Sauvegarder mon inventaire</value></data>
+  <data name="Iar.Backup.Help" xml:space="preserve"><value>Seuls les objets que vous pouvez copier, modifier et transférer vont dans le fichier. Le reste reste sur {0}.</value></data>
+  <data name="Iar.Backup.Button" xml:space="preserve"><value>Sauvegarder mon inventaire</value></data>
+  <data name="Iar.Backup.Download" xml:space="preserve"><value>Télécharger</value></data>
+  <data name="Iar.Backup.Expires" xml:space="preserve"><value>Le lien fonctionne jusqu'au {0}, et seulement tant que vous êtes connecté.</value></data>
+  <data name="Iar.Backup.Items" xml:space="preserve"><value>{0} objets, {1}.</value></data>
+  <data name="Iar.LeftOut.Heading" xml:space="preserve"><value>Non inclus</value></data>
+  <data name="Iar.LeftOut.Name" xml:space="preserve"><value>Objet</value></data>
+  <data name="Iar.LeftOut.Folder" xml:space="preserve"><value>Dossier</value></data>
+  <data name="Iar.LeftOut.Why" xml:space="preserve"><value>Pourquoi</value></data>
+  <data name="Iar.LeftOut.NoCopy" xml:space="preserve"><value>Vous ne pouvez pas le copier</value></data>
+  <data name="Iar.LeftOut.NoModify" xml:space="preserve"><value>Vous ne pouvez pas le modifier</value></data>
+  <data name="Iar.LeftOut.NoTransfer" xml:space="preserve"><value>Vous ne pouvez pas le transférer</value></data>
+  <data name="Iar.LeftOut.ContentsNotFullRights" xml:space="preserve"><value>Quelque chose à l'intérieur ne vous appartient pas</value></data>
+  <data name="Iar.LeftOut.PartsNotFullRights" xml:space="preserve"><value>Une partie ne vous appartient pas</value></data>
+  <data name="Iar.Upload.Heading" xml:space="preserve"><value>Apporter de l'inventaire</value></data>
+  <data name="Iar.Upload.Help" xml:space="preserve"><value>Envoyez un fichier IAR à vous. Il va dans un nouveau dossier : rien de ce que vous avez ne change. Le plus gros fichier accepté fait {0} Mo.</value></data>
+  <data name="Iar.Upload.File" xml:space="preserve"><value>Fichier IAR</value></data>
+  <data name="Iar.Upload.Button" xml:space="preserve"><value>Envoyer</value></data>
+  <data name="Iar.Upload.Done" xml:space="preserve"><value>{0} objets ont été chargés dans le dossier « {1} ».</value></data>
+  <data name="Iar.Upload.Banned" xml:space="preserve"><value>{0} objets ont été laissés de côté car ils correspondent à du contenu retiré de cette grille.</value></data>
+  <data name="Iar.Upload.Relog" xml:space="preserve"><value>Si vous êtes dans le monde, reconnectez-vous pour voir le nouveau dossier.</value></data>
+  <data name="Iar.Upload.TooBig" xml:space="preserve"><value>Le fichier dépasse {0} Mo.</value></data>
+  <data name="Iar.Upload.Stopped" xml:space="preserve"><value>L'envoi s'est arrêté avant la fin. Réessayez.</value></data>
+  <data name="Iar.Upload.NotAnIar" xml:space="preserve"><value>Ce fichier n'est pas une archive d'inventaire (IAR).</value></data>
+  <data name="Iar.NotAvailable" xml:space="preserve"><value>Les sauvegardes de l'inventaire ne sont pas disponibles sur votre compte pour le moment.</value></data>
+  <data name="Iar.Stage.Waiting" xml:space="preserve"><value>En attente…</value></data>
+  <data name="Iar.Stage.Saving" xml:space="preserve"><value>Sauvegarde de votre inventaire…</value></data>
+  <data name="Iar.Stage.Checking" xml:space="preserve"><value>Vérification du fichier…</value></data>
+  <data name="Iar.Stage.Loading" xml:space="preserve"><value>Chargement dans votre inventaire…</value></data>
+  <data name="Iar.Stage.Ready" xml:space="preserve"><value>Votre sauvegarde est prête.</value></data>
+  <data name="Iar.Stage.Loaded" xml:space="preserve"><value>Terminé.</value></data>
+  <data name="Iar.Error.NoRegion" xml:space="preserve"><value>Aucune région ne tourne en ce moment. Réessayez plus tard.</value></data>
+  <data name="Iar.Error.Failed" xml:space="preserve"><value>Un problème est survenu. Réessayez plus tard.</value></data>
+  <data name="Iar.Error.Stopped" xml:space="preserve"><value>La grille s'est arrêtée avant la fin. Réessayez.</value></data>
+  <data name="Iar.Error.TooBig" xml:space="preserve"><value>Le fichier est trop gros une fois décompressé, ou contient trop d'objets.</value></data>
+  <data name="Iar.Error.NotInventory" xml:space="preserve"><value>Ce fichier n'est pas une archive d'inventaire (IAR).</value></data>
+  <data name="Iar.Error.DownloadTooBig" xml:space="preserve"><value>Votre inventaire est trop gros pour être téléchargé ici. Demandez de l'aide à l'équipe.</value></data>
+  <data name="Iar.Error.TakedownsUnreadable" xml:space="preserve"><value>Les envois ne peuvent pas être vérifiés pour le moment. Réessayez plus tard.</value></data>
+  <data name="Iar.Refused.GridOff" xml:space="preserve"><value>Ce n'est pas activé sur la grille.</value></data>
+  <data name="Iar.Refused.PersonOff" xml:space="preserve"><value>C'est désactivé pour votre compte.</value></data>
+  <data name="Iar.Refused.NamedInCase" xml:space="preserve"><value>Les sauvegardes de l'inventaire ne sont pas disponibles sur votre compte pour le moment.</value></data>
+  <data name="Iar.Refused.DailyLimit" xml:space="preserve"><value>Vous pouvez le faire {0} fois par jour. Réessayez demain.</value></data>
+  <data name="Iar.Refused.Busy" xml:space="preserve"><value>Vous en avez déjà une en cours. Attendez qu'elle se termine.</value></data>
+  <data name="Iar.Refused.GridBusy" xml:space="preserve"><value>Une autre sauvegarde est en cours. Réessayez dans quelques minutes.</value></data>
+  <data name="Iar.Refused.LowDisk" xml:space="preserve"><value>La grille manque d'espace disque. Réessayez plus tard.</value></data>
+  <data name="Iar.Refused.NoRegion" xml:space="preserve"><value>Aucune région ne tourne en ce moment. Réessayez plus tard.</value></data>
+  <data name="Iar.Refused.TakedownsUnreadable" xml:space="preserve"><value>Les envois ne peuvent pas être vérifiés pour le moment. Réessayez plus tard.</value></data>
 </root>

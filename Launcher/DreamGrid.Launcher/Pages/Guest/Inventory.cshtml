@@ -1,0 +1,98 @@
+@page "/guest/inventory"
+@model DreamGrid.Launcher.Pages.Guest.InventoryModel
+@using DreamGrid.Launcher.Core.Grid
+@{
+    ViewData["Title"] = T["Iar.Title"].Value;
+    var job = Model.Job;
+}
+@section Head {
+    @if (job is { Running: true })
+    {
+        <meta http-equiv="refresh" content="3">
+    }
+}
+<h1>@T["Iar.Title"]</h1>
+@if (Model.Error is not null)
+{
+    <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
+}
+@if (Model.NotAvailable)
+{
+    <p id="iar-not-available">@T["Iar.NotAvailable"]</p>
+}
+else
+{
+    <p>@T["Iar.Intro"]</p>
+    @if (job is { } j)
+    {
+        <div id="iar-job" class="alert @(j.ErrorKey is null ? "alert-info" : "alert-warning")" role="status">
+            @if (j.ErrorKey is not null)
+            {
+                @T[j.ErrorKey]
+            }
+            else
+            {
+                @T[j.Stage]
+                @if (!j.Running && j.Kind == IarJobKind.Load)
+                {
+                    <p class="mb-0">@T["Iar.Upload.Done", j.Items ?? 0, j.Folder ?? ""]</p>
+                    @if (j.BannedRemoved > 0)
+                    {
+                        <p class="mb-0">@T["Iar.Upload.Banned", j.BannedRemoved]</p>
+                    }
+                    <p class="mb-0">@T["Iar.Upload.Relog"]</p>
+                }
+            }
+        </div>
+    }
+
+    @if (Model.DownloadShown)
+    {
+        <section id="iar-backup" class="mt-3">
+            <h2 class="h5">@T["Iar.Backup.Heading"]</h2>
+            <p>@T["Iar.Backup.Help", Model.GridName]</p>
+            @if (Model.Ready is { } r)
+            {
+                <p><a id="iar-download" class="btn btn-primary" href="/guest/inventory/file/@r.Token">@T["Iar.Backup.Download"]</a></p>
+                <p class="small">@T["Iar.Backup.Items", r.Items, DreamGrid.Launcher.Core.Grid.RegionAdvice.FileSize(r.Bytes)]
+                    @T["Iar.Backup.Expires", r.Expires.UtcDateTime.ToString("yyyy-MM-dd HH:mm 'UTC'", System.Globalization.CultureInfo.InvariantCulture)]</p>
+                @if (r.LeftOut.Count > 0)
+                {
+                    <h3 class="h6">@T["Iar.LeftOut.Heading"]</h3>
+                    <table id="iar-left-out" class="table table-sm">
+                        <thead><tr><th>@T["Iar.LeftOut.Name"]</th><th>@T["Iar.LeftOut.Folder"]</th><th>@T["Iar.LeftOut.Why"]</th></tr></thead>
+                        <tbody>
+                        @foreach (var item in r.LeftOut)
+                        {
+                            <tr><td>@item.Name</td><td>@item.FolderPath</td><td>@Model.Reason(item.Reason)</td></tr>
+                        }
+                        </tbody>
+                    </table>
+                }
+            }
+            @if (job is not { Running: true })
+            {
+                <form method="post" action="/guest/inventory?handler=Backup" asp-antiforgery="true">
+                    <button type="submit" class="btn btn-outline-primary">@T["Iar.Backup.Button"]</button>
+                </form>
+            }
+        </section>
+    }
+
+    @if (Model.UploadShown)
+    {
+        <section id="iar-upload" class="mt-4">
+            <h2 class="h5">@T["Iar.Upload.Heading"]</h2>
+            <p>@T["Iar.Upload.Help", Model.Limits.MaxUploadMb]</p>
+            @if (job is not { Running: true })
+            {
+                <form method="post" action="/guest/inventory/upload" enctype="multipart/form-data" asp-antiforgery="true">
+                    <label class="form-label" for="iar-file">@T["Iar.Upload.File"]</label>
+                    <input class="form-control" type="file" id="iar-file" name="iar" accept=".iar" required>
+                    <button type="submit" class="btn btn-outline-primary mt-2">@T["Iar.Upload.Button"]</button>
+                </form>
+            }
+        </section>
+    }
+}
+<p class="mt-3"><a href="/guest">@T["Common.BackToAccount"]</a></p>

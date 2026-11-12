@@ -456,6 +456,7 @@ BotsApi.Map(app);
 RegionsApi.Map(app);
 LibraryApi.Map(app);
 IarStaffApi.Map(app);
+IarGuestApi.Map(app);
 StatusApi.Map(app);
 DashboardApi.Map(app);
 SetupApi.Map(app);
