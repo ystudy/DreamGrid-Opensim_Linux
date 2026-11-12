@@ -49,6 +49,18 @@ public sealed class InventoryStoreIntegrationTests : IDisposable
         await Hypergrid_creator_shows_its_name_and_host(inv, ann, ct);
         Assert.Null(await inv.AssetHashAsync(Guid.NewGuid().ToString(), ct)); // Asset_hash_is_null_for_an_unknown_asset
         await Create_folder_goes_under_my_inventory_and_raises_its_version(inv, bob, ct);
+        await Stored_appearance_reads_the_default_outfit(new AppearanceStore(store.LoadOrCreate), inv, bob, ct);
+    }
+
+    /// <summary>A new account gets the default outfit (CreateDefaultAvatarEntries): every worn item is in its own inventory.</summary>
+    private static async Task Stored_appearance_reads_the_default_outfit(AppearanceStore looks, InventoryStore inv, Guid owner, CancellationToken ct)
+    {
+        var worn = await looks.WornAsync(owner, ct);
+        Assert.NotNull(worn);
+        Assert.Contains(worn, w => w.Slot == "Wearable 0:0");
+        var items = await inv.ItemsAsync(owner, [.. worn.Select(w => w.ItemId)], ct);
+        Assert.True(DreamGrid.Launcher.Core.Starter.StarterCheck.Model(worn, [.. items.Select(i => i.Row)]).Passed);
+        Assert.Null(await looks.WornAsync(Guid.NewGuid(), ct));
     }
 
     private async Task Remove_deletes_only_the_named_items_and_raises_their_folder_versions(InventoryStore inv, Guid owner, CancellationToken ct)
