@@ -121,3 +121,17 @@ Allow-list (the only files and folders allowed to mention the names):
 | `.github/scripts/check-retired-names.sh` | The script itself holds the pattern |
 
 Run it locally from any folder in the repo (Git Bash on Windows): `bash .github/scripts/check-retired-names.sh; echo rc=$?`. The workflow file has no match because its comment does not spell the names.
+
+## Checked
+
+Commit checked: `cfd5d9b3` (branch `chore/remove-wifi-diva`).
+
+- **CI (PR 74):** `retired-names`, `secret-scan`, `windows`, `debian (12)` and `debian (13)` passed. When this was written, the `launcher-debian` and `launcher-windows` jobs were still running; read the PR for their result.
+- **Release run 43330012867:** passed, including the install smoke tests on Debian 12 and 13 and Windows. Its `package-linux` artifact is the package installed below.
+- **Debian 12 test VM (2026-11-12):** the package (`0.0.0-dev+cfd5d9b`, upgraded from `0.0.0-dev+bc15d3f`) was installed with `install.sh --from`. No region was frozen first. The service restarted at 15:49:36 local time (23:49:36Z).
+  - No files left: the `find` for `Diva.*`, `Wifi.*`, `WhoGotWhat*`, `jOpenSim*` and `WifiPages*` under `/opt/dreamgrid` and `/var/lib/dreamgrid/runtime/opensim` printed nothing. `Names.csv` and `CsvHelper.dll` are absent from both folders.
+  - The grid starts: `launcher.log` says "The grid is running." at 23:49:50Z, `/simstatus/` on 8004 answers `OK`, and the website's `/welcome` answers 200.
+  - No Diva add-ins load: no line written after the restart (Robust and both regions) names Diva, WhoGotWhat, jOpenSim or Wifi. The "Plugin Loaded" lines after the restart list only OpenSim plugins, `OpenSim.Groups` and `OpenSimSearch` among them.
+  - Groups still load: after the restart `robust.log` has no `[ERROR]` line, and the Groups and HGGroups connectors loaded.
+  - Other lines after the restart, none caused by this change: both regions note an old pid file (the restart), and Test logs scripts whose assets are missing.
+- **Not checked here (the owner's, in Firestorm):** log in, edit a profile and see it saved, open a group, and change an estate setting.
