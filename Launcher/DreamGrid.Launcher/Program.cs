@@ -222,6 +222,7 @@ builder.Services.AddRazorPages(o =>
     // The same for the bot-protection page.
     o.Conventions.AddPageApplicationModelConvention("/Security/Bots", m => m.Filters.Add(new GuestSideOnly()));
     o.Conventions.AddPageApplicationModelConvention("/Security/Iar", m => m.Filters.Add(new GuestSideOnly()));
+    o.Conventions.AddPageApplicationModelConvention("/Security/StarterAvatars", m => m.Filters.Add(new GuestSideOnly()));
     o.Conventions.AddPageApplicationModelConvention("/People/SignUps", m => m.Filters.Add(new GuestSideOnly()));
     o.Conventions.AddPageApplicationModelConvention("/People/Deny", m => m.Filters.Add(new GuestSideOnly()));
     // The same for the Email pages: email is for the guest side's sign-up and password reset.
