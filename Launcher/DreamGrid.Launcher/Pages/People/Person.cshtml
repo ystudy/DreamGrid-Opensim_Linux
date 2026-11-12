@@ -71,6 +71,10 @@ else
     var g = Model.GridIar;
     <section id="person-iar" class="card card-body mb-3">
         <h2 class="h6">Inventory backups</h2>
+        @if (DreamGrid.Launcher.Pages.People.TakedownAccess.MayUse(User))
+        {
+            <p class="small mb-2"><a href="/people/@a.PrincipalId/iar">Inventory archives</a>: save or load this inventory as the owner or an admin, with a reason.</p>
+        }
         <p class="small mb-2">For the whole grid, downloads are @(g.DownloadsOn ? "on" : "off") and uploads are @(g.UploadsOn ? "on" : "off"). These switches can only turn them off for this person.</p>
         @if (Model.IarEditable)
         {

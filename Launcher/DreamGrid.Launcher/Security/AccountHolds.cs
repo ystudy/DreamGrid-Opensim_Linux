@@ -12,6 +12,17 @@ public class AccountHolds
     public const string Unreadable = "The takedown records couldn't be read, so nobody can be deleted now.";
 
     private readonly TakedownStore? _store;
+    private readonly Iar.IarStaffRecords? _evidence;
+
+    /// <summary>
+    /// <paramref name="evidence"/>: a kept staff inventory save that names a case also holds the account (spec
+    /// 2026-11-11-iar-backups-design §7.2). It only stops delete: residents' own backups don't ask here.
+    /// </summary>
+    public AccountHolds(TakedownStore store, Iar.IarStaffRecords evidence)
+    {
+        _store = store;
+        _evidence = evidence;
+    }
 
     public AccountHolds(TakedownStore store) => _store = store;
 
@@ -23,7 +34,8 @@ public class AccountHolds
     {
         if (_store is null) return null;
         if (_store.Unreadable) return Unreadable;
-        return OpenCasesOf(principal) is [var first, ..] ? "This account is on hold: takedown " + first : null;
+        if (OpenCasesOf(principal) is [var first, ..]) return "This account is on hold: takedown " + first;
+        return _evidence?.KeptEvidence(principal) is { } kept ? $"This account is on hold: kept inventory evidence ({kept.CaseNumber})" : null;
     }
 
     public bool IsHeld(Guid principal) => Refusal(principal) is not null;

@@ -428,6 +428,10 @@ builder.Services.AddSingleton(sp => new IarJobs(sp.GetRequiredService<IGridContr
     sp.GetRequiredService<IarRights>(), sp.GetRequiredService<IarCounts>(), sp.GetRequiredService<IarFiles>(), sp.GetRequiredService<TakedownStore>(),
     sp.GetRequiredService<IInventoryStore>(), paths, sp.GetRequiredService<BackgroundWork>(), sp.GetRequiredService<IIarNotifier>(),
     sp.GetRequiredService<AuditLog>(), sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<IarJobs>>()));
+builder.Services.AddSingleton(sp => new IarStaffRecords(paths));
+builder.Services.AddSingleton(sp => new IarStaffJobs(sp.GetRequiredService<IGridController>(), sp.GetRequiredService<IarStaffRecords>(),
+    sp.GetRequiredService<IInventoryStore>(), paths, sp.GetRequiredService<BackgroundWork>(), sp.GetRequiredService<AuditLog>(),
+    sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<IarStaffJobs>>()));
 
 var app = builder.Build();
 // Routing is stated twice, so the endpoint is known to everything below (ApiEndpoint.Is) and picked again once SetupGate has
@@ -451,6 +455,7 @@ LogsApi.Map(app);
 BotsApi.Map(app);
 RegionsApi.Map(app);
 LibraryApi.Map(app);
+IarStaffApi.Map(app);
 StatusApi.Map(app);
 DashboardApi.Map(app);
 SetupApi.Map(app);
