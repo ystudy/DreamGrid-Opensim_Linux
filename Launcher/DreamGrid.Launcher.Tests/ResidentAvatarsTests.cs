@@ -11,7 +11,7 @@ public sealed partial class ResidentAvatarsTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    [GeneratedRegex("^create user (\\S+) (\\S+) (\\S+) \"([^\"]*)\" (\\S+) \"\"$")]
+    [GeneratedRegex("^create user (\\S+) (\\S+) (\\S+) \"([^\"]*)\" (\\S+) \"([^\"]*)\"$")]
     private static partial Regex CreateLine();
 
     [GeneratedRegex("^set user level (\\S+) (\\S+) (-?\\d+)$")]
@@ -49,6 +49,14 @@ public sealed partial class ResidentAvatarsTests
         Assert.Equal("ann@example.test", account.Email);
         Assert.StartsWith("create user Ann Example ", console.Commands[0]);
         Assert.Equal("set user level Ann Example -1", console.Commands[1]);
+    }
+
+    [Fact]
+    public async Task Creates_with_the_model_named()
+    {
+        var console = Console();
+        await Avatars().CreateAsync(console.Client, "Ann", "Example", null, 0, Ct, "Starter01 Avatar");
+        Assert.EndsWith("\"Starter01 Avatar\"", console.Commands[0]);
     }
 
     [Fact]

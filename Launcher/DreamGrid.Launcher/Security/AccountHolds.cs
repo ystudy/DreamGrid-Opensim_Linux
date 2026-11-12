@@ -13,6 +13,16 @@ public class AccountHolds
 
     private readonly TakedownStore? _store;
     private readonly Iar.IarStaffRecords? _evidence;
+    private readonly Core.Starter.StarterAvatarList? _starters;
+
+    public const string StarterModel = "This account is a starter avatar model.";
+
+    /// <summary>
+    /// <paramref name="starters"/>: a starter avatar's model account is held too, while it is on the list (spec
+    /// 2026-11-11-starter-avatars-design §6.5): new residents' outfits are copied from it.
+    /// </summary>
+    public AccountHolds(TakedownStore store, Iar.IarStaffRecords evidence, Core.Starter.StarterAvatarList starters) : this(store, evidence) =>
+        _starters = starters;
 
     /// <summary>
     /// <paramref name="evidence"/>: a kept staff inventory save that names a case also holds the account (spec
@@ -32,6 +42,7 @@ public class AccountHolds
     /// <summary>Why <paramref name="principal"/> can't be deleted, or null when they can.</summary>
     public virtual string? Refusal(Guid principal)
     {
+        if (_starters?.IsModel(principal) == true) return StarterModel;
         if (_store is null) return null;
         if (_store.Unreadable) return Unreadable;
         if (OpenCasesOf(principal) is [var first, ..]) return "This account is on hold: takedown " + first;

@@ -32,6 +32,27 @@ public class GridConsoleCommandsTests
         Assert.Equal($"create user Test Owner pw1 \"\" {Guid.Empty} \"\"", only);
     }
 
+    [Fact]
+    public async Task Create_user_sends_the_model_quoted()
+    {
+        var console = new FakeRestConsole(_ => []);
+        await GridConsoleCommands.CreateUserAsync(console.Client, "Ann", "Example", "pw1", null, Guid.Empty, Settle, CancellationToken.None,
+            "Starter01 Avatar");
+        Assert.Equal($"create user Ann Example pw1 \"\" {Guid.Empty} \"Starter01 Avatar\"", Assert.Single(console.Commands));
+    }
+
+    [Theory]
+    [InlineData("Starter01 Big Avatar")]
+    [InlineData("Starter01")]
+    [InlineData("Starter01 Ava\"tar")]
+    public async Task A_model_with_three_words_is_refused(string model)
+    {
+        var console = new FakeRestConsole(_ => []);
+        await Assert.ThrowsAsync<ArgumentException>(() => GridConsoleCommands.CreateUserAsync(console.Client, "Ann", "Example", "pw1", null,
+            Guid.Empty, Settle, CancellationToken.None, model));
+        Assert.Empty(console.Commands);
+    }
+
     [Theory]
     [InlineData("Logins are enabled for region Welcome", true)]
     [InlineData("Logins are disabled for region Welcome", false)]

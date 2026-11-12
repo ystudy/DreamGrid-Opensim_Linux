@@ -193,7 +193,7 @@ public sealed partial class PictureStore
     }
 
     /// <summary>Maps the stored pixels (width × height) onto the upright picture, for each EXIF orientation.</summary>
-    private static SKMatrix OrientationMatrix(SKEncodedOrigin origin, int w, int h) => origin switch
+    internal static SKMatrix OrientationMatrix(SKEncodedOrigin origin, int w, int h) => origin switch
     {
         SKEncodedOrigin.TopRight => new SKMatrix(-1, 0, w, 0, 1, 0, 0, 0, 1),
         SKEncodedOrigin.BottomRight => new SKMatrix(-1, 0, w, 0, -1, h, 0, 0, 1),

@@ -20,7 +20,8 @@ public sealed class ResidentAvatars(IRobustClient robust, IAccountRemover remove
     /// Throws <see cref="NameTakenException"/> when the name is taken (nothing sent), <see cref="HttpRequestException"/> when Robust
     /// can't be reached, and <see cref="InvalidOperationException"/> when Robust didn't make the account or take the level in time.
     /// </summary>
-    public async Task<RobustAccount> CreateAsync(RestConsoleClient console, string first, string last, string? email, int level, CancellationToken ct)
+    public async Task<RobustAccount> CreateAsync(RestConsoleClient console, string first, string last, string? email, int level, CancellationToken ct,
+        string? model = null)
     {
         GridConsoleCommands.ValidateAvatarName(first, last);
         // The strict lookup: a reply that isn't an account answer is Robust failing, never "the name is free".
@@ -35,7 +36,7 @@ public sealed class ResidentAvatars(IRobustClient robust, IAccountRemover remove
         RobustAccount? made = null;
         try
         {
-            await GridConsoleCommands.CreateUserAsync(console, first, last, password, email, id, settle, none);
+            await GridConsoleCommands.CreateUserAsync(console, first, last, password, email, id, settle, none, model);
             made = await WaitAsync(first, last, a => a.PrincipalId == id, none);
             if (made?.PrincipalId != id)
             {

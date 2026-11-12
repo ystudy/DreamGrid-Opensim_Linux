@@ -66,6 +66,7 @@ public static class StaffMenu
                 (owner, new("Languages", "/security/languages", "/security/languages")),
                 (owner, new("Sign-up and bots", "/security/bots", "/security/bots")),
                 (owner, new("Inventory backups", "/security/iar", "/security/iar")),
+                (owner, new("Starter avatars", "/security/starter-avatars", "/security/starter-avatars")),
                 (owner, new("Email server", "/security/email", "/security/email")),
                 (owner, new("Password reset", "/advanced/password-reset", "/advanced/password-reset")))));
         }

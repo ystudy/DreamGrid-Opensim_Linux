@@ -65,6 +65,7 @@ internal sealed class LauncherFactory : WebApplicationFactory<Program>
     public FakeAccountRemover Remover { get; }
     public FakeEstateRemover Estates { get; }
     public FakeInventoryStore Inventory { get; }
+    public FakeAppearanceStore Appearance { get; } = new();
     /// <summary>The grid's group tables, in memory.</summary>
     public FakeGridGroups Groups { get; }
     /// <summary>Robust's hypergrid links and map, in memory.</summary>
@@ -120,6 +121,8 @@ internal sealed class LauncherFactory : WebApplicationFactory<Program>
             services.AddSingleton<IAccountRemover>(Remover);
             services.RemoveAll<IInventoryStore>();
             services.AddSingleton<IInventoryStore>(Inventory);
+            services.RemoveAll<IAppearanceStore>();
+            services.AddSingleton<IAppearanceStore>(Appearance);
             services.RemoveAll<IEstateRemover>();
             services.AddSingleton<IEstateRemover>(Estates);
             services.RemoveAll<DreamGrid.Launcher.Core.Groups.IGridGroups>();

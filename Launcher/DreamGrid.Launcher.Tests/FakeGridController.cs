@@ -418,8 +418,12 @@ internal sealed class FakeGridController : IGridController
     /// </summary>
     public Func<string, string, string?, int, RobustAccount>? OnCreateResident { get; set; }
 
-    public Task<RobustAccount> CreateResidentAsync(string first, string last, string? email, int level, CancellationToken ct)
+    /// <summary>The model the last <see cref="CreateResidentAsync"/> was asked to copy (null for the plain avatar).</summary>
+    public string? LastModel { get; private set; }
+
+    public Task<RobustAccount> CreateResidentAsync(string first, string last, string? email, int level, CancellationToken ct, string? model = null)
     {
+        LastModel = model;
         Record($"CreateResident {first} {last} {level}");
         try { return Task.FromResult(OnCreateResident?.Invoke(first, last, email, level) ?? new RobustAccount(Guid.NewGuid(), first, last, level, email ?? "")); }
         catch (Exception e) { return Task.FromException<RobustAccount>(e); }

@@ -15,7 +15,8 @@ using DreamGrid.Launcher.Groups;
 namespace DreamGrid.Launcher.Guests;
 
 /// <summary>What the sign-up form typed.</summary>
-public sealed record SignUpForm(string? First, string? Last, string? Email, string? Password, string? Again, bool AcceptTerms);
+/// <summary>A sign-up form; <see cref="Avatar"/> is the starter avatar picked on step 2 (its GridGate id, never a model name).</summary>
+public sealed record SignUpForm(string? First, string? Last, string? Email, string? Password, string? Again, bool AcceptTerms, Guid? Avatar = null);
 
 /// <summary>How a sign-up post or a "send the link again" went.</summary>
 public enum SignUpOutcome { Closed, Invalid, NameTaken, CheckEmail, SignedUp, WaitingForStaff, Busy }
@@ -49,7 +50,8 @@ public sealed record SignUpLimits(ResetLimits Counts);
 /// </summary>
 public sealed class SignUps(Func<LauncherSettings> settings, IGridController grid, IRobustClient robust, IStaffDirectory directory,
     IAccountRemover remover, IRobustPasswords passwords, SignUpBoard pending, SignUpLimits limits, EmailTokens tokens,
-    EmailSender sender, EmailLanguage emailLanguage, ResidentLanguages residentLanguages, TermsAcceptances terms, SignUpLock gate, AuditLog audit, GroupsAdmin groups, HeldNames heldNames, ILogger<SignUps> log)
+    EmailSender sender, EmailLanguage emailLanguage, ResidentLanguages residentLanguages, TermsAcceptances terms, SignUpLock gate, AuditLog audit, GroupsAdmin groups, HeldNames heldNames,
+    Core.Starter.StarterAvatarList starters, Starter.StarterCopyCheck starterCheck, BackgroundWork background, ILogger<SignUps> log)
 {
     public const string Purpose = "confirm-signup";
     public static readonly TimeSpan LinkLifetime = TimeSpan.FromHours(24);
@@ -113,10 +115,13 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
         // avatar and reply (so neither the name nor the time taken says whether it is registered), but no link: its owner gets a
         // notice instead, and the clean-up frees the name.
         var none = CancellationToken.None;
+        // The starter avatar picked on step 2, or the default when that one isn't ready any more (spec 2026-11-11-starter-avatars
+        // §5.3); null is the plain avatar. A decoy gets it too, so the time taken says nothing.
+        var starter = starters.Resolve(form.Avatar);
         RobustAccount account;
         try
         {
-            account = await grid.CreateResidentAsync(first, last, email, -1, none);
+            account = await grid.CreateResidentAsync(first, last, email, -1, none, starter?.ModelName);
         }
         catch (NameTakenException)
         {
@@ -154,6 +159,13 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
                 LogText.Clean(first, 32), e.InnerException?.Message ?? e.Message);
             await DeleteAsync(account.PrincipalId);
             return new(SignUpOutcome.Busy);
+        }
+
+        if (starter is not null)
+        {
+            var made = account.PrincipalId;
+            background.Run("Starter avatar check", ct => starterCheck.RunAsync(made, starter, ct));
+            if (owner is null) starters.Picked(new Core.Starter.StarterPick(made, starter.Id, starter.Name, DateTimeOffset.UtcNow));
         }
 
         // The language of the page they signed up from is theirs from the start, in every mode. An address already on the grid made a

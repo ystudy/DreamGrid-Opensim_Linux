@@ -144,6 +144,11 @@
   <data name="SignUp.TermsOfService" xml:space="preserve"><value>Conditions d’utilisation</value></data>
   <data name="SignUp.PrivacyNotice" xml:space="preserve"><value>Politique de confidentialité</value></data>
   <data name="SignUp.CreateAvatar" xml:space="preserve"><value>Créer mon avatar</value></data>
+  <data name="SignUp.Next" xml:space="preserve"><value>Suivant</value></data>
+  <data name="SignUp.Back" xml:space="preserve"><value>Retour</value></data>
+  <data name="SignUp.ChooseAvatar" xml:space="preserve"><value>Choisissez votre avatar</value></data>
+  <data name="SignUp.ChooseAvatarHint" xml:space="preserve"><value>Vous pourrez changer de vêtements plus tard depuis votre inventaire.</value></data>
+  <data name="SignUp.Step" xml:space="preserve"><value>Étape {0} sur {1}</value></data>
   <data name="SignUp.AddressLimit" xml:space="preserve"><value>Trop d’inscriptions depuis votre adresse. Réessayez dans une heure.</value></data>
   <data name="SignUp.TermsProblem" xml:space="preserve"><value>Cochez la case pour accepter les Conditions d’utilisation et la Politique de confidentialité.</value></data>
   <data name="SignUp.NameMissing" xml:space="preserve"><value>Saisissez un prénom et un nom.</value></data>

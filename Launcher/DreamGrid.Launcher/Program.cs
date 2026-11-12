@@ -93,6 +93,7 @@ try
     LauncherPaths.CreateOwnerOnly(paths.DataProtectionKeys);
     LauncherPaths.CreateOwnerOnly(paths.Security);
     LauncherPaths.CreateOwnerOnly(paths.Guests);
+    LauncherPaths.CreateOwnerOnly(paths.StarterAvatars);
     LauncherPaths.CreateOwnerOnly(paths.Email);
     LauncherPaths.CreateOwnerOnly(paths.Tickets);
     DreamGrid.Launcher.Core.Iar.IarFolders.Prepare(paths);
@@ -221,6 +222,7 @@ builder.Services.AddRazorPages(o =>
     // The same for the bot-protection page.
     o.Conventions.AddPageApplicationModelConvention("/Security/Bots", m => m.Filters.Add(new GuestSideOnly()));
     o.Conventions.AddPageApplicationModelConvention("/Security/Iar", m => m.Filters.Add(new GuestSideOnly()));
+    o.Conventions.AddPageApplicationModelConvention("/Security/StarterAvatars", m => m.Filters.Add(new GuestSideOnly()));
     o.Conventions.AddPageApplicationModelConvention("/People/SignUps", m => m.Filters.Add(new GuestSideOnly()));
     o.Conventions.AddPageApplicationModelConvention("/People/Deny", m => m.Filters.Add(new GuestSideOnly()));
     // The same for the Email pages: email is for the guest side's sign-up and password reset.
@@ -274,6 +276,12 @@ builder.Services.AddSingleton<IRobustPasswords>(sp => new RobustPasswords(sp.Get
 builder.Services.AddSingleton<IRobustEmails>(sp => new RobustEmails(sp.GetRequiredService<Func<LauncherSettings>>()));
 builder.Services.AddSingleton<IAccountRemover>(sp => new AccountRemover(sp.GetRequiredService<Func<LauncherSettings>>()));
 builder.Services.AddSingleton<IInventoryStore>(sp => new InventoryStore(sp.GetRequiredService<Func<LauncherSettings>>()));
+builder.Services.AddSingleton<IAppearanceStore>(sp => new AppearanceStore(sp.GetRequiredService<Func<LauncherSettings>>()));
+// Starter avatars (spec 2026-11-11-starter-avatars-design): the list, and the check of each sign-up's copy.
+builder.Services.AddSingleton(sp => new DreamGrid.Launcher.Core.Starter.StarterAvatarList(Path.Combine(paths.StarterAvatars, "avatars.json"),
+    sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<DreamGrid.Launcher.Core.Starter.StarterAvatarList>>()));
+builder.Services.AddSingleton<DreamGrid.Launcher.Starter.StarterCopyCheck>();
+builder.Services.AddSingleton<DreamGrid.Launcher.Starter.StarterImport>();
 builder.Services.AddSingleton(sp => new TakedownStore(paths.Takedowns, sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<TakedownStore>>()));
 builder.Services.AddSingleton(new EvidenceCopier(paths.FsAssetsData));
 builder.Services.AddSingleton<IEstateRemover>(sp => new EstateRemover(sp.GetRequiredService<Func<LauncherSettings>>()));
@@ -458,6 +466,8 @@ RegionsApi.Map(app);
 LibraryApi.Map(app);
 IarStaffApi.Map(app);
 IarGuestApi.Map(app);
+StarterSnapshotApi.Map(app);
+StarterApi.Map(app);
 StatusApi.Map(app);
 DashboardApi.Map(app);
 SetupApi.Map(app);

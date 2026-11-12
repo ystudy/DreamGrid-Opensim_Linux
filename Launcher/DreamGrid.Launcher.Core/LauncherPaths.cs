@@ -49,6 +49,9 @@ public sealed record LauncherPaths(string Data, string OpenSimProgram, string? M
     /// <summary>Owner and admin saves kept as evidence, and their records; never swept.</summary>
     public string IarsStaff => Path.Combine(Iars, "staff");
 
+    /// <summary>Starter avatars: the list (avatars.json) and the owner's snapshots, re-encoded as &lt;id&gt;.webp.</summary>
+    public string StarterAvatars => Path.Combine(Data, "starter-avatars");
+
     /// <summary>The viewer splash page: its draft and published design (and, with plan 12b, its pictures).</summary>
     public string Splash => Path.Combine(Data, "splash");
     /// <summary>The splash page's pictures (redrawn uploads under the launcher's own names, with their index).</summary>

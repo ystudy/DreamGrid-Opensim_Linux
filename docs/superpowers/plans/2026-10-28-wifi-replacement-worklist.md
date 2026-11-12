@@ -78,11 +78,12 @@ Each item says what Wifi did, how v7 should do it better, and the security rules
 
 ### 2.1 Resident sign-up (Wifi: `newaccountform`, `avatarselectitem`)
 > First version done in plan 9 (`docs/superpowers/plans/2026-10-31-plan9-sign-up.md`, design `docs/superpowers/specs/2026-10-31-sign-up-design.md`): `/signup`, an email link (or none when email isn't set up), `/guest/connect`, the owner's switch on the Legal page, and clean-up of sign-ups nobody confirmed.
-- [x] Sign-up form: first name, last name, email, password. (Starter avatar still open, below.)
-- [ ] Starter avatar (Female, Male, Neutral, Tiny — the appearance accounts come from settings).
+- [x] Sign-up form: first name, last name, email, password.
+- [x] Starter avatar: built in the starter avatars plan (`docs/superpowers/plans/2026-11-11-starter-avatars.md`, design `docs/superpowers/specs/2026-11-11-starter-avatars-design.md`, owner docs `docs/starter-avatars.md`). Step 2 of `/signup` shows the owner's snapshots; `create user` names the picked model, so Robust copies its outfit; the owner loads, dresses, checks and arranges them at `/security/starter-avatars`.
+  - [ ] The owner's check on the Debian 12 VM, in Firestorm: load FULLAVATARS, add a snapshot for Lyra, log in as her model and Replace Outfit, press Check it; then sign up a test resident with Lyra and log in. They are wearing her, and her pieces are in their Clothing folder. Sign up once more with a model whose outfit is missing an item and see the warning on the Starter avatars page.
 - [x] **[S]** Password rules (minimum length, check against a common-passwords list), the honeypot and rate limit from 1.3. Decided (owner): a taken name is said plainly; a taken email address is never said (its owner gets a notice email).
 - [x] Modes chosen by the admin: open, email confirmation required, admin approval required, or closed. (Plan 11: open or closed; with email, the link or staff approval, whichever comes first; without email, staff approval or straight in, the owner's switch.)
-- [ ] Copying the starter avatar's outfit and inventory runs as a background job with progress, not inside the request.
+- [x] Copying the starter avatar's outfit: Robust copies it inside `create user`; GridGate checks the copy afterwards in the background, slot by slot, and takes an avatar off sign-up when a copy comes out incomplete.
 - [x] The viewer's "create account" link (`register=` in `Robust.HG.ini.proto`) points to the new page.
 
 ### 2.2 Pending accounts (Wifi: `userpendinglist`)

@@ -105,9 +105,11 @@ public static partial class IarArchive
     /// Copies <paramref name="source"/> into <paramref name="target"/> without the item entries in <paramref name="dropItemEntries"/>,
     /// without the assets in <paramref name="dropAssets"/>, and without every asset no kept item reaches (directly, or through the
     /// ids inside a kept object, notecard or other linking asset, however deep). <c>archive.xml</c> and folders are copied unchanged,
-    /// in order; anything else is left out. The target is written the way OpenSim writes archives.
+    /// in order, except the folder entries in <paramref name="dropFolderEntries"/>; anything else is left out. The target is
+    /// written the way OpenSim writes archives.
     /// </summary>
-    public static void Rewrite(string source, string target, ISet<string> dropItemEntries, ISet<Guid>? dropAssets = null)
+    public static void Rewrite(string source, string target, ISet<string> dropItemEntries, ISet<Guid>? dropAssets = null,
+        ISet<string>? dropFolderEntries = null)
     {
         var known = AssetIds(source);
         var roots = new HashSet<Guid>();
@@ -146,6 +148,7 @@ public static partial class IarArchive
                 {
                     var kind = KindOf(e);
                     if (kind == EntryKind.Item && dropItemEntries.Contains(e.Name)) continue;
+                    if (kind == EntryKind.Folder && dropFolderEntries?.Contains(e.Name) == true) continue;
                     if (kind == EntryKind.Asset && !reached.Contains(AssetIdOf(e.Name)!.Value)) continue;
                     if (kind == EntryKind.Other) continue;
                     writer.Write(e.Name, e.Type, e.Size, tar.CopyData);
@@ -157,6 +160,16 @@ public static partial class IarArchive
         {
             if (File.Exists(temp)) File.Delete(temp);
         }
+    }
+
+    /// <summary>Every folder entry's path in the archive, in order (headers only).</summary>
+    public static IReadOnlyList<string> FolderEntries(string path)
+    {
+        var folders = new List<string>();
+        using var tar = new IarTarReader(path);
+        while (tar.Next() is { } e)
+            if (KindOf(e) == EntryKind.Folder) folders.Add(e.Name);
+        return folders;
     }
 
     /// <summary>Every asset entry's id in the archive (headers only).</summary>
