@@ -65,6 +65,7 @@ A CI step searches all tracked files, case-insensitively, for `wifi`, `diva` and
 - **`OpenSim/`**: upstream OpenSim code, such as the old `diva_groups_*` table names in core migrations and a comment in `SnapshotStore.cs`. It's left as upstream wrote it, so OpenSim updates still cherry-pick cleanly.
 - **`docs/superpowers/`**: designs and plans are history and aren't rewritten. That includes the work list and this design.
 - **`docs/jopensim-notes.md` and `docs/opensim-search-notes.md`**: reference notes. They gain one line saying the modules were removed.
+- **`docs/wifi-diva-removal-log.md`**: the record of what was removed (see "The removal log").
 - **The two leftover-guard files** (`RuntimeStager.cs`, `setup/package.ps1`) and their tests.
 - **The CI step itself.**
 - **Binary files**: third-party DLLs such as `Mono.Addins.dll` match by accident. The search ignores binary files.
@@ -100,6 +101,17 @@ The CI step goes in `.github/workflows/dreamgrid-ci.yml` next to the secret scan
    - The region logs no longer show `Plugin Loaded: Diva.AddinExample` or WhoGotWhat.
    - Robust and every region start. `/simstatus/` answers, and the launcher log says "The grid is running."
 5. **The owner's check in Firestorm:** log in, edit a profile and see it saved, open a group, change an estate setting.
+
+## The removal log
+
+The owner asked (2026-11-12, when approving this design) for a log of what was removed. It goes in `docs/wifi-diva-removal-log.md`, written as the work is done. It lists:
+
+- **Every folder and file removed.** For each folder: its file count and what it was. A list per file isn't needed where a whole folder went. Each line says why it went.
+- **Every config line removed or changed,** with the file it was in and its old text. Passwords are shown as they were, since they are sample values already in git history; the real secrets were revoked in Phase 0.
+- **Every code change** in the launcher, the tests, the smoke run, the package script and CI.
+- **The last commit that still has everything:** the merge base on `main`. So any piece can be restored with `git checkout <commit> -- <path>`.
+
+The log is on the CI check's allow-list.
 
 ## Docs to update
 
