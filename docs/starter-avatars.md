@@ -27,7 +27,10 @@ Open **Guest pages → Starter avatars** (`/security/starter-avatars`). Only the
    GridGate can't read, so take a snapshot in the viewer.
 4. **Log in as this model.** GridGate sets a new password and shows it once, with the folder to open. In a viewer, open that
    folder, choose **Replace Outfit**, wait until the avatar looks right, then log out.
-5. **Check it.** GridGate reads what the model is wearing and checks that it owns every piece. When the check passes, the avatar
+5. **Check it.** GridGate reads what the model is wearing and checks that it owns every piece, that every piece comes from the
+   avatar's own folder (a new model starts out in OpenSim's plain default outfit, which never passes), and that no attachment
+   point holds two items. OpenSim copies only one attachment per point to new residents, so move extras such as a mesh head and
+   its hair onto different points. When the check passes, the avatar
    goes on the sign-up page. The model gets a new password that nobody sees, so nobody changes it by accident. The check also lists
    any piece residents won't be able to copy or modify (they get each item's next-owner permissions). In FULLAVATARS that's one
    hair, which is no-transfer.
@@ -49,6 +52,9 @@ and press **Check it**.
 After each sign-up, GridGate checks in the background that the new resident is wearing every piece the model wears, slot by
 slot. If anything is missing, the avatar comes off the sign-up page and its row shows "*Name* wasn't copied to a new resident;
 check its model". The audit log gets `starter-avatar-failed`. Log in as the model, fix the outfit, and press **Check it** again.
+
+OpenSim doesn't store the Physics and Universal wearable layers in an appearance, so new residents don't get them worn. They're
+still in the model's inventory if you want to hand them out another way.
 
 Robust copies the outfit only while `CreateDefaultAvatarEntries` is `true` in `Robust.HG.ini`, which GridGate always writes.
 

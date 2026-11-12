@@ -59,7 +59,9 @@ public sealed class InventoryStoreIntegrationTests : IDisposable
         Assert.NotNull(worn);
         Assert.Contains(worn, w => w.Slot == "Wearable 0:0");
         var items = await inv.ItemsAsync(owner, [.. worn.Select(w => w.ItemId)], ct);
-        Assert.True(DreamGrid.Launcher.Core.Starter.StarterCheck.Model(worn, [.. items.Select(i => i.Row)]).Passed);
+        // Final review C1: the default outfit a new account gets never passes for a starter avatar.
+        Assert.Equal(items.Count, worn.Count);
+        Assert.False(DreamGrid.Launcher.Core.Starter.StarterCheck.Model(worn, [.. items.Select(i => i.Row)]).Passed);
         Assert.Null(await looks.WornAsync(Guid.NewGuid(), ct));
     }
 

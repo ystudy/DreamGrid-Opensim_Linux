@@ -17,11 +17,14 @@ public sealed class StarterModelTests
     private static StarterAvatarList List(LauncherFactory f) => f.Services.GetRequiredService<StarterAvatarList>();
 
     /// <summary>A model on the fake Robust with its outfit in its inventory and, when <paramref name="worn"/>, stored as worn.</summary>
-    private static (StarterAvatar Avatar, List<WornItem> Outfit) Model(LauncherFactory f, bool worn = true, string password = "old-pass-1")
+    private static (StarterAvatar Avatar, List<WornItem> Outfit) Model(LauncherFactory f, bool worn = true, string password = "old-pass-1",
+        bool outfitFolder = true)
     {
         var id = Guid.NewGuid();
         f.Robust.Add("Starter01", "Avatar", 0, password, id, "");
-        var folder = f.Inventory.AddDefaultFolders(id);
+        var root = f.Inventory.AddDefaultFolders(id);
+        var folder = outfitFolder ? Guid.NewGuid() : root;
+        if (outfitFolder) f.Inventory.AddFolder(id, new InventoryFolder(folder, root, "Lyra", -1));
         var shape = f.Inventory.Add(id, folder, "Shape", assetType: 13);
         var hair = f.Inventory.Add(id, folder, "Hair", assetType: 6);
         var outfit = new List<WornItem> { new("Wearable 0:0", shape.ItemId), new("_ap_2", hair.ItemId) };
@@ -81,6 +84,18 @@ public sealed class StarterModelTests
         Assert.False(List(f).All().Single().CheckPassed);
         Assert.True(await f.Robust.AuthenticateAsync(a.Model, "old-pass-1", Ct)); // not rotated: the owner may still be dressing it
         Assert.Contains(Audit(f), e => e.Action == "starter-avatar-checked" && e.Result.StartsWith("failed", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Check_fails_while_the_model_wears_items_outside_its_folder()
+    {
+        await using var f = Factory();
+        var (a, _) = Model(f, outfitFolder: false); // worn items in My Inventory, as Robust's default outfit is
+        var owner = await SignedInAsync(f);
+        using var r = await PostAsync(owner, "Check", new() { ["id"] = a.Id.ToString() });
+        var page = new HtmlParser().ParseDocument(await r.Content.ReadAsStringAsync(Ct));
+        Assert.Contains("Replace Outfit", page.QuerySelector("#check-result")!.TextContent);
+        Assert.False(List(f).All().Single().CheckPassed);
     }
 
     [Fact]

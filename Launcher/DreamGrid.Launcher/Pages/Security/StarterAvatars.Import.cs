@@ -90,7 +90,7 @@ public partial class StarterAvatarsModel
             return Problem("The grid service isn't answering. Start the grid and try again.");
         }
         return added is null
-            ? Problem($"{first} {last} isn't on the grid, or is already a starter avatar.")
+            ? Problem($"{first} {last} can't be added: it must be on the grid, at level 0, with no email, and not already a starter avatar. A model's password is reset, so it can't be anyone's own avatar.")
             : Done($"{added.Name} is added. Upload its snapshot, then press Check it.");
     }
 }

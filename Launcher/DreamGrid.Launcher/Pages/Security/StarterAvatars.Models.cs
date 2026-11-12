@@ -18,6 +18,26 @@ public partial class StarterAvatarsModel
     private const string PasswordLetters = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
     public ModelLogin? LoginShown { get; private set; }
+
+    /// <summary>
+    /// The folder an archive was loaded into for <paramref name="a"/> (the first part of its <see cref="StarterAvatar.OutfitFolder"/>,
+    /// under My Inventory) and every folder below it; null for an account added by hand. A folder that is gone gives an empty set,
+    /// so the check fails until the outfit is back.
+    /// </summary>
+    private async Task<IReadOnlySet<Guid>?> OutfitFoldersAsync(StarterAvatar a, CancellationToken ct)
+    {
+        if (a.OutfitFolder is not { } path) return null;
+        var top = path.Split('/')[0];
+        var folders = await inventory.FoldersAsync(a.Model, ct);
+        var root = folders.FirstOrDefault(f => f.Type == 8);
+        var set = new HashSet<Guid>();
+        if (root is null || folders.FirstOrDefault(f => f.Parent == root.Id && f.Name == top) is not { } start) return set;
+        var queue = new Queue<Guid>([start.Id]);
+        while (queue.TryDequeue(out var id))
+            if (set.Add(id))
+                foreach (var child in folders.Where(f => f.Parent == id)) queue.Enqueue(child.Id);
+        return set;
+    }
     public ModelCheck? CheckShown { get; private set; }
 
     /// <summary>
@@ -56,7 +76,7 @@ public partial class StarterAvatarsModel
         {
             var worn = await looks.WornAsync(a.Model, ct);
             var items = worn is null ? [] : await inventory.ItemsAsync(a.Model, [.. worn.Select(w => w.ItemId)], ct);
-            result = StarterCheck.Model(worn, [.. items.Select(i => i.Row)]);
+            result = StarterCheck.Model(worn, [.. items.Select(i => i.Row)], await OutfitFoldersAsync(a, ct));
             if (result.Passed) await passwords.SetAsync(a.Model, RandomNumberGenerator.GetString(PasswordLetters, 32), ct);
         }
         catch (Exception e) when (e is StaffDirectoryUnavailableException or RobustPasswordsUnavailableException)

@@ -75,9 +75,49 @@ public sealed class StarterCheckTests
     }
 
     [Fact]
+    public void Model_wearing_items_outside_its_outfit_folder_fails()
+    {
+        // Final review C1: a new model already wears the default outfit Robust made, from its own inventory.
+        var (worn, items) = Outfit(("Wearable 0:0", "Shape"), ("_ap_2", "Hair"));
+        var outfit = Guid.NewGuid();
+        var inside = items.Select(i => i with { Folder = outfit }).ToList();
+        Assert.True(StarterCheck.Model(worn, inside, new HashSet<Guid> { outfit }).Passed);
+        var r = StarterCheck.Model(worn, items, new HashSet<Guid> { outfit });
+        Assert.False(r.Passed);
+        Assert.Equal([StarterCheck.NotTheOutfit], r.Missing);
+    }
+
+    [Fact]
+    public void Model_wearing_only_the_default_outfit_fails()
+    {
+        var worn = new List<WornItem>();
+        var items = new List<InventoryItemRow>();
+        foreach (var (slot, asset) in new[] { ("Wearable 0:0", "66c41e39-38f9-f75a-024e-585989bfab73"), ("Wearable 1:0", "77c41e39-38f9-f75a-024e-585989bbabbb"),
+                     ("Wearable 4:0", "00000000-38f9-1111-024e-222222111110") })
+        {
+            var id = Guid.NewGuid();
+            worn.Add(new WornItem(slot, id));
+            items.Add(Row(id, Model, slot, Guid.Parse(asset)));
+        }
+        var r = StarterCheck.Model(worn, items);
+        Assert.False(r.Passed);
+        Assert.Equal([StarterCheck.NotTheOutfit], r.Missing);
+    }
+
+    [Fact]
+    public void Model_with_two_attachments_on_one_point_fails()
+    {
+        // Final review I1: Robust's copy keeps only the last attachment on each point.
+        var (worn, items) = Outfit(("Wearable 0:0", "Shape"), ("_ap_2", "Hair"), ("_ap_2", "Head"));
+        var r = StarterCheck.Model(worn, items);
+        Assert.False(r.Passed);
+        Assert.Equal(["_ap_2: Hair, Head on one point; only one is copied to residents, so move the others to other points"], r.Missing);
+    }
+
+    [Fact]
     public void Copy_matches_slot_by_asset()
     {
-        var (worn, items) = Outfit(("Wearable 0:0", "Shape"), ("Wearable 4:0", "Shirt"), ("_ap_2", "Hair"), ("_ap_2", "Hat"));
+        var (worn, items) = Outfit(("Wearable 0:0", "Shape"), ("Wearable 4:0", "Shirt"), ("_ap_2", "Hair"), ("_ap_9", "Hat"));
         var (rw, ri) = CopyOf(worn, items);
         Assert.True(StarterCheck.Copy(worn, items, rw, ri).Passed);
     }

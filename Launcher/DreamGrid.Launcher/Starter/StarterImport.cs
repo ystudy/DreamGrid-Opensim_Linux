@@ -63,13 +63,16 @@ public sealed class StarterImport(IGridController grid, IRobustClient robust, II
     }
 
     /// <summary>
-    /// Adds an account the owner already dressed by hand. Null when it isn't on the grid or is already on the list. Throws
-    /// <see cref="HttpRequestException"/> when Robust can't be reached.
+    /// Adds an account the owner already dressed by hand. Null when it isn't on the grid, is already on the list, or is anyone's own
+    /// avatar (final review I2: a model's password is reset and its sign-in blocked): only an account at level 0 with no email
+    /// and a name the console takes. Throws <see cref="HttpRequestException"/> when Robust can't be reached.
     /// </summary>
     public async Task<StarterAvatar?> AddExistingAsync(IarStaffActor actor, string first, string last, string name, CancellationToken ct)
     {
+        try { GridConsoleCommands.ValidateAvatarName(first.Trim(), last.Trim()); }
+        catch (ArgumentException) { return null; }
         if (await robust.FindAccountAsync(first.Trim(), last.Trim(), ct) is not { } account) return null;
-        if (starters.IsModel(account.PrincipalId)) return null;
+        if (starters.IsModel(account.PrincipalId) || account.UserLevel != 0 || !string.IsNullOrWhiteSpace(account.Email)) return null;
         var a = starters.Add(name, account.PrincipalId, account.FirstName, account.LastName);
         Write(actor, a.Name, "ok");
         return a;

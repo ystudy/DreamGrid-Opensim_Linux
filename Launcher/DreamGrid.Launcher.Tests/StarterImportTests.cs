@@ -177,4 +177,17 @@ public sealed class StarterImportTests : IDisposable
         Assert.Null(await import.AddExistingAsync(Owner, "Mia", "Model", "Mia again", Ct)); // already on the list
         Assert.Equal(["starter-avatar-added Mia ok"], Audit());
     }
+
+    [Theory]
+    [InlineData("Staff", "Person", 200, "")]   // staff (and the owner) have a level above 0
+    [InlineData("Res", "Ident", 0, "res@example.com")] // a resident has an email
+    [InlineData("Wait", "Ing", -1, "")]   // a sign-up still waiting
+    [InlineData("Old.Name", "Here", 0, "")] // a name the console would split
+    public async Task Add_existing_refuses_people_and_bad_names(string first, string last, int level, string email)
+    {
+        // Final review I2: a model's password is reset and its sign-in blocked, so it must never be someone's own avatar.
+        _robust.Add(first, last, level, "x", Guid.NewGuid(), email);
+        Assert.Null(await Import().AddExistingAsync(Owner, first, last, "Mia", Ct));
+        Assert.Empty(_starters.All());
+    }
 }
