@@ -26,8 +26,8 @@ version `0.1.0`. The tag must be `v<major>.<minor>.<patch>`, optionally with a p
 are `0.0.0-dev+<short commit>`.
 
 That plain version is used everywhere a machine reads it: the package and installer names
-(`dreamgrid-0.1.0-linux-x64.tar.gz`, `DreamGridSetup-0.1.0.exe`), the launcher's `--version`, and the website
-footer (`DreamGrid 0.1.0`, which the install smokes read). The product still installs as "DreamGrid".
+(`gridgate-0.1.0-linux-x64.tar.gz`, `GridGateSetup-0.1.0.exe`), the launcher's `--version`, and the website
+footer (`GridGate 0.1.0`, which the install smokes read).
 
 ## The OpenSimulator base
 

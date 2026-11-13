@@ -8,7 +8,7 @@ On Windows the repository has paths longer than 260 characters, so `core.longpat
 
 # Project files
 
-The `.csproj` files and `DreamGrid.sln` are checked in, and Prebuild is not run. The `prebuild.xml` files
+The `.csproj` files and `GridGate.sln` are checked in, and Prebuild is not run. The `prebuild.xml` files
 left in the tree are not used by the build. When an OpenSimulator update changes upstream's `prebuild.xml`,
 the same change is made by hand to the `.csproj` files; see `MERGING.md`.
 Shared settings (target framework `net10.0`) live in `Directory.Build.props` and `Directory.Build.targets`.
@@ -28,7 +28,7 @@ optionally also
 run
   `compile.bat`
 
-which is `dotnet build -c Release DreamGrid.sln`. Or open `DreamGrid.sln` in Visual Studio and build the solution.
+which is `dotnet build -c Release GridGate.sln`. Or open `GridGate.sln` in Visual Studio and build the solution.
 
 Configure, see below
 
@@ -45,7 +45,7 @@ Now just run `OpenSim.exe` from the `bin` folder, and set up the region.
 
 ### Building
 
- `dotnet build -c Release DreamGrid.sln`
+ `dotnet build -c Release GridGate.sln`
 
 The build copies the Linux `System.Drawing.Common.dll` into `bin/` by itself.
 
