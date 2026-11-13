@@ -35,7 +35,7 @@ public sealed class SmokeRun
     public SmokeRun(SmokeOptions opt)
     {
         _opt = opt;
-        string root = Path.Combine(Path.GetTempPath(), $"dg smoke {DateTime.Now:yyyyMMdd-HHmmss}");
+        string root = Path.Combine(Path.GetTempPath(), $"gg smoke {DateTime.Now:yyyyMMdd-HHmmss}");
         _sandboxBin = Path.Combine(root, "bin");
         _httpPort = FreeTcpPort();
         _regionPort = FreeTcpPort();

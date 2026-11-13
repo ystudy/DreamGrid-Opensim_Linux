@@ -7,7 +7,7 @@ namespace GridGate.Launcher.Tests;
 /// <summary>Finding the avatars in an archive and cutting one out (spec 2026-11-11-starter-avatars-design §6.2).</summary>
 public sealed class StarterArchiveTests : IDisposable
 {
-    private readonly string _dir = Directory.CreateTempSubdirectory("dg-starterarc-").FullName;
+    private readonly string _dir = Directory.CreateTempSubdirectory("gg-starterarc-").FullName;
 
     public void Dispose()
     {

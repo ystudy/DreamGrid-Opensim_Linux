@@ -21,7 +21,7 @@ namespace GridGate.Launcher.Tests;
 /// </summary>
 internal sealed class LauncherFactory : WebApplicationFactory<Program>
 {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "dg-host-" + Guid.NewGuid().ToString("N"));
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "gg-host-" + Guid.NewGuid().ToString("N"));
 
     public LauncherFactory(Func<LauncherSettings, LauncherSettings>? seed = null)
     {

@@ -9,7 +9,7 @@ namespace GridGate.Launcher.Tests;
 /// <summary>The store for languages the grid owner adds (plan 16b).</summary>
 public sealed class OwnerLanguagesTests : IDisposable
 {
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "dg-owner-langs-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "gg-owner-langs-" + Guid.NewGuid().ToString("N"));
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 11, 11, 12, 0, 0, TimeSpan.Zero));
     private string Folder => Path.Combine(_dir, "languages");
 

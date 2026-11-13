@@ -8,7 +8,7 @@ The built-in translations were drafted by AI. No native speaker has checked them
 
 On resident pages GridGate looks for a language in this order. It uses the first one it finds.
 
-1. The language chosen in the header picker. This is kept in the `dg-lang` cookie.
+1. The language chosen in the header picker. This is kept in the `gg-lang` cookie.
 2. The signed-in resident's saved language.
 3. The browser's `Accept-Language` setting.
 4. The grid's default language.

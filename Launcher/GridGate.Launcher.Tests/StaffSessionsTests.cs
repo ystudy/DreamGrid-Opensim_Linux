@@ -11,7 +11,7 @@ public sealed class StaffSessionsTests : IDisposable
     private static readonly Guid Ann = Guid.Parse("a0000000-0000-0000-0000-000000000001");
     private static readonly Guid Bob = Guid.Parse("b0000000-0000-0000-0000-000000000002");
 
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "dg-sessions-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "gg-sessions-" + Guid.NewGuid().ToString("N"));
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 10, 30, 12, 0, 0, TimeSpan.Zero));
 
     public StaffSessionsTests() => Directory.CreateDirectory(_dir);

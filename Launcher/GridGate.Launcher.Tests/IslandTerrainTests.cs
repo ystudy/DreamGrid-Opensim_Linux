@@ -5,7 +5,7 @@ namespace GridGate.Launcher.Tests;
 
 public sealed class IslandTerrainTests : IDisposable
 {
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "dg-island-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "gg-island-" + Guid.NewGuid().ToString("N"));
 
     public IslandTerrainTests() => Directory.CreateDirectory(_dir);
 

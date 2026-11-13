@@ -6,7 +6,7 @@ namespace GridGate.Launcher.Tests;
 /// <summary>The ticket files and private links (design 2026-11-05-support-tickets).</summary>
 public sealed class TicketStoreTests : IDisposable
 {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "dg-tickets-" + Guid.NewGuid().ToString("N"));
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "gg-tickets-" + Guid.NewGuid().ToString("N"));
     private static readonly DateTimeOffset Now = new(2026, 11, 5, 12, 0, 0, TimeSpan.Zero);
 
     public void Dispose()

@@ -10,7 +10,7 @@ namespace GridGate.Launcher.Tests;
 /// <summary>The language an email to a resident goes out in: theirs when the grid still offers it, else the grid's default.</summary>
 public sealed class EmailLanguageTests : IDisposable
 {
-    private readonly string _file = Path.Combine(Path.GetTempPath(), $"dg-emaillang-{Guid.NewGuid():N}.json");
+    private readonly string _file = Path.Combine(Path.GetTempPath(), $"gg-emaillang-{Guid.NewGuid():N}.json");
     private readonly Guid _ann = Guid.NewGuid();
 
     public void Dispose()
@@ -22,7 +22,7 @@ public sealed class EmailLanguageTests : IDisposable
     {
         var saved = new ResidentLanguages(_file);
         var s = TestSettings.Create() with { Languages = new LanguageSettings { Offered = offered ?? ["en", "de", "fr"], Default = defaultLanguage } };
-        var none = new OwnerLanguages(Path.Combine(Path.GetTempPath(), "dg-none-" + Guid.NewGuid().ToString("N")), TimeProvider.System);
+        var none = new OwnerLanguages(Path.Combine(Path.GetTempPath(), "gg-none-" + Guid.NewGuid().ToString("N")), TimeProvider.System);
         return (new EmailLanguage(new OfferedLanguages(() => s, none), saved), saved);
     }
 
@@ -63,7 +63,7 @@ public sealed class EmailLanguageTests : IDisposable
     {
         var (language, _) = Make();
         var ctx = new DefaultHttpContext();
-        ctx.Items["dg-lang"] = "de";
+        ctx.Items["gg-lang"] = "de";
         Assert.Equal("de", language.ForRequest(ctx));
     }
 
@@ -72,7 +72,7 @@ public sealed class EmailLanguageTests : IDisposable
     {
         var (language, _) = Make(offered: ["en", "fr"], defaultLanguage: "fr");
         var ctx = new DefaultHttpContext();
-        ctx.Items["dg-lang"] = "de";
+        ctx.Items["gg-lang"] = "de";
         Assert.Equal("fr", language.ForRequest(ctx));
     }
 

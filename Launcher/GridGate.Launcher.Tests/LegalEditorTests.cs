@@ -393,7 +393,7 @@ public sealed class LegalEditorTests
         Assert.Equal("de terms v3", LegalEntries(f).Last().GetProperty("target").GetString());
         // A German reader now reads German.
         using var req = new HttpRequestMessage(HttpMethod.Get, "/terms");
-        req.Headers.Add("Cookie", "dg-lang=de");
+        req.Headers.Add("Cookie", "gg-lang=de");
         using var r = await owner.SendAsync(req, Ct);
         Assert.Contains("Test Bedingungen drei.", await r.Content.ReadAsStringAsync(Ct));
 

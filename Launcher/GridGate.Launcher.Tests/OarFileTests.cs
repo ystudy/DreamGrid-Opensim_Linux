@@ -7,7 +7,7 @@ namespace GridGate.Launcher.Tests;
 
 public sealed class OarFileTests : IDisposable
 {
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "dg-oarfile-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "gg-oarfile-" + Guid.NewGuid().ToString("N"));
 
     public OarFileTests() => Directory.CreateDirectory(_dir);
 

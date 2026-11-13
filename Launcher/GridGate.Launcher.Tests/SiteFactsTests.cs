@@ -72,7 +72,7 @@ public sealed class SiteFactsTests
     {
         var seen = new HashSet<string>(StringComparer.Ordinal);
 
-        // dg-setup: the setup link, before the owner exists.
+        // gg-setup: the setup link, before the owner exists.
         await using (var f = new LauncherFactory(s => s with { SetupToken = SetupKey, Plan = null, Setup = s.Setup with { NetworkSet = true } })
         {
             Before = TestAuth.Apply,
@@ -83,7 +83,7 @@ public sealed class SiteFactsTests
             Assert.Equal(HttpStatusCode.Redirect, link.StatusCode);
         }
 
-        // dg-af (a form's GET) and dg-auth (a staff password sign-in).
+        // gg-af (a form's GET) and gg-auth (a staff password sign-in).
         await using (var f = AfterSetup())
         {
             var client = Client(f, seen);
@@ -92,7 +92,7 @@ public sealed class SiteFactsTests
             Assert.Equal("/", r.Headers.Location?.OriginalString);
         }
 
-        // dg-2fa: the password was right and the account has two-factor on.
+        // gg-2fa: the password was right and the account has two-factor on.
         await using (var f = AfterSetup())
         {
             var admin = TestAuth.Account(StaffRole.Admin);
@@ -105,7 +105,7 @@ public sealed class SiteFactsTests
             Assert.Equal("/login/code", r.Headers.Location?.OriginalString.Split('?')[0]);
         }
 
-        // dg-guest: the guest door.
+        // gg-guest: the guest door.
         await using (var f = AfterSetup())
         {
             var client = Client(f, seen);
@@ -113,7 +113,7 @@ public sealed class SiteFactsTests
             Assert.Equal("/guest", r.Headers.Location?.OriginalString);
         }
 
-        // dg-notice: a form that answers with a one-time message (the legal editor's save).
+        // gg-notice: a form that answers with a one-time message (the legal editor's save).
         await using (var f = AfterSetup())
         {
             var client = Client(f, seen);
@@ -127,7 +127,7 @@ public sealed class SiteFactsTests
             Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
         }
 
-        // dg-ticket: a support ticket's private link.
+        // gg-ticket: a support ticket's private link.
         await using (var f = AfterSetup())
         {
             var store = f.Services.GetRequiredService<GridGate.Launcher.Core.Tickets.TicketStore>();
@@ -140,7 +140,7 @@ public sealed class SiteFactsTests
             Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
         }
 
-        // dg-lang: a visitor picks a language.
+        // gg-lang: a visitor picks a language.
         await using (var f = AfterSetup())
         {
             var client = Client(f, seen);

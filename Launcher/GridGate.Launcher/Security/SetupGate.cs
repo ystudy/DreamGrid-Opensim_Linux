@@ -59,7 +59,7 @@ public sealed class SetupGate(RequestDelegate next, Func<LauncherSettings> setti
             else if (path.StartsWithSegments("/api"))
                 ctx.Response.StatusCode = StatusCodes.Status401Unauthorized; // API callers never get a redirect
             else
-                ctx.Response.Redirect("/login?ReturnUrl=%2Fsetup"); // no dg-setup cookie: the token is spent
+                ctx.Response.Redirect("/login?ReturnUrl=%2Fsetup"); // no gg-setup cookie: the token is spent
             return;
         }
 

@@ -5,7 +5,7 @@ namespace GridGate.Launcher.Tests;
 
 public sealed class RollingFileLoggerTests : IDisposable
 {
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "dg-log-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "gg-log-" + Guid.NewGuid().ToString("N"));
 
     public void Dispose()
     {

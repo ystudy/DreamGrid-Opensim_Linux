@@ -7,7 +7,7 @@ namespace GridGate.Launcher.Tests;
 
 public sealed class RegionTypesTests : IDisposable
 {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "dg-types-" + Guid.NewGuid().ToString("N"));
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "gg-types-" + Guid.NewGuid().ToString("N"));
     private readonly LauncherPaths _paths;
 
     public RegionTypesTests() => _paths = new LauncherPaths(Path.Combine(_root, "data"), Path.Combine(_root, "program"), null);

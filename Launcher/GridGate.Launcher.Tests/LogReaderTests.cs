@@ -10,7 +10,7 @@ namespace GridGate.Launcher.Tests;
 public sealed class LogReaderTests : IDisposable
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "dg-logs-" + Guid.NewGuid().ToString("N"));
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "gg-logs-" + Guid.NewGuid().ToString("N"));
     private readonly LauncherPaths _paths;
     private LauncherSettings _settings = new()
     {

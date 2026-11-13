@@ -12,7 +12,7 @@ namespace GridGate.Launcher.Tests;
 /// <summary>A taken-down item that comes back in an upload is noted on its case, closed cases too (IAR plan task 5).</summary>
 public sealed class TakedownStoreUploadMatchTests : IDisposable
 {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "dg-takedowns-" + Guid.NewGuid().ToString("N"));
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "gg-takedowns-" + Guid.NewGuid().ToString("N"));
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 11, 11, 12, 0, 0, TimeSpan.Zero));
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
     private static readonly Guid Ann = Guid.Parse("0c000000-0000-0000-0000-00000000000c");

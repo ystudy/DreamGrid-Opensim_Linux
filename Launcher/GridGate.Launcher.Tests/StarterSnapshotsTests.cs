@@ -7,7 +7,7 @@ namespace GridGate.Launcher.Tests;
 /// <summary>Starter avatar snapshots, re-encoded (spec 2026-11-11-starter-avatars-design §6.3).</summary>
 public sealed class StarterSnapshotsTests : IDisposable
 {
-    private readonly string _dir = Directory.CreateTempSubdirectory("dg-snap-").FullName;
+    private readonly string _dir = Directory.CreateTempSubdirectory("gg-snap-").FullName;
 
     public void Dispose()
     {

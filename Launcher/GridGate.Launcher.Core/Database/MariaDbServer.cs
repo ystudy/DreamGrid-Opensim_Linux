@@ -28,7 +28,7 @@ public sealed class MariaDbServer(MariaDbBinaries bin, LauncherPaths paths, Laun
     private static string TempPathFor(string data, string suffix)
     {
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(data)), 0, 8).ToLowerInvariant();
-        return $"/tmp/dg-{hash}{suffix}";
+        return $"/tmp/gg-{hash}{suffix}";
     }
 
     /// <summary>Connection string for root over TCP to the private port (the password may be empty during setup).</summary>
@@ -225,8 +225,8 @@ public sealed class MariaDbServer(MariaDbBinaries bin, LauncherPaths paths, Laun
         // it passes on (args="$args $arg", expanded unquoted), whoever runs it. A path with unusual characters
         // is therefore handed over through a space-free symlink with a random name: the datadir when root, the
         // tmpdir always.
-        var link = asRoot && NeedsLink(paths.MariaDbData) ? $"/tmp/dg-{linkId}-data" : null;
-        var tmpLink = NeedsLink(paths.MariaDbTmp) ? $"/tmp/dg-{linkId}-tmp" : null;
+        var link = asRoot && NeedsLink(paths.MariaDbData) ? $"/tmp/gg-{linkId}-data" : null;
+        var tmpLink = NeedsLink(paths.MariaDbTmp) ? $"/tmp/gg-{linkId}-tmp" : null;
         var args = new List<string>
         {
             "--no-defaults", "--datadir=" + (link ?? paths.MariaDbData),

@@ -7,7 +7,7 @@ namespace GridGate.Launcher.Tests;
 /// <summary>Each resident's inventory backup switches and own limits (IAR plan task 2).</summary>
 public sealed class IarRightsTests : IDisposable
 {
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "dg-iar-rights-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "gg-iar-rights-" + Guid.NewGuid().ToString("N"));
     private string File => Path.Combine(_dir, "iar-rights.json");
     private static readonly Guid Ann = Guid.Parse("0c000000-0000-0000-0000-00000000000c");
 

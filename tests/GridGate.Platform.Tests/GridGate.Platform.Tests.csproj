@@ -24,10 +24,10 @@
 
   <ItemGroup>
     <Reference Include="OpenMetaverseTypes">
-      <HintPath>$(DgRoot)bin/OpenMetaverseTypes.dll</HintPath>
+      <HintPath>$(GgRoot)bin/OpenMetaverseTypes.dll</HintPath>
     </Reference>
     <Reference Include="log4net">
-      <HintPath>$(DgRoot)bin/log4net.dll</HintPath>
+      <HintPath>$(GgRoot)bin/log4net.dll</HintPath>
     </Reference>
   </ItemGroup>
 

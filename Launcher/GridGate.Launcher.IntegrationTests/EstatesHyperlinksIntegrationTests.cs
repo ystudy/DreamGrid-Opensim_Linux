@@ -23,7 +23,7 @@ public sealed class EstatesHyperlinksIntegrationTests : IAsyncDisposable
     private static readonly Guid Bob = Guid.Parse("b0000000-0000-0000-0000-000000000002");
     private static readonly Guid RegionA = Guid.Parse("c0000000-0000-0000-0000-000000000001");
     private static readonly Guid Link = Guid.Parse("d0000000-0000-0000-0000-000000000001");
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "dg-estates-" + Guid.NewGuid().ToString("N"));
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "gg-estates-" + Guid.NewGuid().ToString("N"));
     private Process? _server;
     private MariaDbServer? _maria;
     private LauncherSettings _s = null!;

@@ -32,7 +32,7 @@
   <ItemGroup>
     <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
       <_Parameter1>FakeChildDir</_Parameter1>
-      <_Parameter2>$(DgRoot)tests/GridGate.FakeChild/bin/$(Configuration)/$(TargetFramework)/</_Parameter2>
+      <_Parameter2>$(GgRoot)tests/GridGate.FakeChild/bin/$(Configuration)/$(TargetFramework)/</_Parameter2>
     </AssemblyAttribute>
   </ItemGroup>
 

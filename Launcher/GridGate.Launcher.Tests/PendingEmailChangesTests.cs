@@ -8,7 +8,7 @@ namespace GridGate.Launcher.Tests;
 public sealed class PendingEmailChangesTests : IDisposable
 {
     private static readonly TimeSpan Day = TimeSpan.FromHours(24);
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "dg-email-changes-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "gg-email-changes-" + Guid.NewGuid().ToString("N"));
     private string File_ => Path.Combine(_dir, "guests", "email-changes.json");
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 10, 31, 12, 0, 0, TimeSpan.Zero));
 

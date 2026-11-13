@@ -59,7 +59,7 @@ public class SmokeChecksTests
     public void AssetCacheHasEntries_fails_when_only_empty_files_exist()
     {
         // Flotsam creates the temp file before serializing; a failed Serialize leaves it empty, silently.
-        string dir = Directory.CreateTempSubdirectory("dg smoke cache ").FullName;
+        string dir = Directory.CreateTempSubdirectory("gg smoke cache ").FullName;
         try
         {
             Directory.CreateDirectory(Path.Combine(dir, "ab", "cd"));
@@ -75,7 +75,7 @@ public class SmokeChecksTests
     [Fact]
     public void AssetCacheHasEntries_fails_when_files_are_not_BinaryFormatter_streams()
     {
-        string dir = Directory.CreateTempSubdirectory("dg smoke cache ").FullName;
+        string dir = Directory.CreateTempSubdirectory("gg smoke cache ").FullName;
         try
         {
             File.WriteAllBytes(Path.Combine(dir, "asset"), new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 });
@@ -90,7 +90,7 @@ public class SmokeChecksTests
     [Fact]
     public void AssetCacheHasEntries_passes_on_a_real_BinaryFormatter_entry()
     {
-        string dir = Directory.CreateTempSubdirectory("dg smoke cache ").FullName;
+        string dir = Directory.CreateTempSubdirectory("gg smoke cache ").FullName;
         try
         {
             Directory.CreateDirectory(Path.Combine(dir, "ab", "cd"));
@@ -134,7 +134,7 @@ public class SmokeChecksTests
     [Fact]
     public void DirectoryHasFiles_fails_for_empty_dir()
     {
-        string dir = Directory.CreateTempSubdirectory("dg smoke empty ").FullName;
+        string dir = Directory.CreateTempSubdirectory("gg smoke empty ").FullName;
         try
         {
             Assert.False(SmokeChecks.DirectoryHasFiles("C4", dir).Passed);
@@ -148,7 +148,7 @@ public class SmokeChecksTests
     [Fact]
     public void DirectoryHasFiles_passes_with_one_file()
     {
-        string dir = Directory.CreateTempSubdirectory("dg smoke one ").FullName;
+        string dir = Directory.CreateTempSubdirectory("gg smoke one ").FullName;
         try
         {
             Directory.CreateDirectory(Path.Combine(dir, "a", "b"));

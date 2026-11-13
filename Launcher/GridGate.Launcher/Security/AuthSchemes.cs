@@ -6,9 +6,9 @@ namespace GridGate.Launcher.Security;
 /// </summary>
 public static class AuthSchemes
 {
-    public const string Admin = "dg";
+    public const string Admin = "gg";
     /// <summary>The guest cookie scheme: the guest door's own cookie, never read by the staff pages.</summary>
-    public const string Guest = "dg-guest";
+    public const string Guest = "gg-guest";
 
     /// <summary>The owner named in setup.</summary>
     public const string OwnerPolicy = "owner";

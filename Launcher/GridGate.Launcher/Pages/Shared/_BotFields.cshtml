@@ -10,9 +10,9 @@
 }
 @if (bots.Honeypot)
 {
-    <div class="dg-hp" aria-hidden="true">
-        <label for="dg-website">@T["Bots.LeaveEmpty"]</label>
-        <input type="text" id="dg-website" name="@BotGuard.HoneypotField" value="" autocomplete="off" tabindex="-1">
+    <div class="gg-hp" aria-hidden="true">
+        <label for="gg-website">@T["Bots.LeaveEmpty"]</label>
+        <input type="text" id="gg-website" name="@BotGuard.HoneypotField" value="" autocomplete="off" tabindex="-1">
     </div>
 }
 @if (bots.ProofOfWork)
@@ -26,12 +26,12 @@
     @* The picture is drawn here, with its token, because the token holds only the answers' hashes: a separate request could not draw the matching picture. *@
     var captcha = Captcha.Create();
     var picture = "data:image/svg+xml;base64," + Convert.ToBase64String(Encoding.UTF8.GetBytes(captcha.Svg));
-    <div class="dg-captcha mb-3">
+    <div class="gg-captcha mb-3">
         <img src="@picture" width="200" height="60" alt="@T["Bots.PictureAlt"]">
-        <label class="form-label d-block" for="dg-captcha-letters">@T["Bots.TypeLetters"]</label>
-        <input class="form-control" type="text" id="dg-captcha-letters" name="@BotGuard.CaptchaLettersField" value="" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="10">
-        <label class="form-label d-block mt-2" for="dg-captcha-answer">@T["Bots.Question", T["Bots.Number" + captcha.First].Value, T["Bots.Number" + captcha.Second].Value]</label>
-        <input class="form-control" type="text" id="dg-captcha-answer" name="@BotGuard.CaptchaAnswerField" value="" autocomplete="off" maxlength="20">
+        <label class="form-label d-block" for="gg-captcha-letters">@T["Bots.TypeLetters"]</label>
+        <input class="form-control" type="text" id="gg-captcha-letters" name="@BotGuard.CaptchaLettersField" value="" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="10">
+        <label class="form-label d-block mt-2" for="gg-captcha-answer">@T["Bots.Question", T["Bots.Number" + captcha.First].Value, T["Bots.Number" + captcha.Second].Value]</label>
+        <input class="form-control" type="text" id="gg-captcha-answer" name="@BotGuard.CaptchaAnswerField" value="" autocomplete="off" maxlength="20">
         <p class="form-text">@T["Bots.DigitsWork"]</p>
         <p class="form-text">@T["Bots.EitherOne"]</p>
         <input type="hidden" name="@BotGuard.CaptchaTokenField" value="@captcha.Token">

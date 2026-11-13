@@ -11,7 +11,7 @@ public sealed class TwoFactorStoreTests : IDisposable
     private static readonly Guid Ann = Guid.Parse("a0000000-0000-0000-0000-000000000001");
     private static readonly Guid Bob = Guid.Parse("b0000000-0000-0000-0000-000000000002");
 
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "dg-2fa-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "gg-2fa-" + Guid.NewGuid().ToString("N"));
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 10, 30, 12, 0, 0, TimeSpan.Zero));
     private readonly IDataProtectionProvider _dp = new EphemeralDataProtectionProvider();
 

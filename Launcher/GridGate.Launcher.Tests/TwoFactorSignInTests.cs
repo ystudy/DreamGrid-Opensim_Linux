@@ -151,7 +151,7 @@ public sealed class TwoFactorSignInTests
         Assert.Equal(HttpStatusCode.Redirect, password.StatusCode);
         Assert.Equal("/login/code", LocationPath(password));
         // The pending cookie is only for the code step, and the password alone signs nobody in.
-        var pending = Assert.Single(password.Headers.GetValues("Set-Cookie"), c => c.StartsWith("dg-2fa=", StringComparison.Ordinal));
+        var pending = Assert.Single(password.Headers.GetValues("Set-Cookie"), c => c.StartsWith("gg-2fa=", StringComparison.Ordinal));
         Assert.Contains("path=/login", pending, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("httponly", pending, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("samesite=strict", pending, StringComparison.OrdinalIgnoreCase);

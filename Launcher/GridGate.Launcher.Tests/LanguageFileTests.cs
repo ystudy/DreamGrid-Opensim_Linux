@@ -10,7 +10,7 @@ namespace GridGate.Launcher.Tests;
 /// <summary>The file an owner downloads to translate a language offline and uploads back (plan 16b, Review Focus 1).</summary>
 public sealed class LanguageFileTests : IDisposable
 {
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "dg-language-file-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "gg-language-file-" + Guid.NewGuid().ToString("N"));
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 11, 11, 12, 0, 0, TimeSpan.Zero));
     private readonly LanguageCatalog _catalog;
 

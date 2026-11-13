@@ -16,7 +16,7 @@ namespace GridGate.Launcher.Tests;
 public sealed class StarterImportTests : IDisposable
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
-    private readonly string _root = Directory.CreateTempSubdirectory("dg-starterimp-").FullName;
+    private readonly string _root = Directory.CreateTempSubdirectory("gg-starterimp-").FullName;
     private readonly LauncherPaths _paths;
     private readonly FakeGridController _grid = new();
     private readonly FakeRobustAccounts _robust = new();

@@ -15,7 +15,7 @@ namespace GridGate.Launcher.Tests;
 /// </summary>
 public sealed class GridControllerFirstLaunchTests : IDisposable
 {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "dg-first-" + Guid.NewGuid().ToString("N"));
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "gg-first-" + Guid.NewGuid().ToString("N"));
 
     public void Dispose()
     {

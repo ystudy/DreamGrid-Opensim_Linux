@@ -6,7 +6,7 @@ namespace GridGate.Launcher.Tests;
 /// <summary>Only full-rights items leave the grid, object contents and parts included (IAR plan task 4).</summary>
 public sealed class IarPermissionFilterTests : IDisposable
 {
-    private readonly string _dir = Directory.CreateTempSubdirectory("dg-iarperm-").FullName;
+    private readonly string _dir = Directory.CreateTempSubdirectory("gg-iarperm-").FullName;
     private const uint Full = IarBuilder.Full;
     private const uint NoTransfer = IarBuilder.Copy | IarBuilder.Modify;
     private const uint NoCopy = IarBuilder.Modify | IarBuilder.Transfer;

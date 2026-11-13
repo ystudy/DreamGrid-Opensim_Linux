@@ -6,7 +6,7 @@ namespace GridGate.Launcher.Tests;
 
 public sealed class OarLibraryTests : IDisposable
 {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "dg-oars-" + Guid.NewGuid().ToString("N"));
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "gg-oars-" + Guid.NewGuid().ToString("N"));
     private readonly LauncherPaths _paths;
 
     public OarLibraryTests()

@@ -129,7 +129,7 @@ builder.Services.AddDataProtection()
 builder.Services.AddSingleton<Microsoft.AspNetCore.Routing.MatcherPolicy, LegacyRootPolicy>();
 builder.Services.AddAuthentication(AuthSchemes.Admin).AddCookie(AuthSchemes.Admin, o =>
 {
-    o.Cookie.Name = "dg-auth";
+    o.Cookie.Name = "gg-auth";
     o.Cookie.HttpOnly = true;
     o.Cookie.SameSite = SameSiteMode.Strict;
     o.LoginPath = "/login";
@@ -145,7 +145,7 @@ builder.Services.AddAuthentication(AuthSchemes.Admin).AddCookie(AuthSchemes.Admi
 // stamp and (every 5 minutes) the level are checked on every request to a guest page. No API takes it, so it only redirects.
 .AddCookie(AuthSchemes.Guest, o =>
 {
-    o.Cookie.Name = "dg-guest";
+    o.Cookie.Name = "gg-guest";
     o.Cookie.HttpOnly = true;
     o.Cookie.SameSite = SameSiteMode.Strict;
     o.LoginPath = "/guest/sign-in";
@@ -252,9 +252,9 @@ builder.Services.AddRazorPages(o =>
 builder.Services.AddAntiforgery(o =>
 {
     o.HeaderName = "RequestVerificationToken";
-    o.Cookie.Name = "dg-af";
+    o.Cookie.Name = "gg-af";
 });
-builder.Services.Configure<Microsoft.AspNetCore.Mvc.CookieTempDataProviderOptions>(o => o.Cookie.Name = "dg-notice");
+builder.Services.Configure<Microsoft.AspNetCore.Mvc.CookieTempDataProviderOptions>(o => o.Cookie.Name = "gg-notice");
 builder.Services.AddGrid(paths, store);
 // Robust's map tiles, fetched on the browser's behalf (the browser never reaches Robust's port).
 builder.Services.AddHttpClient(RegionsApi.RobustMapClient, c => c.Timeout = TimeSpan.FromSeconds(5));

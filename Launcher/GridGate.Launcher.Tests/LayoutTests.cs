@@ -99,7 +99,7 @@ public sealed class LayoutTests : IAsyncLifetime
     [Fact]
     public void Rolling_log_keeps_the_newest_files_and_survives_concurrent_writers()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "dg-log-" + Guid.NewGuid().ToString("N"));
+        var dir = Path.Combine(Path.GetTempPath(), "gg-log-" + Guid.NewGuid().ToString("N"));
         try
         {
             using (var provider = new RollingFileLoggerProvider(Path.Combine(dir, "launcher.log"), maxBytes: 2000, files: 3))

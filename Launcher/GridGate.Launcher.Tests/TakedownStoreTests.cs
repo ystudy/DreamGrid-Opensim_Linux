@@ -9,7 +9,7 @@ namespace GridGate.Launcher.Tests;
 /// <summary>Takedown cases on disk (spec 2026-11-04-inventory-takedown-design, Evidence and The case record).</summary>
 public sealed class TakedownStoreTests : IDisposable
 {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "dg-takedowns-" + Guid.NewGuid().ToString("N"));
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "gg-takedowns-" + Guid.NewGuid().ToString("N"));
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 11, 4, 12, 0, 0, TimeSpan.Zero));
 
     public void Dispose()

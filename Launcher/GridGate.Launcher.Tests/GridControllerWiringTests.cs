@@ -22,7 +22,7 @@ namespace GridGate.Launcher.Tests;
 /// </summary>
 public sealed class GridControllerWiringTests : IDisposable
 {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "dg-wiring-" + Guid.NewGuid().ToString("N"));
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "gg-wiring-" + Guid.NewGuid().ToString("N"));
     private readonly LauncherPaths _paths;
     private readonly SettingsStore _store;
     private readonly FakeRobust _robust = new();

@@ -262,7 +262,7 @@ public sealed class EmailTemplatesTests
 
     private static OwnerLanguages Italian(Dictionary<string, string> email)
     {
-        var store = new OwnerLanguages(Path.Combine(Path.GetTempPath(), "dg-email-langs-" + Guid.NewGuid().ToString("N")), TimeProvider.System);
+        var store = new OwnerLanguages(Path.Combine(Path.GetTempPath(), "gg-email-langs-" + Guid.NewGuid().ToString("N")), TimeProvider.System);
         store.Save(new OwnerLanguage("it", new Dictionary<string, string>(), email, Saved));
         return store;
     }

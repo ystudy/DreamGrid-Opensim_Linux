@@ -10,7 +10,7 @@ namespace GridGate.Launcher.Resident;
 /// <summary>Picks the language a resident page is shown in.</summary>
 public static class LanguagePick
 {
-    public const string Cookie = "dg-lang";
+    public const string Cookie = "gg-lang";
 
     private const int MostAcceptEntries = 10;
 

@@ -104,9 +104,9 @@ public sealed class BotsPageTests
         // The form carries the fields of the layers that are on.
         var page = new HtmlParser().ParseDocument(await owner.GetStringAsync("/security/bots", Ct));
         var form = page.QuerySelector("#try-form")!;
-        var trap = form.QuerySelector(".dg-hp input[name=website]")!;
+        var trap = form.QuerySelector(".gg-hp input[name=website]")!;
         Assert.Equal(("off", "-1"), (trap.GetAttribute("autocomplete"), trap.GetAttribute("tabindex")));
-        Assert.Equal("Leave this empty", form.QuerySelector(".dg-hp label")!.TextContent);
+        Assert.Equal("Leave this empty", form.QuerySelector(".gg-hp label")!.TextContent);
         var pow = form.QuerySelector("input[name=pow]")!;
         Assert.Equal("/api/bots/challenge", pow.GetAttribute("data-challenge-url"));
         Assert.NotNull(form.QuerySelector("script[src='/js/pow.js'][defer]"));
@@ -150,10 +150,10 @@ public sealed class BotsPageTests
         Assert.StartsWith("data:image/svg+xml;base64,", src);
         var svg = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(src["data:image/svg+xml;base64,".Length..]));
         Assert.DoesNotContain("<text", svg);
-        Assert.Equal("Type the letters", form.QuerySelector("label[for=dg-captcha-letters]")!.TextContent);
-        Assert.NotNull(form.QuerySelector("input#dg-captcha-letters[name=captcha-letters]"));
-        Assert.NotNull(form.QuerySelector("input#dg-captcha-answer[name=captcha-answer]"));
-        Assert.Matches(@"^What is \w+ plus \w+\?$", form.QuerySelector("label[for=dg-captcha-answer]")!.TextContent);
+        Assert.Equal("Type the letters", form.QuerySelector("label[for=gg-captcha-letters]")!.TextContent);
+        Assert.NotNull(form.QuerySelector("input#gg-captcha-letters[name=captcha-letters]"));
+        Assert.NotNull(form.QuerySelector("input#gg-captcha-answer[name=captcha-answer]"));
+        Assert.Matches(@"^What is \w+ plus \w+\?$", form.QuerySelector("label[for=gg-captcha-answer]")!.TextContent);
         Assert.NotEmpty(form.QuerySelector("input[type=hidden][name=captcha-token]")!.GetAttribute("value")!);
         Assert.Null(form.QuerySelector("input[name=website]"));
     }
@@ -169,7 +169,7 @@ public sealed class BotsPageTests
         {
             var form = new HtmlParser().ParseDocument(await owner.GetStringAsync("/security/bots", Ct)).QuerySelector("#try-form")!;
             var words = new[] { "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine" };
-            var question = Regex.Match(form.QuerySelector("label[for=dg-captcha-answer]")!.TextContent, @"What is (\w+) plus (\w+)\?");
+            var question = Regex.Match(form.QuerySelector("label[for=gg-captcha-answer]")!.TextContent, @"What is (\w+) plus (\w+)\?");
             var sum = Array.IndexOf(words, question.Groups[1].Value) + Array.IndexOf(words, question.Groups[2].Value);
             return (form.QuerySelector("input[name=captcha-token]")!.GetAttribute("value")!, sum.ToString());
         }

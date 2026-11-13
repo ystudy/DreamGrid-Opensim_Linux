@@ -129,7 +129,7 @@ public sealed class AccountPageTests
         await using var f = Factory();
         var client = await SignedInAsync(f);
         using var req = new HttpRequestMessage(HttpMethod.Get, "/guest/account");
-        req.Headers.Add("Cookie", "dg-lang=de");
+        req.Headers.Add("Cookie", "gg-lang=de");
         using var r = await client.SendAsync(req, Ct);
         var page = new HtmlParser().ParseDocument(await r.Content.ReadAsStringAsync(Ct));
         Assert.Equal("de", SelectedLanguage(page));
@@ -144,7 +144,7 @@ public sealed class AccountPageTests
         Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
         Assert.Equal("/guest/account", new Uri(new Uri("http://localhost"), r.Headers.Location!).AbsolutePath);
         Assert.Equal("es", f.Services.GetRequiredService<ResidentLanguages>().Get(AnnId));
-        var cookie = Assert.Single(r.Headers.GetValues("Set-Cookie"), h => h.StartsWith("dg-lang=es", StringComparison.Ordinal));
+        var cookie = Assert.Single(r.Headers.GetValues("Set-Cookie"), h => h.StartsWith("gg-lang=es", StringComparison.Ordinal));
         Assert.Contains("max-age=31536000", cookie, StringComparison.OrdinalIgnoreCase);
         // The page now renders in the new language.
         var page = await PageAsync(client, "/guest/account");
@@ -160,7 +160,7 @@ public sealed class AccountPageTests
         using var r = await PostLanguageAsync(client, "xx");
         Assert.Equal(HttpStatusCode.BadRequest, r.StatusCode);
         Assert.Null(f.Services.GetRequiredService<ResidentLanguages>().Get(AnnId));
-        Assert.DoesNotContain(r.Headers.TryGetValues("Set-Cookie", out var c) ? c : [], h => h.StartsWith("dg-lang=", StringComparison.Ordinal));
+        Assert.DoesNotContain(r.Headers.TryGetValues("Set-Cookie", out var c) ? c : [], h => h.StartsWith("gg-lang=", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -177,7 +177,7 @@ public sealed class AccountPageTests
         Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
         Assert.Equal("/guest/sign-in", new Uri(new Uri("http://localhost"), r.Headers.Location!).AbsolutePath);
         Assert.Null(f.Services.GetRequiredService<ResidentLanguages>().Get(AnnId));
-        Assert.DoesNotContain(r.Headers.TryGetValues("Set-Cookie", out var c) ? c : [], h => h.StartsWith("dg-lang=", StringComparison.Ordinal));
+        Assert.DoesNotContain(r.Headers.TryGetValues("Set-Cookie", out var c) ? c : [], h => h.StartsWith("gg-lang=", StringComparison.Ordinal));
     }
 
     [Fact]

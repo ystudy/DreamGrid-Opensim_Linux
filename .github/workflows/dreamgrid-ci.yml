@@ -130,7 +130,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: smoke-logs-windows
-          path: ${{ runner.temp }}/dg smoke */bin/smoke.log
+          path: ${{ runner.temp }}/gg smoke */bin/smoke.log
 
   debian:
     runs-on: ubuntu-latest
@@ -207,7 +207,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: smoke-logs-debian${{ matrix.debian }}
-          path: /tmp/dg smoke */bin/smoke.log
+          path: /tmp/gg smoke */bin/smoke.log
 
   # The launcher (Launcher/): unit tests, then the integration tests against a real MariaDB, Robust and region,
   # including the end-to-end tests that run the launcher itself. DREAMGRID_REQUIRE_INTEGRATION=1 turns a missing
@@ -307,7 +307,7 @@ jobs:
           DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates libicu-dev libgdiplus git mariadb-server
           echo "DREAMGRID_MARIADB_BIN=/usr/sbin" >> "$GITHUB_ENV"
           # In a container job the runner.temp context is the host path; RUNNER_TEMP is the path inside the container.
-          echo "DG_TEST_TEMP=$RUNNER_TEMP" >> "$GITHUB_ENV"
+          echo "GG_TEST_TEMP=$RUNNER_TEMP" >> "$GITHUB_ENV"
 
       - uses: actions/checkout@v4
         with:
@@ -334,7 +334,7 @@ jobs:
         timeout-minutes: 55
         run: dotnet test --project Launcher/DreamGrid.Launcher.IntegrationTests -c Release
         env:
-          TMPDIR: ${{ env.DG_TEST_TEMP }}
+          TMPDIR: ${{ env.GG_TEST_TEMP }}
           DREAMGRID_REQUIRE_INTEGRATION: '1'
           DREAMGRID_TEST_KEEP: '1'
 
@@ -343,7 +343,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: launcher-logs-debian${{ matrix.debian }}
-          path: ${{ env.DG_TEST_TEMP }}/Dréam Grid */state/logs/*
+          path: ${{ env.GG_TEST_TEMP }}/Dréam Grid */state/logs/*
 
   # The install smoke (release.yml without its publish job) when a pull request or a push to main touches setup/ or
   # Launcher/. Feature-branch pushes skip it (run release.yml by hand there); tags run it in release.yml itself.

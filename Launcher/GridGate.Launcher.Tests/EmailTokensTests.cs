@@ -15,7 +15,7 @@ public sealed class EmailTokensTests : IDisposable
 
     private static readonly TimeSpan Hour = TimeSpan.FromHours(1);
 
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "dg-emailtokens-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "gg-emailtokens-" + Guid.NewGuid().ToString("N"));
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 10, 30, 12, 0, 0, TimeSpan.Zero));
     private readonly Guid _alice = Guid.NewGuid();
     private readonly Guid _bob = Guid.NewGuid();

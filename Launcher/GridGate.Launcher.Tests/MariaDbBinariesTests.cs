@@ -7,7 +7,7 @@ namespace GridGate.Launcher.Tests;
 
 public class MariaDbBinariesTests : IDisposable
 {
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "dg-bin-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "gg-bin-" + Guid.NewGuid().ToString("N"));
 
     public MariaDbBinariesTests() => Directory.CreateDirectory(_dir);
 
@@ -104,15 +104,15 @@ public class MariaDbBinariesTests : IDisposable
     [InlineData(true)]
     public void InstallDb_gets_the_tmpdir_through_a_link_when_its_path_has_a_space(bool asRoot)
     {
-        var paths = new LauncherPaths("/home/dg/Dréam Grid", "/opensim", null);
+        var paths = new LauncherPaths("/home/gg/Dréam Grid", "/opensim", null);
         var plan = MariaDbServer.PlanInstallDb(paths, asRoot, "abc");
 
-        Assert.Equal("/tmp/dg-abc-tmp", plan.TmpLink);
-        Assert.Contains("--tmpdir=/tmp/dg-abc-tmp", plan.Arguments);
+        Assert.Equal("/tmp/gg-abc-tmp", plan.TmpLink);
+        Assert.Contains("--tmpdir=/tmp/gg-abc-tmp", plan.Arguments);
         Assert.DoesNotContain(plan.Arguments, a => a.StartsWith("--tmpdir=") && a.Contains(' '));
         // The datadir link stays root-only (Task 7): without --user the script quotes --datadir itself.
-        Assert.Equal(asRoot ? "/tmp/dg-abc-data" : null, plan.DataLink);
-        Assert.Contains("--datadir=" + (asRoot ? "/tmp/dg-abc-data" : paths.MariaDbData), plan.Arguments);
+        Assert.Equal(asRoot ? "/tmp/gg-abc-data" : null, plan.DataLink);
+        Assert.Contains("--datadir=" + (asRoot ? "/tmp/gg-abc-data" : paths.MariaDbData), plan.Arguments);
         Assert.Equal(asRoot, plan.Arguments.Contains("--user=root"));
         Assert.Contains("--no-defaults", plan.Arguments);
     }
@@ -142,7 +142,7 @@ public class MariaDbBinariesTests : IDisposable
     {
         var longData = "/var/lib/" + new string('d', 120);
         var p = MariaDbServer.SocketPathFor(longData);
-        Assert.StartsWith("/tmp/dg-", p);
+        Assert.StartsWith("/tmp/gg-", p);
         Assert.EndsWith(".sock", p);
         Assert.True(System.Text.Encoding.UTF8.GetByteCount(p) <= 107);
         Assert.Equal(p, MariaDbServer.SocketPathFor(longData));

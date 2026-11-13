@@ -8,7 +8,7 @@ namespace GridGate.Launcher.Tests;
 /// <summary>The splash design's draft and published copies under Data/splash (spec 2026-11-01-viewer-splash-design §4.1, §5).</summary>
 public sealed class SplashStoreTests : IDisposable
 {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "dg-splash-" + Guid.NewGuid().ToString("N"));
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "gg-splash-" + Guid.NewGuid().ToString("N"));
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 11, 1, 12, 0, 0, TimeSpan.Zero));
     private readonly SplashStore _store;
 

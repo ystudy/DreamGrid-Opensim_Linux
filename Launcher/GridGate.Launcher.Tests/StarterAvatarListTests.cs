@@ -7,7 +7,7 @@ namespace GridGate.Launcher.Tests;
 /// <summary>The owner's list of starter avatars (spec 2026-11-11-starter-avatars-design §6.4, §6.6).</summary>
 public sealed class StarterAvatarListTests : IDisposable
 {
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "dg-starter-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "gg-starter-" + Guid.NewGuid().ToString("N"));
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 11, 11, 12, 0, 0, TimeSpan.Zero));
     private string File => Path.Combine(_dir, "avatars.json");
 

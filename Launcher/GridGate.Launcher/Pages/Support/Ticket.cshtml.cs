@@ -9,7 +9,7 @@ namespace GridGate.Launcher.Pages.Support;
 
 /// <summary>
 /// A guest's ticket (design 2026-11-05-support-tickets, "The ticket page"). [S] It opens by its private link (which sets the
-/// <c>dg-ticket</c> cookie and comes back without the link in the address), by that cookie, or for the signed-in resident who sent
+/// <c>gg-ticket</c> cookie and comes back without the link in the address), by that cookie, or for the signed-in resident who sent
 /// it. Anything else gets the same "this link has run out" page, whether or not the ticket exists.
 /// </summary>
 public sealed class TicketModel(SupportTickets tickets, TicketCookie cookie, IRobustClient robust, BotGuard bots,

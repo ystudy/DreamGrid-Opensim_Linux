@@ -61,7 +61,7 @@ public sealed class AccessTests
         Assert.Equal(HttpStatusCode.Redirect, resp.StatusCode);
         Assert.Equal("/setup", resp.Headers.Location?.OriginalString);
         Assert.DoesNotContain("token=", resp.Headers.Location!.OriginalString);
-        var cookie = Assert.Single(resp.Headers.GetValues("Set-Cookie"), c => c.StartsWith("dg-setup=", StringComparison.Ordinal));
+        var cookie = Assert.Single(resp.Headers.GetValues("Set-Cookie"), c => c.StartsWith("gg-setup=", StringComparison.Ordinal));
         Assert.Contains("httponly", cookie, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("samesite=lax", cookie, StringComparison.OrdinalIgnoreCase);
     }

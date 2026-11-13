@@ -11,7 +11,7 @@ namespace GridGate.Launcher.Tests;
 
 public class CommandLineTests : IDisposable
 {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "dg-cli-" + Guid.NewGuid().ToString("N"));
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "gg-cli-" + Guid.NewGuid().ToString("N"));
     private string DataDir => Path.Combine(_root, "data");
     private string SettingsFile => Path.Combine(DataDir, "settings.json");
 

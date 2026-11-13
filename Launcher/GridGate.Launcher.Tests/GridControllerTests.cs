@@ -11,7 +11,7 @@ namespace GridGate.Launcher.Tests;
 /// <summary>Input validation that must happen before the controller touches settings or a console.</summary>
 public sealed class GridControllerTests : IDisposable
 {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "dg-grid-" + Guid.NewGuid().ToString("N"));
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "gg-grid-" + Guid.NewGuid().ToString("N"));
     private readonly LauncherPaths _paths;
     private readonly SettingsStore _store;
     private readonly GridController _grid;

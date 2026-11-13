@@ -261,7 +261,7 @@ public sealed class SecurityPageTests
         Assert.Contains("Create an account", html);
         Assert.DoesNotContain("Your world", html);
         // Hidden from outside, not removed: no Set-Cookie deletes it, and it still works from inside the list.
-        Assert.False(outside.Headers.TryGetValues("Set-Cookie", out var cookies) && cookies.Any(c => c.StartsWith("dg-auth=", StringComparison.Ordinal)));
+        Assert.False(outside.Headers.TryGetValues("Set-Cookie", out var cookies) && cookies.Any(c => c.StartsWith("gg-auth=", StringComparison.Ordinal)));
         using var back = new HttpRequestMessage(HttpMethod.Get, "/security");
         back.Headers.Add(Header, "10.2.2.2");
         using var again = await owner.SendAsync(back, Ct);

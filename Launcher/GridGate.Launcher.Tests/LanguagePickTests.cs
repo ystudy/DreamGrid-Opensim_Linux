@@ -24,7 +24,7 @@ public sealed class LanguagePickTests
 
     private static ResidentLanguages Saved(Guid? who = null, string? code = null)
     {
-        var r = new ResidentLanguages(Path.Combine(Path.GetTempPath(), $"dg-lang-{Guid.NewGuid():N}.json"));
+        var r = new ResidentLanguages(Path.Combine(Path.GetTempPath(), $"gg-lang-{Guid.NewGuid():N}.json"));
         if (who is { } g && code is not null) r.Set(g, code);
         return r;
     }
@@ -45,7 +45,7 @@ public sealed class LanguagePickTests
         if (cookie is not null) ctx.Request.Headers.Cookie = $"{LanguagePick.Cookie}={cookie}";
         if (accept is not null) ctx.Request.Headers.AcceptLanguage = accept;
         if (query is not null) ctx.Request.QueryString = new QueryString($"?lang={query}");
-        var none = new OwnerLanguages(Path.Combine(Path.GetTempPath(), "dg-none-" + Guid.NewGuid().ToString("N")), TimeProvider.System);
+        var none = new OwnerLanguages(Path.Combine(Path.GetTempPath(), "gg-none-" + Guid.NewGuid().ToString("N")), TimeProvider.System);
         var settings = TestSettings.Create() with { Languages = s ?? new LanguageSettings() };
         return LanguagePick.For(ctx, new OfferedLanguages(() => settings, none), saved ?? Saved(), guest, welcome);
     }
@@ -67,7 +67,7 @@ public sealed class LanguagePickTests
     [Fact]
     public void Saved_language_that_is_unknown_is_matched_like_any_other()
     {
-        var file = Path.Combine(Path.GetTempPath(), $"dg-lang-{Guid.NewGuid():N}.json");
+        var file = Path.Combine(Path.GetTempPath(), $"gg-lang-{Guid.NewGuid():N}.json");
         File.WriteAllText(file, $"{{\"{Gail}\":\"../../etc\"}}");
         var saved = new ResidentLanguages(file);
         Assert.Equal("../../etc", saved.Get(Gail));
@@ -126,7 +126,7 @@ public sealed class LanguagePickTests
         var c = f.CreateClient(new() { AllowAutoRedirect = false, BaseAddress = new Uri("http://localhost") });
         using (var r = await c.GetAsync("/__test/signin?role=owner", Ct)) Assert.Equal(HttpStatusCode.NoContent, r.StatusCode);
         using var req = new HttpRequestMessage(HttpMethod.Get, "/");
-        req.Headers.Add("Cookie", "dg-lang=de");
+        req.Headers.Add("Cookie", "gg-lang=de");
         using var resp = await c.SendAsync(req, Ct);
         var html = await resp.Content.ReadAsStringAsync(Ct);
         Assert.Contains("<html lang=\"en\">", html);
@@ -140,7 +140,7 @@ public sealed class LanguagePickTests
         using var f = new LauncherFactory(s => s with { GridName = "Avalon", SetupToken = null });
         using var scope = f.Services.CreateScope();
         var ctx = new DefaultHttpContext { RequestServices = scope.ServiceProvider };
-        ctx.Request.Headers.Cookie = "dg-lang=de";
+        ctx.Request.Headers.Cookie = "gg-lang=de";
         var actionCtx = new ActionContext(ctx, new RouteData(), new PageActionDescriptor());
         var filter = new ResidentLanguageFilter(welcome: false);
         var before = (CultureInfo.CurrentCulture, CultureInfo.CurrentUICulture);

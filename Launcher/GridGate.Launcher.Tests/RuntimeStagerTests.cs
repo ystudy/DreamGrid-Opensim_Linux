@@ -7,7 +7,7 @@ namespace GridGate.Launcher.Tests;
 
 public sealed class RuntimeStagerTests : IDisposable
 {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "dg-stager-" + Guid.NewGuid().ToString("N"));
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "gg-stager-" + Guid.NewGuid().ToString("N"));
     private readonly LauncherPaths _paths;
 
     public RuntimeStagerTests()

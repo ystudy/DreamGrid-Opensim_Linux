@@ -9,7 +9,7 @@ public sealed class UploadRightsTests : IDisposable
     private static readonly Guid Ann = Guid.Parse("a0000000-0000-0000-0000-00000000000a");
     private static readonly Guid Bob = Guid.Parse("b0000000-0000-0000-0000-00000000000b");
 
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "dg-upload-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "gg-upload-" + Guid.NewGuid().ToString("N"));
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 11, 10, 12, 0, 0, TimeSpan.Zero));
 
     public void Dispose()

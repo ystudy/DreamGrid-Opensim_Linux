@@ -13,7 +13,7 @@ namespace GridGate.Launcher.Tests;
 public sealed class StarterSignUpTests : IDisposable
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
-    private readonly string _dir = Directory.CreateTempSubdirectory("dg-startersu-").FullName;
+    private readonly string _dir = Directory.CreateTempSubdirectory("gg-startersu-").FullName;
 
     public void Dispose()
     {

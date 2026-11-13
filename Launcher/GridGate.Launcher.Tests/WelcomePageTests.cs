@@ -371,7 +371,7 @@ public sealed class WelcomePageTests
         async Task<string?> Lang(string url)
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
-            request.Headers.Add("Cookie", "dg-lang=de");
+            request.Headers.Add("Cookie", "gg-lang=de");
             request.Headers.Add("Accept-Language", "de");
             using var r = await client.SendAsync(request, Ct);
             Assert.Equal(HttpStatusCode.OK, r.StatusCode);

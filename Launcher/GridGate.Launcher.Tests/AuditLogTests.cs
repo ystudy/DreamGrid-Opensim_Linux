@@ -7,7 +7,7 @@ namespace GridGate.Launcher.Tests;
 
 public sealed class AuditLogTests : IDisposable
 {
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "dg-audit-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "gg-audit-" + Guid.NewGuid().ToString("N"));
 
     public void Dispose()
     {

@@ -7,7 +7,7 @@ namespace GridGate.Launcher.Tests;
 
 public sealed class JsonStateFileTests : IDisposable
 {
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "dg-jsonstate-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "gg-jsonstate-" + Guid.NewGuid().ToString("N"));
     private readonly ConcurrentQueue<(LogLevel Level, string Category, string Message)> _logs = new();
 
     public JsonStateFileTests() => Directory.CreateDirectory(_dir);

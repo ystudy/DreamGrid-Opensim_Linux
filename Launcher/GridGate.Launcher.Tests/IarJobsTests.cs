@@ -17,7 +17,7 @@ namespace GridGate.Launcher.Tests;
 public sealed class IarJobsTests : IDisposable
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
-    private readonly string _root = Directory.CreateTempSubdirectory("dg-iarjobs-").FullName;
+    private readonly string _root = Directory.CreateTempSubdirectory("gg-iarjobs-").FullName;
     private readonly LauncherPaths _paths;
     private readonly FakeGridController _grid = new();
     private readonly FakeInventoryStore _inventory = new(new FakeRobustAccounts());

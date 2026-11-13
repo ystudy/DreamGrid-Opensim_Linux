@@ -8,7 +8,7 @@ namespace GridGate.Launcher.Tests;
 /// <summary>The levels remembered for suspended people, so unsuspending gives each back theirs.</summary>
 public sealed class SuspendedStoreTests : IDisposable
 {
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "dg-suspended-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "gg-suspended-" + Guid.NewGuid().ToString("N"));
     private string File_ => Path.Combine(_dir, "security", "suspended.json");
 
     public void Dispose()

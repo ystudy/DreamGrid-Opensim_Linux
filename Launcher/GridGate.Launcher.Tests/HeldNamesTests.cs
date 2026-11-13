@@ -7,7 +7,7 @@ namespace GridGate.Launcher.Tests;
 /// <summary>Old names kept from others for a while after a rename (spec 2026-11-03-people-admin-design, Edit).</summary>
 public sealed class HeldNamesTests : IDisposable
 {
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "dg-held-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "gg-held-" + Guid.NewGuid().ToString("N"));
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 11, 3, 12, 0, 0, TimeSpan.Zero));
     private string File => Path.Combine(_dir, "held-names.json");
 

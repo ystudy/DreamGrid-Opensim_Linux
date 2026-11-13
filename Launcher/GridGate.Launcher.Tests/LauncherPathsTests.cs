@@ -133,8 +133,8 @@ public class LauncherPathsTests
     {
         // The generated INIs under <data> carry the database passwords, ConsolePass and the MachineID.
         Assert.SkipUnless(OperatingSystem.IsLinux(), "Linux only");
-        var data = Path.Combine(Path.GetTempPath(), "dg-mode-" + Guid.NewGuid().ToString("N"));
-        var existing = Path.Combine(Path.GetTempPath(), "dg-mode-" + Guid.NewGuid().ToString("N"));
+        var data = Path.Combine(Path.GetTempPath(), "gg-mode-" + Guid.NewGuid().ToString("N"));
+        var existing = Path.Combine(Path.GetTempPath(), "gg-mode-" + Guid.NewGuid().ToString("N"));
         try
         {
             new LauncherPaths(data, "/o", null).EnsureCreated();
@@ -157,7 +157,7 @@ public class LauncherPathsTests
     public void Windows_data_dir_is_owner_system_admins_only()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "Windows only");
-        var dir = Path.Combine(Path.GetTempPath(), "dg-acl-" + Guid.NewGuid().ToString("N"));
+        var dir = Path.Combine(Path.GetTempPath(), "gg-acl-" + Guid.NewGuid().ToString("N"));
         try
         {
             var me = System.Security.Principal.WindowsIdentity.GetCurrent().User!.Value;
@@ -196,7 +196,7 @@ public class LauncherPathsTests
     public void Rewrite_replaces_inherited_and_extra_entries()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "Windows only");
-        var dir = Path.Combine(Path.GetTempPath(), "dg-acl-" + Guid.NewGuid().ToString("N"));
+        var dir = Path.Combine(Path.GetTempPath(), "gg-acl-" + Guid.NewGuid().ToString("N"));
         try
         {
             var users = new System.Security.Principal.SecurityIdentifier("S-1-5-32-545");
@@ -232,7 +232,7 @@ public class LauncherPathsTests
     public void Extra_service_sid_is_kept_on_rerun()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "Windows only");
-        var dir = Path.Combine(Path.GetTempPath(), "dg-acl-" + Guid.NewGuid().ToString("N"));
+        var dir = Path.Combine(Path.GetTempPath(), "gg-acl-" + Guid.NewGuid().ToString("N"));
         try
         {
             var localService = new System.Security.Principal.SecurityIdentifier("S-1-5-19");

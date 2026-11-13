@@ -22,7 +22,7 @@ public sealed partial class SupportPagesTests
     {
         await using var r = Make();
         var guest = Client(r);
-        guest.DefaultRequestHeaders.Add("Cookie", "dg-lang=de");
+        guest.DefaultRequestHeaders.Add("Cookie", "gg-lang=de");
 
         using (await PostAsync(guest, "/support", Form())) { }
 
@@ -45,7 +45,7 @@ public sealed partial class SupportPagesTests
         await using var r = Make();
         GermanWording(r);
         var guest = Client(r);
-        guest.DefaultRequestHeaders.Add("Cookie", "dg-lang=de");
+        guest.DefaultRequestHeaders.Add("Cookie", "gg-lang=de");
         using (await PostAsync(guest, "/support", Form())) { }
         var confirm = await EmailLinkAsync(r, "/support/confirm");
 

@@ -169,7 +169,7 @@ public sealed class ResidentTwoFactorTests
         using var password = await PasswordAsync(client, "Test Guest");
         Assert.Equal(HttpStatusCode.Redirect, password.StatusCode);
         Assert.Equal("/guest/sign-in/code", password.Headers.Location?.OriginalString);
-        Assert.DoesNotContain(password.Headers.GetValues("Set-Cookie"), c => c.StartsWith("dg-guest=", StringComparison.Ordinal));
+        Assert.DoesNotContain(password.Headers.GetValues("Set-Cookie"), c => c.StartsWith("gg-guest=", StringComparison.Ordinal));
 
         using var code = await CodeAsync(client, CodeNow(f, secret));
         Assert.Equal(HttpStatusCode.Redirect, code.StatusCode);

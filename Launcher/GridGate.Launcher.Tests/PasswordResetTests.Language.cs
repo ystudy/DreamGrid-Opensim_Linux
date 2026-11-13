@@ -27,7 +27,7 @@ public sealed partial class PasswordResetTests
     {
         await using var rig = Factory();
         var client = Client(rig);
-        client.DefaultRequestHeaders.Add("Cookie", "dg-lang=de");
+        client.DefaultRequestHeaders.Add("Cookie", "gg-lang=de");
         await AskAsync(client, "Ann Smith", "ann@example.com");
 
         var sent = Assert.Single(await SentAsync(rig, 1));

@@ -11,7 +11,7 @@ namespace GridGate.Launcher.Tests;
 /// <summary>AddRegionAsync refuses a bad request before it changes the settings or starts anything.</summary>
 public sealed class AddRegionValidationTests : IDisposable
 {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "dg-add-" + Guid.NewGuid().ToString("N"));
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "gg-add-" + Guid.NewGuid().ToString("N"));
     private readonly LauncherPaths _paths;
     private readonly SettingsStore _store;
     private readonly GridController _grid;

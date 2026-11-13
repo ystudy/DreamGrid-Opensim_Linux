@@ -17,7 +17,7 @@ public sealed class RegionEstateSyncTests : IDisposable
     private static readonly Guid Isle = Guid.Parse("40000000-0000-0000-0000-000000000004");
     private static readonly Guid Ann = Guid.Parse("a0000000-0000-0000-0000-00000000000a");
 
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "dg-estates-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "gg-estates-" + Guid.NewGuid().ToString("N"));
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 10, 30, 12, 0, 0, TimeSpan.Zero));
     private readonly ConcurrentQueue<(LogLevel Level, string Category, string Message)> _logs = new();
     private readonly FakeGridController _grid = new();

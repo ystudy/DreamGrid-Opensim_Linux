@@ -11,7 +11,7 @@ namespace GridGate.Launcher.Tests;
 /// <summary>The one list of languages (built in and added) and what each added language misses (plan 16b).</summary>
 public sealed class LanguageCatalogTests : IDisposable
 {
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "dg-catalog-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "gg-catalog-" + Guid.NewGuid().ToString("N"));
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 11, 11, 12, 0, 0, TimeSpan.Zero));
     private readonly OwnerLanguages _store;
     private readonly LanguageCatalog _catalog;

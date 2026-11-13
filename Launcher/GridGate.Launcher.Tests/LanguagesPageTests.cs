@@ -859,7 +859,7 @@ public sealed class LanguagesPageTests
     private static async Task<string?> PageLanguageAsync(LauncherFactory f, string cookie)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, "/home");
-        request.Headers.Add("Cookie", "dg-lang=" + cookie);
+        request.Headers.Add("Cookie", "gg-lang=" + cookie);
         using var r = await f.CreateClient(new() { AllowAutoRedirect = false }).SendAsync(request, Ct);
         Assert.Equal(HttpStatusCode.OK, r.StatusCode);
         return Parser.ParseDocument(await r.Content.ReadAsStringAsync(Ct)).DocumentElement.GetAttribute("lang");

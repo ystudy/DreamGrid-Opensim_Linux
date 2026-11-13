@@ -7,7 +7,7 @@ namespace GridGate.Launcher.Tests;
 /// <summary>Copying an asset's stored FSAssets file into a case (spec 2026-11-04-inventory-takedown-design, Evidence).</summary>
 public sealed class EvidenceCopierTests : IDisposable
 {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "dg-evidence-" + Guid.NewGuid().ToString("N"));
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "gg-evidence-" + Guid.NewGuid().ToString("N"));
     private const string Hash = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
     private const string Asset = "11111111-2222-3333-4444-555555555555";
 

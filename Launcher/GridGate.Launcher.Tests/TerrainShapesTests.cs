@@ -6,7 +6,7 @@ namespace GridGate.Launcher.Tests;
 
 public sealed class TerrainShapesTests : IDisposable
 {
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "dg-shapes-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "gg-shapes-" + Guid.NewGuid().ToString("N"));
 
     public TerrainShapesTests() => Directory.CreateDirectory(_dir);
 

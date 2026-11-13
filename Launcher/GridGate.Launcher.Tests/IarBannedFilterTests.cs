@@ -11,7 +11,7 @@ namespace GridGate.Launcher.Tests;
 /// <summary>Taken-down content can't come back in an upload (IAR plan task 5).</summary>
 public sealed class IarBannedFilterTests : IDisposable
 {
-    private readonly string _dir = Directory.CreateTempSubdirectory("dg-iarban-").FullName;
+    private readonly string _dir = Directory.CreateTempSubdirectory("gg-iarban-").FullName;
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 11, 11, 12, 0, 0, TimeSpan.Zero));
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
     private static readonly byte[] Stolen = [9, 8, 7, 6, 5, 4];

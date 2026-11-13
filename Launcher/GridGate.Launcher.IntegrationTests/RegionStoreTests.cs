@@ -20,7 +20,7 @@ public sealed class RegionStoreTests : IAsyncDisposable
     private static readonly Guid A = Guid.Parse("a0000000-0000-0000-0000-000000000001");
     private static readonly Guid B = Guid.Parse("b0000000-0000-0000-0000-000000000002");
 
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "dg-regionstore-" + Guid.NewGuid().ToString("N"));
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "gg-regionstore-" + Guid.NewGuid().ToString("N"));
     private Process? _server;
     private MariaDbServer? _maria;
     private LauncherSettings _s = null!;

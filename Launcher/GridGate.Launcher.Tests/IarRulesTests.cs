@@ -75,7 +75,7 @@ public sealed class IarRulesTests
     [Fact]
     public void Copy_holder_is_not_named()
     {
-        var root = Path.Combine(Path.GetTempPath(), "dg-td-" + Guid.NewGuid().ToString("N"));
+        var root = Path.Combine(Path.GetTempPath(), "gg-td-" + Guid.NewGuid().ToString("N"));
         try
         {
             var store = new TakedownStore(root, new FakeTimeProvider(), NullLogger<TakedownStore>.Instance);

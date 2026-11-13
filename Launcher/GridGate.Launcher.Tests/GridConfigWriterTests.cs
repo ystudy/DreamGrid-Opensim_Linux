@@ -10,7 +10,7 @@ namespace GridGate.Launcher.Tests;
 
 public sealed class GridConfigWriterTests : IDisposable
 {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "dg-cfg-" + Guid.NewGuid().ToString("N"));
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "gg-cfg-" + Guid.NewGuid().ToString("N"));
     private LauncherPaths _paths;
 
     public GridConfigWriterTests() => _paths = MakePaths("data");
@@ -932,7 +932,7 @@ public sealed class GridConfigWriterTests : IDisposable
 
     /// <summary>
     /// The INIs the single-machine plans wrote before the Region Server existed, captured from the writer then. Set
-    /// DG_CAPTURE_SNAPSHOTS=1 to rewrite them (only when a change to these INIs is intended).
+    /// GG_CAPTURE_SNAPSHOTS=1 to rewrite them (only when a change to these INIs is intended).
     /// </summary>
     [Theory]
     [MemberData(nameof(SnapshotCases))]
@@ -951,7 +951,7 @@ public sealed class GridConfigWriterTests : IDisposable
         {
             var actual = Normalize(File.ReadAllText(path)).Replace(_root, "<ROOT>").Replace(Normalize(_root, true), "<ROOT>");
             var snapshot = Path.Combine(dir, $"{name}.{file}");
-            if (Environment.GetEnvironmentVariable("DG_CAPTURE_SNAPSHOTS") == "1")
+            if (Environment.GetEnvironmentVariable("GG_CAPTURE_SNAPSHOTS") == "1")
             {
                 Directory.CreateDirectory(dir);
                 File.WriteAllText(snapshot, actual);

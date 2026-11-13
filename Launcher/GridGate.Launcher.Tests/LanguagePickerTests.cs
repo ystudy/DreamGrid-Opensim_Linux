@@ -53,7 +53,7 @@ public sealed class LanguagePickerTests
     private static async Task<IHtmlDocument> GetAsync(HttpClient c, string url, string? langCookie = null)
     {
         using var req = new HttpRequestMessage(HttpMethod.Get, url);
-        if (langCookie is not null) req.Headers.Add("Cookie", "dg-lang=" + langCookie);
+        if (langCookie is not null) req.Headers.Add("Cookie", "gg-lang=" + langCookie);
         using var r = await c.SendAsync(req, Ct);
         Assert.Equal(HttpStatusCode.OK, r.StatusCode);
         return Parser.ParseDocument(await r.Content.ReadAsStringAsync(Ct));
@@ -80,7 +80,7 @@ public sealed class LanguagePickerTests
     }
 
     private static string[] SetCookies(HttpResponseMessage r) =>
-        r.Headers.TryGetValues("Set-Cookie", out var v) ? v.Where(h => h.StartsWith("dg-lang=", StringComparison.Ordinal)).ToArray() : [];
+        r.Headers.TryGetValues("Set-Cookie", out var v) ? v.Where(h => h.StartsWith("gg-lang=", StringComparison.Ordinal)).ToArray() : [];
 
     [Fact]
     public async Task Layout_sets_lang_and_dir()
@@ -171,7 +171,7 @@ public sealed class LanguagePickerTests
         Assert.Equal(HttpStatusCode.SeeOther, r.StatusCode);
         Assert.Equal("/guest/sign-in", r.Headers.Location?.OriginalString);
         var cookie = Assert.Single(SetCookies(r)).ToLowerInvariant();
-        Assert.Contains("dg-lang=de", cookie);
+        Assert.Contains("gg-lang=de", cookie);
         Assert.Contains("samesite=lax", cookie);
         Assert.Contains("httponly", cookie);
         Assert.Contains("max-age=31536000", cookie);
@@ -220,7 +220,7 @@ public sealed class LanguagePickerTests
         using var r = await PostAsync(c, "de", from, from: from);
         Assert.Equal(HttpStatusCode.SeeOther, r.StatusCode);
         Assert.Equal(from, r.Headers.Location?.OriginalString);
-        Assert.Contains("dg-lang=de", Assert.Single(SetCookies(r)));
+        Assert.Contains("gg-lang=de", Assert.Single(SetCookies(r)));
         Assert.Equal("de", f.Services.GetRequiredService<ResidentLanguages>().Get(TestAuth.GuestId));
     }
 
@@ -232,7 +232,7 @@ public sealed class LanguagePickerTests
         using (var s = await c.GetAsync("/__test/signin?role=admin", Ct)) Assert.Equal(HttpStatusCode.NoContent, s.StatusCode);
         using var r = await PostAsync(c, "fr", "/home", from: "/home");
         Assert.Equal(HttpStatusCode.SeeOther, r.StatusCode);
-        Assert.Contains("dg-lang=fr", Assert.Single(SetCookies(r)));
+        Assert.Contains("gg-lang=fr", Assert.Single(SetCookies(r)));
     }
 
     [Fact]
@@ -241,7 +241,7 @@ public sealed class LanguagePickerTests
         await using var f = Make();
         using var r = await PostAsync(Client(f), "es", "/support", from: "/support");
         Assert.Equal(HttpStatusCode.SeeOther, r.StatusCode);
-        Assert.Contains("dg-lang=es", Assert.Single(SetCookies(r)));
+        Assert.Contains("gg-lang=es", Assert.Single(SetCookies(r)));
     }
 
     [Theory]
@@ -283,7 +283,7 @@ public sealed class LanguagePickerTests
         using (var staff = await c.GetAsync("/login", Ct)) Assert.Equal(HttpStatusCode.NotFound, staff.StatusCode); // the list is on
         using var r = await PostAsync(c, "de", "/home", from: "/home");
         Assert.Equal(HttpStatusCode.SeeOther, r.StatusCode);
-        Assert.Contains("dg-lang=de", Assert.Single(SetCookies(r)));
+        Assert.Contains("gg-lang=de", Assert.Single(SetCookies(r)));
     }
 
     // IsLocalUrl lets these through, but Kestrel refuses a Location header with control or non-ASCII characters (a 500).
@@ -299,7 +299,7 @@ public sealed class LanguagePickerTests
         using var r = await PostAsync(Client(f), "fr", returnUrl);
         Assert.Equal(HttpStatusCode.SeeOther, r.StatusCode);
         Assert.Equal("/", r.Headers.Location?.OriginalString);
-        Assert.Contains("dg-lang=fr", Assert.Single(SetCookies(r)));
+        Assert.Contains("gg-lang=fr", Assert.Single(SetCookies(r)));
     }
 
     [Fact]

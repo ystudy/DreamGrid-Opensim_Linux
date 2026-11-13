@@ -8,7 +8,7 @@ namespace GridGate.Launcher.Tests;
 /// <summary>Residents' finished backups and their download links (IAR plan task 7).</summary>
 public sealed class IarFilesTests : IDisposable
 {
-    private readonly string _root = Directory.CreateTempSubdirectory("dg-iarfiles-").FullName;
+    private readonly string _root = Directory.CreateTempSubdirectory("gg-iarfiles-").FullName;
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 11, 11, 12, 0, 0, TimeSpan.Zero));
     private readonly LauncherPaths _paths;
     private static readonly Guid Ann = Guid.NewGuid();

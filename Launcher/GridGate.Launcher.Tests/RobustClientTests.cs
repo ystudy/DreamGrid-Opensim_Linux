@@ -9,7 +9,7 @@ namespace GridGate.Launcher.Tests;
 public class RobustClientTests
 {
     private static readonly LauncherSettings Defaults =
-        new SettingsStore(Path.Combine(Path.GetTempPath(), "dg-robust-" + Guid.NewGuid().ToString("N"), "settings.json")).LoadOrCreate();
+        new SettingsStore(Path.Combine(Path.GetTempPath(), "gg-robust-" + Guid.NewGuid().ToString("N"), "settings.json")).LoadOrCreate();
     private const string Pid = "11111111-2222-3333-4444-555555555555";
 
     private static (RobustClient Client, StubHandler Handler) Make(Func<RecordedRequest, (HttpStatusCode, string)> reply)

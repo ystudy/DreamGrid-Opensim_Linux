@@ -16,7 +16,7 @@ namespace GridGate.Launcher.Resident;
 /// <param name="welcome">Whether this is the welcome page, which takes only the <c>lang=</c> query and the default.</param>
 public sealed class ResidentLanguageFilter(bool welcome) : IAsyncPageFilter, IAsyncResultFilter
 {
-    private const string ItemKey = "dg-lang";
+    private const string ItemKey = "gg-lang";
 
     /// <summary>The language picked for this request; English when no resident filter ran.</summary>
     public static string Current(HttpContext ctx) => Picked(ctx) ?? Core.Languages.English;

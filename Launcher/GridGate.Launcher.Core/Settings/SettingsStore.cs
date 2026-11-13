@@ -115,7 +115,7 @@ public sealed class SettingsStore(string path)
     private static LauncherSettings NewSettings() => new()
     {
         Db = new DatabaseSecrets(Secrets.NewPassword(), Secrets.NewPassword(), Secrets.NewPassword()),
-        Console = new ConsoleSecrets("dg" + Secrets.NewPassword(8), Secrets.NewPassword()),
+        Console = new ConsoleSecrets("gg" + Secrets.NewPassword(8), Secrets.NewPassword()),
         MachineId = Secrets.NewMachineId(),
         SetupToken = Secrets.NewPassword(32),
     };

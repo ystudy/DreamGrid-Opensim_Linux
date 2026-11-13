@@ -20,7 +20,7 @@ public class RestConsoleClientTests
         Func<RecordedRequest, (HttpStatusCode, string)> reply)
     {
         var h = new StubHandler(reply);
-        return (new RestConsoleClient(new HttpClient(h), Base, "dg", "pw secret"), h);
+        return (new RestConsoleClient(new HttpClient(h), Base, "gg", "pw secret"), h);
     }
 
     [Fact]
@@ -33,7 +33,7 @@ public class RestConsoleClientTests
         var req = h.Requests[0];
         Assert.Equal(HttpMethod.Post, req.Method);
         Assert.Equal("/StartSession/", req.Uri.AbsolutePath);
-        Assert.Equal("dg", req.Form("USER"));
+        Assert.Equal("gg", req.Form("USER"));
         Assert.Equal("pw secret", req.Form("PASS"));
     }
 
@@ -157,7 +157,7 @@ public class RestConsoleClientTests
     public async Task RunAsync_does_not_wait_for_the_servers_long_poll()
     {
         var h = new DelayingReadHandler();
-        var c = new RestConsoleClient(new HttpClient(h), Base, "dg", "pw");
+        var c = new RestConsoleClient(new HttpClient(h), Base, "gg", "pw");
         var clock = System.Diagnostics.Stopwatch.StartNew();
 
         var lines = await c.RunAsync("x", TimeSpan.FromMilliseconds(200), CancellationToken.None);
@@ -256,7 +256,7 @@ public class RestConsoleClientTests
                 default: return (HttpStatusCode.OK, Empty);
             }
         });
-        var c = new RestConsoleClient(new HttpClient(h), Base, "dg", "pw");
+        var c = new RestConsoleClient(new HttpClient(h), Base, "gg", "pw");
 
         Assert.Empty(await c.RunAsync("a", TimeSpan.FromMilliseconds(50), CancellationToken.None));
         // The late answer arrives after "a" ended and before "b" is sent. A timer here raced the client's short
@@ -505,7 +505,7 @@ public class RestConsoleClientTests
         });
         var logs = new ConcurrentQueue<(LogLevel Level, string Category, string Message)>();
         using var loggers = LoggerFactory.Create(b => b.AddProvider(new CapturingLoggerProvider(logs)).SetMinimumLevel(LogLevel.Trace));
-        var c = new RestConsoleClient(new HttpClient(h), Base, "dg", "pw", loggers.CreateLogger<RestConsoleClient>())
+        var c = new RestConsoleClient(new HttpClient(h), Base, "gg", "pw", loggers.CreateLogger<RestConsoleClient>())
         {
             LostReadAfter = TimeSpan.FromMilliseconds(500),
         };
@@ -540,7 +540,7 @@ public class RestConsoleClientTests
                 _ => Empty,
             });
         });
-        var c = new RestConsoleClient(new HttpClient(stub), Base, "dg", "pw", loggers.CreateLogger<RestConsoleClient>());
+        var c = new RestConsoleClient(new HttpClient(stub), Base, "gg", "pw", loggers.CreateLogger<RestConsoleClient>());
 
         await c.RunAsync("a", TimeSpan.FromMilliseconds(50), CancellationToken.None);
         await c.RunAsync("b", TimeSpan.FromMilliseconds(50), CancellationToken.None);
@@ -559,7 +559,7 @@ public class RestConsoleClientTests
             if (path == "/CloseSession/") throw new TaskCanceledException("timed out");
             return Task.FromResult((HttpStatusCode.OK, StartOk));
         });
-        var c = new RestConsoleClient(new HttpClient(h), Base, "dg", "pw");
+        var c = new RestConsoleClient(new HttpClient(h), Base, "gg", "pw");
 
         Assert.True(await c.IsUpAsync(CancellationToken.None));
     }

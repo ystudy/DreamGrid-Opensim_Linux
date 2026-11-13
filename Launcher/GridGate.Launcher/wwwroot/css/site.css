@@ -284,7 +284,7 @@ th .sort-link .btn-icon { width: .9em; height: .9em; margin: 0; }
 .upload-bar { width: 0; }
 
 /* The bot-protection honeypot: out of sight for people, still in the page for a bot that fills every field. */
-.dg-hp {
+.gg-hp {
     position: absolute;
     left: -10000px;
     width: 1px;

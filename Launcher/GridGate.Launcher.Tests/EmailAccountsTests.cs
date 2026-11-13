@@ -10,7 +10,7 @@ public sealed class EmailAccountsTests : IDisposable
 {
     private const string Secret = "abcd efgh ijkl mnop";
 
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "dg-emailaccounts-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "gg-emailaccounts-" + Guid.NewGuid().ToString("N"));
     private readonly IDataProtectionProvider _dp = new EphemeralDataProtectionProvider();
 
     public EmailAccountsTests() => Directory.CreateDirectory(_dir);

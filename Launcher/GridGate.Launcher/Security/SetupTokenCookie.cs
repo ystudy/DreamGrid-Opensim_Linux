@@ -6,7 +6,7 @@ namespace GridGate.Launcher.Security;
 /// <summary>The setup link's token and the cookie that carries it once it has left the URL.</summary>
 public static class SetupTokenCookie
 {
-    public const string Name = "dg-setup";
+    public const string Name = "gg-setup";
 
     /// <summary>Constant-time comparison; false when either side is missing.</summary>
     public static bool Matches(string? expected, string? given)

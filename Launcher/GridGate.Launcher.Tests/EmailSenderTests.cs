@@ -16,7 +16,7 @@ public sealed class EmailSenderTests : IDisposable
 
     private const string Link = "https://grid.example/reset?t=SECRETTOKEN";
 
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "dg-emailsender-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "gg-emailsender-" + Guid.NewGuid().ToString("N"));
     private readonly IDataProtectionProvider _dp = new EphemeralDataProtectionProvider();
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 10, 31, 12, 0, 0, TimeSpan.Zero));
     private readonly ScriptedTransport _transport = new();

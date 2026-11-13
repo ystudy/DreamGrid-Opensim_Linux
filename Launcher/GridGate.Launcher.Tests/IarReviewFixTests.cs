@@ -10,7 +10,7 @@ namespace GridGate.Launcher.Tests;
 /// <summary>The final review's findings on the archive code, each pinned (IAR plan, final fix pass).</summary>
 public sealed class IarReviewFixTests : IDisposable
 {
-    private readonly string _dir = Directory.CreateTempSubdirectory("dg-iarfix-").FullName;
+    private readonly string _dir = Directory.CreateTempSubdirectory("gg-iarfix-").FullName;
 
     public void Dispose()
     {

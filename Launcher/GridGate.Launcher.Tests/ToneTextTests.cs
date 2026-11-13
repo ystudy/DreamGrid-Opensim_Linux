@@ -35,7 +35,7 @@ public sealed class ToneTextTests
     {
         using var client = f.CreateClient(new() { AllowAutoRedirect = false, BaseAddress = new Uri("http://localhost") });
         using var req = new HttpRequestMessage(HttpMethod.Get, url);
-        if (lang is not null) req.Headers.Add("Cookie", "dg-lang=" + lang);
+        if (lang is not null) req.Headers.Add("Cookie", "gg-lang=" + lang);
         using var r = await client.SendAsync(req, Ct);
         Assert.Equal(HttpStatusCode.OK, r.StatusCode);
         return await r.Content.ReadAsStringAsync(Ct);
@@ -183,7 +183,7 @@ public sealed class ToneTextTests
         using var client = f.CreateClient(new() { AllowAutoRedirect = false, HandleCookies = true, BaseAddress = new Uri("http://localhost") });
         using var signIn = await client.GetAsync("/__test/signin?role=owner", Ct);
         using var req = new HttpRequestMessage(HttpMethod.Get, "/");
-        req.Headers.Add("Cookie", "dg-lang=de");
+        req.Headers.Add("Cookie", "gg-lang=de");
         using var r = await client.SendAsync(req, Ct);
         Assert.Equal(HttpStatusCode.OK, r.StatusCode);
         Assert.DoesNotContain("Willkommen", await r.Content.ReadAsStringAsync(Ct));

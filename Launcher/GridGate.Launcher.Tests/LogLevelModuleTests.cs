@@ -9,7 +9,7 @@ namespace GridGate.Launcher.Tests;
 
 public sealed class LogLevelModuleTests : IDisposable
 {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "dg-loglevel-" + Guid.NewGuid().ToString("N"));
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "gg-loglevel-" + Guid.NewGuid().ToString("N"));
 
     public void Dispose()
     {

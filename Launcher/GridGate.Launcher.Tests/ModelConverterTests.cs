@@ -9,7 +9,7 @@ namespace GridGate.Launcher.Tests;
 
 public sealed class ModelConverterTests : IDisposable
 {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "dg-converter-" + Guid.NewGuid().ToString("N"));
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "gg-converter-" + Guid.NewGuid().ToString("N"));
     private readonly string _job;
     private ProcessStartInfo? _seen;
     private static readonly ImportLimits Limits = new(256, 0.001, 10, 0, 67108864, 8192, 1024, 2000000, 512, 200000, 67108864);

@@ -8,7 +8,7 @@ namespace GridGate.Launcher.Tests;
 /// <summary>The one offered-languages rule every picker, page and email uses.</summary>
 public sealed class OfferedLanguagesTests
 {
-    private static OfferedLanguages For(LanguageSettings l) => new(() => TestSettings.Create() with { Languages = l }, new OwnerLanguages(Path.Combine(Path.GetTempPath(), "dg-none-" + Guid.NewGuid().ToString("N")), TimeProvider.System));
+    private static OfferedLanguages For(LanguageSettings l) => new(() => TestSettings.Create() with { Languages = l }, new OwnerLanguages(Path.Combine(Path.GetTempPath(), "gg-none-" + Guid.NewGuid().ToString("N")), TimeProvider.System));
 
     [Fact]
     public void All_built_in_languages_are_offered_by_default_and_English_is_the_default()

@@ -6,7 +6,7 @@ namespace GridGate.Launcher.Tests;
 
 public sealed class PidFileTests : IDisposable
 {
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "dg-pid-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "gg-pid-" + Guid.NewGuid().ToString("N"));
 
     public PidFileTests() => Directory.CreateDirectory(_dir);
 

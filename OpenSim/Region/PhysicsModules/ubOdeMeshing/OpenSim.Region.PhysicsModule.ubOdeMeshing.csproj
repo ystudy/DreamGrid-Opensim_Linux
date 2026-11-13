@@ -96,7 +96,7 @@
     </Reference>
     <Reference Include="System.Drawing.Common" >
       <Name>System.Drawing.Common</Name>
-      <HintPath>$(DgRoot)bin\System.Drawing.Common.dll</HintPath>
+      <HintPath>$(GgRoot)bin\System.Drawing.Common.dll</HintPath>
       <Private>False</Private>
     </Reference>
   </ItemGroup>

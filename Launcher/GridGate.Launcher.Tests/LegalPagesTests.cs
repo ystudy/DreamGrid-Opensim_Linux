@@ -307,7 +307,7 @@ public sealed class LegalPagesTests
     private static async Task<AngleSharp.Html.Dom.IHtmlDocument> TermsAsync(LauncherFactory f, string? cookie)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, "/terms");
-        if (cookie is not null) request.Headers.Add("Cookie", "dg-lang=" + cookie);
+        if (cookie is not null) request.Headers.Add("Cookie", "gg-lang=" + cookie);
         using var r = await Client(f).SendAsync(request, Ct);
         Assert.Equal(HttpStatusCode.OK, r.StatusCode);
         return new HtmlParser().ParseDocument(await r.Content.ReadAsStringAsync(Ct));

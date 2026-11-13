@@ -108,7 +108,7 @@ public sealed class GridHostedServiceTests
     [Fact]
     public async Task Launcher_exits_non_zero_when_the_web_port_is_taken()
     {
-        var root = Path.Combine(Path.GetTempPath(), "dg-busy-" + Guid.NewGuid().ToString("N"));
+        var root = Path.Combine(Path.GetTempPath(), "gg-busy-" + Guid.NewGuid().ToString("N"));
         var data = Path.Combine(root, "data");
         var holder = new TcpListener(IPAddress.Any, 0);
         holder.Start();
@@ -155,7 +155,7 @@ public sealed class GridHostedServiceTests
     {
         Assert.SkipUnless(OperatingSystem.IsLinux(), "SIGTERM is the systemd stop signal; Linux only");
 
-        var root = Path.Combine(Path.GetTempPath(), "dg-term-" + Guid.NewGuid().ToString("N"));
+        var root = Path.Combine(Path.GetTempPath(), "gg-term-" + Guid.NewGuid().ToString("N"));
         var data = Path.Combine(root, "data");
         try
         {
@@ -206,7 +206,7 @@ public sealed class GridHostedServiceTests
     [InlineData("corrupt-settings")]
     public async Task Launcher_exits_non_zero_with_one_line_when_it_cannot_start(string failure)
     {
-        var root = Path.Combine(Path.GetTempPath(), "dg-fatal-" + Guid.NewGuid().ToString("N"));
+        var root = Path.Combine(Path.GetTempPath(), "gg-fatal-" + Guid.NewGuid().ToString("N"));
         var data = Path.Combine(root, "data");
         try
         {

@@ -87,7 +87,7 @@ git commit --allow-empty -m "OpenSim: not taking <subject>: <reason>" --trailer 
 
   Our own `prebuild.xml` files are not used by anything. If a pick conflicts on one, take theirs.
 
-  - **Changed reference:** edit the project's `.csproj`. Reference paths use `$(DgRoot)` (the repo root),
+  - **Changed reference:** edit the project's `.csproj`. Reference paths use `$(GgRoot)` (the repo root),
     never an absolute path.
   - **New project:** create a `.csproj` modeled on a sibling project, then
     `dotnet sln DreamGrid.sln add <path-to-csproj>`.

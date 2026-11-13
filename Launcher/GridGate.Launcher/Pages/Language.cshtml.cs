@@ -11,7 +11,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 namespace GridGate.Launcher.Pages;
 
 /// <summary>
-/// The language picker's target: remembers the language a visitor chose (in the <c>dg-lang</c> cookie, and for a signed-in guest
+/// The language picker's target: remembers the language a visitor chose (in the <c>gg-lang</c> cookie, and for a signed-in guest
 /// also in <see cref="ResidentLanguages"/>) and goes back to the page they were on. A POST only (the antiforgery token is
 /// required); anyone may use it. The way back is a path on this site, never another address.
 /// </summary>

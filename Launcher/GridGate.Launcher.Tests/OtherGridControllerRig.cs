@@ -21,7 +21,7 @@ namespace GridGate.Launcher.Tests;
 /// </summary>
 public abstract class OtherGridControllerRig : IAsyncLifetime
 {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "dg-othergrid-" + Guid.NewGuid().ToString("N"));
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "gg-othergrid-" + Guid.NewGuid().ToString("N"));
     private protected readonly LauncherPaths _paths;
     private protected readonly SettingsStore _store;
     private protected readonly GridRobust _robust = new();

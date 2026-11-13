@@ -9,7 +9,7 @@ namespace GridGate.Launcher.Tests;
 /// <summary>Reading and rewriting inventory archives (IAR plan task 3).</summary>
 public sealed class IarArchiveTests : IDisposable
 {
-    private readonly string _dir = Directory.CreateTempSubdirectory("dg-iar-").FullName;
+    private readonly string _dir = Directory.CreateTempSubdirectory("gg-iar-").FullName;
 
     public void Dispose()
     {

@@ -16,14 +16,14 @@ public sealed record TwoFactorPendingSignIn(Guid Principal, string First, string
 }
 
 /// <summary>
-/// The <c>dg-2fa</c> cookie between the password and the code steps: data-protected (purpose <c>GridGate.TwoFactorPending.v1</c>),
+/// The <c>gg-2fa</c> cookie between the password and the code steps: data-protected (purpose <c>GridGate.TwoFactorPending.v1</c>),
 /// HttpOnly, SameSite=Strict, only sent to <c>/login</c> and below, and good for <see cref="Lifetime"/> by the time inside it.
 /// It carries the account (principal, name, level), the role and the return address, so the code step needs no second Robust
 /// lookup. It is no sign-in: nothing but <c>/login/code</c> reads it.
 /// </summary>
 public static class TwoFactorPending
 {
-    public const string CookieName = "dg-2fa";
+    public const string CookieName = "gg-2fa";
     public const string CookiePath = "/login";
     public static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(5);
 

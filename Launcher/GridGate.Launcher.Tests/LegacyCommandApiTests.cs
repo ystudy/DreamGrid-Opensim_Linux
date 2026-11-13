@@ -36,7 +36,7 @@ public sealed class LegacyCommandApiTests : IDisposable
     private readonly ConcurrentQueue<(LogLevel Level, string Category, string Message)> _logs = new();
     private readonly FakeTimeProvider _time = new();
     private readonly LoginThrottle _throttle;
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "dg-cmd-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "gg-cmd-" + Guid.NewGuid().ToString("N"));
     private readonly AuditLog _audit;
     private readonly FakeTwoFactor _twoFactor = new();
 

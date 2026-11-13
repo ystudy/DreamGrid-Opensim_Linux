@@ -194,7 +194,7 @@ public sealed class ProofOfWorkTests
     [Fact]
     public void Key_is_made_once_and_read_back()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "dg-pow-" + Guid.NewGuid().ToString("N"));
+        var dir = Path.Combine(Path.GetTempPath(), "gg-pow-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
         try
         {

@@ -4,6 +4,6 @@
     <TargetFramework>net10.0</TargetFramework>
     <LangVersion>latest</LangVersion>
     <!-- Repo root with trailing separator; reference HintPaths use it instead of machine-specific absolute paths. -->
-    <DgRoot>$(MSBuildThisFileDirectory)</DgRoot>
+    <GgRoot>$(MSBuildThisFileDirectory)</GgRoot>
   </PropertyGroup>
 </Project>

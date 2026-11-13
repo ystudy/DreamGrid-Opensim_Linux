@@ -4,13 +4,13 @@ using Microsoft.AspNetCore.DataProtection;
 namespace GridGate.Launcher.Guests;
 
 /// <summary>
-/// The <c>dg-ticket</c> cookie (design 2026-11-05-support-tickets, "After sending"): which one ticket a private link opened, for
+/// The <c>gg-ticket</c> cookie (design 2026-11-05-support-tickets, "After sending"): which one ticket a private link opened, for
 /// 8 hours from its last use. Protected with data protection, so it can't be made or changed by hand, and separate from the guest
 /// sign-in cookie, so it opens that ticket and nothing else.
 /// </summary>
 public sealed class TicketCookie(IDataProtectionProvider protection, TimeProvider time)
 {
-    public const string Name = "dg-ticket";
+    public const string Name = "gg-ticket";
     public static readonly TimeSpan Lifetime = TimeSpan.FromHours(8);
 
     private readonly IDataProtector _protector = protection.CreateProtector("GridGate.Launcher.TicketCookie.v1");

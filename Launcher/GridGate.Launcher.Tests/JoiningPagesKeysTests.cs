@@ -107,13 +107,13 @@ public sealed class JoiningPagesKeysTests
 
         NoRawKeys(await GetAsync(anon, "/home"), "home");
         var signUp = await GetAsync(anon, "/signup");
-        Assert.NotNull(signUp.QuerySelector("#dg-captcha-answer"));
+        Assert.NotNull(signUp.QuerySelector("#gg-captcha-answer"));
         NoRawKeys(signUp, "sign-up with every bot layer");
         // The hint that digits work comes with the question.
-        Assert.Contains("You can type the answer in digits, for example 11.", signUp.QuerySelector(".dg-captcha")!.TextContent);
+        Assert.Contains("You can type the answer in digits, for example 11.", signUp.QuerySelector(".gg-captcha")!.TextContent);
         // The CAPTCHA's sum, written in the page's words.
         Assert.Matches(@"^What is (one|two|three|four|five|six|seven|eight|nine) plus (one|two|three|four|five|six|seven|eight|nine)\?$",
-            signUp.QuerySelector("label[for=dg-captcha-answer]")!.TextContent.Trim());
+            signUp.QuerySelector("label[for=gg-captcha-answer]")!.TextContent.Trim());
 
         // A form that fails the bot check.
         using (var bot = await PostAsync(anon, "/signup", "/signup", new() { ["First"] = "Bea", ["Last"] = "Example" }))

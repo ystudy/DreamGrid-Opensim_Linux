@@ -9,7 +9,7 @@ using Microsoft.AspNetCore.Http;
 
 namespace GridGate.Launcher.Tests;
 
-/// <summary>Test-only sign-in helpers that go through the real "dg" cookie scheme.</summary>
+/// <summary>Test-only sign-in helpers that go through the real "gg" cookie scheme.</summary>
 internal static class TestAuth
 {
     public static readonly Guid OwnerId = Guid.Parse("0e000000-0000-0000-0000-00000000000e");
@@ -65,13 +65,13 @@ internal static class TestAuth
         }
         else if (ctx.Request.Path == "/__test/signin-old")
         {
-            var id = new ClaimsIdentity([new Claim(ClaimTypes.Name, "Test Admin"), new Claim(ClaimTypes.Role, "admin")], "dg");
-            await ctx.SignInAsync("dg", new ClaimsPrincipal(id));
+            var id = new ClaimsIdentity([new Claim(ClaimTypes.Name, "Test Admin"), new Claim(ClaimTypes.Role, "admin")], "gg");
+            await ctx.SignInAsync("gg", new ClaimsPrincipal(id));
             ctx.Response.StatusCode = StatusCodes.Status204NoContent;
         }
         else if (ctx.Request.Path.Value!.EndsWith("/__test/challenge", StringComparison.Ordinal))
         {
-            await ctx.ChallengeAsync("dg");
+            await ctx.ChallengeAsync("gg");
         }
         else
         {

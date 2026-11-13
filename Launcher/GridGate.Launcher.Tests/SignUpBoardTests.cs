@@ -7,7 +7,7 @@ namespace GridGate.Launcher.Tests;
 /// <summary>The sign-ups board: every sign-up with its state (spec 2026-11-01-sign-up-approval-design §3).</summary>
 public sealed class SignUpBoardTests : IDisposable
 {
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "dg-board-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "gg-board-" + Guid.NewGuid().ToString("N"));
     private string File_ => Path.Combine(_dir, "guests", "pending-signups.json");
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 11, 1, 12, 0, 0, TimeSpan.Zero));
 

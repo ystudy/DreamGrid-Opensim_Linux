@@ -12,7 +12,7 @@ public sealed class ManagedProcessTests : IAsyncLifetime
 {
     private const string Image = "GridGate.FakeChild";
 
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "dg-mp-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "gg-mp-" + Guid.NewGuid().ToString("N"));
     private readonly List<string> _pidFiles = [];
     private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(5) };
 

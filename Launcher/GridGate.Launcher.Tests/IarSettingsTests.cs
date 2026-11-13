@@ -9,7 +9,7 @@ namespace GridGate.Launcher.Tests;
 /// <summary>The grid-wide inventory backup settings, their checks, and the IAR folders (IAR plan task 1).</summary>
 public sealed class IarSettingsTests : IDisposable
 {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "dg-iars-" + Guid.NewGuid().ToString("N"));
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "gg-iars-" + Guid.NewGuid().ToString("N"));
 
     public void Dispose()
     {

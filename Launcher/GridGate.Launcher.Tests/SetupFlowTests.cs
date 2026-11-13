@@ -439,9 +439,9 @@ public sealed class SetupFlowTests
         Assert.Equal("/setup", Location(resp));
         Assert.Null(f.Store.LoadOrCreate().SetupToken);
         Assert.Equal(("Test", "Owner", "Secret-pass42", (string?)null), f.Grid.CreatedOwner);
-        Assert.Contains(resp.Headers.GetValues("Set-Cookie"), c => c.StartsWith("dg-auth=", StringComparison.Ordinal));
+        Assert.Contains(resp.Headers.GetValues("Set-Cookie"), c => c.StartsWith("gg-auth=", StringComparison.Ordinal));
         // The setup cookie is no use any more.
-        Assert.Contains(resp.Headers.GetValues("Set-Cookie"), c => c.StartsWith("dg-setup=;", StringComparison.Ordinal));
+        Assert.Contains(resp.Headers.GetValues("Set-Cookie"), c => c.StartsWith("gg-setup=;", StringComparison.Ordinal));
 
         // Signed in: the gate now lets this client on to the next step, "What kind of grid is this?".
         using var next = await client.GetAsync("/setup", Ct);
@@ -1648,8 +1648,8 @@ public sealed class SetupFlowTests
         var s = f.Store.LoadOrCreate();
         Assert.Equal(("Ann", "Lee"), (s.Setup.Owner?.FirstName, s.Setup.Owner?.LastName));
         Assert.Null(s.SetupToken);
-        Assert.Contains(resp.Headers.GetValues("Set-Cookie"), c => c.StartsWith("dg-auth=", StringComparison.Ordinal));
-        Assert.Contains(resp.Headers.GetValues("Set-Cookie"), c => c.StartsWith("dg-setup=;", StringComparison.Ordinal));
+        Assert.Contains(resp.Headers.GetValues("Set-Cookie"), c => c.StartsWith("gg-auth=", StringComparison.Ordinal));
+        Assert.Contains(resp.Headers.GetValues("Set-Cookie"), c => c.StartsWith("gg-setup=;", StringComparison.Ordinal));
         using var next = await client.GetAsync("/setup", Ct);
         Assert.Equal("/setup/region", Location(next));
     }
@@ -2047,7 +2047,7 @@ public sealed class SetupFlowTests
         var s = f.Store.LoadOrCreate();
         Assert.Equal(("Ann", "Lee"), (s.Setup.Owner?.FirstName, s.Setup.Owner?.LastName));
         Assert.Null(s.SetupToken);
-        Assert.Contains(resp.Headers.GetValues("Set-Cookie"), c => c.StartsWith("dg-auth=", StringComparison.Ordinal));
+        Assert.Contains(resp.Headers.GetValues("Set-Cookie"), c => c.StartsWith("gg-auth=", StringComparison.Ordinal));
         using var next = await client.GetAsync("/setup", Ct);
         Assert.Equal("/setup/region", Location(next));
     }

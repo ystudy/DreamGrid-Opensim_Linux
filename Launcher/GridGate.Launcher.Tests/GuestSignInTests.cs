@@ -77,7 +77,7 @@ public sealed class GuestSignInTests
 
         Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
         Assert.Equal("/guest", r.Headers.Location?.OriginalString);
-        var cookie = Assert.Single(r.Headers.GetValues("Set-Cookie"), c => c.StartsWith("dg-guest=", StringComparison.Ordinal));
+        var cookie = Assert.Single(r.Headers.GetValues("Set-Cookie"), c => c.StartsWith("gg-guest=", StringComparison.Ordinal));
         Assert.Contains("httponly", cookie, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("samesite=strict", cookie, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("expires", cookie, StringComparison.OrdinalIgnoreCase); // a session cookie
@@ -118,7 +118,7 @@ public sealed class GuestSignInTests
         Assert.Equal(Wrong, await ErrorAsync(wrongPassword));
         Assert.Equal(Wrong, await ErrorAsync(unknown));
         Assert.Equal(Wrong, await ErrorAsync(noLast));
-        Assert.False(suspended.Headers.TryGetValues("Set-Cookie", out var cookies) && cookies.Any(c => c.StartsWith("dg-guest=", StringComparison.Ordinal)));
+        Assert.False(suspended.Headers.TryGetValues("Set-Cookie", out var cookies) && cookies.Any(c => c.StartsWith("gg-guest=", StringComparison.Ordinal)));
     }
 
     [Fact]

@@ -11,7 +11,7 @@ public sealed class LoginThrottleTests : IDisposable
     private static readonly IPAddress Ip5 = IPAddress.Parse("10.0.0.5");
     private static readonly IPAddress Ip6 = IPAddress.Parse("10.0.0.6");
 
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "dg-throttle-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "gg-throttle-" + Guid.NewGuid().ToString("N"));
 
     public LoginThrottleTests() => Directory.CreateDirectory(_dir);
 

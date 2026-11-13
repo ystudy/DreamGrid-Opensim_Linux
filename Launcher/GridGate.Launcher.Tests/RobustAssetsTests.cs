@@ -10,7 +10,7 @@ namespace GridGate.Launcher.Tests;
 public class RobustAssetsTests
 {
     private static readonly LauncherSettings Defaults =
-        new SettingsStore(Path.Combine(Path.GetTempPath(), "dg-assets-" + Guid.NewGuid().ToString("N"), "settings.json")).LoadOrCreate();
+        new SettingsStore(Path.Combine(Path.GetTempPath(), "gg-assets-" + Guid.NewGuid().ToString("N"), "settings.json")).LoadOrCreate();
 
     private static readonly Guid Owner = Guid.Parse("11111111-2222-3333-4444-555555555555");
     private static readonly Guid Root = Guid.Parse("aaaaaaaa-0000-0000-0000-000000000001");

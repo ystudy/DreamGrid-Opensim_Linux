@@ -8,7 +8,7 @@ namespace GridGate.Launcher.Tests;
 /// <summary>Each resident's backups and uploads over the last 24 hours (IAR plan task 7).</summary>
 public sealed class IarCountsTests : IDisposable
 {
-    private readonly string _dir = Directory.CreateTempSubdirectory("dg-iarcount-").FullName;
+    private readonly string _dir = Directory.CreateTempSubdirectory("gg-iarcount-").FullName;
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 11, 11, 12, 0, 0, TimeSpan.Zero));
     private static readonly Guid Ann = Guid.NewGuid();
     private string File => Path.Combine(_dir, "iar-counts.json");

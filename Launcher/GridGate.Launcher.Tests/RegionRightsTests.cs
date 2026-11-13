@@ -11,7 +11,7 @@ public sealed class RegionRightsTests : IDisposable
     private static readonly Guid Ann = Guid.Parse("a0000000-0000-0000-0000-00000000000a");
     private static readonly Guid Bob = Guid.Parse("b0000000-0000-0000-0000-00000000000b");
 
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "dg-rights-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "gg-rights-" + Guid.NewGuid().ToString("N"));
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 10, 30, 12, 0, 0, TimeSpan.Zero));
 
     public void Dispose()

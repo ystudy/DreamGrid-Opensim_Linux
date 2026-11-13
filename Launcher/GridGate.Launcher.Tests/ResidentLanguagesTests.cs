@@ -6,7 +6,7 @@ namespace GridGate.Launcher.Tests;
 /// <summary>The language each resident chose, kept in guests/languages.json (plan 16a).</summary>
 public sealed class ResidentLanguagesTests : IDisposable
 {
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "dg-languages-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "gg-languages-" + Guid.NewGuid().ToString("N"));
     private string File_ => Path.Combine(_dir, "guests", "languages.json");
 
     public void Dispose()

@@ -8,7 +8,7 @@ namespace GridGate.Launcher.Tests;
 
 public sealed class ImportJobsTests : IDisposable
 {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "dg-importjobs-" + Guid.NewGuid().ToString("N"));
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "gg-importjobs-" + Guid.NewGuid().ToString("N"));
     private readonly FakeTimeProvider _time = new(DateTimeOffset.Parse("2026-11-10T12:00:00Z"));
     private LauncherPaths Paths => new(_root, Path.Combine(_root, "program"), null);
 
