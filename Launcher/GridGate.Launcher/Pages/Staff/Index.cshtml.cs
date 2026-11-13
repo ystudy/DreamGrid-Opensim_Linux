@@ -3,6 +3,7 @@ using GridGate.Launcher.Core.Database;
 using GridGate.Launcher.Core.OpenSim;
 using GridGate.Launcher.Core.Security;
 using GridGate.Launcher.Core.Settings;
+using GridGate.Launcher.Estates;
 using GridGate.Launcher.Security;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -41,26 +42,11 @@ public sealed class IndexModel(IStaffDirectory directory, IRobustClient robust, 
         Typed = name;
         if (!Enum.TryParse<StaffChange>(change, out var wanted) || wanted is not (StaffChange.MakeSupervisor or StaffChange.MakeAdmin or StaffChange.MakeGuest))
             Error = "Choose what to make this person.";
-        else if (AvatarName.Parse(name) is not { IsComplete: true } who)
-            Error = "Type the avatar's first and last name.";
         else
         {
-            RobustAccount? account = null;
-            try
-            {
-                // The strict lookup: an unusable reply is the service failing, never "no such avatar".
-                account = await robust.FindAccountAsync(who.First, who.Last, ct);
-                if (account is null)
-                    Error = $"No avatar called {LogText.Clean(who.Key, 64)}.";
-            }
-            catch (Exception e) when (e is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException
-                or InvalidDataException && !ct.IsCancellationRequested)
-            {
-                log.LogWarning("Staff: the account service did not answer: {Message}", LogText.Clean(e.Message, 300));
-                Error = StaffActions.RobustDown;
-            }
-
-            if (account is not null)
+            var (account, problem) = await AvatarLookup.FindAsync(robust, name, log, ct, "Staff");
+            if (account is null) Error = problem;
+            else
             {
                 var outcome = await actions.ApplyAsync(User, HttpContext.Connection.RemoteIpAddress?.ToString(), account, wanted, ct);
                 if (outcome.Done) { Notice = outcome.Message; Typed = null; }
@@ -79,7 +65,7 @@ public sealed class IndexModel(IStaffDirectory directory, IRobustClient robust, 
         {
             var accounts = await directory.ListAtOrAboveAsync(s.Security.SupervisorLevel, ct);
             // Everyone at the supervisor level or more has a role (the owner named in setup shows as the owner).
-            Rows = [.. accounts.Select(a => new StaffRow($"{a.FirstName} {a.LastName}", AdminRule.RoleOf(s, a), a.UserLevel))
+            Rows = [.. accounts.Select(a => new StaffRow(a.FullName(), AdminRule.RoleOf(s, a), a.UserLevel))
                 .Where(r => r.Role != StaffRole.None)];
             Unavailable = false;
         }

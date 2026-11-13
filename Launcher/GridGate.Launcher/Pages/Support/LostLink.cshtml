@@ -13,10 +13,7 @@
 else
 {
     <p>@T["Support.LostIntro"]</p>
-    @if (Model.Error is not null)
-    {
-        <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
-    }
+    <error-box text="@Model.Error" />
     <form id="lost-link" method="post">
         <label class="form-label" asp-for="Email">@T["Common.Email"]</label>
         <input class="form-control" asp-for="Email" type="email" maxlength="254" autocomplete="email" required>

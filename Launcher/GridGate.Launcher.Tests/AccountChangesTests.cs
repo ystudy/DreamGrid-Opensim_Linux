@@ -224,6 +224,16 @@ public sealed class AccountChangesTests
         Assert.False(rig.Throttle.IsLocked(SignInDoor.Guest, Key, Caller));
     }
 
+    [Fact]
+    public async Task Robust_down_after_the_request_was_given_up_is_not_answered_busy()
+    {
+        await using var rig = Factory();
+        rig.F.Robust.Down = true;
+        await Assert.ThrowsAsync<HttpRequestException>(() =>
+            rig.Changes.ChangePasswordAsync(AnnId, Old, null, New, New, Caller, new CancellationToken(canceled: true), "en"));
+        Assert.False(rig.Throttle.IsLocked(SignInDoor.Guest, Key, Caller));
+    }
+
     // ---- Change email (§6) ----
 
     [Fact]
@@ -382,6 +392,28 @@ public sealed class AccountChangesTests
         Assert.Equal(EmailLinkResult.Busy, (await rig.Changes.ConfirmEmailChangeAsync(token, Ct)).Result);
         rig.F.Robust.EmailsDown = false;
         Assert.Equal(EmailLinkResult.Done, (await rig.Changes.ConfirmEmailChangeAsync(token, Ct)).Result);
+    }
+
+    [Fact]
+    public async Task Robust_down_after_the_link_request_was_given_up_is_not_answered_busy()
+    {
+        await using var rig = Factory();
+        var token = await AskedTokenAsync(rig);
+        using var gaveUp = new CancellationTokenSource();
+        rig.F.Robust.OnFindAccountById = gaveUp.Cancel;
+        rig.F.Robust.Down = true;
+        await Assert.ThrowsAsync<HttpRequestException>(() => rig.Changes.ConfirmEmailChangeAsync(token, gaveUp.Token));
+    }
+
+    [Fact]
+    public async Task Staff_directory_down_after_the_link_request_was_given_up_is_still_answered_busy()
+    {
+        await using var rig = Factory();
+        var token = await AskedTokenAsync(rig);
+        using var gaveUp = new CancellationTokenSource();
+        rig.F.Robust.OnFindAccountById = gaveUp.Cancel;
+        rig.F.Staff.Down = true;
+        Assert.Equal(EmailLinkResult.Busy, (await rig.Changes.ConfirmEmailChangeAsync(token, gaveUp.Token)).Result);
     }
 
     [Fact]

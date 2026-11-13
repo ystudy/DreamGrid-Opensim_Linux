@@ -34,10 +34,7 @@ public sealed class SettingsStore(string path)
         try
         {
             // ReadWrite | Delete sharing keeps the read from blocking writers longer than it must (see AtomicFile).
-            string json;
-            using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
-            using (var reader = new StreamReader(fs))
-                json = reader.ReadToEnd();
+            var json = AtomicFile.ReadShared(path);
             var loaded = JsonSerializer.Deserialize<LauncherSettings>(json, Options)
                 ?? throw new JsonException("settings file contains null");
             Validate(loaded);

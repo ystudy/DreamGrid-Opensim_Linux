@@ -12,10 +12,7 @@
 }
 <h1 class="h3">@Model.Job.Text</h1>
 
-@if (Model.Notice is not null)
-{
-    <p class="notice alert alert-info py-2" role="status">@Model.Notice</p>
-}
+<notice-box text="@Model.Notice" />
 
 <div id="oar-job" data-job-url="/api/regions/@Model.Id/job">
     @if (Model.Job.Running)

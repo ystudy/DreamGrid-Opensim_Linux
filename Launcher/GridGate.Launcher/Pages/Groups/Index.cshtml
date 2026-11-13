@@ -7,10 +7,7 @@
 <div class="page-head">
     <h1>Groups<help-tip class="help-start">The groups on your grid. Open one to change its name or charter, add or remove members, delete it, or make it the default group every new resident joins. Groups are made in the viewer.</help-tip></h1>
 </div>
-@if (Model.Notice is not null)
-{
-    <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
-}
+<ok-box text="@Model.Notice" />
 <section class="work-panel" aria-labelledby="groups-title">
     <div class="panel-tools">
         <h2 id="groups-title" class="panel-title mb-0">Groups</h2>

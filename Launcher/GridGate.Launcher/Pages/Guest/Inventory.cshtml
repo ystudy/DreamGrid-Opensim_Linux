@@ -12,10 +12,7 @@
     }
 }
 <h1>@T["Iar.Title"]</h1>
-@if (Model.Error is not null)
-{
-    <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
-}
+<error-box text="@Model.Error" />
 @if (Model.NotAvailable)
 {
     <p id="iar-not-available">@T["Iar.NotAvailable"]</p>

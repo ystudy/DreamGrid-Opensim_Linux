@@ -67,7 +67,7 @@ public sealed class SignUpCleanup(SignUpBoard pending, IRobustClient robust, IAc
                     await remover.DeleteAsync(principal, ct);
                     languages.Remove(principal);
                     audit.Write(new AuditEntry("GridGate", null, "system", null, "signup-expired",
-                        LogText.Clean($"{account.FirstName} {account.LastName}", 64), "ok"));
+                        LogText.Clean(account.FullName(), 64), "ok"));
                 }
                 // Gone from Robust already: a language saved at sign-up has no owner left (as in the second pass below).
                 else if (account is null) languages.Remove(principal);
@@ -94,7 +94,7 @@ public sealed class SignUpCleanup(SignUpBoard pending, IRobustClient robust, IAc
                     // Gone from Robust (or no longer a waiting sign-up of ours): a language saved at sign-up has no owner left.
                     if (account is null) languages.Remove(entry.Principal);
                 }
-                else if (entry.Name.Length == 0) pending.SetName(entry.Principal, $"{account.FirstName} {account.LastName}");
+                else if (entry.Name.Length == 0) pending.SetName(entry.Principal, account.FullName());
             }
             catch (Exception e) when (IsDown(e, ct))
             {
@@ -108,6 +108,5 @@ public sealed class SignUpCleanup(SignUpBoard pending, IRobustClient robust, IAc
     }
 
     private static bool IsDown(Exception e, CancellationToken ct) =>
-        e is StaffDirectoryUnavailableException or HttpRequestException or TaskCanceledException or IOException
-            or InvalidOperationException or InvalidDataException && !ct.IsCancellationRequested;
+        !ct.IsCancellationRequested && (e is StaffDirectoryUnavailableException || RobustFailure.IsUnreachable(e, ct));
 }

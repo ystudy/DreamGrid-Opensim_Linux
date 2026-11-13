@@ -38,8 +38,7 @@ public sealed class EstateRemover(Func<LauncherSettings> settings) : IEstateRemo
         try
         {
             var s = settings();
-            await using var conn = new MySqlConnection(MariaDbServer.ConnectionString(s, "opensim", "opensimuser", s.Db.OpensimPassword, TimeoutSeconds));
-            await conn.OpenAsync(ct);
+            await using var conn = await GridDb.OpenOpensimAsync(s, TimeoutSeconds, ct);
             await using var tx = await conn.BeginTransactionAsync(ct);
             await using (var check = new MySqlCommand(Linked, conn, tx))
             {

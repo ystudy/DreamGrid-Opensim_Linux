@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 
@@ -26,9 +25,7 @@ public sealed class JsonStateFile<T>(string path, Func<T> empty, ILogger? log) w
             string json;
             try
             {
-                using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-                using var reader = new StreamReader(fs);
-                json = reader.ReadToEnd();
+                json = AtomicFile.ReadShared(path);
             }
             catch (Exception e) when (e is FileNotFoundException or DirectoryNotFoundException)
             {
@@ -60,8 +57,7 @@ public sealed class JsonStateFile<T>(string path, Func<T> empty, ILogger? log) w
             try
             {
                 // The host makes the guests folder owner-only at start; this only matters where it is missing.
-                if (Path.GetDirectoryName(Path.GetFullPath(path)) is { Length: > 0 } dir) Directory.CreateDirectory(dir);
-                AtomicFile.WriteAllText(path, JsonSerializer.Serialize(state, Options));
+                AtomicFile.WriteAllTextCreatingFolder(path, JsonSerializer.Serialize(state, Options));
                 _saveFailing = false;
                 return true;
             }
@@ -77,10 +73,9 @@ public sealed class JsonStateFile<T>(string path, Func<T> empty, ILogger? log) w
 
     private void SetAside()
     {
-        var aside = path + ".damaged-" + DateTime.UtcNow.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture);
         try
         {
-            File.Move(path, aside, overwrite: true);
+            var aside = AtomicFile.SetAside(path);
             log?.LogWarning("The file {Path} could not be read and was set aside as {Aside}.", path, Path.GetFileName(aside));
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)

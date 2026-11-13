@@ -71,8 +71,7 @@ public sealed class ImportModel(IGridController grid, OarLibrary library, OarJob
 
     private IActionResult Start(OarJobRequest request)
     {
-        if (!jobs.TryStart(request, OarJobs.Describe(request, Name)) && jobs.For(request.RegionId) is { } running)
-            Notice = $"{running.Text} is still running. Try again when it finishes.";
+        if (jobs.Start(request, Name) is { } busy) Notice = busy;
         return Redirect($"/regions/region/{request.RegionId}/job");
     }
 

@@ -58,7 +58,7 @@ public sealed class RegionStore(LauncherSettings s) : IRegionStore
     {
         var space = ids.Distinct().ToDictionary(id => id, _ => 0L);
         if (space.Count == 0) return space;
-        await using var conn = await OpenAsync(ct);
+        await using var conn = await GridDb.OpenAsync(MariaDbServer.ConnectionString(s), ct);
 
         // Each prim table's average row length, times the region's rows in it; terrain is counted by its blobs.
         var avg = new Dictionary<string, long>();
@@ -96,43 +96,31 @@ public sealed class RegionStore(LauncherSettings s) : IRegionStore
 
     public async Task DeregisterAsync(Guid id, CancellationToken ct)
     {
-        await using var conn = await OpenAsync(ct);
+        await using var conn = await GridDb.OpenAsync(MariaDbServer.ConnectionString(s), ct);
         if (!(await ExistingTablesAsync(conn, ct)).Contains((Robust, "regions"))) return;
-        await RunAsync(conn, null, Deregister, id, ct);
+        await GridDb.ExecAsync(conn, null, Deregister, ct, ("@id", id.ToString()));
     }
 
     public async Task EraseAsync(Guid id, CancellationToken ct)
     {
-        await using var conn = await OpenAsync(ct);
+        await using var conn = await GridDb.OpenAsync(MariaDbServer.ConnectionString(s), ct);
         var existing = await ExistingTablesAsync(conn, ct);
         await using var tx = await conn.BeginTransactionAsync(ct);
         foreach (var (sql, tables) in Erase)
             if (tables.All(t => existing.Contains((OpenSim, t))))
-                await RunAsync(conn, tx, sql, id, ct);
+                await GridDb.ExecAsync(conn, tx, sql, ct, ("@id", id.ToString()));
         if (existing.Contains((Robust, "regions")))
-            await RunAsync(conn, tx, Deregister, id, ct);
+            await GridDb.ExecAsync(conn, tx, Deregister, ct, ("@id", id.ToString()));
         await tx.CommitAsync(ct);
     }
 
     public async Task<int?> EstateOfAsync(Guid id, CancellationToken ct)
     {
-        await using var conn = await OpenAsync(ct);
+        await using var conn = await GridDb.OpenAsync(MariaDbServer.ConnectionString(s), ct);
         if (!(await ExistingTablesAsync(conn, ct)).Contains((OpenSim, "estate_map"))) return null;
         await using var cmd = new MySqlCommand("SELECT `EstateID` FROM `opensim`.`estate_map` WHERE `RegionID` = @id", conn);
         cmd.Parameters.AddWithValue("@id", id.ToString());
         return await cmd.ExecuteScalarAsync(ct) is { } estate and not DBNull ? Convert.ToInt32(estate) : null;
-    }
-
-    private async Task<MySqlConnection> OpenAsync(CancellationToken ct)
-    {
-        var conn = new MySqlConnection(MariaDbServer.ConnectionString(s));
-        try { await conn.OpenAsync(ct); }
-        catch
-        {
-            await conn.DisposeAsync();
-            throw;
-        }
-        return conn;
     }
 
     /// <summary>The (schema, table) pairs of the robust and opensim databases.</summary>
@@ -146,12 +134,5 @@ public sealed class RegionStore(LauncherSettings s) : IRegionStore
         await using var r = await cmd.ExecuteReaderAsync(ct);
         while (await r.ReadAsync(ct)) tables.Add((r.GetString(0), r.GetString(1)));
         return tables;
-    }
-
-    private static async Task RunAsync(MySqlConnection conn, MySqlTransaction? tx, string sql, Guid id, CancellationToken ct)
-    {
-        await using var cmd = new MySqlCommand(sql, conn, tx);
-        cmd.Parameters.AddWithValue("@id", id.ToString());
-        await cmd.ExecuteNonQueryAsync(ct);
     }
 }

@@ -10,6 +10,12 @@ namespace GridGate.Launcher.Core.OpenSim;
 /// <param name="Created">When the account was made (the reply's <c>Created</c> unix time); null when Robust gave none or an unusable one.</param>
 public sealed record RobustAccount(Guid PrincipalId, string FirstName, string LastName, int UserLevel, string Email, DateTimeOffset? Created = null);
 
+/// <summary>An extension, not a property: a property on a record that is serialised into a cookie would add a field.</summary>
+public static class RobustAccountNames
+{
+    public static string FullName(this RobustAccount a) => $"{a.FirstName} {a.LastName}";
+}
+
 public interface IRobustClient
 {
     Task<bool> IsReadyAsync(CancellationToken ct);

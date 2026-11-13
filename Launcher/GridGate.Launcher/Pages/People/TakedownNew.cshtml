@@ -7,10 +7,7 @@
 }
 <p><a href="/people/@id/inventory">‹ Inventory</a></p>
 <h1>Take down@(Model.Person is { } who ? $" from {who.FullName}" : "")</h1>
-@if (Model.Error is not null)
-{
-    <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
-}
+<error-box text="@Model.Error" />
 @if (Model.Chosen.Count > 0)
 {
     <form method="post" asp-antiforgery="true">

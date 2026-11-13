@@ -33,10 +33,7 @@ else
 {
     <p class="notice alert alert-info py-2" role="status">@Model.Notice</p>
 }
-@if (Model.Error is not null)
-{
-    <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
-}
+<error-box text="@Model.Error" />
 @if (Model.Report is not null && !Model.AlreadyFinished)
 {
     <p class="report-heading lead">@Model.Heading()</p>

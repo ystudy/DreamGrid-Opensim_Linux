@@ -91,7 +91,7 @@ public sealed class EmailModel(EmailAccounts accounts, EmailSender sender, Email
         var password = usesStored ? accounts.PasswordOf(stored!) : Password;
         if (string.IsNullOrEmpty(password)) return Reopen("Type the password.", null);
 
-        var to = string.IsNullOrWhiteSpace(TestTo) ? await OwnerEmailAsync(ct) : TestTo.Trim();
+        var to = string.IsNullOrWhiteSpace(TestTo) ? await OwnerEmail.FindAsync(robust, settings(), ct) : TestTo.Trim();
         if (string.IsNullOrEmpty(to) || !MailboxAddress.TryParse(to, out _))
             return Reopen("Type an address to send the test to.", null);
         if (!limiter.TryTake(User.Identity?.Name ?? "owner"))
@@ -223,21 +223,6 @@ public sealed class EmailModel(EmailAccounts accounts, EmailSender sender, Email
             custom ? Host ?? "" : p.Host, custom ? Port ?? "" : p.Port.ToString(), security, true, error, outcome);
     }
 
-    private async Task<string?> OwnerEmailAsync(CancellationToken ct)
-    {
-        var owner = settings().Setup.Owner;
-        if (owner is null) return null;
-        try
-        {
-            var account = await robust.FindAccountAsync(owner.FirstName, owner.LastName, ct);
-            return string.IsNullOrWhiteSpace(account?.Email) ? null : account.Email;
-        }
-        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or InvalidOperationException)
-        {
-            return null;
-        }
-    }
-
     /// <summary>
     /// Whether the posted account would use the stored password (none typed) with a different server, port, security or
     /// username: the password could then be sent somewhere it was never meant for.
@@ -260,9 +245,6 @@ public sealed class EmailModel(EmailAccounts accounts, EmailSender sender, Email
 
     private static string Target(EmailAccount a) => $"{a.Provider} {a.Id:N}";
 
-    private void Write(string action, string target, string result)
-    {
-        var (name, id, role) = AuditActor.Of(User);
-        audit.Write(new AuditEntry(name, id, role, HttpContext.Connection.RemoteIpAddress?.ToString(), action, target, result));
-    }
+    private void Write(string action, string target, string result) =>
+        audit.Write(User, HttpContext.Connection.RemoteIpAddress?.ToString(), action, target, result);
 }

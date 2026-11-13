@@ -20,14 +20,8 @@
         <span> · taken by @(t.TakenBy == Model.Me ? "you" : t.TakenByName)</span>
     }
 </p>
-@if (Model.Notice is not null)
-{
-    <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
-}
-@if (Model.Problem is not null)
-{
-    <div class="error-box error alert alert-danger" role="alert">@Model.Problem</div>
-}
+<ok-box text="@Model.Notice" />
+<error-box text="@Model.Problem" />
 
 <div class="row g-3">
 <div class="col-lg-8">

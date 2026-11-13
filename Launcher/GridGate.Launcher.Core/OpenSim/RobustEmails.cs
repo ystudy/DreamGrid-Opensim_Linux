@@ -31,8 +31,7 @@ public sealed class RobustEmails(Func<LauncherSettings> settings) : IRobustEmail
         try
         {
             var s = settings();
-            await using var conn = new MySqlConnection(MariaDbServer.ConnectionString(s, "robust", "robustuser", s.Db.RobustPassword, TimeoutSeconds));
-            await conn.OpenAsync(ct);
+            await using var conn = await GridDb.OpenRobustAsync(s, TimeoutSeconds, ct);
             await using var cmd = new MySqlCommand(Update, conn);
             cmd.Parameters.AddWithValue("@id", principal.ToString("D"));
             cmd.Parameters.AddWithValue("@email", email);

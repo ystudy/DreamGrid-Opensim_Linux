@@ -101,8 +101,7 @@ public sealed class WorldCounter(Func<LauncherSettings> settings, ILogger<WorldC
     {
         try
         {
-            await using var conn = new MySqlConnection(MariaDbServer.ConnectionString(s, database, user, password, TimeoutSeconds));
-            await conn.OpenAsync(ct);
+            await using var conn = await GridDb.OpenAsync(MariaDbServer.ConnectionString(s, database, user, password, TimeoutSeconds), ct);
             await using var cmd = new MySqlCommand(sql, conn) { CommandTimeout = (int)TimeoutSeconds };
             cmd.Parameters.AddWithValue("@month", month);
             cmd.Parameters.AddWithValue("@day", day);

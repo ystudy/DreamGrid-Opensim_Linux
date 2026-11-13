@@ -15,14 +15,8 @@
 <div class="page-head">
     <h1>Staff<help-tip class="help-start">Admins can use every page. Supervisors can only look people up and suspend guests. Changes here take effect at once, and a person who loses their role is signed out.</help-tip></h1>
 </div>
-@if (Model.Error is not null)
-{
-    <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
-}
-@if (Model.Notice is not null)
-{
-    <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
-}
+<error-box text="@Model.Error" />
+<ok-box text="@Model.Notice" />
 @if (Model.Unavailable)
 {
     <p id="staff-unavailable">Start your world to see and change staff.</p>

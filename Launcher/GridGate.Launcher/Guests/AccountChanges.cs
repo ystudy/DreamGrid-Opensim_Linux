@@ -98,7 +98,7 @@ public sealed class AccountChanges(Func<LauncherSettings> settings, IRobustClien
         stamps.Rotate(principal);
         if (AdminRule.RoleOf(settings(), a) != StaffRole.None) sessions.EndAll(principal);
         if (sender.IsReady && a.Email.Trim() is { Length: > 0 } to)
-            sender.Queue(EmailTemplates.PasswordChanged, language, to, Full(a), new Dictionary<string, string> { ["AvatarName"] = Full(a) });
+            sender.Queue(EmailTemplates.PasswordChanged, language, to, a.FullName(), new Dictionary<string, string> { ["AvatarName"] = a.FullName() });
         Write(a, ip, "password-changed", null, "ok");
         return new(AccountResult.Done);
     }
@@ -131,15 +131,15 @@ public sealed class AccountChanges(Func<LauncherSettings> settings, IRobustClien
         var token = tokens.Issue(Purpose, principal, LinkLifetime);
         waiting.Set(principal, email, token);
         var s = settings();
-        var full = Full(a);
+        var full = a.FullName();
         var queued = sender.Queue(EmailTemplates.ConfirmNewEmail, language, email, full,
-            new Dictionary<string, string> { ["AvatarName"] = full, ["Link"] = $"{Site(s)}{ConfirmPath}?token={token}", ["ExpiresIn"] = sender.Words(ExpiresIn, language) },
+            new Dictionary<string, string> { ["AvatarName"] = full, ["Link"] = $"{WebsiteAddress.Base(s)}{ConfirmPath}?token={token}", ["ExpiresIn"] = sender.Words(ExpiresIn, language) },
             LinkLifetime);
         if (queued != QueueResult.Queued)
             log.LogWarning("Account: the new-address email for first name {First} couldn't be queued: {Result}", LogText.Clean(a.FirstName, 32), queued);
         if (a.Email.Trim() is { Length: > 0 } old)
             sender.Queue(EmailTemplates.EmailChangeNotice, language, old, full,
-                new Dictionary<string, string> { ["AvatarName"] = full, ["Link"] = $"{Site(s)}{PasswordResets.AskPath}" });
+                new Dictionary<string, string> { ["AvatarName"] = full, ["Link"] = $"{WebsiteAddress.Base(s)}{PasswordResets.AskPath}" });
         Write(a, ip, "email-change-asked", null, "ok");
         return new(AccountResult.Done);
     }
@@ -169,7 +169,7 @@ public sealed class AccountChanges(Func<LauncherSettings> settings, IRobustClien
             account = await robust.FindAccountByIdAsync(principal, ct);
             holders = await directory.ListByEmailAsync(email, ct);
         }
-        catch (Exception e) when (Unreachable(e, ct) || e is StaffDirectoryUnavailableException)
+        catch (Exception e) when (RobustFailure.IsUnreachable(e, ct) || e is StaffDirectoryUnavailableException)
         {
             log.LogWarning("Account: an email change couldn't be checked: {Message}", e.Message);
             return (EmailLinkResult.Busy, null);
@@ -233,7 +233,7 @@ public sealed class AccountChanges(Func<LauncherSettings> settings, IRobustClien
             if (throttle.IsLocked(SignInDoor.Guest, Key(a), ip)) return (new(AccountResult.Locked, LockedText, new("Common.TooManyAttempts")), null);
             right = await robust.AuthenticateAsync(principal, current ?? "", ct);
         }
-        catch (Exception e) when (Unreachable(e, ct))
+        catch (Exception e) when (RobustFailure.IsUnreachable(e, ct))
         {
             log.LogWarning("Account: the account service did not answer: {Message}", e.Message);
             return (new(AccountResult.Busy, ServiceDown, new("Common.ServiceDown")), null);
@@ -269,10 +269,6 @@ public sealed class AccountChanges(Func<LauncherSettings> settings, IRobustClien
         throttle.RecordSuccess(SignInDoor.Guest, Key(a));
     }
 
-    private static bool Unreachable(Exception e, CancellationToken ct) =>
-        e is HttpRequestException or IOException or InvalidOperationException or InvalidDataException
-        || e is TaskCanceledException && !ct.IsCancellationRequested;
-
     private AccountOutcome Refused(RobustAccount a, IPAddress? ip, string action, string why, AccountOutcome outcome)
     {
         Write(a, ip, action, why, "refused");
@@ -280,11 +276,8 @@ public sealed class AccountChanges(Func<LauncherSettings> settings, IRobustClien
     }
 
     private void Write(RobustAccount a, IPAddress? ip, string action, string? target, string result) =>
-        audit.Write(new AuditEntry(Full(a), a.PrincipalId, AdminRule.RoleOf(settings(), a).AuditName(), ip?.ToString(), action, target, result));
+        audit.Write(new AuditEntry(a.FullName(), a.PrincipalId, AdminRule.RoleOf(settings(), a).AuditName(), ip?.ToString(), action, target, result));
 
-    private static string Key(RobustAccount a) => AvatarName.Parse(Full(a)).Key;
+    private static string Key(RobustAccount a) => AvatarName.Parse(a.FullName()).Key;
 
-    private static string Full(RobustAccount a) => $"{a.FirstName} {a.LastName}";
-
-    private static string Site(LauncherSettings s) => $"http://{HostAddress.Effective(s.Hostname)}:{s.WebPort}";
 }

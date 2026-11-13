@@ -81,9 +81,6 @@ public sealed class PasswordResetModel(IGridController grid, Func<LauncherSettin
         EmailReady = email.IsReady;
     }
 
-    private void Write(string target)
-    {
-        var (name, id, role) = AuditActor.Of(User);
-        audit.Write(new AuditEntry(name, id, role, HttpContext.Connection.RemoteIpAddress?.ToString(), "recovery-settings", target, "ok"));
-    }
+    private void Write(string target) =>
+        audit.Write(User, HttpContext.Connection.RemoteIpAddress?.ToString(), "recovery-settings", target);
 }

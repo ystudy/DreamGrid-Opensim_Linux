@@ -92,7 +92,7 @@ public sealed class EstatesAdmin(IGridEstates estates, IEstateRemover remover, I
                 case EstateKind.RegionOwner:
                     return new(false, $"This estate was made for {MadeFor(id)}'s regions. To give the regions to someone else, change who owns them on the region's page.");
             }
-            var name = Full(owner);
+            var name = owner.FullName();
             if (e.Owner == owner.PrincipalId) return new(false, $"{name} already owns {e.Name}.");
             if (await estates.SetOwnerAsync(id, owner.PrincipalId, ct) != EstateChange.Done) return new(false, NoEstate);
             Write(actor, ip, "estate-owner-changed", $"{id} {e.Name} {e.OwnerName} → {name}");
@@ -103,7 +103,7 @@ public sealed class EstatesAdmin(IGridEstates estates, IEstateRemover remover, I
         GuardAsync(async () =>
         {
             if (await estates.GetAsync(id, ct) is not { } e) return new(false, NoEstate);
-            var name = Full(manager);
+            var name = manager.FullName();
             if (e.Owner == manager.PrincipalId) return new(false, $"{name} owns {e.Name}; an owner can already do everything a manager can.");
             switch (await estates.AddManagerAsync(id, manager.PrincipalId, ct))
             {
@@ -155,8 +155,8 @@ public sealed class EstatesAdmin(IGridEstates estates, IEstateRemover remover, I
             try { made = await grid.CreateEstateAsync(running.Id, owner.PrincipalId, newName, ct); }
             catch (InvalidOperationException x) { return new(false, $"The estate wasn't made. {LogText.Clean(x.Message, 300)}"); }
             catch (HttpRequestException) { return new(false, $"{running.Name}'s program didn't answer. Try again in a moment."); }
-            Write(actor, ip, "estate-created", $"{made.Id} {made.Name} {Full(owner)}");
-            return new(true, $"Made {made.Name}, owned by {Full(owner)}. Move regions into it below.", made.Id);
+            Write(actor, ip, "estate-created", $"{made.Id} {made.Name} {owner.FullName()}");
+            return new(true, $"Made {made.Name}, owned by {owner.FullName()}. Move regions into it below.", made.Id);
         });
 
     public Task<EstateOutcome> DeleteAsync(ClaimsPrincipal actor, string? ip, int id, CancellationToken ct) =>
@@ -198,11 +198,7 @@ public sealed class EstatesAdmin(IGridEstates estates, IEstateRemover remover, I
         finally { _gate.Release(); }
     }
 
-    private void Write(ClaimsPrincipal actor, string? ip, string action, string target)
-    {
-        var (who, id, role) = AuditActor.Of(actor);
-        audit.Write(new AuditEntry(who, id, role, ip, action, LogText.Clean(target, 300), "ok"));
-    }
+    private void Write(ClaimsPrincipal actor, string? ip, string action, string target) =>
+        audit.Write(actor, ip, action, LogText.Clean(target, 300));
 
-    private static string Full(RobustAccount a) => $"{a.FirstName} {a.LastName}";
 }

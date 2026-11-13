@@ -30,10 +30,7 @@ else if (Model.WaitingForStaff)
 else
 {
     <p class="tone-text">@T["SignUp.Intro", Model.GridName]</p>
-    @if (Model.Error is not null)
-    {
-        <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
-    }
+    <error-box text="@Model.Error" />
     var steps = Model.Starters.Count > 0;
     <form id="sign-up" method="post" data-step="1">
         @if (steps)

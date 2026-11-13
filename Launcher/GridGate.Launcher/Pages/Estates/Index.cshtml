@@ -11,14 +11,8 @@
 <div class="page-head">
     <h1>Estates<help-tip class="help-start">Every region is in an estate. The estate's owner and managers can change its regions' rules in the viewer's Region/Estate window. Open an estate to rename it, change its owner or managers, or move regions into it.</help-tip></h1>
 </div>
-@if (Model.Error is not null)
-{
-    <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
-}
-@if (Model.Notice is not null)
-{
-    <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
-}
+<error-box text="@Model.Error" />
+<ok-box text="@Model.Notice" />
 
 @* The list gets the wide column; making a new one sits beside it (under it on narrow screens). *@
 <div class="estates-columns">

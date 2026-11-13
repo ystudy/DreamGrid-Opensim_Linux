@@ -161,9 +161,7 @@ public sealed class OwnerLanguages(string folder, TimeProvider time, ILogger<Own
         string json;
         try
         {
-            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-            using var reader = new StreamReader(fs);
-            json = reader.ReadToEnd();
+            json = AtomicFile.ReadShared(path);
         }
         catch (Exception e) when (e is FileNotFoundException or DirectoryNotFoundException)
         {
@@ -203,10 +201,9 @@ public sealed class OwnerLanguages(string folder, TimeProvider time, ILogger<Own
 
     private void SetAside(string path)
     {
-        var aside = path + ".damaged-" + DateTime.UtcNow.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture);
         try
         {
-            File.Move(path, aside, overwrite: true);
+            var aside = AtomicFile.SetAside(path);
             log?.LogWarning("The language file {Path} could not be read and was set aside as {Aside}.", path, Path.GetFileName(aside));
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)

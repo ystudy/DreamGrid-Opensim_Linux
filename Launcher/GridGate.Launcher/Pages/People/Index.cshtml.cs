@@ -85,7 +85,7 @@ public sealed class IndexModel(IRobustClient robust, StaffActions actions, Regio
     public sealed record Person(RobustAccount Account, StaffRole Role, bool Suspended, bool CanSuspend, bool CanUnsuspend,
         IReadOnlyList<string> Regions, bool Pending = false, bool WaitingForStaff = false)
     {
-        public string FullName => $"{Account.FirstName} {Account.LastName}";
+        public string FullName => Account.FullName();
 
         /// <summary>The role word shown: what the level gives, a guest when none.</summary>
         public string RoleName => Role switch
@@ -190,8 +190,7 @@ public sealed class IndexModel(IRobustClient robust, StaffActions actions, Regio
             if (account is null) Error ??= $"No avatar called {LogText.Clean(who.Key, 64)}.";
             return account;
         }
-        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException
-            or InvalidDataException && !ct.IsCancellationRequested)
+        catch (Exception e) when (RobustFailure.IsUnreachable(e, ct))
         {
             log.LogWarning("People: the account service did not answer: {Message}", LogText.Clean(e.Message, 300));
             Error ??= StaffActions.RobustDown;

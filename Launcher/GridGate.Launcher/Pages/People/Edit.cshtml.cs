@@ -47,7 +47,7 @@ public sealed class EditModel(PeopleActions people) : PageModel
         return Page();
     }
 
-    private bool MayEdit() => StaffSignIn.RoleOf(User) is StaffRole.Admin or StaffRole.Owner;
+    private bool MayEdit() => TakedownAccess.MayUse(User);
 
     private async Task<bool> LoadAsync(Guid id, CancellationToken ct)
     {

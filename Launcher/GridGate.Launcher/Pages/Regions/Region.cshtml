@@ -11,10 +11,7 @@
     <h2 class="h4">@Model.Name</h2>
     <p><span class="badge state-@Model.StateText.ToLowerInvariant()">@Model.StateText</span></p>
 
-    @if (Model.Notice is not null)
-    {
-        <p class="notice alert alert-info py-2" role="status">@Model.Notice</p>
-    }
+    <notice-box text="@Model.Notice" />
 
     @if (Model.Asking is not null)
     {

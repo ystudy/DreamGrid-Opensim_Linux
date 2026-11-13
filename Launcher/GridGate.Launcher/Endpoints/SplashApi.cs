@@ -91,14 +91,13 @@ public static class SplashApi
         api.MapPost("/publish", async (HttpContext ctx, IAntiforgery antiforgery, SplashStore store, SplashSnapshot snapshot, AuditLog audit) =>
         {
             if (!await antiforgery.IsRequestValidAsync(ctx)) return TokenProblem();
-            var (name, id, role) = AuditActor.Of(ctx.User);
-            if (store.Publish(name) is not { } doc)
+            if (store.Publish(AuditActor.Of(ctx.User).Name) is not { } doc)
                 return Results.Json(new
                 {
                     problem = store.Draft() is null ? "There is no draft to publish." : "The draft uses a picture that is no longer there. Choose another picture and save again.",
                 }, Json, statusCode: StatusCodes.Status409Conflict);
             snapshot.Invalidate();
-            audit.Write(new AuditEntry(name, id, role, ctx.Connection.RemoteIpAddress?.ToString(), "splash-published", $"version {doc.Version}", "ok"));
+            audit.Write(ctx.User, ctx.Connection.RemoteIpAddress?.ToString(), "splash-published", $"version {doc.Version}");
             return Results.Json(doc, Json);
         });
 
@@ -106,8 +105,7 @@ public static class SplashApi
         {
             if (!await antiforgery.IsRequestValidAsync(ctx)) return TokenProblem();
             store.Discard();
-            var (name, id, role) = AuditActor.Of(ctx.User);
-            audit.Write(new AuditEntry(name, id, role, ctx.Connection.RemoteIpAddress?.ToString(), "splash-draft-discarded", null, "ok"));
+            audit.Write(ctx.User, ctx.Connection.RemoteIpAddress?.ToString(), "splash-draft-discarded", null);
             return Results.NoContent();
         });
     }
@@ -148,9 +146,7 @@ public static class SplashApi
         {
             var (result, problem) = await UploadAsync(ctx, antiforgery, pictures, label);
             if (result is null) return problem!;
-            var (name, id, role) = AuditActor.Of(ctx.User);
-            audit.Write(new AuditEntry(name, id, role, ctx.Connection.RemoteIpAddress?.ToString(), "splash-image-uploaded",
-                $"{result.Name} ({result.Label})", "ok"));
+            audit.Write(ctx.User, ctx.Connection.RemoteIpAddress?.ToString(), "splash-image-uploaded", $"{result.Name} ({result.Label})");
             return Results.Json(result, Json);
         });
 
@@ -185,9 +181,7 @@ public static class SplashApi
 
             var (result, problem) = await UploadAsync(ctx, antiforgery, pictures, $"Map of {region.Name}", new MemoryStream(tile));
             if (result is null) return problem!;
-            var (name, actorId, role) = AuditActor.Of(ctx.User);
-            audit.Write(new AuditEntry(name, actorId, role, ctx.Connection.RemoteIpAddress?.ToString(), "splash-image-uploaded",
-                $"{result.Name} ({result.Label})", "ok"));
+            audit.Write(ctx.User, ctx.Connection.RemoteIpAddress?.ToString(), "splash-image-uploaded", $"{result.Name} ({result.Label})");
             return Results.Json(result, Json);
         });
 
@@ -200,9 +194,7 @@ public static class SplashApi
                 return pictures.Get(name) is null
                     ? Results.NotFound()
                     : Results.Json(new { problem = "The page still uses that picture." }, Json, statusCode: StatusCodes.Status409Conflict);
-            var (actor, id, role) = AuditActor.Of(ctx.User);
-            audit.Write(new AuditEntry(actor, id, role, ctx.Connection.RemoteIpAddress?.ToString(), "splash-image-deleted",
-                $"{picture.Name} ({picture.Label})", "ok"));
+            audit.Write(ctx.User, ctx.Connection.RemoteIpAddress?.ToString(), "splash-image-deleted", $"{picture.Name} ({picture.Label})");
             return Results.NoContent();
         });
     }
@@ -235,8 +227,7 @@ public static class SplashApi
             theme.SetLogo(result.Name);
             if (old is not null) pictures.Delete(old);
             snapshot.Invalidate();
-            var (name, id, role) = AuditActor.Of(ctx.User);
-            audit.Write(new AuditEntry(name, id, role, ctx.Connection.RemoteIpAddress?.ToString(), "theme-logo-set", $"{result.Name} ({result.Label})", "ok"));
+            audit.Write(ctx.User, ctx.Connection.RemoteIpAddress?.ToString(), "theme-logo-set", $"{result.Name} ({result.Label})");
             return Results.Json(result, Json);
         });
 
@@ -248,8 +239,7 @@ public static class SplashApi
             theme.SetLogo(null);
             if (old is not null) pictures.Delete(old);
             snapshot.Invalidate();
-            var (name, id, role) = AuditActor.Of(ctx.User);
-            audit.Write(new AuditEntry(name, id, role, ctx.Connection.RemoteIpAddress?.ToString(), "theme-logo-removed", old, "ok"));
+            audit.Write(ctx.User, ctx.Connection.RemoteIpAddress?.ToString(), "theme-logo-removed", old);
             return Results.NoContent();
         });
     }

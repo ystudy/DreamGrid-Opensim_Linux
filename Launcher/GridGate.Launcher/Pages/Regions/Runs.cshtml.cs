@@ -49,7 +49,7 @@ public sealed class RunsModel(IGridController grid, RegionActions actions, Func<
         // A job in the group it leaves or the one it joins refuses the change; the panel says why.
         if ((grid.BusyWith(_instance) ?? (group is null ? null : grid.BusyWith(group.Instance))) is { } busy)
         {
-            Notice = $"{busy} is still running. Try again when it finishes.";
+            Notice = JobNotices.Busy(busy);
             return Redirect("/regions/region/" + id);
         }
         if (!own && group is null)

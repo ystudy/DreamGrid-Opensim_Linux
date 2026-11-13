@@ -123,8 +123,7 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
         if (!await LoadAsync(id)) return NotFound();
         if (BusyText is not null)
         {
-            Notice = $"{BusyText} is still running. Try again when it finishes.";
-            return Redirect("/regions/region/" + id);
+            return Back(id, JobNotices.Busy(BusyText));
         }
 
         var affected = Affected(id, power);
@@ -151,14 +150,12 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
         if (!await LoadAsync(id)) return NotFound();
         if (!CanOar)
         {
-            Notice = OarNotRunning;
-            return Redirect("/regions/region/" + id);
+            return Back(id, OarNotRunning);
         }
         if (kind == OarJobKind.MakeLand && !NeedsContent) return BadRequest();
 
         var request = new OarJobRequest(id, kind);
-        if (!oarJobs.TryStart(request, OarJobs.Describe(request, Name)) && oarJobs.For(id) is { } running)
-            Notice = $"{running.Text} is still running. Try again when it finishes.";
+        if (oarJobs.Start(request, Name) is { } busy) Notice = busy;
         return Redirect($"/regions/region/{id}/job");
     }
 
@@ -172,8 +169,7 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
         if (!await LoadAsync(id)) return NotFound();
         if (BusyText is not null)
         {
-            Notice = $"{BusyText} is still running. Try again when it finishes.";
-            return Redirect("/regions/region/" + id);
+            return Back(id, JobNotices.Busy(BusyText));
         }
 
         if (!confirmed)
@@ -189,12 +185,10 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
         {
             if (!CanOar)
             {
-                Notice = OarNotRunning;
-                return Redirect("/regions/region/" + id);
+                return Back(id, OarNotRunning);
             }
             var request = new OarJobRequest(id, OarJobKind.Save);
-            if (!oarJobs.TryStart(request, OarJobs.Describe(request, Name), ct => grid.DeleteRegionAsync(id, ct)) && oarJobs.For(id) is { } running)
-                Notice = $"{running.Text} is still running. Try again when it finishes.";
+            if (oarJobs.Start(request, Name, ct => grid.DeleteRegionAsync(id, ct)) is { } busy) Notice = busy;
             return Redirect($"/regions/region/{id}/job");
         }
 
@@ -225,8 +219,7 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
             // The strict lookup: an unusable reply is the service failing, never "no such avatar".
             account = await robust.FindAccountAsync(who.First, who.Last, ct);
         }
-        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException
-            or InvalidDataException && !ct.IsCancellationRequested)
+        catch (Exception e) when (RobustFailure.IsUnreachable(e, ct))
         {
             log.LogWarning("Region rights: the account service did not answer: {Message}", LogText.Clean(e.Message, 300));
             Error = RobustDown;
@@ -237,7 +230,7 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
             Error = $"There's no avatar called {LogText.Clean(who.Key, 64)} on this grid.";
             return Page();
         }
-        var name = $"{account.FirstName} {account.LastName}";
+        var name = account.FullName();
         if (account.UserLevel < 0)
         {
             Error = $"{name} is suspended.";
@@ -280,13 +273,11 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
         if (!await LoadAsync(id) || !HasGuestSide) return NotFound();
         if (BusyText is not null)
         {
-            Notice = $"{BusyText} is still running. Try again when it finishes.";
-            return Redirect("/regions/region/" + id);
+            return Back(id, JobNotices.Busy(BusyText));
         }
         if (RunsWith.Count == 0)
         {
-            Notice = $"{Name} already runs on its own.";
-            return Redirect("/regions/region/" + id);
+            return Back(id, $"{Name} already runs on its own.");
         }
         if (OwnProgramAsk is not null && !confirmed)
         {
@@ -298,12 +289,14 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
         return Redirect("/regions/region/" + id);
     }
 
-    private void Audit(string action, string ownerName)
+    private RedirectResult Back(Guid id, string notice)
     {
-        var (actor, actorId, role) = AuditActor.Of(User);
-        audit.Write(new AuditEntry(actor, actorId, role, HttpContext.Connection.RemoteIpAddress?.ToString(), action,
-            $"{Name} → {ownerName}", "ok"));
+        Notice = notice;
+        return Redirect("/regions/region/" + id);
     }
+
+    private void Audit(string action, string ownerName) =>
+        audit.Write(User, HttpContext.Connection.RemoteIpAddress?.ToString(), action, $"{Name} → {ownerName}");
 
     /// <summary>What the OAR items say while the region isn't running.</summary>
     public const string OarNotRunning = "Start it first; an OAR needs it running.";

@@ -9,14 +9,8 @@
     haven't translated yet is shown in English. Keep the fill-ins, such as <code>{0}</code> or <code>{GridName}</code>, as they
     are: the page or email puts the right words there. The text is plain: no formatting.</p>
 <p><a href="/security/languages">Back to Languages</a> <span class="form-text ms-2">Missing: @Model.Missing</span></p>
-@if (Model.Notice is not null)
-{
-    <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
-}
-@if (Model.Error is not null)
-{
-    <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
-}
+<ok-box text="@Model.Notice" />
+<error-box text="@Model.Error" />
 
 <section id="language-file" class="card card-body mb-4">
     <h2 class="h5">Translate in a file</h2>

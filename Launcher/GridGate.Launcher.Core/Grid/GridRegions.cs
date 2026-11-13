@@ -40,15 +40,14 @@ public sealed class GridRegions(Func<LauncherSettings> settings, ILogger<GridReg
         try
         {
             var s = settings();
-            await using var conn = new MySqlConnection(MariaDbServer.ConnectionString(s, "robust", "robustuser", s.Db.RobustPassword, TimeoutSeconds));
-            await conn.OpenAsync(ct);
+            await using var conn = await GridDb.OpenRobustAsync(s, TimeoutSeconds, ct);
             await using var cmd = new MySqlCommand(Query, conn);
             await using var reader = await cmd.ExecuteReaderAsync(ct);
             var list = new List<GridRegion>();
             while (await reader.ReadAsync(ct))
             {
                 // char(36) may come back as a Guid or as text, depending on the connector's GUID handling.
-                var id = reader.GetValue(0) is Guid g ? g : Guid.TryParse(Convert.ToString(reader.GetValue(0)), out var p) ? p : Guid.Empty;
+                var id = InventoryStore.IdOf(reader.GetValue(0));
                 list.Add(new GridRegion(id, reader.IsDBNull(1) ? "" : reader.GetString(1),
                     reader.IsDBNull(2) ? 0 : Convert.ToInt32(reader.GetValue(2)) / 256, reader.IsDBNull(3) ? 0 : Convert.ToInt32(reader.GetValue(3)) / 256));
             }

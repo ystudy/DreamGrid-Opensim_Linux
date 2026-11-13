@@ -45,7 +45,7 @@ public static class FaceSplitter
 
         void Flush()
         {
-            if (triangles.Count > 0) pieces.Add(Piece(face, used, triangles));
+            if (triangles.Count > 0) pieces.Add(MeshParts.Piece(face, used, triangles));
             foreach (var old in used) newIndex[old] = -1;
             used.Clear();
             triangles.Clear();
@@ -73,29 +73,5 @@ public static class FaceSplitter
         }
         Flush();
         return pieces;
-    }
-
-    // A face made of the listed old vertices, in that order, with triangles already numbered for it.
-    private static ImportFace Piece(ImportFace face, List<int> used, List<int> triangles)
-    {
-        var positions = new Vector3[used.Count];
-        var normals = new Vector3[used.Count];
-        var uv = face.Uv0 != null ? new Vector2[used.Count] : null;
-        var joints = face.Weights != null ? new ushort[used.Count * 4] : null;
-        var weights = face.Weights != null ? new float[used.Count * 4] : null;
-        for (int i = 0; i < used.Count; i++)
-        {
-            int old = used[i];
-            positions[i] = face.Positions[old];
-            normals[i] = face.Normals[old];
-            if (uv != null) uv[i] = face.Uv0![old];
-            if (joints != null)
-            {
-                Array.Copy(face.Weights!.Joints, old * 4, joints, i * 4, 4);
-                Array.Copy(face.Weights.Weights, old * 4, weights!, i * 4, 4);
-            }
-        }
-        return new ImportFace(positions, normals, uv, triangles.ToArray(), face.Material,
-            joints != null ? new ImportWeights(joints, weights!) : null);
     }
 }

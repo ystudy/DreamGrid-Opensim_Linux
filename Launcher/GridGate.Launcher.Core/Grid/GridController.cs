@@ -130,19 +130,43 @@ public sealed partial class GridController(
 
     // ---- start / stop -------------------------------------------------------------------------------
 
-    public async Task StartAsync(CancellationToken ct)
+    /// <summary>
+    /// Runs one operation under the operation lock. A non-null <paramref name="activity"/> is shown while it runs (set once the lock is
+    /// held) and cleared at the end; null leaves the activity alone, and an operation that sets its own part-way passes
+    /// <see cref="GridActivity.None"/>.
+    /// </summary>
+    private async Task<T> ExclusiveAsync<T>(GridActivity? activity, Func<Task<T>> work, CancellationToken ct)
     {
         await _ops.WaitAsync(ct);
-        _activity = GridActivity.Starting;
-        try { await StartCoreAsync(ct); }
-        finally { _activity = GridActivity.None; _ops.Release(); }
+        if (activity is { } a) _activity = a;
+        try { return await work(); }
+        finally
+        {
+            if (activity is not null) _activity = GridActivity.None;
+            _ops.Release();
+        }
+    }
+
+    private async Task ExclusiveAsync(GridActivity? activity, Func<Task> work, CancellationToken ct)
+    {
+        await _ops.WaitAsync(ct);
+        if (activity is { } a) _activity = a;
+        try { await work(); }
+        finally
+        {
+            if (activity is not null) _activity = GridActivity.None;
+            _ops.Release();
+        }
+    }
+
+    public async Task StartAsync(CancellationToken ct)
+    {
+        await ExclusiveAsync(GridActivity.Starting, () => StartCoreAsync(ct), ct);
     }
 
     public async Task StartWorldAsync(bool everything, CancellationToken ct)
     {
-        await _ops.WaitAsync(ct);
-        _activity = GridActivity.Starting;
-        try
+        await ExclusiveAsync(GridActivity.Starting, async () =>
         {
             _held = new HashSet<Guid>();
             if (everything) UpdateSettings(RegionPowerPlan.Unparked, writeConfig: false);
@@ -153,16 +177,14 @@ public sealed partial class GridController(
             var running = _programs.Where(p => p.Value.Process.State == ProcessState.Running).Select(p => p.Key).ToHashSet();
             foreach (var instance in RegionPowerPlan.MissingRegions(s, _held, running, _loaded))
                 await RestartProgramAsync(s, _programs[instance], ct);
-        }
-        finally { _activity = GridActivity.None; _ops.Release(); }
+        }, ct);
     }
 
     public async Task RegionPowerAsync(Guid regionId, RegionPower action, CancellationToken ct)
     {
-        await _ops.WaitAsync(ct);
-        _activity = action is RegionPower.Stop or RegionPower.Park ? GridActivity.Stopping
+        var activity = action is RegionPower.Stop or RegionPower.Park ? GridActivity.Stopping
             : action == RegionPower.Restart ? GridActivity.Restarting : GridActivity.Starting;
-        try
+        await ExclusiveAsync(activity, async () =>
         {
             var s = LoadSettings();
             ThrowIfBusy(RegionModel.Find(s, regionId)?.Instance);
@@ -185,18 +207,15 @@ public sealed partial class GridController(
                 EnsureComponents(s);
                 await StartProgramAsync(s, _programs[instance], ct);
             }
-        }
-        finally { _activity = GridActivity.None; _ops.Release(); }
+        }, ct);
     }
 
     public async Task MoveRegionAsync(Guid regionId, int x, int y, CancellationToken ct)
     {
-        await _ops.WaitAsync(ct);
-        try
+        await ExclusiveAsync(GridActivity.None, async () =>
         {
             var s = LoadSettings();
-            var region = RegionModel.Find(s, regionId) ?? throw new InvalidOperationException("There is no such region.");
-            if (region.DeletedAt is not null) throw new InvalidOperationException("That region has been deleted.");
+            var region = LiveRegion(s, regionId);
             ThrowIfBusy(region.Instance);
             if (!RegionPlacement.OnMap(x, y, region.Size)) throw new ArgumentException("That spot is off the map.");
             // The region's own square doesn't count: it may move to an overlapping spot. On a plan that uses another
@@ -218,15 +237,13 @@ public sealed partial class GridController(
                 _log?.LogInformation("Move {Region}: also affected {Others}.", region.Name, string.Join(", ", others));
             _activity = GridActivity.Restarting;
             await RestartProgramAsync(s, program, ct);
-        }
-        finally { _activity = GridActivity.None; _ops.Release(); }
+        }, ct);
     }
 
     public async Task RenameRegionAsync(Guid regionId, string name, CancellationToken ct)
     {
         if (!IsValidRegionName(name)) throw new ArgumentException(NameRule);
-        await _ops.WaitAsync(ct);
-        try
+        await ExclusiveAsync(null, () =>
         {
             var s = LoadSettings();
             var region = LiveRegion(s, regionId);
@@ -236,19 +253,18 @@ public sealed partial class GridController(
                 throw new InvalidOperationException($"Stop {region.Name} first; a region is renamed while it is offline.");
             // Its own name, in other letter case, is not taken.
             if (RegionModel.FindByName(s, name) is { } other && other.Uuid != regionId) throw new ArgumentException(NameTaken(name));
-            if (name == region.Name) return;
+            if (name == region.Name) return Task.CompletedTask;
 
             // The writer turns the old region file off; the region registers under its new name at its next start.
             UpdateSettings(l => l with { Regions = l.Regions.Select(r => r.Uuid == regionId ? r with { Name = name } : r).ToList() });
-        }
-        finally { _ops.Release(); }
+            return Task.CompletedTask;
+        }, ct);
     }
 
     public async Task ResizeRegionAsync(Guid regionId, int size, CancellationToken ct)
     {
         if (size is < 1 or > RegionPlacement.MaxSize) throw new ArgumentException(SizeRule);
-        await _ops.WaitAsync(ct);
-        try
+        await ExclusiveAsync(null, () =>
         {
             var s = LoadSettings();
             var region = LiveRegion(s, regionId);
@@ -259,28 +275,26 @@ public sealed partial class GridController(
 
             // Nothing restarts (Ruling E): the new size applies at the program's next start.
             UpdateSettings(l => l with { Regions = l.Regions.Select(r => r.Uuid == regionId ? r with { Size = size } : r).ToList() });
-        }
-        finally { _ops.Release(); }
+            return Task.CompletedTask;
+        }, ct);
     }
 
     public async Task SaveRegionOptionsAsync(Guid regionId, RegionOptions options, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(options);
         if (RegionSettingsRules.Options(options) is { Ok: false } invalid) throw new ArgumentException(invalid.Errors.Values.First());
-        await _ops.WaitAsync(ct);
-        try
+        await ExclusiveAsync(null, () =>
         {
             LiveRegion(LoadSettings(), regionId);
             UpdateSettings(l => l with { Regions = l.Regions.Select(r => r.Uuid == regionId ? r with { Options = options } : r).ToList() });
-        }
-        finally { _ops.Release(); }
+            return Task.CompletedTask;
+        }, ct);
     }
 
     public async Task<bool> SaveProgramOptionsAsync(string instance, string? physics, ProgramOptions options, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(options);
-        await _ops.WaitAsync(ct);
-        try
+        return await ExclusiveAsync(null, () =>
         {
             var s = LoadSettings();
             var saved = s.Programs.FirstOrDefault(p => p.Instance == instance);
@@ -307,11 +321,10 @@ public sealed partial class GridController(
                 || !cores.Order().SequenceEqual(RegionSettingsRules.UsableCores(before.Cores, Environment.ProcessorCount).Order());
             if (!changed || _programs.GetValueOrDefault(instance) is not { Process.State: ProcessState.Running } program
                 || program.Process.Pid is not { } pid)
-                return false;
+                return Task.FromResult(false);
             _cpu(pid, cores, options.Priority);
-            return true;
-        }
-        finally { _ops.Release(); }
+            return Task.FromResult(true);
+        }, ct);
     }
 
     /// <summary>Reads only cached state, so it never waits behind an operation.</summary>
@@ -386,12 +399,10 @@ public sealed partial class GridController(
 
     public async Task ChangeRunsWithAsync(Guid regionId, string? shareWith, CancellationToken ct)
     {
-        await _ops.WaitAsync(ct);
-        try
+        await ExclusiveAsync(GridActivity.None, async () =>
         {
             var s = LoadSettings();
-            var region = RegionModel.Find(s, regionId) ?? throw new InvalidOperationException("There is no such region.");
-            if (region.DeletedAt is not null) throw new InvalidOperationException("That region has been deleted.");
+            var region = LiveRegion(s, regionId);
             var from = region.Instance;
             ThrowIfBusy(from, shareWith);
             if (shareWith == from) throw new ArgumentException("It already runs with them.");
@@ -447,8 +458,7 @@ public sealed partial class GridController(
                 _log?.LogInformation("Change how {Region} runs: also affected {Others}.", region.Name, string.Join(", ", affected));
             _activity = GridActivity.Restarting;
             await RunProgramStepsAsync(s, steps, removed ? from : null);
-        }
-        finally { _activity = GridActivity.None; _ops.Release(); }
+        }, ct);
     }
 
     /// <summary>True when the program is up and loaded the region (an unknown list counts as loaded).</summary>
@@ -509,12 +519,10 @@ public sealed partial class GridController(
 
     public async Task DeleteRegionAsync(Guid regionId, CancellationToken ct)
     {
-        await _ops.WaitAsync(ct);
-        try
+        await ExclusiveAsync(GridActivity.None, async () =>
         {
             var s = LoadSettings();
-            var region = RegionModel.Find(s, regionId) ?? throw new InvalidOperationException("There is no such region.");
-            if (region.DeletedAt is not null) throw new InvalidOperationException("That region has been deleted.");
+            var region = LiveRegion(s, regionId);
             var instance = region.Instance;
             ThrowIfBusy(instance);
             var program = _programs.GetValueOrDefault(instance);
@@ -541,8 +549,7 @@ public sealed partial class GridController(
             try { await RunProgramStepsAsync(s, steps, removed ? instance : null); }
             // Also after a program that failed to come back: the region is deleted either way.
             finally { await DeregisterAsync(s, region, ct); }
-        }
-        finally { _activity = GridActivity.None; _ops.Release(); }
+        }, ct);
     }
 
     /// <summary>
@@ -566,8 +573,7 @@ public sealed partial class GridController(
 
     public async Task RestoreRegionAsync(Guid regionId, CancellationToken ct)
     {
-        await _ops.WaitAsync(ct);
-        try
+        await ExclusiveAsync(null, () =>
         {
             var s = LoadSettings();
             var region = RegionModel.Find(s, regionId) ?? throw new InvalidOperationException("There is no such region.");
@@ -598,14 +604,13 @@ public sealed partial class GridController(
                 lock (_configGate) new RuntimeStager(paths).WriteLogConfigs(s.Programs.Select(p => p.Instance), LogLevelModule.LevelFor(s));
             _logins.Clear([regionId]);
             EnsureComponents(s);
-        }
-        finally { _ops.Release(); }
+            return Task.CompletedTask;
+        }, ct);
     }
 
     public async Task EraseRegionAsync(Guid regionId, CancellationToken ct)
     {
-        await _ops.WaitAsync(ct);
-        try
+        await ExclusiveAsync(null, async () =>
         {
             var s = LoadSettings();
             var region = RegionModel.Find(s, regionId) ?? throw new InvalidOperationException("There is no such region.");
@@ -616,8 +621,7 @@ public sealed partial class GridController(
             // Its name, spot, ports and folder name are free again; the folder itself stays, with its logs.
             _held = _held.Where(id => id != regionId).ToHashSet();
             UpdateSettings(l => l with { Regions = l.Regions.Where(r => r.Uuid != regionId).ToList() });
-        }
-        finally { _ops.Release(); }
+        }, ct);
     }
 
     /// <summary>Reads the database without the operation lock, so the page never waits behind a start or stop.</summary>
@@ -675,16 +679,13 @@ public sealed partial class GridController(
 
     public async Task StopAllAsync(CancellationToken ct)
     {
-        await _ops.WaitAsync(ct);
-        _activity = GridActivity.Stopping;
-        try
+        await ExclusiveAsync(GridActivity.Stopping, async () =>
         {
             LoadSettings();
             await StopAllCoreAsync(ct);
             // A deliberate stop ends what an earlier start reported: the dashboard shows a stopped world, not a failed one.
             _startFailure = null;
-        }
-        finally { _activity = GridActivity.None; _ops.Release(); }
+        }, ct);
     }
 
     public async Task DetachAsync()
@@ -699,9 +700,7 @@ public sealed partial class GridController(
 
     public async Task RestartComponentAsync(string name, CancellationToken ct)
     {
-        await _ops.WaitAsync(ct);
-        _activity = GridActivity.Restarting;
-        try
+        await ExclusiveAsync(GridActivity.Restarting, async () =>
         {
             var s = LoadSettings();
             switch (name.ToLowerInvariant())
@@ -723,8 +722,7 @@ public sealed partial class GridController(
                 default:
                     throw UnknownComponent(name);
             }
-        }
-        finally { _activity = GridActivity.None; _ops.Release(); }
+        }, ct);
     }
 
     public async Task StartComponentAsync(string name, CancellationToken ct)
@@ -732,9 +730,7 @@ public sealed partial class GridController(
         var component = name.ToLowerInvariant();
         if (component is not ("database" or "robust")) throw UnknownComponent(name);
 
-        await _ops.WaitAsync(ct);
-        _activity = GridActivity.Starting;
-        try
+        await ExclusiveAsync(GridActivity.Starting, async () =>
         {
             var s = LoadSettings();
             if (component == "robust") ThrowIfNoGridService(s);
@@ -760,15 +756,12 @@ public sealed partial class GridController(
                 case "database": await StartDatabaseAsync(s, ct); break;
                 default: await StartComponentAsync(_robust!, ct); break;
             }
-        }
-        finally { _activity = GridActivity.None; _ops.Release(); }
+        }, ct);
     }
 
     public async Task StopComponentAsync(string name, CancellationToken ct)
     {
-        await _ops.WaitAsync(ct);
-        _activity = GridActivity.Stopping;
-        try
+        await ExclusiveAsync(GridActivity.Stopping, async () =>
         {
             var s = LoadSettings();
             switch (name.ToLowerInvariant())
@@ -784,8 +777,7 @@ public sealed partial class GridController(
                 default:
                     throw UnknownComponent(name);
             }
-        }
-        finally { _activity = GridActivity.None; _ops.Release(); }
+        }, ct);
     }
 
     private static ArgumentException UnknownComponent(string name) =>
@@ -817,8 +809,7 @@ public sealed partial class GridController(
     {
         GridConsoleCommands.ValidateOwner(first, last, password, email);
 
-        await _ops.WaitAsync(ct);
-        try
+        return await ExclusiveAsync(null, async () =>
         {
             ThrowIfNoGridService(LoadSettings());
             var console = _robust!.Console!;
@@ -842,16 +833,14 @@ public sealed partial class GridController(
             // The region INI now gets the [Estates] keys.
             UpdateSettings(l => l with { Setup = l.Setup with { OwnerCreated = true, Owner = new OwnerInfo(first, last, account.PrincipalId) } });
             return account;
-        }
-        finally { _ops.Release(); }
+        }, ct);
     }
 
     public async Task<RobustAccount> SetUserLevelAsync(string first, string last, int level, CancellationToken ct)
     {
         GridConsoleCommands.ValidateAvatarName(first, last);
 
-        await _ops.WaitAsync(ct);
-        try
+        return await ExclusiveAsync(null, async () =>
         {
             ThrowIfNoGridService(LoadSettings());
             var transcript = new List<string>();
@@ -880,23 +869,20 @@ public sealed partial class GridController(
                 throw new LevelNotConfirmedException(
                     $"Robust did not give {first} {last} level {level} within {AccountWait.TotalSeconds:0} s. Console: {string.Join(" | ", transcript)}");
             return account;
-        }
-        finally { _ops.Release(); }
+        }, ct);
     }
 
     public async Task<RobustAccount> CreateResidentAsync(string first, string last, string? email, int level, CancellationToken ct, string? model = null)
     {
         GridConsoleCommands.ValidateAvatarName(first, last);
 
-        await _ops.WaitAsync(ct);
-        try
+        return await ExclusiveAsync(null, async () =>
         {
             ThrowIfNoGridService(LoadSettings());
             // Its own remover: one from the container would need the settings, which come from this controller.
             var avatars = new ResidentAvatars(robust, new AccountRemover(LoadSettings), time, ConsoleSettle, AccountWait, AccountPoll);
             return await avatars.CreateAsync(_robust!.Console!, first, last, email, level, ct, model);
-        }
-        finally { _ops.Release(); }
+        }, ct);
     }
 
     // ---- estates -------------------------------------------------------------------------------------
@@ -909,15 +895,13 @@ public sealed partial class GridController(
 
     public async Task<int?> EstateOfAsync(Guid regionId, CancellationToken ct)
     {
-        await _ops.WaitAsync(ct);
-        try
+        return await ExclusiveAsync(null, async () =>
         {
             var s = LoadSettings();
             ThrowIfNoGridService(s);
             if (!DatabaseRunning) throw new InvalidOperationException("Start the database first.");
             return await _regionStores(s).EstateOfAsync(regionId, ct);
-        }
-        finally { _ops.Release(); }
+        }, ct);
     }
 
     public async Task<(int Id, string Name)> CreateEstateAsync(Guid regionId, Guid owner, string name, CancellationToken ct)
@@ -926,8 +910,7 @@ public sealed partial class GridController(
         if (name.Length == 0 || name.Split(' ').Any(w => w.Length == 0 || w.StartsWith("--", StringComparison.Ordinal) || w.Any(c => char.IsWhiteSpace(c) || c == '"')))
             throw new ArgumentException("An estate name must be words separated by single spaces, with no double quotes and no word starting with \"--\".", nameof(name));
 
-        await _ops.WaitAsync(ct);
-        try
+        return await ExclusiveAsync(null, async () =>
         {
             var (console, _) = EstateConsole(regionId);
             var transcript = new List<string>();
@@ -942,22 +925,19 @@ public sealed partial class GridController(
             }
             throw new InvalidOperationException(
                 $"Every estate name from {name} to {name} {EstateNameTries} is taken. Console: {string.Join(" | ", transcript)}");
-        }
-        finally { _ops.Release(); }
+        }, ct);
     }
 
     public async Task LinkEstateAsync(Guid regionId, int estateId, CancellationToken ct)
     {
-        await _ops.WaitAsync(ct);
-        try
+        await ExclusiveAsync(null, async () =>
         {
             var (console, region) = EstateConsole(regionId);
             var transcript = new List<string>();
             var lines = await EstateCommandAsync(console, $"estate link region {estateId} {regionId}", transcript, ct);
             if (!lines.Any(l => l.Contains("is now attached to estate", StringComparison.Ordinal) || l.Contains("is already part of estate", StringComparison.Ordinal)))
                 throw new InvalidOperationException($"{region.Name} did not join estate {estateId}. Console: {string.Join(" | ", transcript)}");
-        }
-        finally { _ops.Release(); }
+        }, ct);
     }
 
     [GeneratedRegex(@"^Estate (\d+) reloaded in (\d+) region")]
@@ -965,8 +945,7 @@ public sealed partial class GridController(
 
     public async Task<IReadOnlyList<string>> ReloadEstateAsync(int estateId, CancellationToken ct)
     {
-        await _ops.WaitAsync(ct);
-        try
+        return await ExclusiveAsync(null, async () =>
         {
             var missed = new List<string>();
             foreach (var (instance, program) in _programs.OrderBy(p => p.Key, StringComparer.Ordinal))
@@ -995,8 +974,7 @@ public sealed partial class GridController(
                 }
             }
             return missed;
-        }
-        finally { _ops.Release(); }
+        }, ct);
     }
 
     /// <summary>How long Robust's console may stay quiet while it asks the other grid (its gatekeeper call and the map tile).</summary>
@@ -1006,8 +984,7 @@ public sealed partial class GridController(
     {
         if (x is < 0 or > HyperlinkPlace.MaxCoordinate || y is < 0 or > HyperlinkPlace.MaxCoordinate)
             throw new ArgumentOutOfRangeException(nameof(x), "A map location is from 0 to 65535.");
-        await _ops.WaitAsync(ct);
-        try
+        return await ExclusiveAsync(null, async () =>
         {
             ThrowIfNoGridService(LoadSettings());
             var console = _robust?.Console ?? throw new HttpRequestException("Robust isn't running.");
@@ -1025,24 +1002,21 @@ public sealed partial class GridController(
             if (lines.Select(l => l.Trim()).FirstOrDefault(l => l.StartsWith(failed, StringComparison.Ordinal)) is { } refused)
                 return new HyperlinkResult(false, LogText.Clean(refused[failed.Length..], 200));
             return new HyperlinkResult(null, null);
-        }
-        finally { _ops.Release(); }
+        }, ct);
     }
 
     public async Task KickAsync(Guid regionId, string first, string last, string message, CancellationToken ct)
     {
         GridConsoleCommands.ValidateAvatarName(first, last);
         if (message.Any(c => char.IsControl(c) || c == '"')) throw new ArgumentException("The message can't hold quotes or line breaks.", nameof(message));
-        await _ops.WaitAsync(ct);
-        try
+        await ExclusiveAsync(null, async () =>
         {
             var s = LoadSettings();
             var region = RegionModel.Find(s, regionId) ?? throw new InvalidOperationException("There is no such region.");
             ThrowIfBusy(region.Instance);
             var program = RunningProgramOf(s, region) ?? throw new InvalidOperationException($"{region.Name} isn't running.");
             await OnRegionConsoleAsync(program, region, s, console => console.RunAsync($"kick user {first} {last} {message}", ConsoleSettle, ct), ct);
-        }
-        finally { _ops.Release(); }
+        }, ct);
     }
 
     /// <summary>
@@ -1053,8 +1027,7 @@ public sealed partial class GridController(
     {
         var s = LoadSettings();
         ThrowIfNoGridService(s);
-        var region = RegionModel.Find(s, regionId) ?? throw new InvalidOperationException("There is no such region.");
-        if (region.DeletedAt is not null) throw new InvalidOperationException("That region has been deleted.");
+        var region = LiveRegion(s, regionId);
         // An OAR job talks to the same console; its output would mix with this command's.
         ThrowIfBusy(region.Instance);
         var program = RunningProgramOf(s, region) ?? throw new InvalidOperationException($"Start {region.Name} first.");
@@ -1091,9 +1064,7 @@ public sealed partial class GridController(
         if (!IsContent(content))
             throw new ArgumentException(ContentError, nameof(content));
 
-        await _ops.WaitAsync(ct);
-        _activity = GridActivity.Starting;
-        try
+        await ExclusiveAsync(GridActivity.Starting, async () =>
         {
             progress?.Report(SetupProgress.CreatingRegion);
             var s = LoadSettings();
@@ -1119,8 +1090,7 @@ public sealed partial class GridController(
             }
             await AddCoreAsync(s, new NewRegion(name, x, y, 1, content, null), uuid, progress, ct, adoptLeftover: true);
             UpdateSettings(l => l with { Setup = l.Setup with { RegionCreated = true } }, writeConfig: false);
-        }
-        finally { _activity = GridActivity.None; _ops.Release(); }
+        }, ct);
     }
 
     public async Task<RegionSettings> AddRegionAsync(NewRegion request, CancellationToken ct, IProgress<string>? progress = null)
@@ -1130,9 +1100,7 @@ public sealed partial class GridController(
         if (!IsContent(request.Content))
             throw new ArgumentException(ContentError, nameof(request));
 
-        await _ops.WaitAsync(ct);
-        _activity = GridActivity.Starting;
-        try
+        return await ExclusiveAsync(GridActivity.Starting, async () =>
         {
             LauncherSettings s;
             lock (_configGate) s = ReloadSettings();
@@ -1144,8 +1112,7 @@ public sealed partial class GridController(
             s = LoadSettings();
             if (!GridServiceUp()) throw GridServiceDown(s);
             return await AddCoreAsync(s, request, Guid.NewGuid(), progress, ct);
-        }
-        finally { _activity = GridActivity.None; _ops.Release(); }
+        }, ct);
     }
 
     private const string NameRule = "A region name is 2-32 letters, digits, spaces, '-', '_' or '\\'' with no leading or trailing space.";
@@ -1290,8 +1257,7 @@ public sealed partial class GridController(
     /// </summary>
     private async Task<(LauncherSettings, RegionSettings, Component)> BeginIarJobAsync(IarJobRequest request, CancellationToken ct)
     {
-        await _ops.WaitAsync(ct);
-        try
+        return await ExclusiveAsync(null, () =>
         {
             var s = LoadSettings();
             var running = s.Regions.Where(r => r.DeletedAt is null)
@@ -1304,9 +1270,8 @@ public sealed partial class GridController(
                 .FirstOrDefault() ?? throw new InvalidOperationException(IarJobErrors.Busy);
             var pick = idle.OrderBy(x => x.Region.Name, StringComparer.Ordinal).First();
             _jobs[pick.Region.Instance] = $"Inventory backup for {request.FirstName} {request.LastName}";
-            return (s, pick.Region, pick.Program!);
-        }
-        finally { _ops.Release(); }
+            return Task.FromResult((s, pick.Region, pick.Program!));
+        }, ct);
     }
 
     /// <summary>
@@ -1392,8 +1357,7 @@ public sealed partial class GridController(
     /// </summary>
     private async Task<(LauncherSettings, RegionSettings, Component)> BeginOarJobAsync(OarJobRequest request, CancellationToken ct)
     {
-        await _ops.WaitAsync(ct);
-        try
+        return await ExclusiveAsync(null, () =>
         {
             var s = LoadSettings();
             var region = RegionModel.Find(s, request.RegionId) ?? throw new ArgumentException("There is no such region.");
@@ -1407,9 +1371,8 @@ public sealed partial class GridController(
                 OarJobKind.Save => $"Saving {region.Name} as an OAR",
                 _ => $"Making the land of {region.Name} again",
             };
-            return (s, region, program);
-        }
-        finally { _ops.Release(); }
+            return Task.FromResult((s, region, program));
+        }, ct);
     }
 
     /// <summary>
@@ -1429,7 +1392,7 @@ public sealed partial class GridController(
     {
         foreach (var instance in instances)
             if (instance is not null && _jobs.TryGetValue(instance, out var job))
-                throw new InvalidOperationException($"{job} is still running. Try again when it finishes.");
+                throw new InvalidOperationException(JobNotices.Busy(job));
     }
 
     /// <summary>

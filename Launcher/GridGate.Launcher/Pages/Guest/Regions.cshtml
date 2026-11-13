@@ -4,10 +4,7 @@
     ViewData["Title"] = T["Regions.Title"].Value;
 }
 <h1>@T["Regions.Title"]</h1>
-@if (Model.Notice is not null)
-{
-    <p class="notice alert alert-info py-2" role="status">@Model.Notice</p>
-}
+<notice-box text="@Model.Notice" />
 @if (Model.Regions.Count == 0)
 {
     <p>@T["Regions.None"]</p>

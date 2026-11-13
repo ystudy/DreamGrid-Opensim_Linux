@@ -7,14 +7,8 @@
 <p class="back-link"><a href="/guest-pages">‹ Guest pages</a></p>
 <h1>Sign-up and bots</h1>
 <p>These layers guard the forms that anyone on the internet can send, like the sign-up form. Each one you switch on makes it harder for a program to create accounts.</p>
-@if (Model.Error is not null)
-{
-    <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
-}
-@if (Model.Notice is not null)
-{
-    <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
-}
+<error-box text="@Model.Error" />
+<ok-box text="@Model.Notice" />
 @if (Model.AllOff)
 {
     <div id="all-off-warning" class="alert alert-warning" role="alert">Every protection is off. Once sign-ups are open, bots can create accounts freely.</div>

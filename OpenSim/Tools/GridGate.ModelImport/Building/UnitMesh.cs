@@ -48,12 +48,8 @@ public static class UnitMesh
 
     private static (Vector3 Lo, Vector3 Hi) Box(ImportPart part)
     {
-        var lo = new Vector3(float.MaxValue);
-        var hi = new Vector3(float.MinValue);
-        bool any = false;
-        foreach (var f in part.Mesh.Faces)
-            foreach (var v in f.Positions) { lo = Vector3.Min(lo, v); hi = Vector3.Max(hi, v); any = true; }
-        return any ? (lo, hi) : (Vector3.Zero, Vector3.Zero);
+        var (lo, hi, _) = MeshParts.Bounds(part.Mesh.Faces);
+        return (lo, hi);
     }
 
     // A flat axis maps every vertex to 0.

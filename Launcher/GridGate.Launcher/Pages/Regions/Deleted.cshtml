@@ -6,10 +6,7 @@
 <h1 class="h3">Recently deleted</h1>
 <p class="form-text">Deleted regions keep their land and objects until you delete them forever. Restore brings one back, stopped.</p>
 
-@if (Model.Notice is not null)
-{
-    <p class="notice alert alert-info py-2" role="status">@Model.Notice</p>
-}
+<notice-box text="@Model.Notice" />
 
 @if (Model.Asking is { } asking)
 {

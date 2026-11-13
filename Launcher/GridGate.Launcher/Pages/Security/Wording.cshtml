@@ -8,10 +8,7 @@
     beside the box. Write your own to replace it, or leave the box empty to keep the original. Use <code>{grid}</code> where
     the grid's name should go. The text is plain: no formatting, and it can be up to @(WordingModel.MaxLength.ToString("N0")) characters.</p>
 <p><a href="/guest-pages">Back to Guest pages</a></p>
-@if (Model.Notice is not null)
-{
-    <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
-}
+<ok-box text="@Model.Notice" />
 
 <form method="get" action="/security/wording" class="d-flex flex-wrap align-items-end gap-2">
     <div>

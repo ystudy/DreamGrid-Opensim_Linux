@@ -679,9 +679,13 @@ internal sealed class FakeRobustAccounts : IRobustClient, IRobustPasswords, IRob
         return GetAccountAsync(first, last, ct);
     }
 
+    /// <summary>Runs at the start of <see cref="FindAccountByIdAsync"/>, before it answers; a test uses it to give up the request mid-call.</summary>
+    public Action? OnFindAccountById { get; set; }
+
     public Task<RobustAccount?> FindAccountByIdAsync(Guid principal, CancellationToken ct)
     {
         Lookups++;
+        OnFindAccountById?.Invoke();
         if (Down) throw new HttpRequestException("Connection refused");
         if (FailureReply) throw new InvalidDataException("The account service's reply has no result.");
         return Task.FromResult(_accounts.Values.Select(a => a.Account).FirstOrDefault(a => a.PrincipalId == principal));

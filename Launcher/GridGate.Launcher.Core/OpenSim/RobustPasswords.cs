@@ -47,8 +47,7 @@ public sealed class RobustPasswords(Func<LauncherSettings> settings) : IRobustPa
         try
         {
             var s = settings();
-            await using var conn = new MySqlConnection(MariaDbServer.ConnectionString(s, "robust", "robustuser", s.Db.RobustPassword, TimeoutSeconds));
-            await conn.OpenAsync(ct);
+            await using var conn = await GridDb.OpenRobustAsync(s, TimeoutSeconds, ct);
             await using var cmd = new MySqlCommand(Upsert, conn);
             cmd.Parameters.AddWithValue("@id", principal.ToString("D"));
             cmd.Parameters.AddWithValue("@hash", OpenSimPassword.Hash(password, salt));

@@ -100,9 +100,6 @@ public sealed class BotsModel(IGridController grid, Func<LauncherSettings> setti
             (b.Honeypot, b.RateLimit, b.PerHourPerIp, b.ProofOfWork, b.Difficulty, b.ImageCaptcha, b.AdminApproval, b.Approvers);
     }
 
-    private void Write(string action, string target)
-    {
-        var (name, id, role) = AuditActor.Of(User);
-        audit.Write(new AuditEntry(name, id, role, HttpContext.Connection.RemoteIpAddress?.ToString(), action, target, "ok"));
-    }
+    private void Write(string action, string target) =>
+        audit.Write(User, HttpContext.Connection.RemoteIpAddress?.ToString(), action, target);
 }

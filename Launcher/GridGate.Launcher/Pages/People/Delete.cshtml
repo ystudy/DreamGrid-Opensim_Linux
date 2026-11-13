@@ -13,10 +13,7 @@
 else
 {
     <h1>Are you sure?</h1>
-    @if (Model.Error is not null)
-    {
-        <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
-    }
+    <error-box text="@Model.Error" />
     @if (preview is not null)
     {
         var name = preview.Person.FullName;

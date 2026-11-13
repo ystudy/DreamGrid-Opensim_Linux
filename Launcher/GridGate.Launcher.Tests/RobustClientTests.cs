@@ -10,6 +10,10 @@ public class RobustClientTests
 {
     private static readonly LauncherSettings Defaults =
         new SettingsStore(Path.Combine(Path.GetTempPath(), "gg-robust-" + Guid.NewGuid().ToString("N"), "settings.json")).LoadOrCreate();
+    [Fact]
+    public void Full_name_is_first_space_last() =>
+        Assert.Equal("Ann Smith", new RobustAccount(Guid.Empty, "Ann", "Smith", 0, "").FullName());
+
     private const string Pid = "11111111-2222-3333-4444-555555555555";
 
     private static (RobustClient Client, StubHandler Handler) Make(Func<RecordedRequest, (HttpStatusCode, string)> reply)

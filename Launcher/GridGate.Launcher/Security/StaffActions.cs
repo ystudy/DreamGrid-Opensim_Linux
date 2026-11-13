@@ -70,7 +70,7 @@ public sealed class StaffActions(IGridController grid, Func<LauncherSettings> se
 
     public async Task<ChangeOutcome> ApplyAsync(ClaimsPrincipal actor, string? ip, RobustAccount target, StaffChange change, CancellationToken ct)
     {
-        var name = $"{target.FirstName} {target.LastName}";
+        var name = target.FullName();
         var shown = LogText.Clean(name, 64);
         var action = ActionOf(change);
         var s = settings();
@@ -189,9 +189,6 @@ public sealed class StaffActions(IGridController grid, Func<LauncherSettings> se
         _ => "a guest",
     };
 
-    private void Write(ClaimsPrincipal actor, string? ip, string action, string target, string result)
-    {
-        var (who, id, role) = AuditActor.Of(actor);
-        audit.Write(new AuditEntry(who, id, role, ip, action, target, result));
-    }
+    private void Write(ClaimsPrincipal actor, string? ip, string action, string target, string result) =>
+        audit.Write(actor, ip, action, target, result);
 }

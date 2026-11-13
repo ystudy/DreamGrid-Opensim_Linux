@@ -17,6 +17,13 @@ public static class AuditActor
         Guid? id = Guid.TryParse(user.FindFirstValue(StaffSignIn.PrincipalClaim), out var parsed) ? parsed : null;
         return (LogText.Clean(user.Identity?.Name, 64), id, StaffSignIn.RoleOf(user).AuditName());
     }
+
+    /// <summary>Writes an entry for <paramref name="actor"/>, the signed-in staff member, named, numbered and given a role by <see cref="Of"/>.</summary>
+    public static void Write(this AuditLog audit, ClaimsPrincipal actor, string? ip, string action, string? target, string result = "ok")
+    {
+        var (name, id, role) = Of(actor);
+        audit.Write(new AuditEntry(name, id, role, ip, action, target, result));
+    }
 }
 
 /// <summary>
@@ -47,8 +54,7 @@ public sealed class AuditMiddleware(RequestDelegate next, AuditLog audit)
         var user = ctx.User;
         if (user.Identity is not { IsAuthenticated: true, AuthenticationType: AuthSchemes.Admin } || !user.IsInRole(AuthSchemes.StaffRole)) return;
 
-        var (name, id, role) = AuditActor.Of(user);
-        audit.Write(new AuditEntry(name, id, role, ctx.Connection.RemoteIpAddress?.ToString(), "request",
-            LogText.Clean(request.Method + " " + request.PathBase + request.Path, 200), status.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+        audit.Write(user, ctx.Connection.RemoteIpAddress?.ToString(), "request",
+            LogText.Clean(request.Method + " " + request.PathBase + request.Path, 200), status.ToString(System.Globalization.CultureInfo.InvariantCulture));
     }
 }

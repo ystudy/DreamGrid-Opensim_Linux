@@ -43,9 +43,7 @@ public sealed class InventoryModel(PeopleActions people, IInventoryStore invento
             Error = refusal;
             return Page();
         }
-        var (who, actorId, role) = AuditActor.Of(User);
-        audit.Write(new AuditEntry(who, actorId, role, HttpContext.Connection.RemoteIpAddress?.ToString(), "inventory-viewed",
-            LogText.Clean(person.FullName, 64), "ok"));
+        audit.Write(User, HttpContext.Connection.RemoteIpAddress?.ToString(), "inventory-viewed", LogText.Clean(person.FullName, 64));
         PageNumber = Math.Max(1, page ?? 1);
         Q = (q ?? "").Trim() is { Length: > 0 } t ? t[..Math.Min(t.Length, PeopleDirectory.MaxSearch)] : null;
         try

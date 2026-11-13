@@ -7,14 +7,8 @@
 <div class="page-head">
     <h1>Hypergrid links<help-tip class="help-start">Regions on other grids, shown on your grid's map so residents can teleport there from the map or a landmark.</help-tip></h1>
 </div>
-@if (Model.Error is not null)
-{
-    <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
-}
-@if (Model.Notice is not null)
-{
-    <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
-}
+<error-box text="@Model.Error" />
+<ok-box text="@Model.Notice" />
 <div class="list-columns">
     <section class="work-panel" aria-labelledby="hyperlinks-title">
         <h2 id="hyperlinks-title" class="panel-title"><span>Links</span>@if (!Model.Unavailable && Model.Rows.Count > 0) { <span class="badge text-bg-secondary ms-2">@Model.Rows.Count</span> }</h2>

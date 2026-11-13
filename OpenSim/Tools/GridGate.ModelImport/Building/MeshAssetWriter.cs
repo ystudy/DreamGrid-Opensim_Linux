@@ -202,12 +202,9 @@ public static class MeshAssetWriter
             Put(corners, c * 6 + 2, (c & 2) != 0 ? ushort.MaxValue : (ushort)0);
             Put(corners, c * 6 + 4, (c & 4) != 0 ? ushort.MaxValue : (ushort)0);
         }
-        return new OSDMap
-        {
-            ["Min"] = OSD.FromVector3(new OmvVector3(min.X, min.Y, min.Z)),
-            ["Max"] = OSD.FromVector3(new OmvVector3(max.X, max.Y, max.Z)),
-            ["BoundingVerts"] = OSD.FromBinary(corners),
-        };
+        var map = Domain(min, max);
+        map["BoundingVerts"] = OSD.FromBinary(corners);
+        return map;
     }
 
     // Matrices are written row by row (M11, M12, ... M44), which is the viewer's LLMatrix4 order: translation in the last row.

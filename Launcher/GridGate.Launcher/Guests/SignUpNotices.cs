@@ -42,21 +42,20 @@ public sealed class SignUpNotices(Func<LauncherSettings> settings, SignUpBoard b
                 && await robust.FindAccountByIdAsync(o.PrincipalId, ct) is { } owner)
                 staff.Add(owner);
         }
-        catch (Exception e) when (e is StaffDirectoryUnavailableException or HttpRequestException or TaskCanceledException or IOException
-            or InvalidOperationException or InvalidDataException && !ct.IsCancellationRequested)
+        catch (Exception e) when (!ct.IsCancellationRequested && (e is StaffDirectoryUnavailableException || RobustFailure.IsUnreachable(e, ct)))
         {
             log.LogWarning("Sign-ups waiting: the staff list couldn't be read, trying next pass: {Message}", e.InnerException?.Message ?? e.Message);
             return;
         }
 
-        var site = $"http://{HostAddress.Effective(s.Hostname)}:{s.WebPort}";
+        var site = WebsiteAddress.Base(s);
         var names = string.Join("\n", waiting.Select(e => e.Name.Length > 0 ? e.Name : "(name not known yet)"));
         foreach (var account in staff)
         {
             var role = AdminRule.RoleOf(s, account);
             if (!ApprovalRules.CanApprove(role, s) || account.Email.Trim().Length == 0 || notices.OptedOut(account.PrincipalId)) continue;
             var link = site + (role == StaffRole.Supervisor ? ListPath : "/");
-            sender.Queue(EmailTemplates.SignUpsWaiting, Languages.English, account.Email.Trim(), $"{account.FirstName} {account.LastName}",
+            sender.Queue(EmailTemplates.SignUpsWaiting, Languages.English, account.Email.Trim(), account.FullName(),
                 new Dictionary<string, string> { ["Count"] = waiting.Count.ToString(), ["Names"] = names, ["Link"] = link });
         }
         notices.Sent(startedAt ?? time.GetUtcNow(), waiting[^1].Made);

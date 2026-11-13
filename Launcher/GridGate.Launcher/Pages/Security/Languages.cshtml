@@ -7,10 +7,7 @@
 <p>The languages the guest pages and the emails to residents come in. GridGate has some built in, and you can add your own and
     translate it here. A text you haven't translated yet is shown in English.</p>
 <p><a href="/guest-pages">Back to Guest pages</a></p>
-@if (Model.Notice is not null)
-{
-    <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
-}
+<ok-box text="@Model.Notice" />
 @if (Model.Error is not null)
 {
     @if (Model.LegalLanguage is { } legal)

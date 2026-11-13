@@ -9,14 +9,8 @@
     <p><a href="/people/@p.Row.Account.PrincipalId">‹ @p.FullName</a></p>
 }
 <h1>Edit @(p?.FullName)</h1>
-@if (Model.Error is not null)
-{
-    <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
-}
-@if (Model.Notice is not null)
-{
-    <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
-}
+<error-box text="@Model.Error" />
+<ok-box text="@Model.Notice" />
 @if (p is not null && Model.Refusal is { } why)
 {
     <div class="error-box error alert alert-danger" role="alert">@why</div>

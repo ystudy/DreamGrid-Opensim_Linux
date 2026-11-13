@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -31,6 +32,29 @@ public static class AtomicFile
             throw;
         }
         if (!OperatingSystem.IsWindows()) SyncDirectory(dir);
+    }
+
+    /// <summary>Creates the folder when the path has one, then <see cref="WriteAllText"/>.</summary>
+    public static void WriteAllTextCreatingFolder(string path, string text)
+    {
+        if (Path.GetDirectoryName(Path.GetFullPath(path)) is { Length: > 0 } dir) Directory.CreateDirectory(dir);
+        WriteAllText(path, text);
+    }
+
+    /// <summary>Reads the whole file while writers may have it open (ReadWrite | Delete sharing). A missing file or folder throws.</summary>
+    public static string ReadShared(string path)
+    {
+        using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var reader = new StreamReader(fs);
+        return reader.ReadToEnd();
+    }
+
+    /// <summary>Moves a damaged file to <c>path.damaged-&lt;utc yyyyMMddHHmmss&gt;</c>, replacing an older one, and returns that path. A failed move throws.</summary>
+    public static string SetAside(string path)
+    {
+        var aside = path + ".damaged-" + DateTime.UtcNow.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture);
+        File.Move(path, aside, overwrite: true);
+        return aside;
     }
 
     /// <summary>Best effort: makes the rename itself durable. Errors are ignored.</summary>

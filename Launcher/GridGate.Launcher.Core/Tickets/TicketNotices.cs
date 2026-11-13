@@ -89,7 +89,6 @@ public sealed class TicketNotices(string file)
 
     private void Write(State s)
     {
-        if (Path.GetDirectoryName(Path.GetFullPath(file)) is { Length: > 0 } dir) Directory.CreateDirectory(dir);
-        AtomicFile.WriteAllText(file, JsonSerializer.Serialize(s, Options));
+        AtomicFile.WriteAllTextCreatingFolder(file, JsonSerializer.Serialize(s, Options));
     }
 }

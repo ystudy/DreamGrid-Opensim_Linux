@@ -17,7 +17,7 @@ namespace GridGate.Launcher.Security;
 /// <summary>A person as the People pages show them: their row, what the rules know about them, and their roles.</summary>
 public sealed record PersonView(PersonRow Row, PersonFacts Facts, RoleView Role)
 {
-    public string FullName => $"{Row.Account.FirstName} {Row.Account.LastName}";
+    public string FullName => Row.Account.FullName();
 }
 
 /// <summary>
@@ -96,8 +96,7 @@ public sealed class PeopleActions(IPeopleDirectory people, StaffActions staff, F
                 if (!sameName && await robust.FindAccountAsync(first, last, ct) is { } other && other.PrincipalId != principal)
                     return new(false, SignUps.NameTaken);
             }
-            catch (Exception e) when (e is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException
-                                          or InvalidDataException && !ct.IsCancellationRequested)
+            catch (Exception e) when (RobustFailure.IsUnreachable(e, ct))
             {
                 return new(false, StaffActions.RobustDown);
             }
@@ -157,7 +156,7 @@ public sealed class PeopleActions(IPeopleDirectory people, StaffActions staff, F
             AccountChanges.CancelEmailChange(tokens, emailChanges, principal);
             tokens.Revoke(PasswordResets.Purpose, principal);
             tokens.Revoke(PasswordResets.StaffPurpose, principal);
-            var forgot = $"http://{HostAddress.Effective(s.Hostname)}:{s.WebPort}{PasswordResets.AskPath}";
+            var forgot = WebsiteAddress.ForgotPassword(s);
             if (a.Email.Trim() is { Length: > 0 } old)
                 sender.Queue(EmailTemplates.EmailChangedByStaff, emailLanguage.ForResident(principal), old, newName, new Dictionary<string, string> { ["AvatarName"] = newName, ["Link"] = forgot });
             if (newEmail.Length > 0)
@@ -425,9 +424,6 @@ public sealed class PeopleActions(IPeopleDirectory people, StaffActions staff, F
         }
     }
 
-    private void Write(ClaimsPrincipal actor, string? ip, string action, string target, string result)
-    {
-        var (who, id, role) = AuditActor.Of(actor);
-        audit.Write(new AuditEntry(who, id, role, ip, action, target, result));
-    }
+    private void Write(ClaimsPrincipal actor, string? ip, string action, string target, string result) =>
+        audit.Write(actor, ip, action, target, result);
 }

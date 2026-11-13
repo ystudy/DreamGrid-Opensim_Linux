@@ -86,8 +86,7 @@ public sealed class PasswordResets(Func<LauncherSettings> settings, IRobustClien
         {
             account = await robust.FindAccountAsync(typed.First, typed.Last, ct);
         }
-        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException
-            or InvalidDataException && !ct.IsCancellationRequested)
+        catch (Exception e) when (RobustFailure.IsUnreachable(e, ct))
         {
             log.LogWarning("Password reset: the account service did not answer: {Message}", e.Message);
             Refused(typed, ip, "account service down");
@@ -119,8 +118,8 @@ public sealed class PasswordResets(Func<LauncherSettings> settings, IRobustClien
 
         limits.CountSend(account.PrincipalId, typedEmail);
         var token = tokens.Issue(Purpose, account.PrincipalId, LinkLifetime);
-        var link = $"http://{HostAddress.Effective(s.Hostname)}:{s.WebPort}{ResetPath}?token={token}";
-        var full = $"{account.FirstName} {account.LastName}";
+        var link = $"{WebsiteAddress.Base(s)}{ResetPath}?token={token}";
+        var full = account.FullName();
         var queued = sender.Queue(EmailTemplates.ResetPassword, language, account.Email.Trim(), full,
             new Dictionary<string, string> { ["AvatarName"] = full, ["Link"] = link, ["ExpiresIn"] = sender.Words(ExpiresIn, language) }, LinkLifetime);
         if (queued != QueueResult.Queued)
@@ -144,8 +143,8 @@ public sealed class PasswordResets(Func<LauncherSettings> settings, IRobustClien
         limits.CountSend(account.PrincipalId, to);
         var token = tokens.Issue(StaffPurpose, account.PrincipalId, LinkLifetime);
         var s = settings();
-        var link = $"http://{HostAddress.Effective(s.Hostname)}:{s.WebPort}{ResetPath}?token={token}";
-        var full = $"{account.FirstName} {account.LastName}";
+        var link = $"{WebsiteAddress.Base(s)}{ResetPath}?token={token}";
+        var full = account.FullName();
         var language = emailLanguage.ForResident(account.PrincipalId);
         var queued = sender.Queue(EmailTemplates.StaffResetPassword, language, to, full,
             new Dictionary<string, string> { ["AvatarName"] = full, ["Link"] = link, ["ExpiresIn"] = sender.Words(ExpiresIn, language) }, LinkLifetime);
@@ -168,8 +167,7 @@ public sealed class PasswordResets(Func<LauncherSettings> settings, IRobustClien
         {
             account = await robust.FindAccountByIdAsync(principal, ct);
         }
-        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException
-            or InvalidDataException && !ct.IsCancellationRequested)
+        catch (Exception e) when (RobustFailure.IsUnreachable(e, ct))
         {
             log.LogWarning("Password reset: the account service did not answer: {Message}", e.Message);
             return null;
@@ -208,7 +206,7 @@ public sealed class PasswordResets(Func<LauncherSettings> settings, IRobustClien
     {
         if (await OpenAsync(token, ct) is not { } link) return (ResetResult.Expired, null, null);
         var a = link.Account;
-        var full = $"{a.FirstName} {a.LastName}";
+        var full = a.FullName();
         var door = link.Role == StaffRole.None ? SignInDoor.Guest : SignInDoor.Staff;
         var key = AvatarName.Parse(full).Key;
         var store = StoreFor(link.Role);

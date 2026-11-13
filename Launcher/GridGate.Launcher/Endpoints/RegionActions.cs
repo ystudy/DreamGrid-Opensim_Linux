@@ -92,7 +92,7 @@ public sealed class RegionActions(IGridController grid, BackgroundWork backgroun
     public bool TryDelete(Guid id)
     {
         if (RegionModel.Find(grid.CurrentSettings(), id) is not { DeletedAt: null } region) return false;
-        RunDeleted("delete", region.Name, stopping => grid.DeleteRegionAsync(id, stopping));
+        Run("delete", region.Name, stopping => grid.DeleteRegionAsync(id, stopping));
         return true;
     }
 
@@ -100,7 +100,7 @@ public sealed class RegionActions(IGridController grid, BackgroundWork backgroun
     public bool TryRestore(Guid id)
     {
         if (RegionModel.Find(grid.CurrentSettings(), id) is not { DeletedAt: not null } region) return false;
-        RunDeleted("restore", region.Name, stopping => grid.RestoreRegionAsync(id, stopping));
+        Run("restore", region.Name, stopping => grid.RestoreRegionAsync(id, stopping));
         return true;
     }
 
@@ -108,11 +108,11 @@ public sealed class RegionActions(IGridController grid, BackgroundWork backgroun
     public bool TryErase(Guid id)
     {
         if (RegionModel.Find(grid.CurrentSettings(), id) is not { DeletedAt: not null } region) return false;
-        RunDeleted("erase", region.Name, stopping => grid.EraseRegionAsync(id, stopping));
+        Run("erase", region.Name, stopping => grid.EraseRegionAsync(id, stopping));
         return true;
     }
 
-    private void RunDeleted(string what, string name, Func<CancellationToken, Task> work)
+    private void Run(string what, string name, Func<CancellationToken, Task> work)
     {
         log.LogInformation("Regions: {What} requested for {Region}.", what, name);
         background.Run($"region {what} {name}", async stopping =>
@@ -126,6 +126,10 @@ public sealed class RegionActions(IGridController grid, BackgroundWork backgroun
             {
                 log.LogInformation("Regions: the launcher stopped during {What} of {Region}.", what, name);
             }
+            catch (PortConflictException e)
+            {
+                log.LogCritical("{Message}", e.Message);
+            }
             catch (Exception e)
             {
                 log.LogError(e, "Regions: {What} of {Region} failed: {Message}", what, name, e.Message);
@@ -138,27 +142,7 @@ public sealed class RegionActions(IGridController grid, BackgroundWork backgroun
     {
         if (RegionModel.Find(grid.CurrentSettings(), id) is not { DeletedAt: null } region) return false;
 
-        log.LogInformation("Regions: {Action} requested for {Region}.", action, region.Name);
-        background.Run($"region {action} {region.Name}", async stopping =>
-        {
-            try
-            {
-                await grid.RegionPowerAsync(id, action, stopping);
-                log.LogInformation("Regions: {Action} finished for {Region}.", action, region.Name);
-            }
-            catch (OperationCanceledException) when (stopping.IsCancellationRequested)
-            {
-                log.LogInformation("Regions: the launcher stopped during {Action} of {Region}.", action, region.Name);
-            }
-            catch (PortConflictException e)
-            {
-                log.LogCritical("{Message}", e.Message);
-            }
-            catch (Exception e)
-            {
-                log.LogError(e, "Regions: {Action} of {Region} failed: {Message}", action, region.Name, e.Message);
-            }
-        });
+        Run(action.ToString(), region.Name, stopping => grid.RegionPowerAsync(id, action, stopping));
         return true;
     }
 }

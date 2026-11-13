@@ -162,10 +162,7 @@ public sealed class LoginThrottle
         if (_stateFile is null || !File.Exists(_stateFile)) return;
         try
         {
-            string json;
-            using (var fs = new FileStream(_stateFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
-            using (var reader = new StreamReader(fs))
-                json = reader.ReadToEnd();
+            var json = AtomicFile.ReadShared(_stateFile);
             var state = JsonSerializer.Deserialize<State>(json, Options) ?? throw new JsonException("the file contains null");
             Restore(state.Names, _names);
             Restore(state.GuestNames, _guestNames);

@@ -324,9 +324,6 @@ public sealed class LegalModel(IGridController grid, Func<LauncherSettings> sett
     /// <summary>Browsers post a textarea with CRLF line ends; the text is kept with LF.</summary>
     private static string Normalize(string? text) => (text ?? "").Replace("\r\n", "\n").Replace('\r', '\n');
 
-    private void Write(string action, string target, string result)
-    {
-        var (name, id, role) = AuditActor.Of(User);
-        audit.Write(new AuditEntry(name, id, role, HttpContext.Connection.RemoteIpAddress?.ToString(), action, target, result));
-    }
+    private void Write(string action, string target, string result) =>
+        audit.Write(User, HttpContext.Connection.RemoteIpAddress?.ToString(), action, target, result);
 }

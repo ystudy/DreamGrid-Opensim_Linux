@@ -66,6 +66,15 @@ public sealed class OarJobs(IGridController grid, BackgroundWork background, Tim
         return true;
     }
 
+    /// <summary>
+    /// <see cref="TryStart"/> with the job described for <paramref name="regionName"/>; null when it started or no job is
+    /// running any more, else the notice that the running one refuses it.
+    /// </summary>
+    public string? Start(OarJobRequest request, string regionName, Func<CancellationToken, Task>? after = null) =>
+        !TryStart(request, Describe(request, regionName), after) && For(request.RegionId) is { } running
+            ? JobNotices.Busy(running.Text)
+            : null;
+
     /// <summary>The running job of the region's program, else the last one that finished there; null if there has been none.</summary>
     public OarJobSnapshot? For(Guid regionId)
     {

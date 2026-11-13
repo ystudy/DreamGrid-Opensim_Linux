@@ -1,5 +1,8 @@
+using System.Security.Claims;
 using System.Text.Json;
+using GridGate.Launcher.Core.Security;
 using GridGate.Launcher.Core.Logs;
+using GridGate.Launcher.Security;
 using Microsoft.Extensions.Time.Testing;
 using Xunit;
 
@@ -20,6 +23,37 @@ public sealed class AuditLogTests : IDisposable
         using var s = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         using var r = new StreamReader(s);
         return r.ReadToEnd().Split('\n', StringSplitOptions.RemoveEmptyEntries);
+    }
+
+    [Fact]
+    public void Write_for_a_signed_in_person_takes_name_id_and_role_from_their_claims()
+    {
+        var id = Guid.NewGuid();
+        var user = new ClaimsPrincipal(new ClaimsIdentity(
+            [new(ClaimTypes.Name, "Ann Admin"), new(StaffSignIn.PrincipalClaim, id.ToString()),
+             .. StaffSignIn.RoleClaims(StaffRole.Admin).Select(r => new Claim(ClaimTypes.Role, r))], "test"));
+        var path = Path.Combine(_dir, "audit.log");
+        using var log = new AuditLog(path, TimeProvider.System);
+
+        log.Write(user, "10.0.0.5", "bots-settings", "max 3");
+        log.Write(user, null, "email-test", null, "failed");
+
+        var lines = Lines(path);
+        Assert.Equal(2, lines.Length);
+        using var first = JsonDocument.Parse(lines[0]);
+        var a = first.RootElement;
+        Assert.Equal("Ann Admin", a.GetProperty("actor").GetString());
+        Assert.Equal(id.ToString(), a.GetProperty("actorId").GetString());
+        Assert.Equal("admin", a.GetProperty("role").GetString());
+        Assert.Equal("10.0.0.5", a.GetProperty("ip").GetString());
+        Assert.Equal("bots-settings", a.GetProperty("action").GetString());
+        Assert.Equal("max 3", a.GetProperty("target").GetString());
+        Assert.Equal("ok", a.GetProperty("result").GetString());
+        using var second = JsonDocument.Parse(lines[1]);
+        var b = second.RootElement;
+        Assert.Equal(JsonValueKind.Null, b.GetProperty("ip").ValueKind);
+        Assert.Equal(JsonValueKind.Null, b.GetProperty("target").ValueKind);
+        Assert.Equal("failed", b.GetProperty("result").GetString());
     }
 
     [Fact]

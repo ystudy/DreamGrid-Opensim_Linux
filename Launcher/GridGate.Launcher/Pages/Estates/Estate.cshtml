@@ -7,14 +7,8 @@
     var at = e is null ? "" : $"/estates/estate?id={e.Id}";
 }
 <p><a href="/estates">All estates</a></p>
-@if (Model.Error is not null)
-{
-    <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
-}
-@if (Model.Notice is not null)
-{
-    <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
-}
+<error-box text="@Model.Error" />
+<ok-box text="@Model.Notice" />
 @if (Model.Unavailable || e is null)
 {
     <h1>Estate</h1>

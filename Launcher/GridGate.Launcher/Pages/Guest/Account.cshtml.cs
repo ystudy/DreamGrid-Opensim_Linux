@@ -105,8 +105,7 @@ public sealed class AccountModel(AccountChanges changes, IRobustClient robust, F
         {
             Account = await robust.FindAccountByIdAsync(principal, ct);
         }
-        catch (Exception e) when (e is HttpRequestException or IOException or InvalidOperationException or InvalidDataException
-            or TaskCanceledException && !ct.IsCancellationRequested)
+        catch (Exception e) when (RobustFailure.IsUnreachable(e, ct))
         {
             log.LogWarning("Account page: the account service did not answer: {Message}", e.Message);
         }
