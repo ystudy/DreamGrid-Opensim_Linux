@@ -65,6 +65,9 @@ jobs:
 
       - run: bash .github/scripts/check-retired-names.sh
 
+      - name: Old name
+        run: bash .github/scripts/check-old-name.sh
+
   windows:
     runs-on: windows-latest
     steps:

@@ -1,0 +1,6 @@
+# Lines that may still say DreamGrid because they are about the past.
+# Format: path|exact substring of the line. Each entry must still match a line in its file.
+README.md|It started as a fork of Outworldz DreamGrid
+MERGING.md|This project began as a fork of Fred Beckhusen's Outworldz DreamGrid
+MERGING.md|**DreamGrid patches.** Fred patched
+VERSIONING.md|This number replaces Fred's DreamGrid numbering
