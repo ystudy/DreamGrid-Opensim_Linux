@@ -90,7 +90,7 @@ public sealed class PeopleDirectory(Func<LauncherSettings> settings) : IPeopleDi
         }
         return await WithConnectionAsync(async conn =>
         {
-            await using var count = Command(conn, $"SELECT COUNT(*) FROM robust.UserAccounts u WHERE {where}", p);
+            await using var count = GridDb.Command(conn, null, $"SELECT COUNT(*) FROM robust.UserAccounts u WHERE {where}", [.. p]);
             var total = Convert.ToInt32(await count.ExecuteScalarAsync(ct));
             var query = $"{Columns} WHERE {where} ORDER BY u.LastName, u.FirstName LIMIT {PageSize} OFFSET {(page - 1) * PageSize}";
             return new PeoplePage(await ReadAsync(conn, query, p, ct), total, page, PageSize);
@@ -101,31 +101,13 @@ public sealed class PeopleDirectory(Func<LauncherSettings> settings) : IPeopleDi
         WithConnectionAsync(async conn =>
             (await ReadAsync(conn, $"{Columns} WHERE u.PrincipalID = @id", [("@id", principal.ToString())], ct)).FirstOrDefault());
 
-    private async Task<T> WithConnectionAsync<T>(Func<MySqlConnection, Task<T>> work)
-    {
-        try
-        {
-            var s = settings();
-            await using var conn = await GridDb.OpenRobustAsync(s, TimeoutSeconds, CancellationToken.None);
-            return await work(conn);
-        }
-        catch (Exception e) when (e is MySqlException or InvalidOperationException or TimeoutException or System.Net.Sockets.SocketException
-                                      or InvalidCastException or FormatException or OverflowException)
-        {
-            throw new PeopleDirectoryUnavailableException("The database could not be read.", e);
-        }
-    }
-
-    private static MySqlCommand Command(MySqlConnection conn, string sql, IEnumerable<(string Name, object Value)> p)
-    {
-        var cmd = new MySqlCommand(sql, conn);
-        foreach (var (n, v) in p) cmd.Parameters.AddWithValue(n, v);
-        return cmd;
-    }
+    private Task<T> WithConnectionAsync<T>(Func<MySqlConnection, Task<T>> work) =>
+        GridDb.RunAsync(() => GridDb.OpenRobustAsync(settings(), TimeoutSeconds, CancellationToken.None), work,
+            e => new PeopleDirectoryUnavailableException("The database could not be read.", e));
 
     private static async Task<IReadOnlyList<PersonRow>> ReadAsync(MySqlConnection conn, string sql, IEnumerable<(string, object)> p, CancellationToken ct)
     {
-        await using var cmd = Command(conn, sql, p);
+        await using var cmd = GridDb.Command(conn, null, sql, [.. p]);
         await using var reader = await cmd.ExecuteReaderAsync(ct);
         var list = new List<PersonRow>();
         while (await reader.ReadAsync(ct))

@@ -49,8 +49,8 @@ public sealed class OnlineUsers(Func<LauncherSettings> settings, ILogger<OnlineU
             while (await reader.ReadAsync(ct))
             {
                 // char(36) may come back as a Guid or as text, depending on the connector's GUID handling.
-                var region = reader.GetValue(2) is Guid g ? g : Guid.TryParse(Convert.ToString(reader.GetValue(2)), out var p) ? p : Guid.Empty;
-                var person = reader.GetValue(3) is Guid pg ? pg : Guid.TryParse(Convert.ToString(reader.GetValue(3)), out var pp) ? pp : Guid.Empty;
+                var region = InventoryStore.IdOf(reader.GetValue(2));
+                var person = InventoryStore.IdOf(reader.GetValue(3));
                 list.Add(new OnlineAvatar($"{reader.GetString(0)} {reader.GetString(1)}", region, person));
             }
             // An avatar with two presence rows (a stale session) is listed once.

@@ -98,7 +98,7 @@ public sealed class RegionStore(LauncherSettings s) : IRegionStore
     {
         await using var conn = await GridDb.OpenAsync(MariaDbServer.ConnectionString(s), ct);
         if (!(await ExistingTablesAsync(conn, ct)).Contains((Robust, "regions"))) return;
-        await RunAsync(conn, null, Deregister, id, ct);
+        await GridDb.ExecAsync(conn, null, Deregister, ct, ("@id", id.ToString()));
     }
 
     public async Task EraseAsync(Guid id, CancellationToken ct)
@@ -108,9 +108,9 @@ public sealed class RegionStore(LauncherSettings s) : IRegionStore
         await using var tx = await conn.BeginTransactionAsync(ct);
         foreach (var (sql, tables) in Erase)
             if (tables.All(t => existing.Contains((OpenSim, t))))
-                await RunAsync(conn, tx, sql, id, ct);
+                await GridDb.ExecAsync(conn, tx, sql, ct, ("@id", id.ToString()));
         if (existing.Contains((Robust, "regions")))
-            await RunAsync(conn, tx, Deregister, id, ct);
+            await GridDb.ExecAsync(conn, tx, Deregister, ct, ("@id", id.ToString()));
         await tx.CommitAsync(ct);
     }
 
@@ -134,12 +134,5 @@ public sealed class RegionStore(LauncherSettings s) : IRegionStore
         await using var r = await cmd.ExecuteReaderAsync(ct);
         while (await r.ReadAsync(ct)) tables.Add((r.GetString(0), r.GetString(1)));
         return tables;
-    }
-
-    private static async Task RunAsync(MySqlConnection conn, MySqlTransaction? tx, string sql, Guid id, CancellationToken ct)
-    {
-        await using var cmd = new MySqlCommand(sql, conn, tx);
-        cmd.Parameters.AddWithValue("@id", id.ToString());
-        await cmd.ExecuteNonQueryAsync(ct);
     }
 }

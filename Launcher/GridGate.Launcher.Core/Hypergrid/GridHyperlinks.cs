@@ -104,20 +104,9 @@ public sealed class GridHyperlinks(Func<LauncherSettings> settings) : IGridHyper
         return await cmd.ExecuteNonQueryAsync(ct) > 0;
     });
 
-    private async Task<T> RunAsync<T>(Func<MySqlConnection, Task<T>> work)
-    {
-        try
-        {
-            var s = settings();
-            await using var conn = await GridDb.OpenRobustAsync(s, TimeoutSeconds, CancellationToken.None);
-            return await work(conn);
-        }
-        catch (Exception e) when (e is MySqlException or InvalidOperationException or TimeoutException or System.Net.Sockets.SocketException
-                                      or InvalidCastException or FormatException or OverflowException)
-        {
-            throw new HyperlinksUnavailableException("The database could not be read.", e);
-        }
-    }
+    private Task<T> RunAsync<T>(Func<MySqlConnection, Task<T>> work) =>
+        GridDb.RunAsync(() => GridDb.OpenRobustAsync(settings(), TimeoutSeconds, CancellationToken.None), work,
+            e => new HyperlinksUnavailableException("The database could not be read.", e));
 
     private static string Text(MySqlDataReader r, int i) => r.IsDBNull(i) ? "" : r.GetValue(i) is Guid g ? g.ToString("D") : Convert.ToString(r.GetValue(i)) ?? "";
 }

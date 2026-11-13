@@ -130,10 +130,10 @@ public sealed class InventoryStore(Func<LauncherSettings> settings) : IInventory
                     find.Parameters.AddWithValue("@o", Id(owner));
                     if (IdText(await find.ExecuteScalarAsync(ct)) is { } folder) folders.Add(folder);
                 }
-                await Exec(conn, tx, "DELETE FROM robust.inventoryitems WHERE inventoryID = @i AND avatarID = @o", ct, ("@i", Id(item)), ("@o", Id(owner)));
+                await GridDb.ExecAsync(conn, tx, "DELETE FROM robust.inventoryitems WHERE inventoryID = @i AND avatarID = @o", ct, ("@i", Id(item)), ("@o", Id(owner)));
             }
             foreach (var folder in folders)
-                await Exec(conn, tx, "UPDATE robust.inventoryfolders SET version = version + 1 WHERE folderID = @f", ct, ("@f", folder));
+                await GridDb.ExecAsync(conn, tx, "UPDATE robust.inventoryfolders SET version = version + 1 WHERE folderID = @f", ct, ("@f", folder));
             await tx.CommitAsync(ct);
             return 0;
         }, ct);
@@ -147,7 +147,7 @@ public sealed class InventoryStore(Func<LauncherSettings> settings) : IInventory
                        ?? folders.FirstOrDefault(f => f.Type == LostAndFoundType)
                        ?? folders.FirstOrDefault(f => f.Type == RootType)
                        ?? throw new NoInventoryException();
-            await Exec(conn, tx,
+            await GridDb.ExecAsync(conn, tx,
                 "INSERT INTO robust.inventoryitems (assetID, assetType, inventoryName, inventoryDescription, inventoryNextPermissions, " +
                 "inventoryCurrentPermissions, invType, creatorID, inventoryBasePermissions, inventoryEveryOnePermissions, salePrice, saleType, " +
                 "creationDate, groupID, groupOwned, flags, inventoryID, avatarID, parentFolderID, inventoryGroupPermissions) VALUES " +
@@ -157,7 +157,7 @@ public sealed class InventoryStore(Func<LauncherSettings> settings) : IInventory
                 ("@ep", row.EveryOnePermissions), ("@sp", row.SalePrice), ("@st", row.SaleType), ("@cd", row.CreationDate), ("@g", row.GroupId),
                 ("@go", row.GroupOwned), ("@fl", row.Flags), ("@i", Id(row.ItemId)), ("@o", Id(row.Owner)), ("@f", Id(into.Id)),
                 ("@gp", row.GroupPermissions));
-            await Exec(conn, tx, "UPDATE robust.inventoryfolders SET version = version + 1 WHERE folderID = @f", ct, ("@f", Id(into.Id)));
+            await GridDb.ExecAsync(conn, tx, "UPDATE robust.inventoryfolders SET version = version + 1 WHERE folderID = @f", ct, ("@f", Id(into.Id)));
             await tx.CommitAsync(ct);
             return into.Id;
         }, ct);
@@ -168,10 +168,10 @@ public sealed class InventoryStore(Func<LauncherSettings> settings) : IInventory
             await using var tx = await conn.BeginTransactionAsync(ct);
             var root = (await FoldersAsync(conn, tx, owner, ct)).FirstOrDefault(f => f.Type == RootType) ?? throw new NoInventoryException();
             var id = Guid.NewGuid();
-            await Exec(conn, tx,
+            await GridDb.ExecAsync(conn, tx,
                 "INSERT INTO robust.inventoryfolders (folderName, type, version, folderID, agentID, parentFolderID) VALUES (@n, -1, 1, @i, @o, @p)", ct,
                 ("@n", name), ("@i", Id(id)), ("@o", Id(owner)), ("@p", Id(root.Id)));
-            await Exec(conn, tx, "UPDATE robust.inventoryfolders SET version = version + 1 WHERE folderID = @f", ct, ("@f", Id(root.Id)));
+            await GridDb.ExecAsync(conn, tx, "UPDATE robust.inventoryfolders SET version = version + 1 WHERE folderID = @f", ct, ("@f", Id(root.Id)));
             await tx.CommitAsync(ct);
             return id;
         }, ct);
@@ -256,13 +256,6 @@ public sealed class InventoryStore(Func<LauncherSettings> settings) : IInventory
             list.Add(new InventoryFolder(IdOf(r.GetValue(0)), parent, r.IsDBNull(2) ? "" : r.GetString(2), r.GetInt16(3)));
         }
         return list;
-    }
-
-    private static async Task Exec(MySqlConnection conn, MySqlTransaction tx, string sql, CancellationToken ct, params (string Name, object? Value)[] args)
-    {
-        await using var cmd = new MySqlCommand(sql, conn, tx);
-        foreach (var (n, v) in args) cmd.Parameters.AddWithValue(n, v);
-        await cmd.ExecuteNonQueryAsync(ct);
     }
 
     private static string Id(Guid id) => id.ToString("D");
