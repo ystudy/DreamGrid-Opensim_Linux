@@ -26,3 +26,5 @@
 setup/debian/** text eol=lf
 # The Parry patch is applied with git apply to an extracted crate: keep its LF line endings.
 ThirdParty/rapier/patches/*.patch text eol=lf
+# The CI guard scripts and their allow-list are read by bash: keep LF so they also work in a Windows checkout.
+.github/scripts/** text eol=lf
