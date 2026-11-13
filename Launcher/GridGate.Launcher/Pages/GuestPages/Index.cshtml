@@ -1,0 +1,30 @@
+@page "/guest-pages"
+@inject Func<GridGate.Launcher.Core.Settings.LauncherSettings> Settings
+@{
+    ViewData["Title"] = "Guest pages";
+    // The same items the menu's Guest pages group shows this person (design 2026-11-05-gridgate-menu-looks-workflows §1).
+    var role = GridGate.Launcher.Security.StaffSignIn.RoleOf(User);
+    var group = GridGate.Launcher.Navigation.StaffMenu.For(role, Settings(), canApprove: false).FirstOrDefault(g => g.Text == "Guest pages");
+    var hints = new Dictionary<string, string>
+    {
+        ["/splash"] = "The page residents see in the viewer before they sign in.",
+        ["/security/legal"] = "The Terms, Privacy, Cookies and Contact pages.",
+        ["/security/wording"] = "Reword the headings and opening words of the guest pages, in each language.",
+        ["/security/languages"] = "Choose the languages residents can use, and add your own.",
+        ["/security/bots"] = "What guards the sign-up form, and who approves new sign-ups.",
+        ["/security/iar"] = "Inventory backups: whether residents can download and upload IAR files, and the limits.",
+        ["/security/starter-avatars"] = "Starter avatars: the finished avatars new residents choose from when they sign up.",
+        ["/security/email"] = "The mail account the grid sends its emails from.",
+        ["/advanced/password-reset"] = "How people get back in when they forget their password.",
+    };
+}
+<h1>Guest pages</h1>
+<p>What residents see and use on this website: the splash page, the legal pages, sign-up and email.</p>
+<p><a id="guest-side-hub-link" class="btn btn-outline-secondary" href="/home" icon="eye">See the guest side</a>
+    <span class="form-text ms-2">The front page as visitors see it. Its header has a button back to these pages.</span></p>
+<div class="menu list-group shadow-sm">
+    @foreach (var item in group?.Items ?? [])
+    {
+        <div class="list-group-item list-group-item-action"><a class="fw-semibold stretched-link text-decoration-none" href="@item.Href">@item.Text</a><span class="form-text d-block m-0">@hints.GetValueOrDefault(item.Href)</span></div>
+    }
+</div>

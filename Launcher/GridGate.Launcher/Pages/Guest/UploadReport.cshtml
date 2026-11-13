@@ -1,0 +1,135 @@
+@page "/guest/upload/{job}"
+@model GridGate.Launcher.Pages.Guest.UploadReportModel
+@using GridGate.Launcher.Pages.Guest
+@{
+    ViewData["Title"] = Model.DoneItem is not null ? T["UploadReport.Made"].Value : T["UploadReport.Title"].Value;
+}
+@functions {
+    private static string Css(ReportLine line) => "finding finding-" + line.Finding.Code;
+}
+@if (Model.Failed)
+{
+    <h1>@T["Upload.Title"]</h1>
+    <div class="error-box error alert alert-danger" role="alert">@T[UploadReportModel.NothingCharged]</div>
+    <p><a href="/guest/upload">@T["Upload.Title"]</a></p>
+}
+else if (Model.DoneItem is not null)
+{
+    <h1>@T["UploadReport.Made"]</h1>
+    <p class="done alert alert-success" role="status">@T["UploadReport.Done", Model.DoneItem]</p>
+    <p><a href="/guest/upload">@T["UploadReport.UploadAnother"]</a></p>
+}
+else if (Model.AlreadyFinished)
+{
+    <h1>@T["Upload.Title"]</h1>
+    <p class="notice alert alert-info" role="status">@T["UploadReport.AlreadyFinished"]</p>
+    <p><a href="/guest/upload">@T["UploadReport.UploadAnother"]</a></p>
+}
+else
+{
+    <h1>@T["UploadReport.Title"]</h1>
+}
+@if (Model.Notice is not null && !Model.Failed && Model.DoneItem is null)
+{
+    <p class="notice alert alert-info py-2" role="status">@Model.Notice</p>
+}
+@if (Model.Error is not null)
+{
+    <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
+}
+@if (Model.Report is not null && !Model.AlreadyFinished)
+{
+    <p class="report-heading lead">@Model.Heading()</p>
+
+    @if (Model.Risky.Count > 0)
+    {
+        <div class="warning-box alert alert-warning" role="alert">
+            <p class="warning-heading">@T.With("UploadReport.YouShouldCorrect", ResidentHtml.Strong(T["UploadReport.MayLookWrong", Model.Item].Value))</p>
+            <ol class="mb-0">
+                @foreach (var line in Model.Risky)
+                {
+                    <li class="@Css(line)"><strong>@line.Text.Title.</strong> @line.Text.Why <span class="tip text-body-secondary">@line.Text.Tip</span></li>
+                }
+            </ol>
+        </div>
+    }
+
+    var editable = Model.DoneItem is null && Model.Current is not null;
+    var tooBig = Model.Blocking.FirstOrDefault(l => l.Finding.Code == "too-big");
+
+    void Findings()
+    {
+        @foreach (var line in Model.Blocking)
+        {
+            <div class="blocking alert alert-danger">
+                <div class="@Css(line)">
+                    <p class="mb-1"><strong>@line.Text.Title.</strong> @line.Text.Why</p>
+                    <p class="tip mb-1">@line.Text.Tip</p>
+                    @if (editable && line == tooBig)
+                    {
+                        var offered = Model.OfferedScale(line.Finding);
+                        <label class="form-label" for="upload-scale">@T["UploadReport.Size"]</label>
+                        <input class="form-control w-auto d-inline-block" id="upload-scale" type="number" name="ScalePercent"
+                               min="@UploadReportModel.MinScale" max="@UploadReportModel.MaxScale" value="@offered">
+                        <p class="form-text mb-0">@T["UploadReport.LargestFits", offered]</p>
+                    }
+                </div>
+            </div>
+        }
+        @if (Model.Safe.Count > 0)
+        {
+            <h2 class="h5">@T["UploadReport.FixedForYou"]</h2>
+            <ul class="safe-fixes">
+                @foreach (var line in Model.Safe)
+                {
+                    <li class="@Css(line)">@line.Text.Title @line.Text.Why <span class="tip text-body-secondary">@line.Text.Tip</span></li>
+                }
+            </ul>
+        }
+    }
+
+    @if (!editable)
+    {
+        Findings();
+    }
+    else
+    {
+        <form class="upload-report" method="post" action="/guest/upload/@Model.Job?handler=Rescale" asp-antiforgery="true">
+            @{ Findings(); }
+            @if (tooBig is null)
+            {
+                <input type="hidden" name="ScalePercent" value="@Model.ScalePercent">
+            }
+            <div class="mb-3">
+                <label class="form-label" for="report-name">@T["UploadReport.ItemName"]</label>
+                <input class="form-control" id="report-name" type="text" name="ItemName" maxlength="63" value="@Model.ItemName">
+            </div>
+            <fieldset class="mb-3">
+                <legend class="h6">@T["UploadReport.NextOwner"]</legend>
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" id="next-copy" type="checkbox" name="Copy" value="true" checked="@Model.Copy">
+                    <label class="form-check-label" for="next-copy">@T["UploadReport.Copy"]</label>
+                </div>
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" id="next-modify" type="checkbox" name="Modify" value="true" checked="@Model.Modify">
+                    <label class="form-check-label" for="next-modify">@T["UploadReport.Modify"]</label>
+                </div>
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" id="next-transfer" type="checkbox" name="Transfer" value="true" checked="@Model.Transfer">
+                    <label class="form-check-label" for="next-transfer">@T["UploadReport.Transfer"]</label>
+                </div>
+            </fieldset>
+            <button type="submit" class="btn btn-outline-primary check-again">@T["UploadReport.CheckAgain"]</button>
+            @if (!Model.Report.Blocked)
+            {
+                <button type="submit" class="btn btn-primary make-item" formaction="/guest/upload/@Model.Job?handler=Make">@T["UploadReport.MakeItem"]</button>
+            }
+        </form>
+        @if (Model.Report.Blocked)
+        {
+            <p class="mt-3"><a href="/guest/upload">@T["UploadReport.DifferentFile"]</a></p>
+        }
+    }
+}
+<p class="mt-3"><a href="/guest/upload/limits">@T["UploadLimits.Title"]</a></p>
+<p><a href="/guest">@T["Common.BackToAccount"]</a></p>

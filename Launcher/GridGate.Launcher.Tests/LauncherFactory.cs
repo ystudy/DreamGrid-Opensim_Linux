@@ -1,0 +1,193 @@
+using System.Collections.Concurrent;
+using GridGate.Launcher.Core;
+using GridGate.Launcher.Core.Database;
+using GridGate.Launcher.Core.Grid;
+using GridGate.Launcher.Core.OpenSim;
+using GridGate.Launcher.Core.Plans;
+using GridGate.Launcher.Core.Settings;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Time.Testing;
+
+namespace GridGate.Launcher.Tests;
+
+/// <summary>
+/// The real launcher host on a TestServer, over a temp data dir, with a fake grid and a fake Robust.
+/// Every log entry is captured in <see cref="Logs"/>.
+/// </summary>
+internal sealed class LauncherFactory : WebApplicationFactory<Program>
+{
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "dg-host-" + Guid.NewGuid().ToString("N"));
+
+    public LauncherFactory(Func<LauncherSettings, LauncherSettings>? seed = null)
+    {
+        Paths = new LauncherPaths(Path.Combine(_root, "data"), Path.Combine(_root, "program"), null);
+        Store = new SettingsStore(Paths.SettingsFile);
+        var s = Store.LoadOrCreate();
+        Store.Save(seed is null ? s : seed(s));
+        Grid.SettingsSource = Store.LoadOrCreate;
+        Grid.SettingsSink = Store.Save;
+        // Robust's console sets the level the fake account service then reports.
+        Grid.OnSetUserLevel = (first, last, level) => Robust.SetLevel(first, last, level);
+        Staff = new FakeStaffDirectory(Robust);
+        People = new FakePeopleDirectory(Robust);
+        Remover = new FakeAccountRemover(Robust);
+        Estates = new FakeEstateRemover();
+        Inventory = new FakeInventoryStore(Robust);
+        Groups = new FakeGridGroups(Robust);
+        GridEstates = new FakeGridEstates(Robust);
+        // Robust's console makes the avatar (with a password nobody knows) the fake account service then reports.
+        Grid.OnCreateResident = (first, last, email, level) =>
+        {
+            if (Robust.All.Any(a => string.Equals(a.FirstName + " " + a.LastName, first + " " + last, StringComparison.OrdinalIgnoreCase)))
+                throw new NameTakenException(first, last);
+            var id = Guid.NewGuid();
+            Robust.Add(first, last, level, Guid.NewGuid().ToString("N"), id, email ?? "");
+            return Robust.All.Single(a => a.PrincipalId == id);
+        };
+    }
+
+    public LauncherPaths Paths { get; }
+    public SettingsStore Store { get; }
+    public FakeGridController Grid { get; } = new();
+    public FakeRobustAccounts Robust { get; } = new();
+    public FakeOnlineUsers OnlineUsers { get; } = new();
+    /// <summary>The whole grid's regions as Robust lists them (the splash page counts them).</summary>
+    public FakeGridRegions Regions { get; } = new();
+    /// <summary>The staff list the Staff page reads: the fake Robust's accounts.</summary>
+    public FakeStaffDirectory Staff { get; }
+    public FakePeopleDirectory People { get; }
+    /// <summary>Deletes avatars from the fake Robust.</summary>
+    public FakeAccountRemover Remover { get; }
+    public FakeEstateRemover Estates { get; }
+    public FakeInventoryStore Inventory { get; }
+    public FakeAppearanceStore Appearance { get; } = new();
+    /// <summary>The grid's group tables, in memory.</summary>
+    public FakeGridGroups Groups { get; }
+    /// <summary>Robust's hypergrid links and map, in memory.</summary>
+    public FakeGridHyperlinks Hyperlinks { get; } = new();
+    /// <summary>The hypergrid link test, without a network.</summary>
+    public FakeGridProbe Probe { get; } = new();
+    /// <summary>The regions' estate tables, in memory.</summary>
+    public FakeGridEstates GridEstates { get; }
+    /// <summary>The host's clock: starts at the real time and moves only when a test advances it.</summary>
+    public FakeTimeProvider Time { get; } = new(DateTimeOffset.UtcNow);
+    /// <summary>The Grid Asset Server's join information the host reads (no network).</summary>
+    public FakeGridJoin Join { get; } = new();
+    /// <summary>The other grid's information the host reads (no network).</summary>
+    public FakeOtherGrid OtherGrid { get; } = new();
+    /// <summary>The Home dashboard's counts (no database).</summary>
+    public FakeWorldCounter Counts { get; } = new();
+    /// <summary>The Home dashboard's service checks (no network).</summary>
+    public FakeServiceChecks Checks { get; } = new();
+    /// <summary>This computer's public address the network step's button finds (no network).</summary>
+    public FakePublicAddressFinder PublicAddress { get; } = new();
+    public ConcurrentQueue<(LogLevel Level, string Category, string Message)> Logs { get; } = new();
+
+    /// <summary>Runs before the app's own middleware (e.g. to fake the remote address).</summary>
+    public Action<Microsoft.AspNetCore.Builder.IApplicationBuilder>? Before { get; init; }
+
+    /// <summary>Extra test-only registrations (e.g. a module), added after the fakes.</summary>
+    public Action<IServiceCollection>? ExtraServices { get; init; }
+
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        builder.UseSetting("GRIDGATE_DATA", Paths.Data);
+        builder.UseSetting("GRIDGATE_OPENSIM", Paths.OpenSimProgram);
+        builder.ConfigureLogging(l => l.AddProvider(new CapturingLoggerProvider(Logs)));
+        builder.ConfigureTestServices(services =>
+        {
+            services.RemoveAll<IGridController>();
+            services.AddSingleton<IGridController>(Grid);
+            services.RemoveAll<IRobustClient>();
+            services.AddSingleton<IRobustClient>(Robust);
+            services.RemoveAll<IOnlineUsers>();
+            services.AddSingleton<IOnlineUsers>(OnlineUsers);
+            services.RemoveAll<GridGate.Launcher.Core.Dashboard.IWorldCounter>();
+            services.AddSingleton<GridGate.Launcher.Core.Dashboard.IWorldCounter>(Counts);
+            services.RemoveAll<GridGate.Launcher.Dashboard.IServiceChecks>();
+            services.AddSingleton<GridGate.Launcher.Dashboard.IServiceChecks>(Checks);
+            services.RemoveAll<IGridRegions>();
+            services.AddSingleton<IGridRegions>(Regions);
+            services.RemoveAll<IStaffDirectory>();
+            services.AddSingleton<IStaffDirectory>(Staff);
+            services.RemoveAll<IPeopleDirectory>();
+            services.AddSingleton<IPeopleDirectory>(People);
+            services.RemoveAll<IAccountRemover>();
+            services.AddSingleton<IAccountRemover>(Remover);
+            services.RemoveAll<IInventoryStore>();
+            services.AddSingleton<IInventoryStore>(Inventory);
+            services.RemoveAll<IAppearanceStore>();
+            services.AddSingleton<IAppearanceStore>(Appearance);
+            services.RemoveAll<IEstateRemover>();
+            services.AddSingleton<IEstateRemover>(Estates);
+            services.RemoveAll<GridGate.Launcher.Core.Groups.IGridGroups>();
+            services.AddSingleton<GridGate.Launcher.Core.Groups.IGridGroups>(Groups);
+            services.RemoveAll<GridGate.Launcher.Core.Hypergrid.IGridHyperlinks>();
+            services.AddSingleton<GridGate.Launcher.Core.Hypergrid.IGridHyperlinks>(Hyperlinks);
+            services.RemoveAll<GridGate.Launcher.Core.Hypergrid.IGridProbe>();
+            services.AddSingleton<GridGate.Launcher.Core.Hypergrid.IGridProbe>(Probe);
+            services.RemoveAll<GridGate.Launcher.Core.Estates.IGridEstates>();
+            services.AddSingleton<GridGate.Launcher.Core.Estates.IGridEstates>(GridEstates);
+            services.RemoveAll<IRobustPasswords>();
+            services.AddSingleton<IRobustPasswords>(Robust);
+            services.RemoveAll<IRobustEmails>();
+            services.AddSingleton<IRobustEmails>(Robust);
+            services.RemoveAll<IRobustNames>();
+            services.AddSingleton<IRobustNames>(Robust);
+            services.RemoveAll<IGridJoinClient>();
+            services.AddSingleton<IGridJoinClient>(Join);
+            services.RemoveAll<IOtherGridClient>();
+            services.AddSingleton<IOtherGridClient>(OtherGrid);
+            services.RemoveAll<GridGate.Launcher.Core.Config.IPublicAddressFinder>();
+            services.AddSingleton<GridGate.Launcher.Core.Config.IPublicAddressFinder>(PublicAddress);
+            services.RemoveAll<TimeProvider>();
+            services.AddSingleton<TimeProvider>(Time);
+            if (Before is { } before)
+                services.AddSingleton<Microsoft.AspNetCore.Hosting.IStartupFilter>(new BeforeFilter(before));
+            ExtraServices?.Invoke(services);
+        });
+    }
+
+    public async Task<bool> WaitForLogAsync(Func<(LogLevel Level, string Category, string Message), bool> match)
+    {
+        for (var i = 0; i < 100; i++)
+        {
+            if (Logs.Any(match)) return true;
+            await Task.Delay(50);
+        }
+        return false;
+    }
+
+    public override async ValueTask DisposeAsync()
+    {
+        await base.DisposeAsync();
+        try { Directory.Delete(_root, true); } catch (IOException) { }
+    }
+
+    private sealed class BeforeFilter(Action<Microsoft.AspNetCore.Builder.IApplicationBuilder> before) : IStartupFilter
+    {
+        public Action<Microsoft.AspNetCore.Builder.IApplicationBuilder> Configure(Action<Microsoft.AspNetCore.Builder.IApplicationBuilder> next) =>
+            app => { before(app); next(app); };
+    }
+}
+
+internal sealed class CapturingLoggerProvider(ConcurrentQueue<(LogLevel Level, string Category, string Message)> sink) : ILoggerProvider
+{
+    public ILogger CreateLogger(string categoryName) => new Logger(sink, categoryName);
+
+    public void Dispose() { }
+
+    private sealed class Logger(ConcurrentQueue<(LogLevel, string, string)> sink, string category) : ILogger
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            sink.Enqueue((logLevel, category, formatter(state, exception) + (exception is null ? "" : " | " + exception)));
+    }
+}

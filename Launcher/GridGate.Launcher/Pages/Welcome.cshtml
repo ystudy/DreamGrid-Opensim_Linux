@@ -1,0 +1,10 @@
+@page "/welcome"
+@model GridGate.Launcher.Pages.WelcomeModel
+@{
+    Layout = "_SplashLayout";
+    ViewData["Title"] = Model.Settings.GridName;
+    ViewData["SplashCss"] = $"/welcome/page-{Model.View.Version}.css";
+}
+<div class="splash-page">
+    <partial name="_SplashBlocks" model="new GridGate.Launcher.Splash.SplashBlocksModel(Model.View, Model.Settings)" />
+</div>

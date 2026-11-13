@@ -1,1 +1,1 @@
-dotnet build -c Release DreamGrid.sln
+dotnet build -c Release GridGate.sln

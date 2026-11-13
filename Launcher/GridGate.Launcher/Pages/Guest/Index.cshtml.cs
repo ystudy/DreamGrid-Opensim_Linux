@@ -1,0 +1,41 @@
+using GridGate.Launcher.Core.Config;
+using GridGate.Launcher.Core.Plans;
+using GridGate.Launcher.Core.Settings;
+using GridGate.Launcher.Guests;
+using GridGate.Launcher.ModelImport;
+using Microsoft.AspNetCore.Mvc.RazorPages;
+
+namespace GridGate.Launcher.Pages.Guest;
+
+/// <summary>A signed-in guest's home (<c>AuthSchemes.GuestPolicy</c>, by the /Guest folder convention): who they are and how to connect with Firestorm.</summary>
+public sealed class IndexModel(Func<LauncherSettings> settings, RegionRights rights, ResidentTwoFactor residents, UploadRights uploads,
+    GridGate.Launcher.Guests.IarRights iarRights) : PageModel
+{
+    /// <summary>Whether the page links to the resident's two-factor page (<see cref="ResidentTwoFactor.PageShown"/>).</summary>
+    public bool TwoFactorLink { get; private set; }
+
+    public string DisplayName { get; private set; } = "";
+    public string GridName { get; private set; } = "";
+
+    /// <summary>The login address to paste into the viewer's grid manager.</summary>
+    public string LoginUri { get; private set; } = "";
+
+    /// <summary>Whether the guest has rights over any region now (the page links to their regions).</summary>
+    public bool OwnsRegions { get; private set; }
+
+    /// <summary>Whether the guest may upload models here (the same rule as the upload pages, <see cref="UploadPagesOnlyAttribute"/>).</summary>
+    public bool UploadLink { get; private set; }
+    public bool InventoryLink { get; private set; }
+
+    public void OnGet()
+    {
+        OwnsRegions = GuestSignIn.Read(User) is { } guest && rights.OwnedBy(guest.Principal).Count > 0;
+        var s = settings();
+        TwoFactorLink = GuestSignIn.Read(User) is { } me && ResidentTwoFactor.PageShown(s, residents.Store.StateOf(me.Principal));
+        UploadLink = UploadPagesOnlyAttribute.Shown(s, uploads, User);
+        InventoryLink = GridGate.Launcher.Iar.IarPagesOnlyAttribute.Shown(s, iarRights, User);
+        DisplayName = User.Identity?.Name ?? "";
+        GridName = s.GridName;
+        LoginUri = GridEndpoints.LoginUri(s, HostAddress.Effective(s.Hostname));
+    }
+}

@@ -1,0 +1,54 @@
+@page "/advanced/regions"
+@model GridGate.Launcher.Pages.Advanced.RegionsModel
+@{
+    ViewData["Title"] = "Region defaults";
+}
+<nav aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="/advanced">Settings</a></li><li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li></ol></nav>
+<div class="page-head">
+    <h1>Region defaults<help-tip class="help-start">What a region uses when you have not chosen for it on its own settings page.</help-tip></h1>
+</div>
+@if (Model.SavedMessage is { } message)
+{
+    <div class="ok-box alert alert-success form-panel" role="status">
+        <p><strong>@message</strong></p>
+        @if (Model.ShowRestart)
+        {
+            <form method="post" action="/dashboard?handler=run" asp-antiforgery="true">
+                <button type="submit" class="btn btn-sm btn-primary" name="gridAction" value="restart">Restart your world</button>
+            </form>
+        }
+    </div>
+}
+<section class="work-panel form-panel">
+    <form id="regions" method="post" asp-antiforgery="true">
+        <div class="defaults-grid">
+            <fieldset>
+                <legend class="panel-title">Physics engine</legend>
+                @if (Model.PhysicsNotice is { } notice)
+                {
+                    <div class="alert alert-warning physics-notice" role="alert">@notice</div>
+                }
+                @foreach (var (value, text) in Model.PhysicsChoices)
+                {
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="DefaultPhysics" id="DefaultPhysics-@value" value="@value" checked="@(Model.DefaultPhysics == value)">
+                        <label class="form-check-label" for="DefaultPhysics-@value">@text</label>
+                    </div>
+                }
+            </fieldset>
+            <fieldset>
+                <legend class="panel-title">Scripts</legend>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="DefaultScripts" id="DefaultScripts-on" value="true" checked="@(Model.DefaultScripts == "true")">
+                    <label class="form-check-label" for="DefaultScripts-on">On</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="DefaultScripts" id="DefaultScripts-off" value="false" checked="@(Model.DefaultScripts == "false")">
+                    <label class="form-check-label" for="DefaultScripts-off">Off</label>
+                </div>
+            </fieldset>
+        </div>
+        <p class="hint form-text mt-3">A region that has its own physics engine or script setting keeps it. A change applies when the regions that use these restart.</p>
+        <div class="form-actions"><button type="submit" class="btn btn-primary" icon="save">Save</button></div>
+    </form>
+</section>

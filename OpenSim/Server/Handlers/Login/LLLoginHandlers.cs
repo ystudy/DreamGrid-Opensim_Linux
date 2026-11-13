@@ -127,7 +127,7 @@ namespace OpenSim.Server.Handlers.Login
                     if (requestData.Contains("id0") && requestData["id0"] != null)
                         id0 = requestData["id0"].ToString();
 
-                    // DreamGrid: the viewer agreed to the grid's Terms (an XML-RPC boolean, read as True or 1).
+                    // GridGate: the viewer agreed to the grid's Terms (an XML-RPC boolean, read as True or 1).
                     bool agreedToTerms = requestData.Contains("agree_to_tos") && requestData["agree_to_tos"] != null &&
                         requestData["agree_to_tos"].ToString() is string agreed &&
                         (agreed.Equals("true", StringComparison.OrdinalIgnoreCase) || agreed == "1");

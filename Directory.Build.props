@@ -1,5 +1,5 @@
 <Project>
-  <!-- Shared settings for every project in DreamGrid.sln. Projects do not set TargetFramework themselves. -->
+  <!-- Shared settings for every project in GridGate.sln. Projects do not set TargetFramework themselves. -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <LangVersion>latest</LangVersion>

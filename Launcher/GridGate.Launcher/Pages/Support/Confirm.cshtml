@@ -1,0 +1,20 @@
+@page "/support/confirm"
+@model GridGate.Launcher.Pages.Support.ConfirmModel
+@{
+    ViewData["Title"] = T["Support.ConfirmTitle"].Value;
+}
+<div class="card card-body shadow-sm mx-auto sign-in-card">
+<h1>@T["Support.ConfirmTitle"]</h1>
+@if (Model.Failed)
+{
+    <div class="error-box error alert alert-danger" role="alert">@T.With("Support.ConfirmFailed", ResidentHtml.Link("/support", T["Support.StartNew"].Value))</div>
+}
+else
+{
+    <p>@T["Support.ConfirmIntro"]</p>
+    <form id="confirm-ticket" method="post">
+        <input type="hidden" asp-for="Token">
+        <button type="submit" class="btn btn-primary w-100">@T["Support.ConfirmButton"]</button>
+    </form>
+}
+</div>

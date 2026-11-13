@@ -351,10 +351,10 @@ namespace OpenSim.Services.HypergridService
 
             return region;
         }
-        //DreamGrid Smart Start Done
+        //GridGate Smart Start Done
         public UUID GetSmartStartALTRegion(UUID regionID, UUID agentID)
         {
-            // !!! DreamGrid Smart Start sends requested Region UUID to Dreamgrid.
+            // !!! GridGate Smart Start sends requested Region UUID to GridGate.
             // If region is on line, returns same UUID. If Offline, returns UUID for Welcome, brings up the region and teleports you to it.
             UUID? result = SmartStartAltClient.Query(regionID, agentID,
                 m_SmartStartEnabled, m_SmartStartUrl, m_SmartStartMachineID,

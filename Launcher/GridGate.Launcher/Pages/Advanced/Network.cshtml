@@ -1,0 +1,65 @@
+@page "/advanced/network"
+@model GridGate.Launcher.Pages.Advanced.NetworkModel
+@using GridGate.Launcher.Core.Settings
+@{
+    ViewData["Title"] = "Network";
+    ViewData["Wide"] = true;
+}
+<nav aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="/advanced">Settings</a></li><li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li></ol></nav>
+<div class="page-head">
+    <h1>Network<help-tip class="help-start">The address Firestorm uses to reach your world, and the ports your world listens on. A change applies when your world restarts.</help-tip></h1>
+</div>
+@if (TempData["PlanNote"] is string planNote)
+{
+    <div class="alert alert-warning" role="status">@planNote</div>
+}
+@if (Model.SavedNotes is { } notes)
+{
+    <partial name="_Saved" model="notes" />
+}
+<div class="@(Model.RegionPorts.Count > 0 ? "network-columns" : "")">
+    <section class="work-panel form-panel">
+        <form id="network" method="post">
+            <h2 class="panel-title">Address</h2>
+            <label class="form-label" for="Hostname">Hostname or IP address</label>
+            <input class="form-control" id="Hostname" name="Hostname" value="@Model.Hostname" placeholder="@Model.DetectedAddress" autocomplete="off" autocapitalize="off" spellcheck="false">
+            <span class="hint form-text d-block">The address Firestorm uses to reach your world. Leave it empty to use the detected address, @Model.DetectedAddress.</span>
+            <span class="field-error text-danger small d-block" data-error-for="Hostname">@Model.Errors.GetValueOrDefault("Hostname")</span>
+
+            <h2 class="panel-title mt-3">Ports<help-tip class="help-start">Each port is a number from @SettingsValidator.MinPort to @SettingsValidator.MaxPort, and no two can be the same. New regions take the next free ports from the two "first region" ports. Regions you already have keep theirs.</help-tip></h2>
+            <div class="port-grid">
+                @foreach (var (key, label) in SettingsValidator.PortFields)
+                {
+                    <div>
+                        <label class="form-label" for="@key">@label</label>
+                        <input class="form-control" id="@key" name="@key" value="@Model.Ports.GetValueOrDefault(key)" inputmode="numeric" autocomplete="off" required>
+                        <span class="field-error text-danger small d-block" data-error-for="@key">@Model.Errors.GetValueOrDefault(key)</span>
+                    </div>
+                }
+            </div>
+            @if (Model.HypergridLine is { } hypergridLine)
+            {
+                <p id="region-hypergrid" class="hint form-text mt-3">@hypergridLine</p>
+            }
+            <div class="form-actions"><button type="submit" class="btn btn-primary" icon="save">Save</button></div>
+        </form>
+    </section>
+
+    @if (Model.RegionPorts.Count > 0)
+    {
+        <section class="work-panel">
+            <h2 class="panel-title">Ports your regions use</h2>
+            <div class="table-responsive">
+                <table id="region-ports" class="table table-sm mb-0">
+                    <thead><tr><th>Region</th><th>Runs with</th><th>UDP port</th><th>Web port</th><th>Console port</th></tr></thead>
+                    <tbody>
+                        @foreach (var r in Model.RegionPorts)
+                        {
+                            <tr><td>@r.Region</td><td>@r.RunsWith</td><td>@r.Udp</td><td>@r.Web</td><td>@r.Console</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    }
+</div>

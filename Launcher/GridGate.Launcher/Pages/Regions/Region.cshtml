@@ -1,0 +1,231 @@
+@page "/regions/region/{id:guid}"
+@model GridGate.Launcher.Pages.Regions.RegionPanelModel
+@using GridGate.Launcher.Core.Grid
+@{
+    ViewData["Title"] = Model.Name;
+    // The map asks for ?partial=1: the fragment goes into its side panel, with no page around it.
+    if (Model.IsPartial) Layout = null;
+    var sharedBy = Model.RunsWith.Count > 0 ? ", shared by " + RegionAdvice.Join([Model.Name, .. Model.RunsWith]) : "";
+}
+<div class="region-info">
+    <h2 class="h4">@Model.Name</h2>
+    <p><span class="badge state-@Model.StateText.ToLowerInvariant()">@Model.StateText</span></p>
+
+    @if (Model.Notice is not null)
+    {
+        <p class="notice alert alert-info py-2" role="status">@Model.Notice</p>
+    }
+
+    @if (Model.Asking is not null)
+    {
+        <form method="post" action="/regions/region/@Model.Id?handler=power" asp-antiforgery="true" class="alert alert-warning">
+            <p>@Model.AskingText</p>
+            <input type="hidden" name="action" value="@Model.Asking">
+            <input type="hidden" name="confirmed" value="true">
+            <button type="submit" class="btn btn-warning btn-sm">@Model.AskingYes</button>
+            <a class="btn btn-outline-secondary btn-sm" href="/regions/region/@Model.Id">Cancel</a>
+        </form>
+    }
+
+    @if (Model.Deleting)
+    {
+        <form method="post" action="/regions/region/@Model.Id?handler=delete" asp-antiforgery="true" class="alert alert-warning">
+            <p>@Model.DeletingText</p>
+            <div class="form-check mb-2">
+                <input class="form-check-input" type="checkbox" id="saveFirst" name="saveFirst" value="true" disabled="@(!Model.CanOar)">
+                <label class="form-check-label" for="saveFirst">Also save it to the OAR library first (from seconds to many minutes; it needs the region running)</label>
+            </div>
+            <input type="hidden" name="confirmed" value="true">
+            <button type="submit" class="btn btn-danger btn-sm">Yes, delete</button>
+            <a class="btn btn-outline-secondary btn-sm" href="/regions/region/@Model.Id">Cancel</a>
+        </form>
+    }
+
+    @if (Model.State == RegionState.Failed)
+    {
+        <div class="region-failure">
+            @if (!string.IsNullOrWhiteSpace(Model.FailureMessage))
+            {
+                <p class="text-danger">@Model.FailureMessage</p>
+            }
+            @if (Model.FailureLog.Count > 0)
+            {
+                <details>
+                    <summary>The last lines it wrote</summary>
+                    <pre class="small">@string.Join('\n', Model.FailureLog)</pre>
+                </details>
+            }
+        </div>
+    }
+
+    <h3 class="h6">Who's here</h3>
+    @if (Model.Here is null)
+    {
+        <p class="text-body-secondary">Who's here isn't available right now.</p>
+    }
+    else if (Model.Here.Count == 0)
+    {
+        <p class="text-body-secondary">Nobody is here right now.</p>
+    }
+    else
+    {
+        <ul class="list-unstyled">
+            @foreach (var name in Model.Here)
+            {
+                <li>@name</li>
+            }
+        </ul>
+    }
+
+    <dl class="region-facts">
+        @if (Model.RunningTime is not null)
+        {
+            <dt>Running time</dt>
+            <dd>@(Model.RunningTime + sharedBy)</dd>
+        }
+        @if (Model.Memory is not null)
+        {
+            <dt>Memory</dt>
+            <dd>@(Model.Memory + sharedBy)</dd>
+        }
+        <dt>Map position</dt>
+        <dd>@Model.X, @Model.Y</dd>
+        <dt>Size</dt>
+        <dd>@Model.Size×@Model.Size</dd>
+        <dt>Neighbours</dt>
+        <dd>@(Model.Neighbours.Count == 0 ? "No neighbours" : string.Join(", ", Model.Neighbours.Select(n => $"Next to {n.Name} ({n.Side})")))</dd>
+        <dt>How it runs</dt>
+        <dd>@(Model.RunsWith.Count == 0 ? "Runs on its own" : "Runs with " + string.Join(", ", Model.RunsWith))</dd>
+    </dl>
+
+    @if (Model.PendingRestart.Count > 0)
+    {
+        <form method="post" action="/regions/region/@Model.Id?handler=power" asp-antiforgery="true" class="pending-restart alert alert-warning py-2">
+            <span>Some settings apply when @RegionAdvice.Join(Model.PendingRestart) @(Model.PendingRestart.Count == 1 ? "restarts" : "restart").</span>
+            <input type="hidden" name="action" value="Restart">
+            <button type="submit" class="btn btn-warning btn-sm ms-2">Restart now</button>
+        </form>
+    }
+
+    @if (Model.BusyText is not null)
+    {
+        <p class="oar-busy alert alert-info py-2" role="status">@Model.BusyText is running. <a href="/regions/region/@Model.Id/job">See how it's going</a></p>
+    }
+    @* Power and OAR: two menus side by side. *@
+    <div class="region-menus">
+        <form method="post" action="/regions/region/@Model.Id?handler=power" asp-antiforgery="true">
+            <details class="power-menu">
+                <summary class="btn btn-primary">Power</summary>
+                <div class="power-items list-group shadow">
+                    @foreach (var item in Model.Menu)
+                    {
+                        <div class="list-group-item">
+                            <button type="submit" name="action" value="@item.Action" class="btn btn-link p-0 fw-semibold">@item.Label</button>
+                            <span class="form-text d-block m-0">@item.Help</span>
+                        </div>
+                    }
+                </div>
+            </details>
+        </form>
+        <form method="post" action="/regions/region/@Model.Id?handler=oar" asp-antiforgery="true">
+            @{ var oarOff = !Model.CanOar || Model.BusyText is not null; }
+            <details class="oar-menu">
+                <summary class="btn btn-outline-primary">OAR</summary>
+                <div class="power-items list-group shadow">
+                    @if (!Model.CanOar)
+                    {
+                        <div class="list-group-item form-text m-0">@RegionPanelModel.OarNotRunning</div>
+                    }
+                    <div class="list-group-item">
+                        @if (oarOff)
+                        {
+                            <button type="button" class="btn btn-link p-0 fw-semibold" disabled>Import OAR…</button>
+                        }
+                        else
+                        {
+                            <a class="fw-semibold" href="/regions/region/@Model.Id/import">Import OAR…</a>
+                        }
+                        <span class="form-text d-block m-0">Replaces its land and objects with a file from the OAR library.</span>
+                    </div>
+                    <div class="list-group-item">
+                        <button type="submit" name="action" value="Save" class="btn btn-link p-0 fw-semibold" disabled="@oarOff">Save as OAR</button>
+                        <span class="form-text d-block m-0">Saves its land and objects into the OAR library.</span>
+                    </div>
+                    @if (Model.NeedsContent)
+                    {
+                        <div class="list-group-item">
+                            <button type="submit" name="action" value="MakeLand" class="btn btn-link p-0 fw-semibold" disabled="@oarOff">Make the land again</button>
+                            <span class="form-text d-block m-0">Its land didn't finish loading when it was added.</span>
+                        </div>
+                    }
+                </div>
+            </details>
+        </form>
+    </div>
+
+    @if (Model.HasGuestSide)
+    {
+        <section id="region-owner" class="region-owner mb-3">
+            <h3 class="h6">Region owner</h3>
+            @if (Model.Error is not null)
+            {
+                <p class="error-box error alert alert-danger py-2" role="alert">@Model.Error</p>
+            }
+            @if (Model.Right is { Held: true } owner)
+            {
+                <p class="mb-2">@owner.OwnerName has region rights since @Model.RightSince.</p>
+                <form method="post" action="/regions/region/@Model.Id?handler=revoke" asp-antiforgery="true" class="mb-2"
+                      data-confirm="Remove @(owner.OwnerName)'s region rights for @(Model.Name)?">
+                    <button type="submit" class="btn btn-outline-danger btn-sm">Remove region rights</button>
+                </form>
+            }
+            else
+            {
+                <form method="post" action="/regions/region/@Model.Id?handler=grant" asp-antiforgery="true" class="mb-2">
+                    <label class="form-label" for="region-owner-name">Avatar name</label>
+                    <div class="input-group input-group-sm">
+                        <input class="form-control" id="region-owner-name" name="owner" value="@Model.OwnerName" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="First Last">
+                        <button type="submit" class="btn btn-primary">Give region rights</button>
+                    </div>
+                </form>
+            }
+            @if (Model.MoveText is not null)
+            {
+                <p class="form-text">@Model.MoveText</p>
+            }
+            @if (Model.SharedText is not null)
+            {
+                <p class="form-text">@Model.SharedText</p>
+                @* The question is the server's (a post without the yes shows it), so it holds without JavaScript too. *@
+                @if (Model.AskingOwnProgram)
+                {
+                    <form method="post" action="/regions/region/@Model.Id?handler=ownprogram" asp-antiforgery="true" class="alert alert-warning">
+                        <p>@Model.OwnProgramAsk</p>
+                        <input type="hidden" name="confirmed" value="true">
+                        <button type="submit" class="btn btn-warning btn-sm">Yes, let @Model.Name run on its own</button>
+                        <a class="btn btn-outline-secondary btn-sm" href="/regions/region/@Model.Id">Cancel</a>
+                    </form>
+                }
+                else
+                {
+                    <form method="post" action="/regions/region/@Model.Id?handler=ownprogram" asp-antiforgery="true" class="mb-2">
+                        <button type="submit" class="btn btn-outline-secondary btn-sm">Let @Model.Name run on its own</button>
+                    </form>
+                }
+            }
+        </section>
+    }
+
+    <div class="region-links">
+        <a class="region-settings-link btn btn-sm btn-outline-secondary" href="/regions/region/@Model.Id/settings" icon="gear">Settings…</a>
+        <a class="btn btn-sm btn-outline-secondary" href="/regions/region/@Model.Id/move">Move…</a>
+        <a class="btn btn-sm btn-outline-secondary" href="/regions/region/@Model.Id/runs" icon="cpu">How it runs…</a>
+        <form method="post" action="/regions/region/@Model.Id?handler=delete" asp-antiforgery="true" class="d-inline">
+            <button type="submit" class="btn btn-sm btn-outline-danger">Delete…</button>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+<script src="/js/confirm.js"></script>
+}

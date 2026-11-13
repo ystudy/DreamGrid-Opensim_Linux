@@ -49,7 +49,7 @@ namespace OpenSim.Framework
         {
             string path = Path.Combine(AppContext.BaseDirectory, AssemblyName + ".dll");
             return File.Exists(path)
-                ? new AssemblyLoadContext("DreamGrid.BinaryFormatterCompat").LoadFromAssemblyPath(path)
+                ? new AssemblyLoadContext("GridGate.BinaryFormatterCompat").LoadFromAssemblyPath(path)
                 : null;
         });
 

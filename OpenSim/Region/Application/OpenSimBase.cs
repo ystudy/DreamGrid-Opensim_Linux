@@ -433,13 +433,13 @@ namespace OpenSim
 
             int port = regionInfo.InternalEndPoint.Port;
 
-            // Self-report our own PID to DreamGrid as early as possible in boot - well before RegionReadyModule's
-            // alert (which waits for the script-compile queue to empty, potentially minutes into boot). DreamGrid uses
+            // Self-report our own PID to GridGate as early as possible in boot - well before RegionReadyModule's
+            // alert (which waits for the script-compile queue to empty, potentially minutes into boot). GridGate uses
             // this to positively identify which OpenSim.exe process belongs to which region, instead of only ever
             // re-reading a possibly-stale PID.pid file whose PID Windows may since have recycled to an unrelated
-            // process. Fire-and-forget: OpenSim is routinely run standalone with no DreamGrid listening at all, so
+            // process. Fire-and-forget: OpenSim is routinely run standalone with no GridGate listening at all, so
             // this must never block or fail region boot.
-            NotifyDreamGridOfPidFireAndForget(regionInfo);
+            NotifyGridGateOfPidFireAndForget(regionInfo);
 
             // set initial RegionID to originRegionID in RegionInfo. (it needs for loding prims)
             // Commented this out because otherwise regions can't register with
@@ -575,15 +575,15 @@ namespace OpenSim
         }
 
         /// <summary>
-        /// Self-reports this process's own PID and the region's UUID to DreamGrid, as early in boot as possible - see
-        /// the call site in CreateRegion for why (DreamGrid needs a value it can trust more than PID.pid, which this
+        /// Self-reports this process's own PID and the region's UUID to GridGate, as early in boot as possible - see
+        /// the call site in CreateRegion for why (GridGate needs a value it can trust more than PID.pid, which this
         /// process itself writes but which a stale copy can point at a PID Windows has since recycled to an unrelated
         /// process). Modeled on SmartStart.SmartStartNotify's simple HttpWebRequest style, but as a genuinely
-        /// fire-and-forget async call: OpenSim is routinely run standalone with no DreamGrid listening at all, so this
+        /// fire-and-forget async call: OpenSim is routinely run standalone with no GridGate listening at all, so this
         /// must never block the calling (boot) thread, and any failure - unreachable host, timeout, DNS failure, no
         /// [RegionReady] config section - must be silently swallowed with zero observable effect on region boot.
         /// </summary>
-        private void NotifyDreamGridOfPidFireAndForget(RegionInfo regionInfo)
+        private void NotifyGridGateOfPidFireAndForget(RegionInfo regionInfo)
         {
             _ = Task.Run(async () =>
             {
@@ -609,7 +609,7 @@ namespace OpenSim
                 }
                 catch
                 {
-                    // Silently ignored by design - see method summary. A standalone region with no DreamGrid
+                    // Silently ignored by design - see method summary. A standalone region with no GridGate
                     // listening must boot exactly as if this call didn't exist.
                 }
             });

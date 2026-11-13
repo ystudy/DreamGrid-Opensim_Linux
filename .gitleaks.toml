@@ -1,4 +1,4 @@
-# gitleaks config for CI (dreamgrid-ci.yml, secret-scan). The default rules stay on; known non-secrets are allowed
+# gitleaks config for CI (gridgate-ci.yml, secret-scan). The default rules stay on; known non-secrets are allowed
 # here by what they are, and single upstream lines by fingerprint in .gitleaksignore.
 
 [extend]
@@ -18,7 +18,7 @@ regexes = ['''^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a
 # passwords OpenSim's INI files used to hold (the leak this config exists for); the many database passwords in
 # OpenSim's INIs are upstream defaults that the launcher replaces, so they are not covered.
 [[rules]]
-id = "dreamgrid-ini-mail-or-admin-password"
+id = "gridgate-ini-mail-or-admin-password"
 description = "An SMTP or admin password in an INI file"
 regex = '''(?im)^[ \t]*(?:smtp\w*password|adminpassword)[ \t]*=[ \t]*"?([^";\r\n]{4,}?)"?[ \t]*(?:;|\r?$)'''
 secretGroup = 1

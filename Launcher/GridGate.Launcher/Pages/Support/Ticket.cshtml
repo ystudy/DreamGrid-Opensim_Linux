@@ -1,0 +1,56 @@
+@page "/support/ticket"
+@model GridGate.Launcher.Pages.Support.TicketModel
+@using GridGate.Launcher.Core.Tickets
+@using GridGate.Launcher.Guests
+@using GridGate.Launcher.Pages.Support
+@{
+    ViewData["Title"] = Model.Ticket is { } shown ? T["Support.TicketTitle", shown.Number, shown.Subject].Value : T["Support.YourTicket"].Value;
+}
+@if (Model.Ticket is not { } ticket)
+{
+    <div class="card card-body shadow-sm mx-auto sign-in-card">
+        <h1>@T["Support.RanOutTitle"]</h1>
+        <p>@T["Support.RanOutText"]</p>
+        <p class="mb-0"><a href="/support/lost-link">@T["Support.SendNewLink"]</a> · <a href="/support">@T["Support.StartNew"]</a></p>
+    </div>
+}
+else
+{
+    <p class="back-link"><a href="/support">@T["Support.Back"]</a></p>
+    <h1>@ticket.Subject</h1>
+    <p class="text-body-secondary">@ticket.Number · @TicketView.CategoryText(ticket.Category, T) · <span id="ticket-state">@TicketView.StateText(ticket.State, T)</span></p>
+    @if (Model.Notice is not null)
+    {
+        <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
+    }
+    @if (Model.Error is not null)
+    {
+        <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
+    }
+    <ol id="messages" class="ticket-messages list-unstyled">
+        @foreach (var m in TicketView.ForGuest(ticket))
+        {
+            <li class="panel mb-2@(m.Staff is null ? "" : " ticket-staff")">
+                <div class="panel-head"><strong>@(m.Staff is null ? T["Support.You"].Value : T["Support.FromStaff", m.StaffName ?? T["Support.StaffName"].Value].Value)</strong><span class="row-sub">@m.At.ToLocalTime().ToString("g", System.Globalization.CultureInfo.CurrentCulture)</span></div>
+                <div class="ticket-text">@m.Text</div>
+            </li>
+        }
+    </ol>
+    @if (ticket.Evidence is { } evidence)
+    {
+        <p class="form-text">@T.With("Support.EvidenceSent", ResidentHtml.Code(evidence))</p>
+    }
+    @if (Model.CanReply)
+    {
+        <form id="reply" method="post" class="panel">
+            <input type="hidden" asp-for="Id">
+            <label class="form-label" asp-for="Reply">@T["Support.ReplyLabel"]</label>
+            <textarea class="form-control" asp-for="Reply" rows="5" minlength="@TicketRules.MessageMin" maxlength="@TicketRules.MessageMax" required></textarea>
+            <button type="submit" class="btn btn-primary mt-3">@T["Support.SendReply"]</button>
+        </form>
+    }
+    else
+    {
+        <p id="closed-for-good">@T["Support.ClosedForGood"] <a href="/support">@T["Support.StartNew"]</a></p>
+    }
+}

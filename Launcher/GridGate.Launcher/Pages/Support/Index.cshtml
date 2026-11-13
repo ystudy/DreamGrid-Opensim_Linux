@@ -1,0 +1,88 @@
+@page "/support"
+@model GridGate.Launcher.Pages.Support.IndexModel
+@using GridGate.Launcher.Core.Tickets
+@using GridGate.Launcher.Guests
+@using GridGate.Launcher.Pages.Support
+@{
+    ViewData["Title"] = T["Support.Title"].Value;
+}
+<h1 class="tone-text">@T["Support.Title"]</h1>
+@if (Model.CheckEmail)
+{
+    <div id="support-reply" class="alert alert-success" role="status">@T["Support.CheckEmail"]</div>
+    <p><a href="/support">@T["Support.StartAnother"]</a></p>
+}
+else
+{
+    <p class="tone-text">@T["Support.Intro"]</p>
+    @if (Model.Mine.Count > 0)
+    {
+        <section id="my-tickets" class="panel mb-3">
+            <div class="panel-head"><h2>@T["Support.YourTickets"]</h2></div>
+            <ul class="panel-rows">
+                @foreach (var t in Model.Mine)
+                {
+                    <li><a class="component-label" href="/support/ticket?id=@t.Id">@t.Number</a> <span>@t.Subject</span><span class="ms-auto row-sub">@TicketView.StateText(t.State, T)</span></li>
+                }
+            </ul>
+        </section>
+    }
+    @if (Model.Error is not null)
+    {
+        <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
+    }
+    @if (Model.Account is null && !Model.AnonymousOpen)
+    {
+        <div id="support-sign-in" class="alert alert-warning" role="status">@T["Support.EmailOff"] <a href="/guest/sign-in">@T["Common.SignIn"]</a></div>
+    }
+    else
+    {
+        <form id="support-form" method="post" class="panel">
+            @if (Model.Account is { } a)
+            {
+                <p class="mb-0">@T.With("Support.From", ResidentHtml.Strong(a.FirstName + " " + a.LastName))</p>
+            }
+            else
+            {
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label" asp-for="Name">@T["Support.NameLabel"]</label>
+                        <input class="form-control" asp-for="Name" maxlength="@TicketRules.NameMax" autocomplete="name" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" asp-for="Email">@T["Support.EmailLabel"]</label>
+                        <input class="form-control" asp-for="Email" type="email" maxlength="@TicketRules.EmailMax" autocomplete="email" required>
+                    </div>
+                </div>
+            }
+            <label class="form-label mt-3" asp-for="Category">@T["Support.CategoryLabel"]</label>
+            <select class="form-select" asp-for="Category" required>
+                <option value="">@T["Support.ChooseOne"]</option>
+                @foreach (var c in TicketCategories.All)
+                {
+                    <option value="@c" selected="@(Model.Category == c)">@TicketView.CategoryText(c, T)</option>
+                }
+            </select>
+            <label class="form-label mt-3" asp-for="Subject">@T["Support.SubjectLabel"]</label>
+            <input class="form-control" asp-for="Subject" minlength="@TicketRules.SubjectMin" maxlength="@TicketRules.SubjectMax" required>
+            <label class="form-label mt-3" asp-for="Message">@T["Support.MessageLabel"]</label>
+            <textarea class="form-control" asp-for="Message" rows="7" minlength="@TicketRules.MessageMin" maxlength="@TicketRules.MessageMax" required></textarea>
+            <p class="form-text">@T["Support.MessageHelp"]</p>
+            <label class="form-label mt-2" asp-for="Evidence">@T["Support.EvidenceLabel"]</label>
+            <input class="form-control" asp-for="Evidence" type="url" maxlength="@TicketRules.EvidenceMax" placeholder="https://">
+            <p class="form-text">@T["Support.EvidenceHelp"]</p>
+            <label class="form-label mt-2" asp-for="Logs">@T["Support.LogsLabel"]</label>
+            <textarea class="form-control font-monospace" asp-for="Logs" rows="4" maxlength="@TicketRules.LogsMax"></textarea>
+            @if (Model.Account is null)
+            {
+                <partial name="_BotFields" />
+            }
+            <button type="submit" class="btn btn-primary mt-3">@T["Support.Send"]</button>
+            <p class="form-text mt-2 mb-0">@T["Support.NoPasswords"]</p>
+        </form>
+        @if (Model.Account is null)
+        {
+            <p class="mt-3"><a href="/support/lost-link">@T["Support.LostLink"]</a></p>
+        }
+    }
+}

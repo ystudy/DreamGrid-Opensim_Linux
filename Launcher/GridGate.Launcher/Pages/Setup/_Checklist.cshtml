@@ -1,0 +1,18 @@
+@using GridGate.Launcher.Core.Settings
+@using GridGate.Launcher.Setup
+@inject Func<LauncherSettings> Settings
+@{
+    // The current step is the page's own path, unless ViewData["SetupStep"] names it (the port page at /setup does).
+    var s = Settings();
+    var steps = SetupSteps.For(s);
+    var current = SetupSteps.IndexOf(steps, ViewData["SetupStep"] as string ?? Context.Request.Path.Value ?? "");
+}
+<ol class="checklist">
+    @for (var i = 0; i < steps.Count; i++)
+    {
+        var done = steps[i].Done(s);
+        var css = string.Join(' ', new[] { done ? "done" : null, i == current ? "current" : null }.OfType<string>());
+        <li class="@css">@steps[i].Title@(done ? " (done)" : "")</li>
+    }
+</ol>
+<partial name="_PortConflict" />

@@ -35,8 +35,8 @@ using OpenMetaverse;
 namespace OpenSim.Framework
 {
     /// <summary>
-    /// DreamGrid Smart Start's "ALT" (Auto Load Teleport) query: asks DreamGrid, over HTTP, whether a requested
-    /// region is actually available right now. DreamGrid answers with the same region UUID if the region is
+    /// GridGate Smart Start's "ALT" (Auto Load Teleport) query: asks GridGate, over HTTP, whether a requested
+    /// region is actually available right now. GridGate answers with the same region UUID if the region is
     /// already running (or Smart Start is disabled) or a different UUID (e.g. a Parking Lot/Welcome region) if
     /// the real target needs to boot or resume from suspension first.
     ///
@@ -67,12 +67,12 @@ namespace OpenSim.Framework
         /// "[GridService]" - every log line this method emits uses it, so log output correctly identifies its
         /// origin (the three original copies had drifted into using each other's/an unrelated class's tag).</param>
         /// <param name="clientVersion">The agent's viewer self-report string (e.g. "Firestorm-Releasex64
-        /// 7.1.10.75913"), when known - DreamGrid's minimum-viewer-version check. Null/empty is valid and simply
+        /// 7.1.10.75913"), when known - GridGate's minimum-viewer-version check. Null/empty is valid and simply
         /// omits the parameter (e.g. the agent's ViewerStats CAPS report hasn't arrived yet, or this caller has no
         /// access to a per-agent cache of it).</param>
         /// <returns>Null when Smart Start is disabled, the agent guard isn't met, or the call failed for any
         /// reason (bad URL, transport error, non-success response, empty or unparsable body); otherwise the UUID
-        /// DreamGrid responded with (which may legitimately equal regionID - "no redirect needed"). Callers map
+        /// GridGate responded with (which may legitimately equal regionID - "no redirect needed"). Callers map
         /// null to their own historical failure-return convention - see the class remarks.</returns>
         public static UUID? Query(UUID regionID, UUID agentID, bool enabled, string url, string machineID,
             bool requireNonZeroAgent, string logTag, string clientVersion = null)

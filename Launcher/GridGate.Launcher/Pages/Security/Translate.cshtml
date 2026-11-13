@@ -1,0 +1,97 @@
+@page "/security/languages/{code}"
+@model GridGate.Launcher.Pages.Security.TranslateModel
+@{
+    ViewData["Title"] = $"Translate {Model.Name}";
+    var at = $"/security/languages/{Uri.EscapeDataString(Model.Code)}";
+}
+<h1>Translate @Model.Name <code>@Model.Code</code></h1>
+<p>Each text is shown in English beside a box for your translation. You can save part of the work and come back: a text you
+    haven't translated yet is shown in English. Keep the fill-ins, such as <code>{0}</code> or <code>{GridName}</code>, as they
+    are: the page or email puts the right words there. The text is plain: no formatting.</p>
+<p><a href="/security/languages">Back to Languages</a> <span class="form-text ms-2">Missing: @Model.Missing</span></p>
+@if (Model.Notice is not null)
+{
+    <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
+}
+@if (Model.Error is not null)
+{
+    <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
+}
+
+<section id="language-file" class="card card-body mb-4">
+    <h2 class="h5">Translate in a file</h2>
+    <p class="form-text">The file has every text, with the English beside it. Upload it back when it is done: the texts it has replace
+        the ones here, and the others are kept. If anything in it is wrong, nothing is saved and you see what to fix.</p>
+    <p><a id="download" class="btn btn-outline-secondary" href="@at?handler=Download">Download as a file</a></p>
+    @if (Model.UploadProblems.Count > 0)
+    {
+        <div id="upload-problems" class="error alert alert-danger" role="alert">
+            <p class="mb-1">The file was not used:</p>
+            <ul class="mb-0">
+                @foreach (var problem in Model.UploadProblems)
+                {
+                    <li>
+                        @if (problem.Key.Length > 0)
+                        {
+                            <code>@problem.Key</code><text>: </text>
+                        }
+                        @problem.Problem
+                    </li>
+                }
+            </ul>
+        </div>
+    }
+    <form method="post" action="@at?handler=Upload" enctype="multipart/form-data" asp-antiforgery="true" class="d-flex flex-wrap align-items-end gap-2">
+        <div>
+            <label class="form-label" for="upload-file">Upload a file (at most 1 MB)</label>
+            <input class="form-control" type="file" id="upload-file" name="file" accept=".json,application/json">
+        </div>
+        <button type="submit" class="btn btn-outline-primary">Upload</button>
+    </form>
+</section>
+
+<form method="post" action="@at?handler=Save" asp-antiforgery="true">
+    <section id="page-texts">
+        <h2 class="h4">Page texts</h2>
+        @foreach (var row in Model.PageRows)
+        {
+            <div data-key="@row.Key" class="row g-2 border-top py-2">
+                <div class="col-md-6">
+                    <label class="form-label mb-1" for="page-@row.Key"><code>@row.Key</code></label>
+                    <p class="english mb-0 text-wrap">@row.English</p>
+                </div>
+                <div class="col-md-6">
+                    @if (row.Error is not null)
+                    {
+                        <div class="error alert alert-danger py-1 mb-1" role="alert">@row.Error</div>
+                    }
+                    <textarea class="form-control" id="page-@row.Key" name="@(GridGate.Launcher.Pages.Security.TranslateModel.PageField + row.Key)" rows="2">@row.Text</textarea>
+                </div>
+            </div>
+        }
+    </section>
+    <section id="email-texts" class="mt-4">
+        <h2 class="h4">Email texts</h2>
+        <p class="form-text">The emails to residents. An email's subject and body together need the fill-ins it can't do without, such as <code>{Link}</code>.</p>
+        @foreach (var row in Model.EmailRows)
+        {
+            var body = row.Key.EndsWith(".Body", StringComparison.Ordinal);
+            <div data-key="@row.Key" class="row g-2 border-top py-2">
+                <div class="col-md-6">
+                    <label class="form-label mb-1" for="email-@row.Key"><code>@row.Key</code></label>
+                    <p class="english language-english mb-0 text-wrap">@row.English</p>
+                </div>
+                <div class="col-md-6">
+                    @if (row.Error is not null)
+                    {
+                        <div class="error alert alert-danger py-1 mb-1" role="alert">@row.Error</div>
+                    }
+                    <textarea class="form-control" id="email-@row.Key" name="@(GridGate.Launcher.Pages.Security.TranslateModel.EmailField + row.Key)" rows="@(body ? 10 : 2)">@row.Text</textarea>
+                </div>
+            </div>
+        }
+    </section>
+    <div class="sticky-bottom bg-body py-2 mt-3">
+        <button type="submit" class="btn btn-primary">Save</button>
+    </div>
+</form>

@@ -19,7 +19,7 @@ namespace OpenSim.Region.Framework
 
         public UUID GetALTRegion(UUID regionID, UUID agentID)
         {
-            // !!!  DreamGrid Smart Start sends requested Region UUID to Dreamgrid.
+            // !!!  GridGate Smart Start sends requested Region UUID to GridGate.
             // If region is on line, returns same UUID. If Offline, returns UUID for Welcome, brings up the region and teleports you to it.
 
             if (m_ALT_Enabled)
@@ -56,7 +56,7 @@ namespace OpenSim.Region.Framework
 
         public string GetALTRegion(String regionName, UUID agentID)
         {
-            // !!!  DreamGrid Smart Start sends requested Region UUID to Dreamgrid.
+            // !!!  GridGate Smart Start sends requested Region UUID to GridGate.
             // If region is on line, returns same UUID. If Offline, returns UUID for Welcome, brings up the region and teleports you to it.
 
             if (m_ALT_Enabled)

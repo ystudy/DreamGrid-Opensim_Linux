@@ -7,7 +7,7 @@
 # PATCH        defaults to 0001-*.patch beside this script; pass check-old-vs-new-preprocess.patch for the test build
 #
 # Needs git, a C++ compiler, make, autoconf, automake, libtool and pkg-config. Build on the oldest distribution the
-# library has to run on (DreamGrid: Debian 12), because the result links against that glibc and libstdc++.
+# library has to run on (GridGate: Debian 12), because the result links against that glibc and libstdc++.
 set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)

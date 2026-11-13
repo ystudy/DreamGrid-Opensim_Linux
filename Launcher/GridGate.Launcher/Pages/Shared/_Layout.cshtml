@@ -1,0 +1,108 @@
+@using System.Reflection
+@using GridGate.Launcher.Core.Settings
+@inject Func<LauncherSettings> Settings
+@inject GridGate.Launcher.Core.Guests.SignUpBoard SignUpBoard
+@{
+    var version = GridGate.Launcher.CommandLine.Version();
+    var gridName = Settings().GridName;
+    var hasStaffPages = GridGate.Launcher.Core.Security.AdminRule.HasStaffPages(Settings());
+    var path = Context.Request.Path.Value ?? "/";
+    var enrolOnly = GridGate.Launcher.Security.TwoFactorGate.MustEnrol(Context);
+    // The "waiting" badge, for staff who may approve sign-ups (spec 2026-11-01-sign-up-approval-design §8).
+    var staffRole = GridGate.Launcher.Security.StaffSignIn.RoleOf(User);
+    var signUpsWaiting = hasStaffPages && GridGate.Launcher.Core.Guests.ApprovalRules.CanApprove(staffRole, Settings()) ? SignUpBoard.WaitingCount() : 0;
+    string Active(string prefix) => (prefix == "/" ? path == "/" : path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) ? " active" : "";
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>@(ViewData["Title"] is string t ? t + " - " : "")@gridName</title>
+    <script src="/js/theme.js"></script>
+    <link rel="stylesheet" href="/lib/bootstrap/bootstrap.min.css">
+    <link rel="stylesheet" href="/css/site.css">
+    @await RenderSectionAsync("Head", required: false)
+</head>
+<body class="@(ViewData["Wide"] switch { true => "page-wide", "full" => "page-full", _ => null })">
+<header class="navbar navbar-expand bg-body border-bottom shadow-sm">
+    <div class="container flex-wrap gap-2">
+        <strong class="navbar-brand grid-name me-auto">@gridName</strong>
+        @if (User.Identity?.IsAuthenticated == true)
+        {
+            <nav class="navbar-nav flex-wrap align-items-center">
+                @* Someone signed in only to set up two-factor can reach nothing else (TwoFactorGate). *@
+                @if (enrolOnly)
+                {
+                    <a class="nav-link@(Active("/profile/two-factor"))" href="/profile/two-factor">Two-factor</a>
+                }
+                else
+                {
+                    // What each person sees (design 2026-11-05-gridgate-menu-looks-workflows §1). Hiding a link guards nothing: every
+                    // page keeps its own rule in Program.cs. A group heading is also a link to its hub page, so it works without scripts.
+                    var canApprove = hasStaffPages && GridGate.Launcher.Core.Guests.ApprovalRules.CanApprove(staffRole, Settings());
+                    var groups = GridGate.Launcher.Navigation.StaffMenu.For(staffRole, Settings(), canApprove);
+                    var activeGroup = GridGate.Launcher.Navigation.StaffMenu.Active(groups, path);
+                    var badgeShown = false;
+                    foreach (var g in groups)
+                    {
+                        var active = ReferenceEquals(g, activeGroup) ? " active" : "";
+                        if (g.IsSingle && !g.Right)
+                        {
+                            var badge = g.Items.Count == 1 && g.Items[0].Badge && signUpsWaiting > 0;
+                            <a class="nav-link@(active)" href="@g.SingleHref" aria-current="@(active != "" ? "page" : null)">@g.SingleText
+                                @if (badge)
+                                {
+                                    <span id="@(badgeShown ? null : "signups-badge")" class="badge text-bg-warning ms-1">@signUpsWaiting waiting</span>
+                                    badgeShown = true;
+                                }
+                            </a>
+                            continue;
+                        }
+                        <div class="nav-item dropdown@(g.Right ? " ms-lg-auto" : "")">
+                            <a class="nav-link dropdown-toggle@(active)" href="@g.Href" role="button" data-bs-toggle="dropdown" aria-expanded="false">@(g.Right ? (string.IsNullOrEmpty(User.Identity?.Name) ? GridGate.Launcher.Navigation.StaffMenu.You : User.Identity.Name) : g.Text)</a>
+                            <ul class="dropdown-menu@(g.Right ? " dropdown-menu-end" : "")">
+                                @foreach (var item in g.Items)
+                                {
+                                    var here = path.Equals(item.Href, StringComparison.OrdinalIgnoreCase);
+                                    <li><a class="dropdown-item@(here ? " active" : "")" href="@item.Href" aria-current="@(here ? "page" : null)">@item.Text
+                                        @if (item.Badge && signUpsWaiting > 0)
+                                        {
+                                            <span id="@(badgeShown ? null : "signups-badge")" class="badge text-bg-warning ms-1">@signUpsWaiting waiting</span>
+                                            badgeShown = true;
+                                        }
+                                    </a></li>
+                                }
+                                @if (g.Right)
+                                {
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li><form method="post" action="/logout" asp-antiforgery="true" class="signout"><button type="submit" class="dropdown-item">Sign out</button></form></li>
+                                }
+                            </ul>
+                        </div>
+                    }
+                }
+                @if (enrolOnly)
+                {
+                    <form method="post" action="/logout" asp-antiforgery="true" class="signout"><button type="submit" class="btn btn-link nav-link">Sign out</button></form>
+                }
+            </nav>
+            @* The guest side as visitors see it; its header links back here while a staff member is signed in. Outside the <nav>: it is not a menu group. *@
+            @if (!enrolOnly && hasStaffPages && staffRole != GridGate.Launcher.Core.Security.StaffRole.None)
+            {
+                <a id="guest-side-link" class="btn btn-sm btn-outline-secondary" href="/home" icon="eye" title="Open the front page residents and visitors see">Guest view</a>
+            }
+        }
+    </div>
+</header>
+<main class="container py-4">
+    @RenderBody()
+</main>
+@* The install smokes read the version from a bare <footer> tag, so it is styled in site.css. *@
+<footer>GridGate @version</footer>
+<script src="/lib/bootstrap/bootstrap.bundle.min.js"></script>
+<script src="/js/copy.js"></script>
+<script src="/js/live.js"></script>
+@await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

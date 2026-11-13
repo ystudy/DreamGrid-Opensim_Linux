@@ -1,0 +1,152 @@
+@page "/estates/estate"
+@using GridGate.Launcher.Estates
+@model GridGate.Launcher.Pages.Estates.EstateModel
+@{
+    var e = Model.Estate;
+    ViewData["Title"] = e?.Name ?? "Estate";
+    var at = e is null ? "" : $"/estates/estate?id={e.Id}";
+}
+<p><a href="/estates">All estates</a></p>
+@if (Model.Error is not null)
+{
+    <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
+}
+@if (Model.Notice is not null)
+{
+    <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
+}
+@if (Model.Unavailable || e is null)
+{
+    <h1>Estate</h1>
+    <p id="estate-unavailable">@EstatesAdmin.DatabaseDown</p>
+}
+else
+{
+    <h1>@e.Name</h1>
+    <p>Owned by @e.OwnerName.
+        @if (Model.Kind == EstateKind.Grid)
+        {
+            <text>This is the grid's own estate: new regions join it.</text>
+        }
+        else if (Model.Kind == EstateKind.RegionOwner)
+        {
+            <text>It was made for @Model.MadeFor's regions.</text>
+        }
+    </p>
+
+    <h2 class="mt-4">Name</h2>
+    @if (Model.Kind == EstateKind.Grid)
+    {
+        <p id="name-fixed">The grid's own estate keeps its name: OpenSim puts new regions in the estate of that name.</p>
+    }
+    else
+    {
+        <form id="estate-rename" method="post" action="@at&handler=Rename" asp-antiforgery="true">
+            <label class="form-label visually-hidden" for="name">Name</label>
+            <input class="form-control" id="name" name="name" value="@(Model.TypedName ?? e.Name)" maxlength="@EstatesAdmin.MaxName" autocomplete="off">
+            <button type="submit" class="btn btn-primary mt-2">Rename</button>
+        </form>
+    }
+
+    <h2 class="mt-4">Owner</h2>
+    @if (Model.Kind == EstateKind.Plain)
+    {
+        <form id="estate-owner" method="post" action="@at&handler=Owner" asp-antiforgery="true">
+            <label class="form-label" for="owner">New owner</label>
+            <input class="form-control" id="owner" name="owner" value="@Model.TypedOwner" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="First Last">
+            <p class="hint form-text">A resident of your grid. The owner can change everything about the estate's regions in the viewer.</p>
+            <button type="submit" class="btn btn-primary">Change owner</button>
+        </form>
+    }
+    else if (Model.Kind == EstateKind.Grid)
+    {
+        <p id="owner-fixed">The grid's own estate always belongs to the grid owner.</p>
+    }
+    else
+    {
+        <p id="owner-fixed">To give @Model.MadeFor's regions to someone else, change who owns them on each region's page.</p>
+    }
+
+    <h2 class="mt-4">Managers</h2>
+    <p>Managers can change the estate's rules in the viewer, as the owner can. At most @GridGate.Launcher.Core.Estates.GridEstates.MaxManagers.</p>
+    @if (e.Managers.Count == 0)
+    {
+        <p id="managers-none">No managers.</p>
+    }
+    else
+    {
+        <table id="estate-managers" class="table align-middle">
+            <tbody>
+            @foreach (var m in e.Managers)
+            {
+                <tr>
+                    <td>@m.Name</td>
+                    <td>
+                        <form method="post" action="@at&handler=RemoveManager" asp-antiforgery="true">
+                            <input type="hidden" name="manager" value="@m.Id">
+                            <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
+                        </form>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+    <form id="estate-add-manager" method="post" action="@at&handler=AddManager" asp-antiforgery="true">
+        <label class="form-label" for="manager">Add a manager</label>
+        <input class="form-control" id="manager" name="manager" value="@Model.TypedManager" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="First Last">
+        <button type="submit" class="btn btn-primary mt-2">Add</button>
+    </form>
+
+    <h2 class="mt-4">Regions</h2>
+    @if (Model.InIt.Count == 0)
+    {
+        <p id="regions-none">None of this computer's regions are in it.</p>
+    }
+    else
+    {
+        <ul id="estate-regions">
+            @foreach (var r in Model.InIt)
+            {
+                <li>@r.Name</li>
+            }
+        </ul>
+    }
+    @if (Model.OtherRegions > 0)
+    {
+        <p class="hint form-text">And @Model.OtherRegions region(s) that aren't on this computer's region list.</p>
+    }
+    @if (Model.Elsewhere.Count > 0)
+    {
+        <form id="estate-move" method="post" action="@at&handler=Move" asp-antiforgery="true">
+            <label class="form-label" for="region">Move a region here</label>
+            <select class="form-select" id="region" name="region">
+                @foreach (var r in Model.Elsewhere)
+                {
+                    <option value="@r.Id" disabled="@r.Owned">@r.Name (now in @(r.Estate ?? "no estate"))@(r.Owned ? ", has an owner" : "")</option>
+                }
+            </select>
+            <p class="hint form-text">The region must be running. Regions with an owner stay in their owner's estate. Regions joined from other computers are managed there.</p>
+            <button type="submit" class="btn btn-primary mt-2">Move</button>
+        </form>
+    }
+
+    @if (Model.Kind != EstateKind.Grid)
+    {
+        <h2 class="mt-4">Delete</h2>
+        @if (e.Regions.Count > 0)
+        {
+            <p>Move its regions to another estate first.</p>
+        }
+        else
+        {
+            <form id="estate-delete" method="post" action="@at&handler=Delete" asp-antiforgery="true">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="confirm" name="confirm" value="true">
+                    <label class="form-check-label" for="confirm">Delete @e.Name with its managers, access list and bans</label>
+                </div>
+                <button type="submit" class="btn btn-danger mt-2">Delete estate</button>
+            </form>
+        }
+    }
+}

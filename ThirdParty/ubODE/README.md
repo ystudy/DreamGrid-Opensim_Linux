@@ -1,6 +1,6 @@
 # ubODE: faster trimesh preprocessing
 
-DreamGrid ships OpenSim's ubODE physics library (`bin/lib64/libubode-*.so`, `bin/lib64/ubode.dll`) with one fix on
+GridGate ships OpenSim's ubODE physics library (`bin/lib64/libubode-*.so`, `bin/lib64/ubode.dll`) with one fix on
 top of the version in [opensim-libs](https://github.com/opensim/opensim-libs). The fix makes regions with many mesh
 objects start several times faster and changes nothing about how they collide. This folder holds the patch, the
 scripts that build the library, and the evidence, so the fix can be sent to the OpenSimulator project as is.
@@ -112,7 +112,7 @@ Or run the `ubode` workflow on GitHub and take the files from its artifacts. To 
 `ThirdParty/ubODE/check-old-vs-new-preprocess.patch` as the second argument (or `-Patch`) and start a region with
 many meshes: the region's console output gets `[UBODE VERIFY] ... meshes differing 0, triangles differing 0`.
 
-The macOS library (`bin/lib64/libubode.dylib`) is still the unpatched opensim-libs binary. DreamGrid doesn't ship a
+The macOS library (`bin/lib64/libubode.dylib`) is still the unpatched opensim-libs binary. GridGate doesn't ship a
 macOS package. It can be rebuilt with `./configure --disable-asserts --enable-shared --disable-threading-intf` once
 per architecture, joining the two with `lipo`.
 

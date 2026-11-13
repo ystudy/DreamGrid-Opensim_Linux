@@ -31,11 +31,11 @@ using OpenMetaverse;
 namespace OpenSim.Framework
 {
     /// <summary>
-    /// DreamGrid minimum-viewer-version check: the most recently reported ViewerStats client_version string per
+    /// GridGate minimum-viewer-version check: the most recently reported ViewerStats client_version string per
     /// agent. Written by OpenSim.Region.OptionalModules.UserStatistics.WebStatsModule.ParseViewerStats, the only
     /// place a viewer's self-reported client_version is ever known (it arrives via the viewer's own periodic
     /// ViewerStats CAPS post, not at login). Read by Scene.GetSmartStartALTRegion so it can be included on the next
-    /// SmartStart ALT round trip to DreamGrid (see SmartStartAltClient.Query's clientVersion parameter) without
+    /// SmartStart ALT round trip to GridGate (see SmartStartAltClient.Query's clientVersion parameter) without
     /// WebStatsModule needing its own outbound HTTP call.
     ///
     /// Lives in OpenSim.Framework - not in either WebStatsModule's OptionalModules assembly or Scene's

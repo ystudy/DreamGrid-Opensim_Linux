@@ -1,0 +1,150 @@
+@page "/regions"
+@model GridGate.Launcher.Pages.Regions.IndexModel
+@{
+    ViewData["Title"] = "Regions";
+    // The map is the work area: it gets the whole window.
+    ViewData["Wide"] = "full";
+}
+<div class="page-head">
+    <h1>Regions<help-tip class="help-start">Your world's regions on the grid map. Drag a region type onto the map, or click a type and then a spot, to add one there. Click a region on the map to open it beside the map, where you can start or stop it and change it.</help-tip></h1>
+    <div class="page-actions">
+        @if (Model.DeletedCount > 0)
+        {
+            <a class="btn btn-sm btn-outline-secondary" href="/regions/deleted" icon="undo">Recently deleted (@Model.DeletedCount)</a>
+        }
+        <a class="btn btn-sm btn-primary" href="/regions/add">Add a region</a>
+    </div>
+</div>
+<partial name="_HubLinks" model="@(new GridGate.Launcher.Navigation.HubLinks("World", "/regions/library", "/regions/deleted"))" />
+
+@if (Model.Notice is not null)
+{
+    <p class="notice alert alert-info py-2" role="status">@Model.Notice</p>
+}
+
+<noscript><p class="alert alert-info">The map needs JavaScript. You can still add a region by its map position below.</p></noscript>
+
+@* Region types | the map | the chosen region (map.js shows that column when a region is picked). *@
+<div class="regions-columns mb-3">
+    <div id="types-column">
+        <section class="work-panel">
+            <h2 class="panel-title">Region types<help-tip class="help-start">Each type is the land a new region starts with. Drag one onto the map, or click it and then a spot. A type made from an OAR file starts with that file's land and objects.</help-tip></h2>
+            <ul id="region-types" class="region-types list-unstyled mb-2">
+                @foreach (var t in Model.Types)
+                {
+                    <li data-type="@t.Id" class="region-type">
+                        <span class="type-swatch type-@t.Id">@if (t.Custom) { <img src="/img/custom-type.svg" alt=""> } else { <img src="/regions/types/@(t.Id).png" alt="" data-remove-on-error> }</span>
+                        <span class="type-name fw-semibold">@t.Name</span>
+                        <span class="type-description d-block m-0">@t.Description</span>
+                    </li>
+                }
+            </ul>
+            <a class="btn btn-sm btn-outline-secondary w-100" href="/regions/library" icon="box">OAR library</a>
+        </section>
+    </div>
+    @* The map takes the panel's room until map.js opens a region's panel. *@
+    <div id="map-column">
+        <section class="work-panel map-panel">
+            <div class="map-tools">
+                <span class="panel-title mb-0">Map<help-tip class="help-start">Drag the map to look around and use the + and − buttons to zoom. Running regions have a green edge, starting or stopping ones yellow, failed ones red; a dashed edge is a parked region or a spot being kept for one.</help-tip></span>
+                <button type="button" id="back-to-mine" class="btn btn-sm btn-outline-secondary" icon="map-pin" hidden>Back to my regions</button>
+                <span class="ms-auto btn-group btn-group-sm">
+                    <button type="button" id="zoom-out" class="btn btn-outline-secondary" icon="none" aria-label="Zoom out" hidden>&minus;</button>
+                    <button type="button" id="zoom-in" class="btn btn-outline-secondary" icon="none" aria-label="Zoom in" hidden>+</button>
+                </span>
+            </div>
+            <div id="map" class="region-map"
+                 data-tiles="/api/map/tile" data-regions="/api/regions" data-placement="/api/regions/placement"
+                 data-add="/regions/add" data-panel="/regions/region/"
+                 data-selected="@Model.Selected"
+                 data-move="@Model.Moving?.Uuid" data-move-name="@Model.Moving?.Name" data-move-size="@Model.Moving?.Size"></div>
+            <p id="placement-text" class="small mb-0" role="status"></p>
+        </section>
+    </div>
+    <div id="panel-column" hidden>
+        @* On phones the panel opens as an offcanvas over the map; from lg up it is a column. *@
+        <div id="region-panel" class="offcanvas-lg offcanvas-bottom region-panel" tabindex="-1" aria-label="Region">
+            <div class="offcanvas-header d-lg-none">
+                <h2 class="offcanvas-title">Region</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#region-panel" aria-label="Close"></button>
+            </div>
+            <div class="offcanvas-body">
+                <section class="work-panel w-100 position-relative">
+                    <button type="button" id="close-panel" class="btn-close d-none d-lg-block position-absolute top-0 end-0 m-2" aria-label="Close"></button>
+                    <div class="region-panel-body"></div>
+                </section>
+            </div>
+        </div>
+    </div>
+</div>
+
+<section class="work-panel mb-3">
+    <h2 class="panel-title">Your regions<help-tip class="help-start">Click a name to open the region. Runs says whether a region runs on its own or together with other regions.</help-tip></h2>
+    @if (Model.Rows.Count == 0)
+    {
+        <p class="mb-0">No regions yet.</p>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table id="region-list" class="table align-middle mb-0">
+                <thead><tr><th>Name</th><th>State</th><th>Runs</th><th>Map position</th></tr></thead>
+                <tbody>
+                @foreach (var r in Model.Rows)
+                {
+                    <tr class="@(r.Id == Model.Selected ? "table-active" : "")" data-region="@r.Id">
+                        <td>
+                            <a class="fw-semibold" href="/regions/region/@r.Id">@r.Name</a>
+                            @if (r.Owner is not null)
+                            {
+                                <small class="region-owner-mark d-block m-0">Owner: @r.Owner</small>
+                            }
+                        </td>
+                        <td><span class="badge state-@r.StateText.ToLowerInvariant()">@r.StateText</span></td>
+                        <td>@r.RunsWithText</td>
+                        <td>@r.X, @r.Y@(r.Size > 1 ? $" ({r.Size}×{r.Size})" : "")</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@if (Model.LandingShown && Model.Rows.Count > 0)
+{
+    <section class="work-panel mb-3 form-panel" id="landing">
+        <h2 class="panel-title">Landing<help-tip class="help-start">Where people arrive when their home or last region can't take them, for example because it is stopped. Hypergrid visitors who name no region arrive at the default region too.</help-tip></h2>
+        <form method="post" action="/regions?handler=landing" asp-antiforgery="true">
+            <div class="mb-3">
+                <label class="form-label fw-semibold" for="LandingDefault">Default region</label>
+                <select class="form-select" id="LandingDefault" name="LandingDefault">
+                    <option value="" selected="@(Model.LandingDefault == "")">Automatic: @Model.AutomaticName</option>
+                    @foreach (var r in Model.Rows)
+                    {
+                        <option value="@r.Id" selected="@(Model.LandingDefault == r.Id.ToString())">@r.Name</option>
+                    }
+                </select>
+                <p class="hint form-text">Automatic uses your first region.</p>
+            </div>
+            <fieldset class="mb-3">
+                <legend class="form-label fw-semibold fs-6">Fallback regions</legend>
+                @foreach (var r in Model.Rows)
+                {
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="LandingFallbacks" id="LandingFallbacks-@r.Id" value="@r.Id" checked="@Model.LandingFallbacks.Contains(r.Id.ToString())">
+                        <label class="form-check-label" for="LandingFallbacks-@r.Id">@r.Name</label>
+                    </div>
+                }
+                <p class="hint form-text">Tried when the default region is down too. The nearest running one is used. The default region is never its own fallback.</p>
+            </fieldset>
+            <p class="hint form-text">A change applies when your world restarts.</p>
+            <div class="form-actions"><button type="submit" class="btn btn-primary" icon="save">Save landing</button></div>
+        </form>
+    </section>
+}
+
+@section Scripts {
+<script src="/js/map.js"></script>
+<script src="/js/img-fallback.js"></script>
+}
