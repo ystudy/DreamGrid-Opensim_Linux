@@ -1,7 +1,7 @@
 name: build-and-smoke
 
-# Builds DreamGrid.sln on .NET 10, runs the unit tests, and boots a real region with the smoke harness
-# (tests/DreamGrid.Smoke) on Windows and Debian 12. msbuildnet.yml is upstream's and only runs on opensim/opensim.
+# Builds GridGate.sln on .NET 10, runs the unit tests, and boots a real region with the smoke harness
+# (tests/GridGate.Smoke) on Windows and Debian 12. msbuildnet.yml is upstream's and only runs on opensim/opensim.
 # For pull requests and pushes to main that change setup/ or Launcher/, it also runs release.yml's packaging and install
 # smokes (without publishing).
 
@@ -83,19 +83,19 @@ jobs:
           dotnet-version: 10.0.x
 
       - name: Build
-        run: dotnet build -c Release DreamGrid.sln
+        run: dotnet build -c Release GridGate.sln
 
       - name: Unit tests
-        run: dotnet test --project tests/DreamGrid.Platform.Tests -c Release
+        run: dotnet test --project tests/GridGate.Platform.Tests -c Release
 
       # Both runners are x64, which is the shipped Rapier library (bin/lib64). When an arm64 job is added, skip these
       # three Rapier steps there until librapier-arm64.so and librapier-mt-arm64.so ship from rapier.yml.
       - name: Rapier tests
-        run: dotnet test --project tests/DreamGrid.Physics.Rapier.Tests -c Release
+        run: dotnet test --project tests/GridGate.Physics.Rapier.Tests -c Release
 
       # The same tests on the parallel build (rapier_mt), which RapierNumThreads > 1 loads.
       - name: Rapier tests (rapier_mt)
-        run: dotnet test --project tests/DreamGrid.Physics.Rapier.Tests -c Release --no-build
+        run: dotnet test --project tests/GridGate.Physics.Rapier.Tests -c Release --no-build
         env:
           RAPIER_TEST_THREADS: '2'
 
@@ -108,19 +108,19 @@ jobs:
         run: dotnet test --project tests/GridGate.ModelImport.Tests -c Release
 
       - name: Smoke (ubODE)
-        run: dotnet run --project tests/DreamGrid.Smoke -c Release -- --bin bin --keep --physics ubODE
+        run: dotnet run --project tests/GridGate.Smoke -c Release -- --bin bin --keep --physics ubODE
         env:
           TMP: ${{ runner.temp }}
           TEMP: ${{ runner.temp }}
 
       - name: Smoke (BulletSim)
-        run: dotnet run --project tests/DreamGrid.Smoke -c Release -- --bin bin --keep --physics BulletSim
+        run: dotnet run --project tests/GridGate.Smoke -c Release -- --bin bin --keep --physics BulletSim
         env:
           TMP: ${{ runner.temp }}
           TEMP: ${{ runner.temp }}
 
       - name: Smoke (Rapier)
-        run: dotnet run --project tests/DreamGrid.Smoke -c Release -- --bin bin --keep --physics Rapier
+        run: dotnet run --project tests/GridGate.Smoke -c Release -- --bin bin --keep --physics Rapier
         env:
           TMP: ${{ runner.temp }}
           TEMP: ${{ runner.temp }}
@@ -166,19 +166,19 @@ jobs:
           echo /usr/share/dotnet >> "$GITHUB_PATH"
 
       - name: Build
-        run: dotnet build -c Release DreamGrid.sln
+        run: dotnet build -c Release GridGate.sln
 
       - name: Unit tests
-        run: dotnet test --project tests/DreamGrid.Platform.Tests -c Release
+        run: dotnet test --project tests/GridGate.Platform.Tests -c Release
 
       # Both runners are x64, which is the shipped Rapier library (bin/lib64). When an arm64 job is added, skip these
       # three Rapier steps there until librapier-arm64.so and librapier-mt-arm64.so ship from rapier.yml.
       - name: Rapier tests
-        run: dotnet test --project tests/DreamGrid.Physics.Rapier.Tests -c Release
+        run: dotnet test --project tests/GridGate.Physics.Rapier.Tests -c Release
 
       # The same tests on the parallel build (rapier_mt), which RapierNumThreads > 1 loads.
       - name: Rapier tests (rapier_mt)
-        run: dotnet test --project tests/DreamGrid.Physics.Rapier.Tests -c Release --no-build
+        run: dotnet test --project tests/GridGate.Physics.Rapier.Tests -c Release --no-build
         env:
           RAPIER_TEST_THREADS: '2'
 
@@ -191,16 +191,16 @@ jobs:
         run: dotnet test --project tests/GridGate.ModelImport.Tests -c Release
 
       - name: Smoke (ubODE)
-        run: dotnet run --project tests/DreamGrid.Smoke -c Release -- --bin bin --keep --physics ubODE
+        run: dotnet run --project tests/GridGate.Smoke -c Release -- --bin bin --keep --physics ubODE
 
       - name: Smoke (BulletSim)
-        run: dotnet run --project tests/DreamGrid.Smoke -c Release -- --bin bin --keep --physics BulletSim
+        run: dotnet run --project tests/GridGate.Smoke -c Release -- --bin bin --keep --physics BulletSim
 
       - name: Smoke (Rapier)
-        run: dotnet run --project tests/DreamGrid.Smoke -c Release -- --bin bin --keep --physics Rapier
+        run: dotnet run --project tests/GridGate.Smoke -c Release -- --bin bin --keep --physics Rapier
 
       - name: Smoke (ubODE, German locale)
-        run: dotnet run --project tests/DreamGrid.Smoke -c Release -- --bin bin --keep --physics ubODE --culture de_DE.UTF-8
+        run: dotnet run --project tests/GridGate.Smoke -c Release -- --bin bin --keep --physics ubODE --culture de_DE.UTF-8
 
       - name: Upload smoke logs
         if: failure()
@@ -210,8 +210,8 @@ jobs:
           path: /tmp/gg smoke */bin/smoke.log
 
   # The launcher (Launcher/): unit tests, then the integration tests against a real MariaDB, Robust and region,
-  # including the end-to-end tests that run the launcher itself. DREAMGRID_REQUIRE_INTEGRATION=1 turns a missing
-  # MariaDB or bin/ into a failure, so these jobs cannot pass by skipping. DREAMGRID_TEST_KEEP=1 keeps the test data
+  # including the end-to-end tests that run the launcher itself. GRIDGATE_REQUIRE_INTEGRATION=1 turns a missing
+  # MariaDB or bin/ into a failure, so these jobs cannot pass by skipping. GRIDGATE_TEST_KEEP=1 keeps the test data
   # directories (under the runner temp directory) so their logs can be uploaded when a test fails.
   launcher-windows:
     runs-on: windows-latest
@@ -255,23 +255,23 @@ jobs:
         run: |
           $bin = Join-Path $env:RUNNER_TEMP "mariadb-dist\mariadb-$env:MARIADB_VERSION-winx64\bin"
           if (-not (Test-Path (Join-Path $bin 'mariadbd.exe'))) { throw "mariadbd.exe not found in $bin" }
-          "DREAMGRID_MARIADB_BIN=$bin" >> $env:GITHUB_ENV
+          "GRIDGATE_MARIADB_BIN=$bin" >> $env:GITHUB_ENV
 
       - name: Build
-        run: dotnet build -c Release DreamGrid.sln
+        run: dotnet build -c Release GridGate.sln
 
       - name: Launcher unit tests
-        run: dotnet test --project Launcher/DreamGrid.Launcher.Tests -c Release
+        run: dotnet test --project Launcher/GridGate.Launcher.Tests -c Release
 
       - name: Launcher integration and end-to-end tests
         # Under the job's limit: a stuck test fails this step, so the logs below still upload.
         timeout-minutes: 55
-        run: dotnet test --project Launcher/DreamGrid.Launcher.IntegrationTests -c Release
+        run: dotnet test --project Launcher/GridGate.Launcher.IntegrationTests -c Release
         env:
           TMP: ${{ runner.temp }}
           TEMP: ${{ runner.temp }}
-          DREAMGRID_REQUIRE_INTEGRATION: '1'
-          DREAMGRID_TEST_KEEP: '1'
+          GRIDGATE_REQUIRE_INTEGRATION: '1'
+          GRIDGATE_TEST_KEEP: '1'
 
       - name: Upload launcher test logs
         if: failure()
@@ -305,7 +305,7 @@ jobs:
         run: |
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates libicu-dev libgdiplus git mariadb-server
-          echo "DREAMGRID_MARIADB_BIN=/usr/sbin" >> "$GITHUB_ENV"
+          echo "GRIDGATE_MARIADB_BIN=/usr/sbin" >> "$GITHUB_ENV"
           # In a container job the runner.temp context is the host path; RUNNER_TEMP is the path inside the container.
           echo "GG_TEST_TEMP=$RUNNER_TEMP" >> "$GITHUB_ENV"
 
@@ -323,20 +323,20 @@ jobs:
           echo /usr/share/dotnet >> "$GITHUB_PATH"
 
       - name: Build
-        run: dotnet build -c Release DreamGrid.sln
+        run: dotnet build -c Release GridGate.sln
 
       - name: Launcher unit tests
-        run: dotnet test --project Launcher/DreamGrid.Launcher.Tests -c Release
+        run: dotnet test --project Launcher/GridGate.Launcher.Tests -c Release
 
       # The container runs as root: the launcher starts mariadbd with --user=root then.
       - name: Launcher integration and end-to-end tests
         # Under the job's limit: a stuck test fails this step, so the logs below still upload.
         timeout-minutes: 55
-        run: dotnet test --project Launcher/DreamGrid.Launcher.IntegrationTests -c Release
+        run: dotnet test --project Launcher/GridGate.Launcher.IntegrationTests -c Release
         env:
           TMPDIR: ${{ env.GG_TEST_TEMP }}
-          DREAMGRID_REQUIRE_INTEGRATION: '1'
-          DREAMGRID_TEST_KEEP: '1'
+          GRIDGATE_REQUIRE_INTEGRATION: '1'
+          GRIDGATE_TEST_KEEP: '1'
 
       - name: Upload launcher test logs
         if: failure()

@@ -1,14 +1,14 @@
 <#
-.SYNOPSIS  Install smoke for the Windows installer (DreamGridSetup-<version>.exe).
+.SYNOPSIS  Install smoke for the Windows installer (GridGateSetup-<version>.exe).
 .DESCRIPTION
   Runs on a disposable Windows 10/11 x64 machine from an elevated PowerShell (CI: windows-latest), since it installs,
-  upgrades and uninstalls the DreamGrid service for real. -InstallerV2 is the same build with another -Version (the
+  upgrades and uninstalls the GridGate service for real. -InstallerV2 is the same build with another -Version (the
   upgrade step). When its runtime version differs too, the upgrade stage also checks that the runtime the adopted region
   still uses is kept.
-    INSTALL_SMOKE_DIR  a published tests/DreamGrid.InstallSmoke (default: published here with dotnet).
+    INSTALL_SMOKE_DIR  a published tests/GridGate.InstallSmoke (default: published here with dotnet).
     SMOKE_LOGS         a directory that receives the setup logs and the launcher's logs when a stage fails.
   Prints one line per stage; exits 0 when every stage passed, 1 at the first failing stage. Runs on Windows PowerShell 5.1.
-.EXAMPLE   powershell -File setup/windows/test/smoke.ps1 -Installer DreamGridSetup-0.0.1.exe -InstallerV2 DreamGridSetup-0.0.2.exe
+.EXAMPLE   powershell -File setup/windows/test/smoke.ps1 -Installer GridGateSetup-0.0.1.exe -InstallerV2 GridGateSetup-0.0.2.exe
 #>
 param(
     [Parameter(Mandatory)][string]$Installer,
@@ -18,10 +18,10 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
-$data = Join-Path $env:ProgramData 'DreamGrid'
-$serviceKey = 'HKLM:\SYSTEM\CurrentControlSet\Services\DreamGrid'
-$shortcut = Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\DreamGrid admin page.url'
-$work = Join-Path ([IO.Path]::GetTempPath()) ('dreamgrid-smoke-' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
+$data = Join-Path $env:ProgramData 'GridGate'
+$serviceKey = 'HKLM:\SYSTEM\CurrentControlSet\Services\GridGate'
+$shortcut = Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\GridGate admin page.url'
+$work = Join-Path ([IO.Path]::GetTempPath()) ('gridgate-smoke-' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
 New-Item -ItemType Directory -Force $work | Out-Null
 $script:stage = 'prepare'
 
@@ -90,13 +90,13 @@ function Get-SavedWebPort {
 # The installed service: its command line (dotnet.exe, the launcher, the arguments) and where it lives.
 function Get-ServiceCommand {
     $image = (Get-ItemProperty -LiteralPath $serviceKey -Name ImagePath).ImagePath
-    if ($image -notmatch '^"(?<dotnet>[^"]+\\dotnet-(?<runtime>[^"\\]+)\\dotnet\.exe)" "(?<app>[^"]+)\\launcher\\DreamGrid\.Launcher\.dll"') {
+    if ($image -notmatch '^"(?<dotnet>[^"]+\\dotnet-(?<runtime>[^"\\]+)\\dotnet\.exe)" "(?<app>[^"]+)\\launcher\\GridGate\.Launcher\.dll"') {
         Fail "the service runs '$image', not the launcher on a versioned dotnet folder"
     }
     return [pscustomobject]@{ Image = $image; Dotnet = $Matches.dotnet; Runtime = $Matches.runtime; App = $Matches.app }
 }
 
-function Get-FirewallRules { @(Get-NetFirewallRule -DisplayName 'DreamGrid (dotnet *)' -ErrorAction SilentlyContinue) }
+function Get-FirewallRules { @(Get-NetFirewallRule -DisplayName 'GridGate (dotnet *)' -ErrorAction SilentlyContinue) }
 
 # --- Prepare -----------------------------------------------------------------------------------------------------
 foreach ($exe in $Installer, $InstallerV2) {
@@ -104,15 +104,15 @@ foreach ($exe in $Installer, $InstallerV2) {
 }
 $Installer = (Resolve-Path -LiteralPath $Installer).Path
 $InstallerV2 = (Resolve-Path -LiteralPath $InstallerV2).Path
-if (Get-Service DreamGrid -ErrorAction SilentlyContinue) { Fail 'a DreamGrid service is already installed; run the smoke on a clean machine' }
+if (Get-Service GridGate -ErrorAction SilentlyContinue) { Fail 'a GridGate service is already installed; run the smoke on a clean machine' }
 if ($env:INSTALL_SMOKE_DIR) { $smokeDir = [IO.Path]::GetFullPath($env:INSTALL_SMOKE_DIR) }
 else {
     $smokeDir = Join-Path $work 'installsmoke'
-    & dotnet publish (Join-Path $repo 'tests\DreamGrid.InstallSmoke') -c Release -o $smokeDir | Out-Null
-    if ($LASTEXITCODE -ne 0) { Fail "dotnet publish of DreamGrid.InstallSmoke exited $LASTEXITCODE" }
+    & dotnet publish (Join-Path $repo 'tests\GridGate.InstallSmoke') -c Release -o $smokeDir | Out-Null
+    if ($LASTEXITCODE -ne 0) { Fail "dotnet publish of GridGate.InstallSmoke exited $LASTEXITCODE" }
 }
-$smokeDll = Join-Path $smokeDir 'DreamGrid.InstallSmoke.dll'
-if (-not (Test-Path -LiteralPath $smokeDll)) { Fail "no DreamGrid.InstallSmoke.dll in $smokeDir" }
+$smokeDll = Join-Path $smokeDir 'GridGate.InstallSmoke.dll'
+if (-not (Test-Path -LiteralPath $smokeDll)) { Fail "no GridGate.InstallSmoke.dll in $smokeDir" }
 Ok "installers $([IO.Path]::GetFileName($Installer)) and $([IO.Path]::GetFileName($InstallerV2)); work folder $work"
 
 # --- Busy port (Review Focus 3) ----------------------------------------------------------------------------------
@@ -130,16 +130,16 @@ if (-not (Wait-Until 30 { -not (Test-Port 8001) })) { Fail 'port 8001 was not re
 if ($code -eq 0) { Fail 'the installer succeeded although port 8001 was taken' }
 $sentence = 'Port 8001 is already used by another program.'
 if ((Read-SetupLog 'busy-port').IndexOf($sentence, [StringComparison]::Ordinal) -lt 0) { Fail "the setup log does not say '$sentence'" }
-if (Get-Service DreamGrid -ErrorAction SilentlyContinue) { Fail 'a service was created although the port was taken' }
+if (Get-Service GridGate -ErrorAction SilentlyContinue) { Fail 'a service was created although the port was taken' }
 Ok "exit $code with the port sentence; no service"
 
 # --- A port the launcher refuses: a plain message, nothing installed -----------------------------------------------
 $script:stage = 'refused-port'
 $code = Invoke-Setup $Installer 'refused-port' @('/WEBPORT=8002')
 if ($code -eq 0) { Fail 'the installer succeeded with /WEBPORT=8002 (the Robust public port)' }
-$sentence = '/WEBPORT needs a port number from 1024 to 65535 that DreamGrid does not use itself'
+$sentence = '/WEBPORT needs a port number from 1024 to 65535 that GridGate does not use itself'
 if ((Read-SetupLog 'refused-port').IndexOf($sentence, [StringComparison]::Ordinal) -lt 0) { Fail "the setup log does not say '$sentence'" }
-if (Get-Service DreamGrid -ErrorAction SilentlyContinue) { Fail 'a service was created although the port was refused' }
+if (Get-Service GridGate -ErrorAction SilentlyContinue) { Fail 'a service was created although the port was refused' }
 Ok "exit $code with the port message; no service"
 
 # --- Install -----------------------------------------------------------------------------------------------------
@@ -149,11 +149,11 @@ if ($code -ne 0) { Fail "the installer exited $code" }
 $isAdmin = (New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole(
     [Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $isAdmin) { Fail 'the rest of the smoke reads the data folder and controls the service: run it from an elevated PowerShell' }
-$service = Get-Service DreamGrid -ErrorAction SilentlyContinue
-if (-not $service) { Fail 'there is no DreamGrid service' }
-if (-not (Wait-Until 60 { (Get-Service DreamGrid).Status -eq 'Running' })) { Fail "the service is $((Get-Service DreamGrid).Status), not Running" }
+$service = Get-Service GridGate -ErrorAction SilentlyContinue
+if (-not $service) { Fail 'there is no GridGate service' }
+if (-not (Wait-Until 60 { (Get-Service GridGate).Status -eq 'Running' })) { Fail "the service is $((Get-Service GridGate).Status), not Running" }
 $props = Get-ItemProperty -LiteralPath $serviceKey
-if ($props.ObjectName -ne 'NT SERVICE\DreamGrid') { Fail "the service runs as '$($props.ObjectName)', not NT SERVICE\DreamGrid" }
+if ($props.ObjectName -ne 'NT SERVICE\GridGate') { Fail "the service runs as '$($props.ObjectName)', not NT SERVICE\GridGate" }
 if ($props.Start -ne 2) { Fail "the service start type is $($props.Start), not automatic (2)" }
 $command = Get-ServiceCommand
 $app = $command.App
@@ -164,8 +164,8 @@ if ($command.Image.IndexOf($expectedArgs, [StringComparison]::OrdinalIgnoreCase)
 # it in System32, so only the app-local copy shows the installer ships it.
 if (-not (Test-Path -LiteralPath (Join-Path $app 'bin\lib64\vcruntime140.dll'))) { Fail 'there is no bin\lib64\vcruntime140.dll beside ubode.dll' }
 $rules = @(Get-FirewallRules)
-if ($rules.Count -ne 1 -or $rules[0].DisplayName -ne "DreamGrid (dotnet $($command.Runtime))") {
-    Fail "expected one firewall rule 'DreamGrid (dotnet $($command.Runtime))', found: $(($rules | ForEach-Object DisplayName) -join ', ')"
+if ($rules.Count -ne 1 -or $rules[0].DisplayName -ne "GridGate (dotnet $($command.Runtime))") {
+    Fail "expected one firewall rule 'GridGate (dotnet $($command.Runtime))', found: $(($rules | ForEach-Object DisplayName) -join ', ')"
 }
 if (-not (Test-Path -LiteralPath $shortcut)) { Fail "there is no Start menu shortcut $shortcut" }
 if ((Get-Content -LiteralPath $shortcut -Raw) -notmatch '(?m)^URL=http://localhost:8001/\s*$') {
@@ -173,10 +173,10 @@ if ((Get-Content -LiteralPath $shortcut -Raw) -notmatch '(?m)^URL=http://localho
 }
 # The website's styles come from launcher\wwwroot, which only the service's content root makes reachable.
 if (-not (Wait-Until 60 { $null -ne (Get-Http '/css/site.css') })) { Fail 'the website does not serve /css/site.css' }
-$link = (& $command.Dotnet (Join-Path $app 'launcher\DreamGrid.Launcher.dll') admin-link --wait 120) -join "`n"
+$link = (& $command.Dotnet (Join-Path $app 'launcher\GridGate.Launcher.dll') admin-link --wait 120) -join "`n"
 if ($LASTEXITCODE -ne 0) { Fail "admin-link exited $LASTEXITCODE`: $link" }
 if ($link -notmatch '^http://\S+/setup\?token=\S+$') { Fail "admin-link printed '$link', not a setup link" }
-Ok "DreamGrid $v1 in $app; service running as NT SERVICE\DreamGrid on dotnet $($command.Runtime); link $link"
+Ok "GridGate $v1 in $app; service running as NT SERVICE\GridGate on dotnet $($command.Runtime); link $link"
 
 # --- Setup, logins, service stop/start with adoption (InstallSmoke) -----------------------------------------------
 $script:stage = 'installsmoke'
@@ -185,13 +185,13 @@ $script:stage = 'installsmoke'
 # 1053; the stop also waits (up to 60 s) for that process. A poll, not Wait-Process: that one fails the command
 # when the process has already gone. Encoded, so cmd.exe and .NET argument quoting leave it alone.
 $stopScript = '$ProgressPreference = ''SilentlyContinue''; ' +
-    '$p = (Get-CimInstance Win32_Service | Where-Object Name -eq DreamGrid).ProcessId; ' +
-    'Stop-Service DreamGrid -ErrorAction Stop; (Get-Service DreamGrid).WaitForStatus(''Stopped'', ''00:01:00''); ' +
+    '$p = (Get-CimInstance Win32_Service | Where-Object Name -eq GridGate).ProcessId; ' +
+    'Stop-Service GridGate -ErrorAction Stop; (Get-Service GridGate).WaitForStatus(''Stopped'', ''00:01:00''); ' +
     '$deadline = (Get-Date).AddSeconds(60); ' +
     'while ($p -and (Get-Process -Id $p -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 200 }; ' +
     'exit 0'
 $stop = "powershell.exe -NoProfile -EncodedCommand $([Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($stopScript)))"
-$start = "sc.exe start DreamGrid && powershell.exe -NoProfile -Command (Get-Service DreamGrid).WaitForStatus('Running','00:01:00')"
+$start = "sc.exe start GridGate && powershell.exe -NoProfile -Command (Get-Service GridGate).WaitForStatus('Running','00:01:00')"
 & $command.Dotnet $smokeDll --url http://127.0.0.1:8001 --setup-link $link --data $data --robust-port 8002 --stop $stop --start $start |
     Write-Host
 if ($LASTEXITCODE -ne 0) { Fail 'InstallSmoke failed' }
@@ -217,9 +217,9 @@ $footer = $null
 Wait-Until 120 {
     $page = Get-Http '/login'
     if ($page -and $page -match '<footer>[^<]*</footer>') { $script:footer = [System.Net.WebUtility]::HtmlDecode($Matches[0]) }
-    $script:footer -eq "<footer>DreamGrid $v2</footer>"
+    $script:footer -eq "<footer>GridGate $v2</footer>"
 } | Out-Null
-if ($footer -ne "<footer>DreamGrid $v2</footer>") { Fail "the /login footer is '$footer', not version $v2" }
+if ($footer -ne "<footer>GridGate $v2</footer>") { Fail "the /login footer is '$footer', not version $v2" }
 if (-not (Wait-Until 300 { (Get-Http '/api/status') -match '"loginsEnabled":true' })) { Fail 'logins were not enabled again within 5 minutes' }
 $pidAfter = [int](Get-Content -LiteralPath $pidFile -TotalCount 1).Trim()
 if ($pidAfter -ne $regionPid) { Fail "the region PID changed from $regionPid to $pidAfter" }
@@ -231,11 +231,11 @@ $folder1 = Join-Path $command.App "dotnet-$runtime1"
 if ($runtime1 -ne $runtime2) {
     if ($region.Path -ne (Join-Path $folder1 'dotnet.exe')) { Fail "the adopted region runs $($region.Path), not $folder1\dotnet.exe" }
     if (-not (Test-Path -LiteralPath (Join-Path $folder1 'dotnet.exe'))) { Fail "$folder1 was removed while the adopted region still uses it" }
-    $wanted = @("DreamGrid (dotnet $runtime1)", "DreamGrid (dotnet $runtime2)")
+    $wanted = @("GridGate (dotnet $runtime1)", "GridGate (dotnet $runtime2)")
     $runtimes = "kept dotnet-$runtime1 for the adopted region, launcher on dotnet-$runtime2"
 }
 else {
-    $wanted = @("DreamGrid (dotnet $runtime2)")
+    $wanted = @("GridGate (dotnet $runtime2)")
     $runtimes = "runtime $runtime2"
 }
 $names = @(Get-FirewallRules | ForEach-Object DisplayName | Sort-Object)
@@ -265,7 +265,7 @@ if (-not (Test-Path -LiteralPath $uninstaller)) { Fail "there is no uninstaller 
 $code = Invoke-Setup $uninstaller 'uninstall'
 if ($code -ne 0) { Fail "the uninstaller exited $code" }
 # The uninstaller hands over to a copy of itself in %TEMP%; wait for that copy's work too.
-if (-not (Wait-Until 180 { -not (Get-Service DreamGrid -ErrorAction SilentlyContinue) })) { Fail 'the DreamGrid service is still installed' }
+if (-not (Wait-Until 180 { -not (Get-Service GridGate -ErrorAction SilentlyContinue) })) { Fail 'the GridGate service is still installed' }
 if (-not (Wait-Until 60 { -not (Get-Process -Id $regionPid -ErrorAction SilentlyContinue) })) { Fail "the region (PID $regionPid) is still running" }
 if (-not (Test-Path -LiteralPath (Join-Path $data 'settings.json'))) { Fail "the data folder $data was not kept" }
 $rules = @(Get-FirewallRules)

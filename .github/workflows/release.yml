@@ -58,7 +58,7 @@ jobs:
             version=0.0.0-dev+${GITHUB_SHA::7}
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "DreamGrid $version"
+          echo "GridGate $version"
 
       # Version.txt's first line is "GridGate <version> (OpenSimulator <base>)"; see VERSIONING.md. Every run checks its
       # form. A tag must also match its GridGate number, ignoring the tag's pre-release suffix (v0.1.0-rc1 can be
@@ -104,14 +104,14 @@ jobs:
         run: |
           $out = Join-Path $env:RUNNER_TEMP 'pkg'
           ./setup/package.ps1 -Rid linux-x64 -Version $env:VERSION -Out "$out/v1"
-          $runtime = (Get-Content "$out/v1/dreamgrid/RUNTIME_VERSION" -TotalCount 1).Trim()
+          $runtime = (Get-Content "$out/v1/gridgate/RUNTIME_VERSION" -TotalCount 1).Trim()
           ./setup/package.ps1 -Rid linux-x64 -Version "$env:VERSION-upgradetest" -Out "$out/v2" -RuntimeVersion $runtime
 
       - name: Check the packages
         shell: pwsh
         run: |
           $out = Join-Path $env:RUNNER_TEMP 'pkg'
-          foreach ($package in "$out/v1/dreamgrid", "$out/v2/dreamgrid") {
+          foreach ($package in "$out/v1/gridgate", "$out/v2/gridgate") {
             ./setup/test/Test-Package.ps1 -Package $package
             if ($LASTEXITCODE -ne 0) { exit 1 }
           }
@@ -121,12 +121,12 @@ jobs:
           out=$RUNNER_TEMP/pkg
           artifact=$RUNNER_TEMP/artifact
           mkdir -p "$artifact"
-          mv "$out/v1/dreamgrid-$VERSION-linux-x64.tar.gz" "$out/v2/dreamgrid-$VERSION-upgradetest-linux-x64.tar.gz" "$artifact/"
+          mv "$out/v1/gridgate-$VERSION-linux-x64.tar.gz" "$out/v2/gridgate-$VERSION-upgradetest-linux-x64.tar.gz" "$artifact/"
           # The same v2 build with another RUNTIME_VERSION (same runtime files): a runtime change on upgrade.
-          runtime=$(head -n 1 "$out/v2/dreamgrid/RUNTIME_VERSION")
-          printf '%s\n' "$runtime-upgradetest" > "$out/v2/dreamgrid/RUNTIME_VERSION"
-          tar -czf "$artifact/dreamgrid-$VERSION-upgradetest-rt-linux-x64.tar.gz" --owner=0 --group=0 -C "$out/v2" dreamgrid
-          dotnet publish tests/DreamGrid.InstallSmoke -c Release -o "$artifact/installsmoke"
+          runtime=$(head -n 1 "$out/v2/gridgate/RUNTIME_VERSION")
+          printf '%s\n' "$runtime-upgradetest" > "$out/v2/gridgate/RUNTIME_VERSION"
+          tar -czf "$artifact/gridgate-$VERSION-upgradetest-rt-linux-x64.tar.gz" --owner=0 --group=0 -C "$out/v2" gridgate
+          dotnet publish tests/GridGate.InstallSmoke -c Release -o "$artifact/installsmoke"
           ls -l "$artifact"
 
       - uses: actions/upload-artifact@v4
@@ -186,19 +186,19 @@ jobs:
         run: |
           $out = Join-Path $env:RUNNER_TEMP 'pkg'
           ./setup/package.ps1 -Rid win-x64 -Version $env:VERSION -Out "$out\v1"
-          $runtime = (Get-Content "$out\v1\dreamgrid\RUNTIME_VERSION" -TotalCount 1).Trim()
+          $runtime = (Get-Content "$out\v1\gridgate\RUNTIME_VERSION" -TotalCount 1).Trim()
           ./setup/package.ps1 -Rid win-x64 -Version "$env:VERSION-upgradetest" -Out "$out\v2" -RuntimeVersion $runtime
 
       - name: Check the packages
         run: |
           $out = Join-Path $env:RUNNER_TEMP 'pkg'
-          foreach ($package in "$out\v1\dreamgrid", "$out\v2\dreamgrid") {
+          foreach ($package in "$out\v1\gridgate", "$out\v2\gridgate") {
             ./setup/test/Test-Package.ps1 -Package $package
             if ($LASTEXITCODE -ne 0) { exit 1 }
           }
 
       # The runner image may already carry Inno Setup (choco refuses to install an older pin over a newer one);
-      # build.ps1 prints the ISCC it finds; DreamGrid.iss refuses a compiler older than 6.3. Otherwise a pinned version.
+      # build.ps1 prints the ISCC it finds; GridGate.iss refuses a compiler older than 6.3. Otherwise a pinned version.
       - name: Install Inno Setup
         run: |
           $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
@@ -209,18 +209,18 @@ jobs:
         run: |
           $out = Join-Path $env:RUNNER_TEMP 'pkg'
           $artifact = Join-Path $env:RUNNER_TEMP 'artifact'
-          ./setup/windows/build.ps1 -Package "$out\v1\dreamgrid" -MariaDbZip $env:MARIADB_ZIP -Version $env:VERSION -Out "$out\setup1"
-          ./setup/windows/build.ps1 -Package "$out\v2\dreamgrid" -MariaDbZip $env:MARIADB_ZIP -Version "$env:VERSION-upgradetest" -Out "$out\setup2"
+          ./setup/windows/build.ps1 -Package "$out\v1\gridgate" -MariaDbZip $env:MARIADB_ZIP -Version $env:VERSION -Out "$out\setup1"
+          ./setup/windows/build.ps1 -Package "$out\v2\gridgate" -MariaDbZip $env:MARIADB_ZIP -Version "$env:VERSION-upgradetest" -Out "$out\setup2"
           # The same v2 build with another RUNTIME_VERSION (same runtime files, in dotnet-<runtime>-upgradetest\).
           New-Item -ItemType Directory -Force "$out\v2rt" | Out-Null
-          Copy-Item -Recurse "$out\v2\dreamgrid" "$out\v2rt\dreamgrid"
-          $runtime = (Get-Content "$out\v2\dreamgrid\RUNTIME_VERSION" -TotalCount 1).Trim()
-          Set-Content -LiteralPath "$out\v2rt\dreamgrid\RUNTIME_VERSION" -Value "$runtime-upgradetest" -Encoding ascii
-          ./setup/windows/build.ps1 -Package "$out\v2rt\dreamgrid" -MariaDbZip $env:MARIADB_ZIP -Version "$env:VERSION-upgradetest" -Out "$out\setup3"
+          Copy-Item -Recurse "$out\v2\gridgate" "$out\v2rt\gridgate"
+          $runtime = (Get-Content "$out\v2\gridgate\RUNTIME_VERSION" -TotalCount 1).Trim()
+          Set-Content -LiteralPath "$out\v2rt\gridgate\RUNTIME_VERSION" -Value "$runtime-upgradetest" -Encoding ascii
+          ./setup/windows/build.ps1 -Package "$out\v2rt\gridgate" -MariaDbZip $env:MARIADB_ZIP -Version "$env:VERSION-upgradetest" -Out "$out\setup3"
           New-Item -ItemType Directory -Force $artifact | Out-Null
-          Move-Item "$out\setup1\DreamGridSetup-$env:VERSION.exe", "$out\setup2\DreamGridSetup-$env:VERSION-upgradetest.exe" $artifact
-          Move-Item "$out\setup3\DreamGridSetup-$env:VERSION-upgradetest.exe" (Join-Path $artifact "DreamGridSetup-$env:VERSION-upgradetest-rt.exe")
-          dotnet publish tests/DreamGrid.InstallSmoke -c Release -o "$artifact\installsmoke"
+          Move-Item "$out\setup1\GridGateSetup-$env:VERSION.exe", "$out\setup2\GridGateSetup-$env:VERSION-upgradetest.exe" $artifact
+          Move-Item "$out\setup3\GridGateSetup-$env:VERSION-upgradetest.exe" (Join-Path $artifact "GridGateSetup-$env:VERSION-upgradetest-rt.exe")
+          dotnet publish tests/GridGate.InstallSmoke -c Release -o "$artifact\installsmoke"
           if ($LASTEXITCODE -ne 0) { throw "dotnet publish exited $LASTEXITCODE" }
           Get-ChildItem $artifact
 
@@ -273,7 +273,7 @@ jobs:
           export INSTALL_SMOKE_DIR=$package/installsmoke
           export SMOKE_LOGS=$RUNNER_TEMP/smoke-logs
           bash setup/debian/test/smoke.sh "$DEBIAN" \
-            "$package/dreamgrid-$VERSION-linux-x64.tar.gz" "$package/dreamgrid-$VERSION-$UPGRADE-linux-x64.tar.gz"
+            "$package/gridgate-$VERSION-linux-x64.tar.gz" "$package/gridgate-$VERSION-$UPGRADE-linux-x64.tar.gz"
 
       - name: Upload smoke logs
         if: failure()
@@ -311,8 +311,8 @@ jobs:
           $package = Join-Path $env:RUNNER_TEMP 'package'
           $env:INSTALL_SMOKE_DIR = Join-Path $package 'installsmoke'
           $env:SMOKE_LOGS = Join-Path $env:RUNNER_TEMP 'smoke-logs'
-          & ./setup/windows/test/smoke.ps1 -Installer (Join-Path $package "DreamGridSetup-$env:VERSION.exe") `
-            -InstallerV2 (Join-Path $package "DreamGridSetup-$env:VERSION-$env:UPGRADE.exe")
+          & ./setup/windows/test/smoke.ps1 -Installer (Join-Path $package "GridGateSetup-$env:VERSION.exe") `
+            -InstallerV2 (Join-Path $package "GridGateSetup-$env:VERSION-$env:UPGRADE.exe")
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Upload smoke logs
@@ -346,21 +346,21 @@ jobs:
           name: package-windows
           path: ${{ runner.temp }}/windows
 
-      # install.sh downloads releases/latest/download/dreamgrid-linux-x64.tar.gz (or releases/download/<tag>/... with
-      # DREAMGRID_RELEASE) and checks it against SHA256SUMS, so the tarball ships under its stable name too and
+      # install.sh downloads releases/latest/download/gridgate-linux-x64.tar.gz (or releases/download/<tag>/... with
+      # GRIDGATE_RELEASE) and checks it against SHA256SUMS, so the tarball ships under its stable name too and
       # SHA256SUMS lists every asset. A pre-release (a tag with a '-') is never "latest", so its notes name the tag.
       - name: Assemble the release
         run: |
           release=$RUNNER_TEMP/release
           mkdir -p "$release"
-          cp "$RUNNER_TEMP/linux/dreamgrid-$VERSION-linux-x64.tar.gz" "$release/"
-          cp "$RUNNER_TEMP/linux/dreamgrid-$VERSION-linux-x64.tar.gz" "$release/dreamgrid-linux-x64.tar.gz"
-          cp "$RUNNER_TEMP/windows/DreamGridSetup-$VERSION.exe" "$release/"
+          cp "$RUNNER_TEMP/linux/gridgate-$VERSION-linux-x64.tar.gz" "$release/"
+          cp "$RUNNER_TEMP/linux/gridgate-$VERSION-linux-x64.tar.gz" "$release/gridgate-linux-x64.tar.gz"
+          cp "$RUNNER_TEMP/windows/GridGateSetup-$VERSION.exe" "$release/"
           cp setup/debian/install.sh "$release/"
           (cd "$release" && sha256sum -- * > SHA256SUMS && cat SHA256SUMS)
           releases=https://github.com/ystudy/GridGate-OpenSim/releases
           case "$VERSION" in
-            *-*) one_liner="curl -fsSL $releases/download/$GITHUB_REF_NAME/install.sh | sudo DREAMGRID_RELEASE=$GITHUB_REF_NAME bash"
+            *-*) one_liner="curl -fsSL $releases/download/$GITHUB_REF_NAME/install.sh | sudo GRIDGATE_RELEASE=$GITHUB_REF_NAME bash"
                  kind="This is a pre-release for testing." ;;
             *) one_liner="curl -fsSL $releases/latest/download/install.sh | sudo bash"
                kind="" ;;
@@ -368,7 +368,7 @@ jobs:
           cat > "$RUNNER_TEMP/notes.md" <<EOF
           GridGate $VERSION ($OPENSIM)
 
-          DreamGrid $VERSION
+          GridGate $VERSION
           $kind
 
           ## Debian 12 and 13 (amd64)
@@ -377,11 +377,11 @@ jobs:
 
               $one_liner
 
-          It installs or upgrades DreamGrid as the \`dreamgrid\` service and prints a link that opens the setup page.
+          It installs or upgrades GridGate as the \`gridgate\` service and prints a link that opens the setup page.
 
           ## Windows 10 and 11 (x64)
 
-          Download \`DreamGridSetup-$VERSION.exe\` below and run it. The installer is not signed, so Windows
+          Download \`GridGateSetup-$VERSION.exe\` below and run it. The installer is not signed, so Windows
           SmartScreen may say "Windows protected your PC": click **More info**, then **Run anyway**. When the
           installer finishes, it opens the setup page in your browser.
 
@@ -398,6 +398,6 @@ jobs:
           # A pre-release must never become /releases/latest, which the one-liner and the README link use.
           flags=()
           case "$VERSION" in *-*) flags=(--prerelease --latest=false) ;; esac
-          gh release create "$GITHUB_REF_NAME" --verify-tag "${flags[@]}" --title "DreamGrid $VERSION" --notes-file "$RUNNER_TEMP/notes.md" \
-            "$release/dreamgrid-$VERSION-linux-x64.tar.gz" "$release/dreamgrid-linux-x64.tar.gz" \
-            "$release/DreamGridSetup-$VERSION.exe" "$release/install.sh" "$release/SHA256SUMS"
+          gh release create "$GITHUB_REF_NAME" --verify-tag "${flags[@]}" --title "GridGate $VERSION" --notes-file "$RUNNER_TEMP/notes.md" \
+            "$release/gridgate-$VERSION-linux-x64.tar.gz" "$release/gridgate-linux-x64.tar.gz" \
+            "$release/GridGateSetup-$VERSION.exe" "$release/install.sh" "$release/SHA256SUMS"

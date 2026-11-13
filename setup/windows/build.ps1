@@ -1,12 +1,12 @@
 <#
-.SYNOPSIS  Builds the Windows installer DreamGridSetup-<Version>.exe from a win-x64 package and a MariaDB zip.
+.SYNOPSIS  Builds the Windows installer GridGateSetup-<Version>.exe from a win-x64 package and a MariaDB zip.
 .DESCRIPTION
   Stages <Out>\staging\ from the package folder (setup/package.ps1 -Rid win-x64): launcher\, bin\, content\, VERSION,
   RUNTIME_VERSION, dotnet\ renamed to dotnet-<RUNTIME_VERSION>\, and MariaDB's bin\, lib\ and share\ (no include\, no
   *.pdb) as mariadb-<version>\, plus MariaDB's copies of the Visual C++ runtime DLLs that bin\lib64's natives import.
-  Then compiles DreamGrid.iss with Inno Setup 6 (ISCC.exe) into <Out>.
+  Then compiles GridGate.iss with Inno Setup 6 (ISCC.exe) into <Out>.
   -SkipCompile stops after staging (no Inno Setup needed). Runs on Windows PowerShell 5.1 and PowerShell 7.
-.EXAMPLE   powershell -File setup/windows/build.ps1 -Package $env:TEMP\dgpkg\dreamgrid -MariaDbZip mariadb-11.4.9-winx64.zip -Version 0.0.0-dev -Out $env:TEMP\dgsetup
+.EXAMPLE   powershell -File setup/windows/build.ps1 -Package $env:TEMP\dgpkg\gridgate -MariaDbZip mariadb-11.4.9-winx64.zip -Version 0.0.0-dev -Out $env:TEMP\dgsetup
 #>
 param(
     [Parameter(Mandatory)][string]$Package,
@@ -27,9 +27,9 @@ $Out = [IO.Path]::GetFullPath($Out)
 $staging = Join-Path $Out 'staging'
 
 # --- Package -----------------------------------------------------------------------------------------------------
-foreach ($required in 'VERSION', 'RUNTIME_VERSION', 'dotnet\dotnet.exe', 'launcher\DreamGrid.Launcher.dll', 'bin\OpenSim.dll') {
+foreach ($required in 'VERSION', 'RUNTIME_VERSION', 'dotnet\dotnet.exe', 'launcher\GridGate.Launcher.dll', 'bin\OpenSim.dll') {
     if (-not (Test-Path -LiteralPath (Join-Path $Package $required) -PathType Leaf)) {
-        throw "$Package is not a win-x64 DreamGrid package (it has no $required)."
+        throw "$Package is not a win-x64 GridGate package (it has no $required)."
     }
 }
 $packageVersion = (Get-Content -LiteralPath (Join-Path $Package 'VERSION') -TotalCount 1).Trim()
@@ -95,7 +95,7 @@ if ($SkipCompile) { return }
 if (-not $Iscc) {
     # Order: the two Program Files installs, then PATH. Chocolatey's ISCC.exe on PATH is a shim (under \Chocolatey\bin\)
     # and is skipped. The version is not sniffed from the file's version resource, which is unreliable (it can read 0);
-    # DreamGrid.iss enforces the minimum Inno Setup version itself.
+    # GridGate.iss enforces the minimum Inno Setup version itself.
     $onPath = @(Get-Command ISCC.exe -All -ErrorAction SilentlyContinue | ForEach-Object { $_.Source } |
         Where-Object { $_ -notlike '*\Chocolatey\bin\*' })
     $candidates = @(
@@ -107,8 +107,8 @@ if (-not $Iscc) {
 $isccInfo = (Get-Item -LiteralPath $Iscc).VersionInfo
 Write-Host "ISCC: $Iscc (FileVersion '$($isccInfo.FileVersion)', ProductVersion '$($isccInfo.ProductVersion)')"
 & $Iscc "/DAppVersion=$Version" "/DRuntimeVersion=$runtimeVersion" "/DMariaDbVersion=$mariaDbVersion" "/DSource=$staging" `
-    "/O$Out" (Join-Path $PSScriptRoot 'DreamGrid.iss')
+    "/O$Out" (Join-Path $PSScriptRoot 'GridGate.iss')
 if ($LASTEXITCODE -ne 0) { throw "ISCC.exe failed with exit code $LASTEXITCODE" }
-$setup = Join-Path $Out "DreamGridSetup-$Version.exe"
+$setup = Join-Path $Out "GridGateSetup-$Version.exe"
 if (-not (Test-Path -LiteralPath $setup)) { throw "ISCC.exe did not produce $setup" }
 Write-Host ('Installer: {0} ({1:N1} MB)' -f $setup, ((Get-Item -LiteralPath $setup).Length / 1MB))

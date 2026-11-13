@@ -26,7 +26,7 @@ jobs:
           - arch: arm64
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
-    # Debian 12 is the oldest system DreamGrid supports; building there keeps the glibc/libstdc++ requirements low.
+    # Debian 12 is the oldest system GridGate supports; building there keeps the glibc/libstdc++ requirements low.
     container: debian:12
     timeout-minutes: 30
     steps:

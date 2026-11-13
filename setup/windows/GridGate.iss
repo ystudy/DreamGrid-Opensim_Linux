@@ -1,13 +1,13 @@
-﻿; DreamGrid installer for Windows 10/11 x64 (Inno Setup 6.3 or later). Built by build.ps1, which stages the package and
+﻿; GridGate installer for Windows 10/11 x64 (Inno Setup 6.3 or later). Built by build.ps1, which stages the package and
 ; passes the defines below:
-;   ISCC /DAppVersion=<v> /DRuntimeVersion=<aspnetcore runtime> /DMariaDbVersion=<v> /DSource=<staging> DreamGrid.iss
+;   ISCC /DAppVersion=<v> /DRuntimeVersion=<aspnetcore runtime> /DMariaDbVersion=<v> /DSource=<staging> GridGate.iss
 ;
-; Installs the launcher as the DreamGrid Windows service (account NT SERVICE\DreamGrid). Program files go to
-; {app}; the data in {commonappdata}\DreamGrid is never written, moved or deleted by setup or uninstall. The .NET
+; Installs the launcher as the GridGate Windows service (account NT SERVICE\GridGate). Program files go to
+; {app}; the data in {commonappdata}\GridGate is never written, moved or deleted by setup or uninstall. The .NET
 ; runtime and MariaDB live in versioned folders beside each other (dotnet-<v>\, mariadb-<v>\): the world's processes
 ; keep running through a service stop and an upgrade, and still use the folders they started from.
 ;
-; Command line: /WEBPORT=<n> serves the admin website on port <n> instead of 8001 (1024-65535, none of DreamGrid's own
+; Command line: /WEBPORT=<n> serves the admin website on port <n> instead of 8001 (1024-65535, none of GridGate's own
 ; ports 3307, 8002, 8003, 8004, 8010, 8011). The port is saved in the settings with the launcher's set-web-port while
 ; the service is stopped, so later upgrades keep it; it never goes into the service's command line, where the launcher
 ; would re-apply it on every start.
@@ -15,7 +15,7 @@
 ; the web port could not be changed.
 
 #if VER < EncodeVer(6,3,0)
-  #error DreamGrid.iss needs Inno Setup 6.3 or later (x64compatible).
+  #error GridGate.iss needs Inno Setup 6.3 or later (x64compatible).
 #endif
 #ifndef AppVersion
   #error AppVersion is not defined: build with build.ps1 (ISCC /DAppVersion=...)
@@ -31,12 +31,12 @@
 #endif
 
 [Setup]
-AppId={{DC03D674-08A7-42DF-AC65-F9045BF5707F}
-AppName=DreamGrid
+AppId={{04DD5B4E-E58C-4857-B3B9-3A0FDFC66371}
+AppName=GridGate
 AppVersion={#AppVersion}
-AppVerName=DreamGrid {#AppVersion}
-AppPublisher=DreamGrid
-DefaultDirName={autopf}\DreamGrid
+AppVerName=GridGate {#AppVersion}
+AppPublisher=GridGate
+DefaultDirName={autopf}\GridGate
 UsePreviousAppDir=yes
 DisableProgramGroupPage=yes
 PrivilegesRequired=admin
@@ -48,16 +48,16 @@ MinVersion=10.0
 CloseApplications=no
 RestartApplications=no
 RestartIfNeededByRun=no
-OutputBaseFilename=DreamGridSetup-{#AppVersion}
+OutputBaseFilename=GridGateSetup-{#AppVersion}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 SetupLogging=yes
-UninstallDisplayName=DreamGrid
+UninstallDisplayName=GridGate
 
 [Messages]
-FinishedLabel=DreamGrid is installed and running.%n%nWindows may ask whether DreamGrid can use the network; allow it for private networks.
-FinishedLabelNoIcons=DreamGrid is installed and running.%n%nWindows may ask whether DreamGrid can use the network; allow it for private networks.
+FinishedLabel=GridGate is installed and running.%n%nWindows may ask whether GridGate can use the network; allow it for private networks.
+FinishedLabelNoIcons=GridGate is installed and running.%n%nWindows may ask whether GridGate can use the network; allow it for private networks.
 
 [InstallDelete]
 ; The program folders are replaced as a whole, so no file of an older version is left behind.
@@ -77,21 +77,21 @@ Source: "{#Source}\RUNTIME_VERSION"; DestDir: "{app}"; Flags: ignoreversion
 
 [INI]
 ; Start menu: a plain Internet shortcut to the admin page, opened in the user's own browser without elevation.
-Filename: "{autoprograms}\DreamGrid admin page.url"; Section: "InternetShortcut"; Key: "URL"; String: "http://localhost:{code:WebPortValue}/"
+Filename: "{autoprograms}\GridGate admin page.url"; Section: "InternetShortcut"; Key: "URL"; String: "http://localhost:{code:WebPortValue}/"
 
 [Run]
 ; Opened as the user who started setup (postinstall runs as the original user), with the link read in [Code].
 Filename: "{code:SetupLink}"; Description: "Open the setup page"; Flags: postinstall shellexec nowait skipifsilent; Check: ServiceRunning
 
 [UninstallDelete]
-Type: files; Name: "{autoprograms}\DreamGrid admin page.url"
+Type: files; Name: "{autoprograms}\GridGate admin page.url"
 ; Runtime folders kept by an upgrade because a running process still used them.
 Type: filesandordirs; Name: "{app}\dotnet-*"
 Type: filesandordirs; Name: "{app}\mariadb-*"
 
 [Code]
 const
-  ServiceName = 'DreamGrid';
+  ServiceName = 'GridGate';
   DefaultWebPort = 8001;
   ServiceFailedExitCode = 10;
 
@@ -105,7 +105,7 @@ var
 
 function DataDir: String;
 begin
-  Result := ExpandConstant('{commonappdata}\DreamGrid');
+  Result := ExpandConstant('{commonappdata}\GridGate');
 end;
 
 function DotnetExe: String;
@@ -115,7 +115,7 @@ end;
 
 function LauncherDll: String;
 begin
-  Result := ExpandConstant('{app}\launcher\DreamGrid.Launcher.dll');
+  Result := ExpandConstant('{app}\launcher\GridGate.Launcher.dll');
 end;
 
 { The host options the service and stop-grid share. }
@@ -133,7 +133,7 @@ end;
 
 function FirewallRuleName: String;
 begin
-  Result := 'DreamGrid (dotnet {#RuntimeVersion})';
+  Result := 'GridGate (dotnet {#RuntimeVersion})';
 end;
 
 function ServiceExists: Boolean;
@@ -262,7 +262,7 @@ begin
     Result := IntToStr(ConfiguredWebPort);
 end;
 
-{ The ports the launcher accepts for its website: 1024-65535 and none of DreamGrid's own default ports. }
+{ The ports the launcher accepts for its website: 1024-65535 and none of GridGate's own default ports. }
 function ValidWebPort(Port: Integer): Boolean;
 begin
   Result := (Port >= 1024) and (Port <= 65535) and (Port <> 3307) and (Port <> 8002) and (Port <> 8003) and
@@ -313,7 +313,7 @@ begin
   Result := ServiceError = '';
 end;
 
-{ True when the DreamGrid service is installed and running (or starting or stopping). }
+{ True when the GridGate service is installed and running (or starting or stopping). }
 function ServiceIsRunning: Boolean;
 var
   Lines: TArrayOfString;
@@ -389,7 +389,7 @@ begin
     Port := StrToIntDef(Param, 0);
     if not ValidWebPort(Port) then
     begin
-      Msg := '/WEBPORT needs a port number from 1024 to 65535 that DreamGrid does not use itself ' +
+      Msg := '/WEBPORT needs a port number from 1024 to 65535 that GridGate does not use itself ' +
         '(not 3307, 8002, 8003, 8004, 8010 or 8011).';
       Log(Msg);
       SuppressibleMsgBox(Msg, mbCriticalError, MB_OK, IDOK);
@@ -413,7 +413,7 @@ begin
     Port := StrToIntDef(RequestedPort, 0)
   else
     Port := Current;
-  { A running DreamGrid holds its own port; a port it is about to move to must be free. }
+  { A running GridGate holds its own port; a port it is about to move to must be free. }
   if ((Port <> Current) or not ServiceIsRunning) and PortInUse(Port) then
   begin
     Msg := 'Port ' + IntToStr(Port) + ' is already used by another program.' + #13#10#13#10 +
@@ -442,16 +442,16 @@ begin
   end;
 end;
 
-{ '' when Dir can take DreamGrid's program files, else the reason it cannot. The program folder is emptied on every
+{ '' when Dir can take GridGate's program files, else the reason it cannot. The program folder is emptied on every
   install, so it must not be (or be inside) the data folder, nor a folder of other files. }
 function CheckInstallDir(const Dir: String): String;
 begin
   Result := '';
   if Pos(Lowercase(AddBackslash(DataDir)), Lowercase(AddBackslash(Dir))) = 1 then
-    Result := 'DreamGrid cannot be installed in its data folder (' + DataDir + '). Please choose another folder.'
+    Result := 'GridGate cannot be installed in its data folder (' + DataDir + '). Please choose another folder.'
   else if DirExists(Dir) and not FileExists(AddBackslash(Dir) + 'VERSION') and
-    not FileExists(AddBackslash(Dir) + 'launcher\DreamGrid.Launcher.dll') and not DirIsEmpty(Dir) then
-    Result := 'The folder ' + Dir + ' already has other files in it. Please choose an empty or new folder for DreamGrid.';
+    not FileExists(AddBackslash(Dir) + 'launcher\GridGate.Launcher.dll') and not DirIsEmpty(Dir) then
+    Result := 'The folder ' + Dir + ' already has other files in it. Please choose an empty or new folder for GridGate.';
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
@@ -481,7 +481,7 @@ begin
     exit;
   StoppedService := ServiceIsRunning;
   if not StopService then
-    Result := 'The DreamGrid service did not stop within 60 seconds. Please try again in a minute.';
+    Result := 'The GridGate service did not stop within 60 seconds. Please try again in a minute.';
 end;
 
 { Deletes the program folder's <Prefix>* folders other than Current. A folder that a running process still uses
@@ -560,17 +560,17 @@ var
   Common, Msg: String;
   Code: Integer;
 begin
-  Common := ServiceName + ' start= auto obj= "NT SERVICE\' + ServiceName + '" DisplayName= "DreamGrid" binPath= ' +
+  Common := ServiceName + ' start= auto obj= "NT SERVICE\' + ServiceName + '" DisplayName= "GridGate" binPath= ' +
     ScQuoted(ServiceCommand);
-  { Created before its first start, so the launcher gives NT SERVICE\DreamGrid access to the data folder. }
+  { Created before its first start, so the launcher gives NT SERVICE\GridGate access to the data folder. }
   if ServiceExists then
     Code := Sc('config ' + Common)
   else
     Code := Sc('create ' + Common);
   if Code <> 0 then
     ServiceError := 'its Windows service could not be set up (error ' + IntToStr(Code) + ')';
-  Sc('description ' + ServiceName + ' "Runs your DreamGrid world and its admin website."');
-  { After the service exists, so the launcher keeps NT SERVICE\DreamGrid in the data folder's permissions. }
+  Sc('description ' + ServiceName + ' "Runs your GridGate world and its admin website."');
+  { After the service exists, so the launcher keeps NT SERVICE\GridGate in the data folder's permissions. }
   if (ServiceError = '') and (RequestedPort <> '') then
     SaveWebPort;
   Sc('failure ' + ServiceName + ' reset= 86400 actions= restart/5000/restart/5000/restart/60000');
@@ -581,7 +581,7 @@ begin
   RemoveOldFolders('dotnet-', 'dotnet-{#RuntimeVersion}');
   RemoveOldFolders('mariadb-', 'mariadb-{#MariaDbVersion}');
   { Rules for runtime folders that are gone. }
-  PowerShell('Get-NetFirewallRule -DisplayName ''DreamGrid (dotnet *)'' -ErrorAction SilentlyContinue | ForEach-Object { ' +
+  PowerShell('Get-NetFirewallRule -DisplayName ''GridGate (dotnet *)'' -ErrorAction SilentlyContinue | ForEach-Object { ' +
     '$p = ($_ | Get-NetFirewallApplicationFilter).Program; ' +
     'if (-not $p -or -not (Test-Path -LiteralPath (Split-Path -Parent $p))) { $_ | Remove-NetFirewallRule } }');
 
@@ -598,7 +598,7 @@ begin
 
   if ServiceError <> '' then
   begin
-    Msg := 'DreamGrid is installed, but ' + ServiceError + '. Restart the computer and run this installer again. ' +
+    Msg := 'GridGate is installed, but ' + ServiceError + '. Restart the computer and run this installer again. ' +
       'If that does not help, the setup log in ' + GetTempDir + ' says what went wrong.';
     Log(Msg);
     SuppressibleMsgBox(Msg, mbCriticalError, MB_OK, IDOK);
@@ -607,7 +607,7 @@ begin
   begin
     if PortError <> '' then
     begin
-      Msg := 'DreamGrid is installed and running, but ' + PortError + '. It still uses port ' +
+      Msg := 'GridGate is installed and running, but ' + PortError + '. It still uses port ' +
         IntToStr(ConfiguredWebPort) + '.';
       Log(Msg);
       SuppressibleMsgBox(Msg, mbError, MB_OK, IDOK);
@@ -627,10 +627,10 @@ end;
 procedure CurPageChanged(CurPageID: Integer);
 begin
   if (CurPageID = wpFinished) and (ServiceError <> '') then
-    WizardForm.FinishedLabel.Caption := 'DreamGrid is installed, but ' + ServiceError + '.' + #13#10#13#10 +
+    WizardForm.FinishedLabel.Caption := 'GridGate is installed, but ' + ServiceError + '.' + #13#10#13#10 +
       'Restart the computer and run this installer again.'
   else if (CurPageID = wpFinished) and (PortError <> '') then
-    WizardForm.FinishedLabel.Caption := 'DreamGrid is installed and running, but ' + PortError + '.' + #13#10#13#10 +
+    WizardForm.FinishedLabel.Caption := 'GridGate is installed and running, but ' + PortError + '.' + #13#10#13#10 +
       'It still uses port ' + IntToStr(ConfiguredWebPort) + '.';
 end;
 
@@ -667,18 +667,18 @@ begin
   if CurUninstallStep = usUninstall then
   begin
     if not StopService then
-      Log('The DreamGrid service did not stop within 60 seconds.');
+      Log('The GridGate service did not stop within 60 seconds.');
     { The world goes down with the program: database, grid service and region. }
     if not Exec(DotnetExe, '"' + LauncherDll + '" stop-grid ' + LauncherArgs, ExpandConstant('{app}\launcher'),
       SW_HIDE, ewWaitUntilTerminated, Code) then
       Code := -1;
     Log('stop-grid -> ' + IntToStr(Code));
     Sc('delete ' + ServiceName);
-    PowerShell('Remove-NetFirewallRule -DisplayName ''DreamGrid (dotnet *)'' -ErrorAction SilentlyContinue');
+    PowerShell('Remove-NetFirewallRule -DisplayName ''GridGate (dotnet *)'' -ErrorAction SilentlyContinue');
   end
   else if CurUninstallStep = usPostUninstall then
   begin
-    Msg := 'DreamGrid is removed. Your world''s data is still in ' + DataDir +
+    Msg := 'GridGate is removed. Your world''s data is still in ' + DataDir +
       '. Delete that folder if you no longer need it.';
     Log(Msg);
     SuppressibleMsgBox(Msg, mbInformation, MB_OK, IDOK);
