@@ -32,7 +32,7 @@ jobs:
 
       - name: Install gitleaks
         run: |
-          curl -fsSL -o gitleaks.tar.gz "https://github.com/gitleaks/gitleaks/releases/download/v$GITLEAKS_VERSION/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 -o gitleaks.tar.gz "https://github.com/gitleaks/gitleaks/releases/download/v$GITLEAKS_VERSION/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
           echo "$GITLEAKS_SHA256  gitleaks.tar.gz" | sha256sum -c -
           tar -xzf gitleaks.tar.gz -C "$RUNNER_TEMP" gitleaks
           rm gitleaks.tar.gz
@@ -155,7 +155,7 @@ jobs:
 
       - name: Install .NET 10
         run: |
-          curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
           # The channel's newest SDK can be announced before every feed has it: retry once, then fall back to the SDK
           # global.json names, which stays on the feed. (Release runtimes are pinned by setup/package.ps1 instead.)
           sdk=$(grep -oE '"version": *"[^"]+"' global.json | head -n 1 | sed -E 's/.*"([^"]+)"$/\1/')
@@ -312,7 +312,7 @@ jobs:
 
       - name: Install .NET 10
         run: |
-          curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
           # The channel's newest SDK can be announced before every feed has it: retry once, then fall back to the SDK
           # global.json names, which stays on the feed. (Release runtimes are pinned by setup/package.ps1 instead.)
           sdk=$(grep -oE '"version": *"[^"]+"' global.json | head -n 1 | sed -E 's/.*"([^"]+)"$/\1/')
