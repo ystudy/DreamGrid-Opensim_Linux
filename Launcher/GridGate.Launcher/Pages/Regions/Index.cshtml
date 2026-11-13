@@ -17,10 +17,7 @@
 </div>
 <partial name="_HubLinks" model="@(new GridGate.Launcher.Navigation.HubLinks("World", "/regions/library", "/regions/deleted"))" />
 
-@if (Model.Notice is not null)
-{
-    <p class="notice alert alert-info py-2" role="status">@Model.Notice</p>
-}
+<notice-box text="@Model.Notice" />
 
 <noscript><p class="alert alert-info">The map needs JavaScript. You can still add a region by its map position below.</p></noscript>
 

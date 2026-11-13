@@ -23,10 +23,7 @@
 {
     <p id="staff-emails-note" class="form-text">Emails to staff are always in English. Change them under English.</p>
 }
-@if (Model.Notice is not null)
-{
-    <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
-}
+<ok-box text="@Model.Notice" />
 
 @foreach (var t in Model.Sections)
 {

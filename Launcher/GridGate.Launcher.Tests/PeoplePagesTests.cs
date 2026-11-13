@@ -148,6 +148,26 @@ public sealed class PeoplePagesTests
     }
 
     [Fact]
+    public async Task Status_box_markup_is_unchanged()
+    {
+        await using var f = Factory();
+        var admin = await SignedInAsync(f, "admin");
+        using var r = await PostAsync(admin, "/people?handler=Task",
+            new() { ["id"] = GailId.ToString(), ["task"] = "ResetLink", ["q"] = "gail", ["page"] = "1" }, "/people?q=gail");
+        var page = await DocOf(r);
+        Assert.Equal("<div class=\"ok-box alert alert-success\" role=\"status\">A reset link was sent to Gail Guest.</div>",
+            page.QuerySelector(".ok-box")!.OuterHtml);
+
+        using var refusedResponse = await PostAsync(admin, $"/people/{SueId}/delete", [], $"/people/{SueId}/delete");
+        var refused = await DocOf(refusedResponse);
+        var error = refused.QuerySelector(".error-box")!;
+        Assert.Equal("DIV", error.TagName);
+        Assert.Equal("error-box error alert alert-danger", error.GetAttribute("class"));
+        Assert.Equal("alert", error.GetAttribute("role"));
+        Assert.Equal(0, error.ChildElementCount);
+    }
+
+    [Fact]
     public async Task Edit_page_renames()
     {
         await using var f = Factory();

@@ -9,10 +9,7 @@
     <a class="ms-auto" href="/regions">Back to Regions</a>
 </div>
 
-@if (Model.Notice is not null)
-{
-    <p class="notice alert alert-info py-2" role="status">@Model.Notice</p>
-}
+<notice-box text="@Model.Notice" />
 
 @if (Model.Asking is not null)
 {

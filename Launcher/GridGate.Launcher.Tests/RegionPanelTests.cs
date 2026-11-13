@@ -310,6 +310,20 @@ public sealed class RegionPanelTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Notice_markup_is_unchanged()
+    {
+        _f.Grid.Busy["Home"] = "Saving Home as an OAR";
+        using var client = await SignedInAsync();
+
+        using var response = await PostPowerAsync(client, BeachId, "Stop", confirmed: true);
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        var panel = new HtmlParser().ParseDocument(await client.GetStringAsync($"/regions/region/{BeachId}", Ct));
+        Assert.Equal("<p class=\"notice alert alert-info py-2\" role=\"status\">Saving Home as an OAR is still running. Try again when it finishes.</p>",
+            panel.QuerySelector(".notice")!.OuterHtml);
+    }
+
+    [Fact]
     public async Task Move_runs_and_delete_share_one_row()
     {
         var doc = await PageAsync(SunsetId);

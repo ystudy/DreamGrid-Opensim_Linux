@@ -6,10 +6,7 @@
 <div class="card card-body shadow-sm mx-auto sign-in-card">
 <h1>@T["SignInCode.Title"]</h1>
 <p>@T["SignInCode.Intro"]</p>
-@if (Model.Error is not null)
-{
-    <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
-}
+<error-box text="@Model.Error" />
 @if (Model.TwoFactorUnknown)
 {
     <div class="error-box error alert alert-danger" role="alert">@T["SignIn.CodeUnknown"]</div>

@@ -6,14 +6,8 @@
 <p class="back-link"><a href="/guest-pages">‹ Guest pages</a></p>
 <h1>Inventory backups</h1>
 <p>Residents can back up their inventory as an IAR file and bring inventory in from other grids. Only items they can copy, modify and transfer leave the grid, and taken-down items never come back in. The owner and admins work on any resident's inventory from that resident's People page, without these limits.</p>
-@if (Model.Error is not null)
-{
-    <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
-}
-@if (Model.Notice is not null)
-{
-    <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
-}
+<error-box text="@Model.Error" />
+<ok-box text="@Model.Notice" />
 
 <form id="iar" method="post" action="/security/iar?handler=Save" asp-antiforgery="true">
     <h2 class="h5 mt-3">For the whole grid</h2>

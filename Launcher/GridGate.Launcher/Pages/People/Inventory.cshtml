@@ -8,10 +8,7 @@
 }
 <p><a href="/people/@id">‹ @(Model.Person?.FullName ?? "Person")</a></p>
 <h1>Inventory@(Model.Person is { } who ? $": {who.FullName}" : "")</h1>
-@if (Model.Error is not null)
-{
-    <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
-}
+<error-box text="@Model.Error" />
 @if (Model.Person is not null && Model.Error is null)
 {
     <p class="text-body-secondary">Item names, types and creators only: what an item contains is never shown here.</p>

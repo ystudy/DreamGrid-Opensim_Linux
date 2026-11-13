@@ -11,14 +11,8 @@
     <h1>People<help-tip class="help-start">Find someone on your grid by part of their name, or pick who to show. Click a name to open the person, where you can change their role, email or password.</help-tip></h1>
 </div>
 <partial name="_HubLinks" model="@(new GridGate.Launcher.Navigation.HubLinks("People"))" />
-@if (Model.Error is not null)
-{
-    <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
-}
-@if (Model.Notice is not null)
-{
-    <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
-}
+<error-box text="@Model.Error" />
+<ok-box text="@Model.Notice" />
 <section class="work-panel mb-3" aria-labelledby="people-title">
     <div class="panel-tools">
         <h2 id="people-title" class="panel-title mb-0">Find a person</h2>

@@ -4,10 +4,7 @@
     ViewData["Title"] = "Email notices";
 }
 <h1>Email notices</h1>
-@if (Model.Notice is not null)
-{
-    <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
-}
+<ok-box text="@Model.Notice" />
 @if (Model.CanApprove || Model.HasTickets)
 {
     <form id="emails" method="post" asp-antiforgery="true">

@@ -15,10 +15,7 @@
     </div>
 </div>
 
-@if (Model.Notice is not null)
-{
-    <p class="notice alert alert-info py-2" role="status">@Model.Notice</p>
-}
+<notice-box text="@Model.Notice" />
 
 @* The sections as a list on the left, the open one in a panel beside it (one above the other on narrow screens). *@
 <div class="settings-columns">

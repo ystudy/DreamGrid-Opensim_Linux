@@ -8,10 +8,7 @@
 <p class="back-link"><a href="/guest-pages">‹ Guest pages</a></p>
 <h1>Legal pages</h1>
 <partial name="_PlainHttpWarning" />
-@if (Model.Notice is not null)
-{
-    <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
-}
+<ok-box text="@Model.Notice" />
 <p>Guests see these pages on your website. You write them: GridGate supplies no wording. Use Markdown. Leave a page empty to remove it.</p>
 <p id="gate-state" class="fw-semibold">@Model.GateText</p>
 
@@ -61,10 +58,7 @@ else
         of @GridGate.Launcher.Core.Languages.NativeName(Model.Language) only while it matches the latest version in
         @GridGate.Launcher.Core.Languages.NativeName(Model.Source); until then they see the @GridGate.Launcher.Core.Languages.NativeName(Model.Source) text.</p>
 }
-@if (Model.Error is not null)
-{
-    <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
-}
+<error-box text="@Model.Error" />
 <form id="legal-texts" method="post" action="/security/legal?lang=@Model.Language" asp-antiforgery="true">
     <input type="hidden" name="lang" value="@Model.Language">
     @foreach (var id in LegalPages.All)

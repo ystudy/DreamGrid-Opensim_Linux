@@ -4,10 +4,7 @@
     ViewData["Title"] = T["Upload.Title"].Value;
 }
 <h1>@T["Upload.Title"]</h1>
-@if (Model.Error is not null)
-{
-    <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
-}
+<error-box text="@Model.Error" />
 <p>@T.With("Upload.Intro", ResidentHtml.Code(".glb"), ResidentHtml.Code(".gltf"))</p>
 <form method="post" action="/guest/upload" enctype="multipart/form-data" asp-antiforgery="true">
     <div class="mb-3">

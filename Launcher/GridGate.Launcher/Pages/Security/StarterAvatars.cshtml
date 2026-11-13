@@ -12,14 +12,8 @@
 <p class="back-link"><a href="/guest-pages">‹ Guest pages</a></p>
 <h1>Starter avatars</h1>
 <p>New residents choose one of these on the second step of signing up, and log in wearing it with copies of everything it wears in their inventory. An avatar is on the sign-up page once it has a snapshot and its model passed <strong>Check it</strong>.</p>
-@if (Model.Error is not null)
-{
-    <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
-}
-@if (Model.Notice is not null)
-{
-    <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
-}
+<error-box text="@Model.Error" />
+<ok-box text="@Model.Notice" />
 
 @if (Model.LoginShown is { } login)
 {

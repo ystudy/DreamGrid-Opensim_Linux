@@ -21,14 +21,8 @@ else
     @if (p.Facts.Waiting) { <span class="badge text-bg-secondary ms-2">Waiting for approval</span> }
     else if (p.Facts.Suspended) { <span class="badge text-bg-danger ms-2">Suspended</span> }
 </h1>
-@if (Model.Error is not null)
-{
-    <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
-}
-@if (Model.Notice is not null)
-{
-    <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
-}
+<error-box text="@Model.Error" />
+<ok-box text="@Model.Notice" />
 <dl id="person-details" class="row">
     <dt class="col-sm-3">Role</dt>
     <dd class="col-sm-9">@GridGate.Launcher.Pages.People.IndexModel.RoleWord(p)</dd>

@@ -6,10 +6,7 @@
 }
 <h1>Two-factor sign-in</h1>
 <p>With two-factor sign-in, signing in needs a code from an authenticator app on your phone as well as your password.</p>
-@if (Model.Error is not null)
-{
-    <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
-}
+<error-box text="@Model.Error" />
 @if (Model.Notice is not null)
 {
     <div class="alert alert-info" role="status">@Model.Notice</div>

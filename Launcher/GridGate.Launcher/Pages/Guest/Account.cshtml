@@ -48,10 +48,7 @@ else
 
     <h2>@T["Common.ChangePassword"]</h2>
     <form id="change-password" method="post" asp-page-handler="Password" class="mb-4">
-        @if (Model.PasswordError is not null)
-        {
-            <div class="error-box error alert alert-danger" role="alert">@Model.PasswordError</div>
-        }
+        <error-box text="@Model.PasswordError" />
         @if (Model.PasswordNotice is not null)
         {
             <div class="alert alert-success" role="status">@Model.PasswordNotice</div>
@@ -78,10 +75,7 @@ else
     else
     {
         <form id="change-email" method="post" asp-page-handler="Email">
-            @if (Model.EmailError is not null)
-            {
-                <div class="error-box error alert alert-danger" role="alert">@Model.EmailError</div>
-            }
+            <error-box text="@Model.EmailError" />
             @if (Model.EmailNotice is not null)
             {
                 <div class="alert alert-success" role="status">@Model.EmailNotice</div>

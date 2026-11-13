@@ -27,10 +27,7 @@ else
             </ul>
         </section>
     }
-    @if (Model.Error is not null)
-    {
-        <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
-    }
+    <error-box text="@Model.Error" />
     @if (Model.Account is null && !Model.AnonymousOpen)
     {
         <div id="support-sign-in" class="alert alert-warning" role="status">@T["Support.EmailOff"] <a href="/guest/sign-in">@T["Common.SignIn"]</a></div>

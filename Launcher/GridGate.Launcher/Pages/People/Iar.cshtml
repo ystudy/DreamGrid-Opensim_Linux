@@ -8,14 +8,8 @@
 <p class="back-link"><a href="/people/@id">‹ @p.FullName</a></p>
 <h1>Inventory archives: @p.FullName</h1>
 <p>Owner and admin powers. Nothing the resident's switches or limits say applies here, and every step is written to the record below with your reason.</p>
-@if (Model.Error is not null)
-{
-    <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
-}
-@if (Model.Notice is not null)
-{
-    <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
-}
+<error-box text="@Model.Error" />
+<ok-box text="@Model.Notice" />
 
 <div class="row g-4">
 <section id="iar-save" class="col-lg-6">
