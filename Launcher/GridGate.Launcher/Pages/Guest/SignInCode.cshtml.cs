@@ -31,54 +31,31 @@ public sealed class SignInCodeModel(ResidentTwoFactor residents, LoginThrottle t
     public async Task<IActionResult> OnPostAsync()
     {
         if (GuestTwoFactorPending.Read(HttpContext) is not { } pending) return BackToPassword();
-        var key = AvatarName.Parse(pending.Name).Key;
-        var remote = HttpContext.Connection.RemoteIpAddress;
-        if (throttle.IsLocked(SignInDoor.Guest, key, remote))
+        var who = new CodeStepCaller(pending.Principal, pending.Name, pending.First, AuthSchemes.GuestRole);
+        var result = await TwoFactorCodeStep.VerifyAsync(residents.Store, throttle, audit, log, "Guest sign-in", SignInDoor.Guest, who, Code,
+            HttpContext.Connection.RemoteIpAddress, async () =>
+            {
+                GuestTwoFactorPending.Delete(HttpContext);
+                await GuestSignIn.SignInAsync(HttpContext, pending.Account);
+            });
+        switch (result)
         {
-            Error = t["Common.TooManyAttempts"];
-            return Page();
-        }
-
-        var store = residents.Store;
-        switch (store.StateOf(pending.Principal))
-        {
-            case TwoFactorState.Off:
+            case CodeStepResult.TwoFactorOff:
                 return BackToPassword();
-            case TwoFactorState.Unknown:
+            case CodeStepResult.TwoFactorUnknown:
                 TwoFactorUnknown = true;
                 return Page();
+            case CodeStepResult.SignedIn:
+                return LocalRedirect("/guest");
+            default:
+                Error = result switch
+                {
+                    CodeStepResult.Locked => t["Common.TooManyAttempts"],
+                    CodeStepResult.SaveFailed => t["SignIn.SaveFailed"],
+                    _ => t["Common.WrongCode"],
+                };
+                return Page();
         }
-
-        bool right, usedBackup;
-        try
-        {
-            right = store.VerifyCode(pending.Principal, Code ?? "", out usedBackup);
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        {
-            log.LogWarning("Guest sign-in: a two-factor code for first name {First} couldn't be marked used: {Message}",
-                LogText.Clean(pending.First, 32), e.Message);
-            Error = t["SignIn.SaveFailed"];
-            return Page();
-        }
-
-        var ip = remote?.ToString();
-        if (!right)
-        {
-            throttle.RecordFailure(SignInDoor.Guest, key, remote);
-            log.LogInformation("Guest sign-in: a two-factor code for first name {First} was refused", LogText.Clean(pending.First, 32));
-            audit.Write(new AuditEntry(pending.Name, pending.Principal, AuthSchemes.GuestRole, ip, "sign-in-refused", "two-factor code", "refused"));
-            Error = t["Common.WrongCode"];
-            return Page();
-        }
-
-        throttle.RecordSuccess(SignInDoor.Guest, key);
-        GuestTwoFactorPending.Delete(HttpContext);
-        await GuestSignIn.SignInAsync(HttpContext, pending.Account);
-        audit.Write(new AuditEntry(pending.Name, pending.Principal, AuthSchemes.GuestRole, ip, "sign-in", null, "ok"));
-        if (usedBackup)
-            audit.Write(new AuditEntry(pending.Name, pending.Principal, AuthSchemes.GuestRole, ip, "backup-code-used", null, "ok"));
-        return LocalRedirect("/guest");
     }
 
     private IActionResult BackToPassword()

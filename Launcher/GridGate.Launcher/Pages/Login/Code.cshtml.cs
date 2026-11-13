@@ -35,54 +35,31 @@ public sealed class CodeModel(TwoFactorStore twoFactor, LoginThrottle throttle, 
     public async Task<IActionResult> OnPostAsync()
     {
         if (TwoFactorPending.Read(HttpContext) is not { } pending) return BackToPassword();
-        var key = AvatarName.Parse(pending.Name).Key;
-        var remote = HttpContext.Connection.RemoteIpAddress;
-        var ip = remote?.ToString();
-        if (throttle.IsLocked(SignInDoor.Staff, key, remote))
+        var who = new CodeStepCaller(pending.Principal, pending.Name, pending.First, pending.Role.AuditName());
+        var result = await TwoFactorCodeStep.VerifyAsync(twoFactor, throttle, audit, log, "Sign-in", SignInDoor.Staff, who, Code,
+            HttpContext.Connection.RemoteIpAddress, async () =>
+            {
+                TwoFactorPending.Delete(HttpContext);
+                await StaffSignIn.SignInAsync(HttpContext, pending.Account, pending.Role);
+            });
+        switch (result)
         {
-            Error = "Too many attempts. Try again in a few minutes.";
-            return Page();
-        }
-
-        switch (twoFactor.StateOf(pending.Principal))
-        {
-            case TwoFactorState.Off:
+            case CodeStepResult.TwoFactorOff:
                 return BackToPassword(); // reset meanwhile: the password step decides again
-            case TwoFactorState.Unknown:
+            case CodeStepResult.TwoFactorUnknown:
                 TwoFactorUnknown = true; // not a wrong code: nothing is counted
                 return Page();
+            case CodeStepResult.SignedIn:
+                return LocalRedirect(LoginModel.Landing(pending.Role, pending.ReturnUrl, Url));
+            default:
+                Error = result switch
+                {
+                    CodeStepResult.Locked => "Too many attempts. Try again in a few minutes.",
+                    CodeStepResult.SaveFailed => TwoFactorStore.SaveFailed,
+                    _ => WrongCode,
+                };
+                return Page();
         }
-
-        bool right, usedBackup;
-        try
-        {
-            right = twoFactor.VerifyCode(pending.Principal, Code ?? "", out usedBackup);
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        {
-            // Not a wrong code, so not counted; nothing was used up.
-            log.LogWarning("Sign-in: a two-factor code for first name {First} couldn't be marked used: {Message}",
-                LogText.Clean(pending.First, 32), e.Message);
-            Error = TwoFactorStore.SaveFailed;
-            return Page();
-        }
-
-        if (!right)
-        {
-            throttle.RecordFailure(SignInDoor.Staff, key, remote);
-            log.LogInformation("Sign-in: a two-factor code for first name {First} was refused", LogText.Clean(pending.First, 32));
-            audit.Write(new AuditEntry(pending.Name, pending.Principal, pending.Role.AuditName(), ip, "sign-in-refused", "two-factor code", "refused"));
-            Error = WrongCode;
-            return Page();
-        }
-
-        throttle.RecordSuccess(SignInDoor.Staff, key);
-        TwoFactorPending.Delete(HttpContext);
-        await StaffSignIn.SignInAsync(HttpContext, pending.Account, pending.Role);
-        audit.Write(new AuditEntry(pending.Name, pending.Principal, pending.Role.AuditName(), ip, "sign-in", null, "ok"));
-        if (usedBackup)
-            audit.Write(new AuditEntry(pending.Name, pending.Principal, pending.Role.AuditName(), ip, "backup-code-used", null, "ok"));
-        return LocalRedirect(LoginModel.Landing(pending.Role, pending.ReturnUrl, Url));
     }
 
     private IActionResult BackToPassword()
