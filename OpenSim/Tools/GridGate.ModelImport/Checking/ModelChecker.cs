@@ -145,15 +145,7 @@ public static class ModelChecker
         return new[] { size.X, size.Y, size.Z };
     }
 
-    private static (Vector3 Min, Vector3 Max, bool Any) LocalBox(ImportPart part)
-    {
-        var lo = new Vector3(float.MaxValue);
-        var hi = new Vector3(float.MinValue);
-        bool any = false;
-        foreach (var f in part.Mesh.Faces)
-            foreach (var v in f.Positions) { lo = Vector3.Min(lo, v); hi = Vector3.Max(hi, v); any = true; }
-        return any ? (lo, hi, true) : (Vector3.Zero, Vector3.Zero, false);
-    }
+    private static (Vector3 Min, Vector3 Max, bool Any) LocalBox(ImportPart part) => MeshParts.Bounds(part.Mesh.Faces);
 
     // The size of the whole item along the world axes, in metres: every vertex through scale, rotation and position. Display only.
     private static double[] Overall(IReadOnlyList<ImportPart> parts)

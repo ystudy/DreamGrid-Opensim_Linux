@@ -37,10 +37,7 @@ public static class Simplifier
 
     private static double Diagonal(ImportMesh mesh)
     {
-        var lo = new Vector3(float.MaxValue);
-        var hi = new Vector3(float.MinValue);
-        foreach (var f in mesh.Faces)
-            foreach (var p in f.Positions) { lo = Vector3.Min(lo, p); hi = Vector3.Max(hi, p); }
+        var (lo, hi, _) = MeshParts.Bounds(mesh.Faces);
         return lo.X <= hi.X ? Vector3.Distance(lo, hi) : 0;
     }
 
@@ -81,22 +78,7 @@ public static class Simplifier
         for (int v = 0; v < map.Length; v++)
             if (map[v] == 0) { map[v] = used.Count; used.Add(v); }
 
-        var positions = used.Select(v => face.Positions[v]).ToArray();
-        var normals = used.Select(v => face.Normals[v]).ToArray();
-        var uv = face.Uv0 != null ? used.Select(v => face.Uv0[v]).ToArray() : null;
-        ImportWeights? weights = null;
-        if (face.Weights != null)
-        {
-            var joints = new ushort[used.Count * 4];
-            var w = new float[used.Count * 4];
-            for (int i = 0; i < used.Count; i++)
-            {
-                Array.Copy(face.Weights.Joints, used[i] * 4, joints, i * 4, 4);
-                Array.Copy(face.Weights.Weights, used[i] * 4, w, i * 4, 4);
-            }
-            weights = new ImportWeights(joints, w);
-        }
-        return new ImportFace(positions, normals, uv, triangles.Select(v => map[v]).ToArray(), face.Material, weights);
+        return MeshParts.Piece(face, used, triangles.Select(v => map[v]).ToArray());
     }
 
     /// <summary>The collapse state for one face.</summary>
