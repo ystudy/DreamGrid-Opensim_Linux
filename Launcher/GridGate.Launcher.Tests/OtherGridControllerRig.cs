@@ -55,11 +55,8 @@ public abstract class OtherGridControllerRig : IAsyncLifetime
     public async ValueTask DisposeAsync()
     {
         foreach (var grid in _grids) await grid.DetachAsync();
-        foreach (var pid in Directory.Exists(_paths.Pids) ? Directory.GetFiles(_paths.Pids, "*.pid") : [])
-            if (PidFile.Read(pid) is { } id)
-                try { using var p = Process.GetProcessById(id); if (p.Id != Environment.ProcessId) p.Kill(); }
-                catch (Exception e) when (e is ArgumentException or InvalidOperationException) { }
-        try { Directory.Delete(_root, true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        RigProcesses.EndAll(_root, _paths.Pids);
+        RigProcesses.DeleteFolder(_root);
     }
 
     /// <summary>A controller whose database is a stand-in that counts as healthy, and whose programs crash at once.</summary>
