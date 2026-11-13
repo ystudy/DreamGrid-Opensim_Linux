@@ -134,4 +134,4 @@ Commit checked: `cfd5d9b3` (branch `chore/remove-wifi-diva`).
   - No Diva add-ins load: no line written after the restart (Robust and both regions) names Diva, WhoGotWhat, jOpenSim or Wifi. The "Plugin Loaded" lines after the restart list only OpenSim plugins, `OpenSim.Groups` and `OpenSimSearch` among them.
   - Groups still load: after the restart `robust.log` has no `[ERROR]` line, and the Groups and HGGroups connectors loaded.
   - Other lines after the restart, none caused by this change: both regions note an old pid file (the restart), and Test logs scripts whose assets are missing.
-- **Not checked here (the owner's, in Firestorm):** log in, edit a profile and see it saved, open a group, and change an estate setting.
+- **The owner's check in Firestorm (2026-11-12, Debian 12 VM, `cfd5d9b`):** logged in, edited a profile and saw it saved, opened a group, and changed an estate setting. The owner said it works.

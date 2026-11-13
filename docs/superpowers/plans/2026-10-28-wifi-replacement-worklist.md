@@ -225,7 +225,7 @@ Removed on branch `chore/remove-wifi-diva` (2026-11-12). What went and why is in
   - [x] Delete `jOpensimURL` from `bin/config-include/Proto/*/OpenSim.ini` and from `Robust.HG.ini.proto` (with its "Apache Port for Jopensim" comments). Also delete the commented `data_services=…/JOpensim/…registersearch.php` line, which has a hard-coded LAN address.
   - [ ] Profiles keep working through OpenSim's built-in profiles service, already set up in the templates (`[UserProfilesService]` in Robust, `[UserProfiles] ProfileServiceURL` for regions). Check that the generated INIs have it switched on and that a profile edit is saved, on Windows and on Debian.
     - [x] Generated INIs: covered by the `Region_profiles_point_at_robust` test.
-    - [ ] A profile edit is saved: the owner's Firestorm check.
+    - [x] A profile edit is saved: the owner checked it in Firestorm on 2026-11-12, against the Debian 12 VM running `cfd5d9b`. A grid running on Windows is not checked yet.
 - [x] Delete from `bin/`: `Wifi.ini`, `config-addon-opensim/Wifi.*`, `config-addon-robust/Wifi.ini`, `WifiPages-*`, `Diva.*.dll/.pdb`, `Diva.Wifi.pot`, `Diva.Wifi.ProcessorTest.*`.
 - [x] Remove the Wifi lines from `.gitignore`, from `bin/config-include/Proto/*/OpenSim.ini`, and from `bin/OpenSim.ConsoleClient.ini`.
 - [x] `Robust.HG.ini.proto`: the `register=` and `password=` lines point to the new pages (2.1, 2.3). The proto defaults are now empty, and the launcher writes GridGate's pages where this computer runs the staff pages.
