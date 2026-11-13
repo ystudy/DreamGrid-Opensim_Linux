@@ -13,9 +13,7 @@ public static class DatabaseCheck
     {
         try
         {
-            await using var conn = new MySqlConnection(
-                MariaDbServer.ConnectionString(s, "robust", "robustuser", s.Db.RobustPassword, TimeoutSeconds));
-            await conn.OpenAsync(ct);
+            await using var conn = await GridDb.OpenRobustAsync(s, TimeoutSeconds, ct);
             return null;
         }
         catch (Exception e) when (e is MySqlException or InvalidOperationException or TimeoutException or System.Net.Sockets.SocketException)

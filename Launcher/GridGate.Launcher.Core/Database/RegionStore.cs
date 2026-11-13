@@ -58,7 +58,7 @@ public sealed class RegionStore(LauncherSettings s) : IRegionStore
     {
         var space = ids.Distinct().ToDictionary(id => id, _ => 0L);
         if (space.Count == 0) return space;
-        await using var conn = await OpenAsync(ct);
+        await using var conn = await GridDb.OpenAsync(MariaDbServer.ConnectionString(s), ct);
 
         // Each prim table's average row length, times the region's rows in it; terrain is counted by its blobs.
         var avg = new Dictionary<string, long>();
@@ -96,14 +96,14 @@ public sealed class RegionStore(LauncherSettings s) : IRegionStore
 
     public async Task DeregisterAsync(Guid id, CancellationToken ct)
     {
-        await using var conn = await OpenAsync(ct);
+        await using var conn = await GridDb.OpenAsync(MariaDbServer.ConnectionString(s), ct);
         if (!(await ExistingTablesAsync(conn, ct)).Contains((Robust, "regions"))) return;
         await RunAsync(conn, null, Deregister, id, ct);
     }
 
     public async Task EraseAsync(Guid id, CancellationToken ct)
     {
-        await using var conn = await OpenAsync(ct);
+        await using var conn = await GridDb.OpenAsync(MariaDbServer.ConnectionString(s), ct);
         var existing = await ExistingTablesAsync(conn, ct);
         await using var tx = await conn.BeginTransactionAsync(ct);
         foreach (var (sql, tables) in Erase)
@@ -116,23 +116,11 @@ public sealed class RegionStore(LauncherSettings s) : IRegionStore
 
     public async Task<int?> EstateOfAsync(Guid id, CancellationToken ct)
     {
-        await using var conn = await OpenAsync(ct);
+        await using var conn = await GridDb.OpenAsync(MariaDbServer.ConnectionString(s), ct);
         if (!(await ExistingTablesAsync(conn, ct)).Contains((OpenSim, "estate_map"))) return null;
         await using var cmd = new MySqlCommand("SELECT `EstateID` FROM `opensim`.`estate_map` WHERE `RegionID` = @id", conn);
         cmd.Parameters.AddWithValue("@id", id.ToString());
         return await cmd.ExecuteScalarAsync(ct) is { } estate and not DBNull ? Convert.ToInt32(estate) : null;
-    }
-
-    private async Task<MySqlConnection> OpenAsync(CancellationToken ct)
-    {
-        var conn = new MySqlConnection(MariaDbServer.ConnectionString(s));
-        try { await conn.OpenAsync(ct); }
-        catch
-        {
-            await conn.DisposeAsync();
-            throw;
-        }
-        return conn;
     }
 
     /// <summary>The (schema, table) pairs of the robust and opensim databases.</summary>

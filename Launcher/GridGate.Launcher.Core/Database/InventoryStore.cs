@@ -288,8 +288,7 @@ public sealed class InventoryStore(Func<LauncherSettings> settings) : IInventory
         try
         {
             var s = settings();
-            await using var conn = new MySqlConnection(MariaDbServer.ConnectionString(s, "robust", "robustuser", s.Db.RobustPassword, TimeoutSeconds));
-            await conn.OpenAsync(ct);
+            await using var conn = await GridDb.OpenRobustAsync(s, TimeoutSeconds, ct);
             return await work(conn);
         }
         catch (Exception e) when (e is MySqlException or InvalidCastException or FormatException or TimeoutException

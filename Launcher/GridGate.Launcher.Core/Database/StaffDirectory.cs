@@ -58,8 +58,7 @@ public sealed class StaffDirectory(Func<LauncherSettings> settings) : IStaffDire
         try
         {
             var s = settings();
-            await using var conn = new MySqlConnection(MariaDbServer.ConnectionString(s, "robust", "robustuser", s.Db.RobustPassword, TimeoutSeconds));
-            await conn.OpenAsync(ct);
+            await using var conn = await GridDb.OpenRobustAsync(s, TimeoutSeconds, ct);
             await using var cmd = new MySqlCommand(query, conn);
             cmd.Parameters.AddWithValue(parameter.Name, parameter.Value);
             await using var reader = await cmd.ExecuteReaderAsync(ct);

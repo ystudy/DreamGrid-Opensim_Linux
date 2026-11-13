@@ -84,8 +84,7 @@ public sealed class AccountRemover(Func<LauncherSettings> settings) : IAccountRe
         try
         {
             var s = settings();
-            await using var conn = new MySqlConnection(MariaDbServer.ConnectionString(s, "robust", "robustuser", s.Db.RobustPassword, TimeoutSeconds));
-            await conn.OpenAsync(ct);
+            await using var conn = await GridDb.OpenRobustAsync(s, TimeoutSeconds, ct);
             var present = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             await using (var list = new MySqlCommand(Tables, conn))
             await using (var reader = await list.ExecuteReaderAsync(ct))
@@ -113,8 +112,7 @@ public sealed class AccountRemover(Func<LauncherSettings> settings) : IAccountRe
         try
         {
             var s = settings();
-            await using var conn = new MySqlConnection(MariaDbServer.ConnectionString(s, "robust", "robustuser", s.Db.RobustPassword, TimeoutSeconds));
-            await conn.OpenAsync(ct);
+            await using var conn = await GridDb.OpenRobustAsync(s, TimeoutSeconds, ct);
             await using var tx = await conn.BeginTransactionAsync(ct);
             foreach (var sql in Statements)
             {

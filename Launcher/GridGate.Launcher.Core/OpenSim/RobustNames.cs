@@ -39,8 +39,7 @@ public sealed class RobustNames(Func<LauncherSettings> settings) : IRobustNames
         try
         {
             var s = settings();
-            await using var conn = new MySqlConnection(MariaDbServer.ConnectionString(s, "robust", "robustuser", s.Db.RobustPassword, TimeoutSeconds));
-            await conn.OpenAsync(ct);
+            await using var conn = await GridDb.OpenRobustAsync(s, TimeoutSeconds, ct);
             await using var tx = await conn.BeginTransactionAsync(ct);
             await using (var check = Command(Taken, conn, tx, principal, first, last))
                 if (Convert.ToInt64(await check.ExecuteScalarAsync(ct)) > 0) throw new NameTakenException(first, last);

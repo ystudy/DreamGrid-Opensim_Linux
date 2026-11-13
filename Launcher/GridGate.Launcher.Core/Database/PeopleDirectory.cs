@@ -106,8 +106,7 @@ public sealed class PeopleDirectory(Func<LauncherSettings> settings) : IPeopleDi
         try
         {
             var s = settings();
-            await using var conn = new MySqlConnection(MariaDbServer.ConnectionString(s, "robust", "robustuser", s.Db.RobustPassword, TimeoutSeconds));
-            await conn.OpenAsync();
+            await using var conn = await GridDb.OpenRobustAsync(s, TimeoutSeconds, CancellationToken.None);
             return await work(conn);
         }
         catch (Exception e) when (e is MySqlException or InvalidOperationException or TimeoutException or System.Net.Sockets.SocketException

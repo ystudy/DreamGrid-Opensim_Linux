@@ -40,8 +40,7 @@ public sealed class GridRegions(Func<LauncherSettings> settings, ILogger<GridReg
         try
         {
             var s = settings();
-            await using var conn = new MySqlConnection(MariaDbServer.ConnectionString(s, "robust", "robustuser", s.Db.RobustPassword, TimeoutSeconds));
-            await conn.OpenAsync(ct);
+            await using var conn = await GridDb.OpenRobustAsync(s, TimeoutSeconds, ct);
             await using var cmd = new MySqlCommand(Query, conn);
             await using var reader = await cmd.ExecuteReaderAsync(ct);
             var list = new List<GridRegion>();

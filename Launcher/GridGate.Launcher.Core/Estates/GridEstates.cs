@@ -175,8 +175,7 @@ public sealed class GridEstates(Func<LauncherSettings> settings) : IGridEstates
         try
         {
             var s = settings();
-            await using var conn = new MySqlConnection(MariaDbServer.ConnectionString(s, "robust", "robustuser", s.Db.RobustPassword, TimeoutSeconds));
-            await conn.OpenAsync(ct);
+            await using var conn = await GridDb.OpenRobustAsync(s, TimeoutSeconds, ct);
             var ps = wanted.Select((g, i) => ($"@a{i}", (object)g.ToString("D"))).ToArray();
             await using var cmd = Command(conn, null,
                 $"SELECT PrincipalID, FirstName, LastName FROM UserAccounts WHERE PrincipalID IN ({string.Join(", ", ps.Select(p => p.Item1))})", ps);
@@ -195,8 +194,7 @@ public sealed class GridEstates(Func<LauncherSettings> settings) : IGridEstates
         try
         {
             var s = settings();
-            await using var conn = new MySqlConnection(MariaDbServer.ConnectionString(s, "opensim", "opensimuser", s.Db.OpensimPassword, TimeoutSeconds));
-            await conn.OpenAsync();
+            await using var conn = await GridDb.OpenOpensimAsync(s, TimeoutSeconds, CancellationToken.None);
             return await work(conn);
         }
         catch (Exception e) when (e is MySqlException or InvalidOperationException or TimeoutException or System.Net.Sockets.SocketException

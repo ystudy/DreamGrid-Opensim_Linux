@@ -29,8 +29,7 @@ public sealed class AppearanceStore(Func<LauncherSettings> settings) : IAppearan
         try
         {
             var s = settings();
-            await using var conn = new MySqlConnection(MariaDbServer.ConnectionString(s, "robust", "robustuser", s.Db.RobustPassword, TimeoutSeconds));
-            await conn.OpenAsync(ct);
+            await using var conn = await GridDb.OpenRobustAsync(s, TimeoutSeconds, ct);
             await using var cmd = new MySqlCommand("SELECT `Name`, `Value` FROM robust.Avatars WHERE `PrincipalID` = @id", conn);
             cmd.Parameters.AddWithValue("@id", principal.ToString());
             var rows = new List<(string, string)>();
