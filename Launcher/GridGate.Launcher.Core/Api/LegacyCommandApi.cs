@@ -113,7 +113,7 @@ public sealed class LegacyCommandApi(
             throttle.RecordSuccess(SignInDoor.Staff, name.Key);
             // A Region Server's or Connected Server's estate owner is level 0 on the other grid but administers here; on a
             // Connected Server a higher level on that grid counts for nothing.
-            return new Caller(AdminRule.EffectiveLevel(settings(), account), $"{account.FirstName} {account.LastName}",
+            return new Caller(AdminRule.EffectiveLevel(settings(), account), account.FullName(),
                 account.PrincipalId, role.AuditName());
         }
         catch (Exception e) when (!ct.IsCancellationRequested)

@@ -135,21 +135,21 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
 
         try
         {
-            pending.Add(account.PrincipalId, Full(account), SignUpState.Unlisted);
+            pending.Add(account.PrincipalId, account.FullName(), SignUpState.Unlisted);
             await passwords.SetAsync(account.PrincipalId, form.Password!, none);
             if (withEmail)
             {
                 // A decoy (address already on the grid) stays unlisted: never shown, never approved.
-                if (owner is null) pending.Add(account.PrincipalId, Full(account), SignUpState.WaitingForEmail);
+                if (owner is null) pending.Add(account.PrincipalId, account.FullName(), SignUpState.WaitingForEmail);
             }
             else if (ApprovalRules.WaitsForStaff(s, emailReady: false))
             {
-                pending.Add(account.PrincipalId, Full(account), SignUpState.WaitingForStaff);
+                pending.Add(account.PrincipalId, account.FullName(), SignUpState.WaitingForStaff);
             }
             else
             {
                 account = await grid.SetUserLevelAsync(account.FirstName, account.LastName, 0, none);
-                pending.Add(account.PrincipalId, Full(account), SignUpState.LetIn);
+                pending.Add(account.PrincipalId, account.FullName(), SignUpState.LetIn);
             }
         }
         catch (Exception e) when (e is RobustPasswordsUnavailableException or UnauthorizedAccessException or LevelNotConfirmedException
@@ -179,7 +179,7 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
             return new(SignUpOutcome.CheckEmail);
         }
         var waitsForStaff = !withEmail && account.UserLevel < 0;
-        audit.Write(new AuditEntry(Full(account), account.PrincipalId, StaffRole.None.AuditName(), ip?.ToString(), "signup-made",
+        audit.Write(new AuditEntry(account.FullName(), account.PrincipalId, StaffRole.None.AuditName(), ip?.ToString(), "signup-made",
             withEmail ? "waiting for email" : waitsForStaff ? "waiting for staff" : "ready", "ok"));
         if (waitsForStaff) return new(SignUpOutcome.WaitingForStaff);
         if (!withEmail)
@@ -227,7 +227,7 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
                 throw new SignUpBusyException("The account couldn't be confirmed right now.", e);
             }
             tokens.TryRedeem(Purpose, principal, token);
-            audit.Write(new AuditEntry(Full(account), principal, StaffRole.None.AuditName(), ip?.ToString(), "signup-confirmed", null, "ok"));
+            audit.Write(new AuditEntry(account.FullName(), principal, StaffRole.None.AuditName(), ip?.ToString(), "signup-confirmed", null, "ok"));
             await groups.JoinNewResidentAsync(account, CancellationToken.None);
             return (ConfirmResult.Confirmed, account);
         }
@@ -270,8 +270,8 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
         var token = tokens.Issue(Purpose, account.PrincipalId, LinkLifetime);
         // The clean-up counts from the newest link, so it never deletes an avatar whose link still works.
         pending.Linked(account.PrincipalId);
-        var link = $"{Site(s)}{ConfirmPath}?token={token}";
-        var full = Full(account);
+        var link = $"{WebsiteAddress.Base(s)}{ConfirmPath}?token={token}";
+        var full = account.FullName();
         var queued = sender.Queue(EmailTemplates.ConfirmEmail, language, email, full,
             new Dictionary<string, string> { ["AvatarName"] = full, ["Link"] = link, ["ExpiresIn"] = sender.Words(ExpiresIn, language) }, LinkLifetime);
         if (queued != QueueResult.Queued)
@@ -282,10 +282,10 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
     {
         if (!Counts.SendAllowed(owner.PrincipalId, email)) return;
         Counts.CountSend(owner.PrincipalId, email);
-        var full = Full(owner);
+        var full = owner.FullName();
         // To the account's owner: their saved language if the grid offers it, else the page it was typed on.
         sender.Queue(EmailTemplates.AlreadyHaveAccount, emailLanguage.ForResident(owner.PrincipalId, language), email, full,
-            new Dictionary<string, string> { ["AvatarName"] = full, ["Link"] = $"{Site(s)}{PasswordResets.AskPath}" });
+            new Dictionary<string, string> { ["AvatarName"] = full, ["Link"] = $"{WebsiteAddress.Base(s)}{PasswordResets.AskPath}" });
     }
 
     private SignUpResult Taken(SignUpForm form, IPAddress? ip)
@@ -332,7 +332,4 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
     private static bool IsDown(Exception e, CancellationToken ct) =>
         !ct.IsCancellationRequested && (e is StaffDirectoryUnavailableException || RobustFailure.IsUnreachable(e, ct));
 
-    private static string Site(LauncherSettings s) => $"http://{HostAddress.Effective(s.Hostname)}:{s.WebPort}";
-
-    private static string Full(RobustAccount a) => $"{a.FirstName} {a.LastName}";
 }

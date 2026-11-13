@@ -48,14 +48,14 @@ public sealed class SignUpNotices(Func<LauncherSettings> settings, SignUpBoard b
             return;
         }
 
-        var site = $"http://{HostAddress.Effective(s.Hostname)}:{s.WebPort}";
+        var site = WebsiteAddress.Base(s);
         var names = string.Join("\n", waiting.Select(e => e.Name.Length > 0 ? e.Name : "(name not known yet)"));
         foreach (var account in staff)
         {
             var role = AdminRule.RoleOf(s, account);
             if (!ApprovalRules.CanApprove(role, s) || account.Email.Trim().Length == 0 || notices.OptedOut(account.PrincipalId)) continue;
             var link = site + (role == StaffRole.Supervisor ? ListPath : "/");
-            sender.Queue(EmailTemplates.SignUpsWaiting, Languages.English, account.Email.Trim(), $"{account.FirstName} {account.LastName}",
+            sender.Queue(EmailTemplates.SignUpsWaiting, Languages.English, account.Email.Trim(), account.FullName(),
                 new Dictionary<string, string> { ["Count"] = waiting.Count.ToString(), ["Names"] = names, ["Link"] = link });
         }
         notices.Sent(startedAt ?? time.GetUtcNow(), waiting[^1].Made);

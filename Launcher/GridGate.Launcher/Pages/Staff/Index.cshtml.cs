@@ -78,7 +78,7 @@ public sealed class IndexModel(IStaffDirectory directory, IRobustClient robust, 
         {
             var accounts = await directory.ListAtOrAboveAsync(s.Security.SupervisorLevel, ct);
             // Everyone at the supervisor level or more has a role (the owner named in setup shows as the owner).
-            Rows = [.. accounts.Select(a => new StaffRow($"{a.FirstName} {a.LastName}", AdminRule.RoleOf(s, a), a.UserLevel))
+            Rows = [.. accounts.Select(a => new StaffRow(a.FullName(), AdminRule.RoleOf(s, a), a.UserLevel))
                 .Where(r => r.Role != StaffRole.None)];
             Unavailable = false;
         }

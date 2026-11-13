@@ -1,5 +1,6 @@
 using GridGate.Launcher.Email;
 using GridGate.Launcher.Core.Security;
+using GridGate.Launcher.Core.OpenSim;
 using GridGate.Launcher.Guests;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -72,6 +73,6 @@ public sealed class ResetPasswordModel(PasswordResets resets, EmailLanguage emai
     private void Show(ResetLink link)
     {
         NeedsCode = link.NeedsCode;
-        Name = $"{link.Account.FirstName} {link.Account.LastName}";
+        Name = link.Account.FullName();
     }
 }

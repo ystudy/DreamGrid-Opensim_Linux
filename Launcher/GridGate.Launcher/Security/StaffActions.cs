@@ -70,7 +70,7 @@ public sealed class StaffActions(IGridController grid, Func<LauncherSettings> se
 
     public async Task<ChangeOutcome> ApplyAsync(ClaimsPrincipal actor, string? ip, RobustAccount target, StaffChange change, CancellationToken ct)
     {
-        var name = $"{target.FirstName} {target.LastName}";
+        var name = target.FullName();
         var shown = LogText.Clean(name, 64);
         var action = ActionOf(change);
         var s = settings();

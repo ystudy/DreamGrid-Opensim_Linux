@@ -85,7 +85,7 @@ public sealed class IndexModel(IRobustClient robust, StaffActions actions, Regio
     public sealed record Person(RobustAccount Account, StaffRole Role, bool Suspended, bool CanSuspend, bool CanUnsuspend,
         IReadOnlyList<string> Regions, bool Pending = false, bool WaitingForStaff = false)
     {
-        public string FullName => $"{Account.FirstName} {Account.LastName}";
+        public string FullName => Account.FullName();
 
         /// <summary>The role word shown: what the level gives, a guest when none.</summary>
         public string RoleName => Role switch

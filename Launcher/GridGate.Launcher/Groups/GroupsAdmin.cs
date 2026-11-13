@@ -50,7 +50,7 @@ public sealed class GroupsAdmin(IGridGroups groups, GroupJoins joins, AuditLog a
     public Task<GroupOutcome> AddMemberAsync(ClaimsPrincipal actor, string? ip, Guid group, RobustAccount who, CancellationToken ct) =>
         GuardAsync(() => OneAtATimeAsync(async () =>
         {
-            var name = Full(who);
+            var name = who.FullName();
             if (await groups.GetAsync(group, ct) is not { } g) return new GroupOutcome(false, NoGroup);
             if (g.Members.Any(m => m.Local && GroupRules.IsLocal(m.PrincipalId, out var id) && id == who.PrincipalId))
                 return new GroupOutcome(false, $"{name} is already in {g.Name}.");
@@ -177,7 +177,7 @@ public sealed class GroupsAdmin(IGridGroups groups, GroupJoins joins, AuditLog a
                     joins.ClearDefault();
                     return;
                 case AddResult.Added:
-                    audit.Write(new AuditEntry("GridGate", null, StaffRole.None.AuditName(), null, "group-auto-joined", $"{group} {Full(resident)}", "ok"));
+                    audit.Write(new AuditEntry("GridGate", null, StaffRole.None.AuditName(), null, "group-auto-joined", $"{group} {resident.FullName()}", "ok"));
                     return;
             }
         }
@@ -211,5 +211,4 @@ public sealed class GroupsAdmin(IGridGroups groups, GroupJoins joins, AuditLog a
     private void Write(ClaimsPrincipal actor, string? ip, string action, string? target) =>
         audit.Write(actor, ip, action, target);
 
-    private static string Full(RobustAccount a) => $"{a.FirstName} {a.LastName}";
 }

@@ -49,5 +49,5 @@ public sealed class DeleteModel(PeopleActions people) : PageModel
         return Page();
     }
 
-    private bool MayDelete() => StaffSignIn.RoleOf(User) is StaffRole.Admin or StaffRole.Owner;
+    private bool MayDelete() => TakedownAccess.MayUse(User);
 }

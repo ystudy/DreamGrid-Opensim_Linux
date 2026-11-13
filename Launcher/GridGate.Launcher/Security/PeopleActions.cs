@@ -17,7 +17,7 @@ namespace GridGate.Launcher.Security;
 /// <summary>A person as the People pages show them: their row, what the rules know about them, and their roles.</summary>
 public sealed record PersonView(PersonRow Row, PersonFacts Facts, RoleView Role)
 {
-    public string FullName => $"{Row.Account.FirstName} {Row.Account.LastName}";
+    public string FullName => Row.Account.FullName();
 }
 
 /// <summary>
@@ -156,7 +156,7 @@ public sealed class PeopleActions(IPeopleDirectory people, StaffActions staff, F
             AccountChanges.CancelEmailChange(tokens, emailChanges, principal);
             tokens.Revoke(PasswordResets.Purpose, principal);
             tokens.Revoke(PasswordResets.StaffPurpose, principal);
-            var forgot = $"http://{HostAddress.Effective(s.Hostname)}:{s.WebPort}{PasswordResets.AskPath}";
+            var forgot = WebsiteAddress.ForgotPassword(s);
             if (a.Email.Trim() is { Length: > 0 } old)
                 sender.Queue(EmailTemplates.EmailChangedByStaff, emailLanguage.ForResident(principal), old, newName, new Dictionary<string, string> { ["AvatarName"] = newName, ["Link"] = forgot });
             if (newEmail.Length > 0)

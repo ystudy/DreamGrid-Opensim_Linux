@@ -78,7 +78,7 @@ public sealed class LoginModel(IRobustClient robust, Func<LauncherSettings> sett
         {
             case TwoFactorState.Unknown:
                 log.LogWarning("Sign-in: two-factor for first name {First} can't be checked: the two-factor file can't be read", name.ForLog);
-                audit.Write(new AuditEntry($"{account.FirstName} {account.LastName}", account.PrincipalId, role.AuditName(), ip,
+                audit.Write(new AuditEntry(account.FullName(), account.PrincipalId, role.AuditName(), ip,
                     "sign-in-refused", "two-factor can't be checked", "refused"));
                 TwoFactorUnknown = true;
                 return Page();
@@ -90,7 +90,7 @@ public sealed class LoginModel(IRobustClient robust, Func<LauncherSettings> sett
         var mustEnrol = settings().Security.RequireTwoFactorForStaff && role is StaffRole.Admin or StaffRole.Supervisor;
         throttle.RecordSuccess(SignInDoor.Staff, name.Key);
         await StaffSignIn.SignInAsync(HttpContext, account, role, mustEnrol);
-        audit.Write(new AuditEntry($"{account.FirstName} {account.LastName}", account.PrincipalId, role.AuditName(), ip,
+        audit.Write(new AuditEntry(account.FullName(), account.PrincipalId, role.AuditName(), ip,
             "sign-in", null, "ok"));
         if (mustEnrol) return LocalRedirect(TwoFactorGate.EnrolPath);
         return LocalRedirect(Landing(role, ReturnUrl, Url));

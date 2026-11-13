@@ -236,7 +236,7 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
             Error = $"There's no avatar called {LogText.Clean(who.Key, 64)} on this grid.";
             return Page();
         }
-        var name = $"{account.FirstName} {account.LastName}";
+        var name = account.FullName();
         if (account.UserLevel < 0)
         {
             Error = $"{name} is suspended.";

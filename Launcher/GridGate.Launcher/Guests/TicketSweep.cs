@@ -130,7 +130,7 @@ public sealed class TicketSweep(TicketStore store, TicketNotices notices, Takedo
             if (opened.Count == 0 && answered.Count == 0) continue;
 
             var to = account.Email.Trim();
-            var name = $"{account.FirstName} {account.LastName}";
+            var name = account.FullName();
             var queued = (opened.Count == 0 || Queue(EmailTemplates.TicketNew, to, name, opened, link))
                 & (answered.Count == 0 || Queue(EmailTemplates.TicketReplyGuest, to, name, answered, link));
             // An email that couldn't be queued (the outbox is full) is tried again next pass, with what came in meanwhile.

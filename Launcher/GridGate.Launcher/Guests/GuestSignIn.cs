@@ -21,7 +21,7 @@ public static class GuestSignIn
         var now = services.GetRequiredService<TimeProvider>().GetUtcNow();
         List<Claim> claims =
         [
-            new(ClaimTypes.Name, $"{account.FirstName} {account.LastName}"),
+            new(ClaimTypes.Name, account.FullName()),
             new(StaffSignIn.PrincipalClaim, account.PrincipalId.ToString()),
             // Antiforgery binds its tokens to this claim when present, and otherwise to every claim, including the check time
             // that the recheck renews: without it a form open across a recheck would be refused.

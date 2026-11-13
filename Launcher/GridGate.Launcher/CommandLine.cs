@@ -121,7 +121,7 @@ public static class CommandLine
         }
 
         var path = !s.Setup.OwnerCreated && s.SetupToken is { } token ? $"/setup?token={token}" : "/";
-        output.WriteLine($"http://{HostAddress.Effective(s.Hostname)}:{s.WebPort}{path}");
+        output.WriteLine($"{WebsiteAddress.Base(s)}{path}");
         if (args.Contains("--open"))
         {
             try

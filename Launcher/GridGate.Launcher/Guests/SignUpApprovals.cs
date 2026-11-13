@@ -75,15 +75,15 @@ public sealed class SignUpApprovals(Func<LauncherSettings> settings, IGridContro
                 return new(ApprovalResult.Busy, ApproveBusy);
             }
             // Audited as soon as Robust took it, so a board that can't be written never hides who let someone in.
-            audit.Write(new AuditEntry(staffName, null, role.AuditName(), ip?.ToString(), "signup-approved", Full(account), "ok"));
+            audit.Write(new AuditEntry(staffName, null, role.AuditName(), ip?.ToString(), "signup-approved", account.FullName(), "ok"));
             Finish(principal, SignUpState.Approved, staffName);
             await groups.JoinNewResidentAsync(account, CancellationToken.None);
             var s = settings();
             if (sender.IsReady && account.Email.Trim().Length > 0)
             {
-                var full = Full(account);
+                var full = account.FullName();
                 sender.Queue(EmailTemplates.AccountApproved, emailLanguage.ForResident(principal), SignUpRules.NormalEmail(account.Email), full,
-                    new Dictionary<string, string> { ["AvatarName"] = full, ["Link"] = $"{Site(s)}/guest/sign-in" });
+                    new Dictionary<string, string> { ["AvatarName"] = full, ["Link"] = $"{WebsiteAddress.Base(s)}/guest/sign-in" });
             }
             return new(ApprovalResult.Done);
         });
@@ -103,13 +103,13 @@ public sealed class SignUpApprovals(Func<LauncherSettings> settings, IGridContro
                 return new(ApprovalResult.Busy, DenyBusy);
             }
             languages.Remove(principal);
-            audit.Write(new AuditEntry(staffName, null, role.AuditName(), ip?.ToString(), "signup-denied", Full(account), "ok"));
+            audit.Write(new AuditEntry(staffName, null, role.AuditName(), ip?.ToString(), "signup-denied", account.FullName(), "ok"));
             Finish(principal, SignUpState.Denied, staffName);
             if (sender.IsReady && account.Email.Trim().Length > 0)
             {
                 var words = (note ?? "").Trim();
                 if (words.Length > NoteLimit) words = words[..NoteLimit];
-                var full = Full(account);
+                var full = account.FullName();
                 sender.Queue(EmailTemplates.SignUpDenied, language, SignUpRules.NormalEmail(account.Email), full,
                     new Dictionary<string, string> { ["AvatarName"] = full, ["Note"] = words });
             }
@@ -163,7 +163,4 @@ public sealed class SignUpApprovals(Func<LauncherSettings> settings, IGridContro
     private static bool IsDown(Exception e) =>
         e is StaffDirectoryUnavailableException || RobustFailure.IsUnreachable(e, CancellationToken.None);
 
-    private static string Site(LauncherSettings s) => $"http://{HostAddress.Effective(s.Hostname)}:{s.WebPort}";
-
-    private static string Full(RobustAccount a) => $"{a.FirstName} {a.LastName}";
 }
