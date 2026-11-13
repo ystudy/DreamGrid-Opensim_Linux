@@ -74,8 +74,7 @@ public sealed class SignInModel(Core.Starter.StarterAvatarList starters, IRobust
                 return Page();
             }
         }
-        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException
-            or InvalidDataException && !ct.IsCancellationRequested)
+        catch (Exception e) when (RobustFailure.IsUnreachable(e, ct))
         {
             log.LogWarning("Guest sign-in: the account service did not answer: {Message}", e.Message);
             Error = t["Common.ServiceDown"];

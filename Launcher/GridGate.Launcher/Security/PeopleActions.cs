@@ -96,8 +96,7 @@ public sealed class PeopleActions(IPeopleDirectory people, StaffActions staff, F
                 if (!sameName && await robust.FindAccountAsync(first, last, ct) is { } other && other.PrincipalId != principal)
                     return new(false, SignUps.NameTaken);
             }
-            catch (Exception e) when (e is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException
-                                          or InvalidDataException && !ct.IsCancellationRequested)
+            catch (Exception e) when (RobustFailure.IsUnreachable(e, ct))
             {
                 return new(false, StaffActions.RobustDown);
             }

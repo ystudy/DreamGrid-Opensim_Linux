@@ -64,8 +64,7 @@ public sealed class LoginModel(IRobustClient robust, Func<LauncherSettings> sett
             if (account is not null && await robust.AuthenticateAsync(account.PrincipalId, password, ct))
                 role = AdminRule.RoleOf(settings(), account);
         }
-        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException
-            or InvalidDataException && !ct.IsCancellationRequested)
+        catch (Exception e) when (RobustFailure.IsUnreachable(e, ct))
         {
             log.LogWarning("Sign-in: the account service did not answer: {Message}", e.Message);
             Error = "Your world's sign-in service isn't running yet. Start your world, then try again.";

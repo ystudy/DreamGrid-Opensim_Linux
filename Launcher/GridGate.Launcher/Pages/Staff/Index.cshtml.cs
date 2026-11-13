@@ -53,8 +53,7 @@ public sealed class IndexModel(IStaffDirectory directory, IRobustClient robust, 
                 if (account is null)
                     Error = $"No avatar called {LogText.Clean(who.Key, 64)}.";
             }
-            catch (Exception e) when (e is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException
-                or InvalidDataException && !ct.IsCancellationRequested)
+            catch (Exception e) when (RobustFailure.IsUnreachable(e, ct))
             {
                 log.LogWarning("Staff: the account service did not answer: {Message}", LogText.Clean(e.Message, 300));
                 Error = StaffActions.RobustDown;

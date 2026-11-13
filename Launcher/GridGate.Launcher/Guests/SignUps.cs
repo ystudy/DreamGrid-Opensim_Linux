@@ -330,8 +330,7 @@ public sealed class SignUps(Func<LauncherSettings> settings, IGridController gri
     }
 
     private static bool IsDown(Exception e, CancellationToken ct) =>
-        e is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException or InvalidDataException
-            or StaffDirectoryUnavailableException && !ct.IsCancellationRequested;
+        !ct.IsCancellationRequested && (e is StaffDirectoryUnavailableException || RobustFailure.IsUnreachable(e, ct));
 
     private static string Site(LauncherSettings s) => $"http://{HostAddress.Effective(s.Hostname)}:{s.WebPort}";
 

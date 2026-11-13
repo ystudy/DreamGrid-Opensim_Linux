@@ -42,8 +42,7 @@ public sealed class SignUpNotices(Func<LauncherSettings> settings, SignUpBoard b
                 && await robust.FindAccountByIdAsync(o.PrincipalId, ct) is { } owner)
                 staff.Add(owner);
         }
-        catch (Exception e) when (e is StaffDirectoryUnavailableException or HttpRequestException or TaskCanceledException or IOException
-            or InvalidOperationException or InvalidDataException && !ct.IsCancellationRequested)
+        catch (Exception e) when (!ct.IsCancellationRequested && (e is StaffDirectoryUnavailableException || RobustFailure.IsUnreachable(e, ct)))
         {
             log.LogWarning("Sign-ups waiting: the staff list couldn't be read, trying next pass: {Message}", e.InnerException?.Message ?? e.Message);
             return;

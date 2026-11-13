@@ -53,8 +53,7 @@ public sealed class GroupModel(IGridGroups groups, GroupJoins joins, GroupsAdmin
                 // The strict lookup: an unusable reply is the service failing, never "no such avatar".
                 account = await robust.FindAccountAsync(who.First, who.Last, ct);
             }
-            catch (Exception e) when (e is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException
-                or InvalidDataException && !ct.IsCancellationRequested)
+            catch (Exception e) when (RobustFailure.IsUnreachable(e, ct))
             {
                 log.LogWarning("Groups: the account service did not answer: {Message}", LogText.Clean(e.Message, 300));
                 outcome = new GroupOutcome(false, StaffActions.RobustDown);

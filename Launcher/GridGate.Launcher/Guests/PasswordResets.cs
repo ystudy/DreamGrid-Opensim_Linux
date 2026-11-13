@@ -86,8 +86,7 @@ public sealed class PasswordResets(Func<LauncherSettings> settings, IRobustClien
         {
             account = await robust.FindAccountAsync(typed.First, typed.Last, ct);
         }
-        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException
-            or InvalidDataException && !ct.IsCancellationRequested)
+        catch (Exception e) when (RobustFailure.IsUnreachable(e, ct))
         {
             log.LogWarning("Password reset: the account service did not answer: {Message}", e.Message);
             Refused(typed, ip, "account service down");
@@ -168,8 +167,7 @@ public sealed class PasswordResets(Func<LauncherSettings> settings, IRobustClien
         {
             account = await robust.FindAccountByIdAsync(principal, ct);
         }
-        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException
-            or InvalidDataException && !ct.IsCancellationRequested)
+        catch (Exception e) when (RobustFailure.IsUnreachable(e, ct))
         {
             log.LogWarning("Password reset: the account service did not answer: {Message}", e.Message);
             return null;

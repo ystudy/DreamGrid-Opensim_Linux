@@ -108,6 +108,5 @@ public sealed class SignUpCleanup(SignUpBoard pending, IRobustClient robust, IAc
     }
 
     private static bool IsDown(Exception e, CancellationToken ct) =>
-        e is StaffDirectoryUnavailableException or HttpRequestException or TaskCanceledException or IOException
-            or InvalidOperationException or InvalidDataException && !ct.IsCancellationRequested;
+        !ct.IsCancellationRequested && (e is StaffDirectoryUnavailableException || RobustFailure.IsUnreachable(e, ct));
 }

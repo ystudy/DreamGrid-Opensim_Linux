@@ -105,8 +105,7 @@ public sealed class TicketSweep(TicketStore store, TicketNotices notices, Takedo
                 && await robust.FindAccountByIdAsync(o.PrincipalId, ct) is { } owner)
                 staff.Add(owner);
         }
-        catch (Exception e) when (e is StaffDirectoryUnavailableException or HttpRequestException or TaskCanceledException or IOException
-            or InvalidOperationException or InvalidDataException && !ct.IsCancellationRequested)
+        catch (Exception e) when (!ct.IsCancellationRequested && (e is StaffDirectoryUnavailableException || RobustFailure.IsUnreachable(e, ct)))
         {
             log.LogWarning("Support tickets: the staff list couldn't be read, notices wait for the next pass: {Message}", e.InnerException?.Message ?? e.Message);
             return;

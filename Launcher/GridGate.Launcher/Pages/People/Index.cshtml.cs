@@ -190,8 +190,7 @@ public sealed class IndexModel(IRobustClient robust, StaffActions actions, Regio
             if (account is null) Error ??= $"No avatar called {LogText.Clean(who.Key, 64)}.";
             return account;
         }
-        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException
-            or InvalidDataException && !ct.IsCancellationRequested)
+        catch (Exception e) when (RobustFailure.IsUnreachable(e, ct))
         {
             log.LogWarning("People: the account service did not answer: {Message}", LogText.Clean(e.Message, 300));
             Error ??= StaffActions.RobustDown;

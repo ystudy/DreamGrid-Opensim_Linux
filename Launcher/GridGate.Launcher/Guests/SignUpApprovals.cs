@@ -161,8 +161,7 @@ public sealed class SignUpApprovals(Func<LauncherSettings> settings, IGridContro
     }
 
     private static bool IsDown(Exception e) =>
-        e is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException or InvalidDataException
-            or StaffDirectoryUnavailableException;
+        e is StaffDirectoryUnavailableException || RobustFailure.IsUnreachable(e, CancellationToken.None);
 
     private static string Site(LauncherSettings s) => $"http://{HostAddress.Effective(s.Hostname)}:{s.WebPort}";
 

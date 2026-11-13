@@ -169,7 +169,7 @@ public sealed class AccountChanges(Func<LauncherSettings> settings, IRobustClien
             account = await robust.FindAccountByIdAsync(principal, ct);
             holders = await directory.ListByEmailAsync(email, ct);
         }
-        catch (Exception e) when (Unreachable(e, ct) || e is StaffDirectoryUnavailableException)
+        catch (Exception e) when (RobustFailure.IsUnreachable(e, ct) || e is StaffDirectoryUnavailableException)
         {
             log.LogWarning("Account: an email change couldn't be checked: {Message}", e.Message);
             return (EmailLinkResult.Busy, null);
@@ -233,7 +233,7 @@ public sealed class AccountChanges(Func<LauncherSettings> settings, IRobustClien
             if (throttle.IsLocked(SignInDoor.Guest, Key(a), ip)) return (new(AccountResult.Locked, LockedText, new("Common.TooManyAttempts")), null);
             right = await robust.AuthenticateAsync(principal, current ?? "", ct);
         }
-        catch (Exception e) when (Unreachable(e, ct))
+        catch (Exception e) when (RobustFailure.IsUnreachable(e, ct))
         {
             log.LogWarning("Account: the account service did not answer: {Message}", e.Message);
             return (new(AccountResult.Busy, ServiceDown, new("Common.ServiceDown")), null);
@@ -268,10 +268,6 @@ public sealed class AccountChanges(Func<LauncherSettings> settings, IRobustClien
         }
         throttle.RecordSuccess(SignInDoor.Guest, Key(a));
     }
-
-    private static bool Unreachable(Exception e, CancellationToken ct) =>
-        e is HttpRequestException or IOException or InvalidOperationException or InvalidDataException
-        || e is TaskCanceledException && !ct.IsCancellationRequested;
 
     private AccountOutcome Refused(RobustAccount a, IPAddress? ip, string action, string why, AccountOutcome outcome)
     {
