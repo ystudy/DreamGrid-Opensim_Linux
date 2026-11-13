@@ -91,7 +91,7 @@ public sealed class EmailModel(EmailAccounts accounts, EmailSender sender, Email
         var password = usesStored ? accounts.PasswordOf(stored!) : Password;
         if (string.IsNullOrEmpty(password)) return Reopen("Type the password.", null);
 
-        var to = string.IsNullOrWhiteSpace(TestTo) ? await OwnerEmailAsync(ct) : TestTo.Trim();
+        var to = string.IsNullOrWhiteSpace(TestTo) ? await OwnerEmail.FindAsync(robust, settings(), ct) : TestTo.Trim();
         if (string.IsNullOrEmpty(to) || !MailboxAddress.TryParse(to, out _))
             return Reopen("Type an address to send the test to.", null);
         if (!limiter.TryTake(User.Identity?.Name ?? "owner"))
@@ -221,21 +221,6 @@ public sealed class EmailModel(EmailAccounts accounts, EmailSender sender, Email
         var security = custom && Enum.TryParse<MailSecurity>(Security, out var sec) ? sec : (a?.Security ?? p.Security);
         return new Card(key, p, a, s, UserName ?? "", FromName ?? "", FromAddress ?? "", ReplyTo ?? "", PerDay ?? "", PerHour ?? "",
             custom ? Host ?? "" : p.Host, custom ? Port ?? "" : p.Port.ToString(), security, true, error, outcome);
-    }
-
-    private async Task<string?> OwnerEmailAsync(CancellationToken ct)
-    {
-        var owner = settings().Setup.Owner;
-        if (owner is null) return null;
-        try
-        {
-            var account = await robust.FindAccountAsync(owner.FirstName, owner.LastName, ct);
-            return string.IsNullOrWhiteSpace(account?.Email) ? null : account.Email;
-        }
-        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or InvalidOperationException)
-        {
-            return null;
-        }
     }
 
     /// <summary>

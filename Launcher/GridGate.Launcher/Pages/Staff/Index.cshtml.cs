@@ -3,6 +3,7 @@ using GridGate.Launcher.Core.Database;
 using GridGate.Launcher.Core.OpenSim;
 using GridGate.Launcher.Core.Security;
 using GridGate.Launcher.Core.Settings;
+using GridGate.Launcher.Estates;
 using GridGate.Launcher.Security;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -41,25 +42,11 @@ public sealed class IndexModel(IStaffDirectory directory, IRobustClient robust, 
         Typed = name;
         if (!Enum.TryParse<StaffChange>(change, out var wanted) || wanted is not (StaffChange.MakeSupervisor or StaffChange.MakeAdmin or StaffChange.MakeGuest))
             Error = "Choose what to make this person.";
-        else if (AvatarName.Parse(name) is not { IsComplete: true } who)
-            Error = "Type the avatar's first and last name.";
         else
         {
-            RobustAccount? account = null;
-            try
-            {
-                // The strict lookup: an unusable reply is the service failing, never "no such avatar".
-                account = await robust.FindAccountAsync(who.First, who.Last, ct);
-                if (account is null)
-                    Error = $"No avatar called {LogText.Clean(who.Key, 64)}.";
-            }
-            catch (Exception e) when (RobustFailure.IsUnreachable(e, ct))
-            {
-                log.LogWarning("Staff: the account service did not answer: {Message}", LogText.Clean(e.Message, 300));
-                Error = StaffActions.RobustDown;
-            }
-
-            if (account is not null)
+            var (account, problem) = await AvatarLookup.FindAsync(robust, name, log, ct, "Staff");
+            if (account is null) Error = problem;
+            else
             {
                 var outcome = await actions.ApplyAsync(User, HttpContext.Connection.RemoteIpAddress?.ToString(), account, wanted, ct);
                 if (outcome.Done) { Notice = outcome.Message; Typed = null; }

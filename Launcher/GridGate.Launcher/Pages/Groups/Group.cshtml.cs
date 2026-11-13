@@ -2,6 +2,7 @@ using GridGate.Launcher.Core;
 using GridGate.Launcher.Core.Groups;
 using GridGate.Launcher.Core.OpenSim;
 using GridGate.Launcher.Core.Security;
+using GridGate.Launcher.Estates;
 using GridGate.Launcher.Groups;
 using GridGate.Launcher.Security;
 using Microsoft.AspNetCore.Mvc;
@@ -41,25 +42,8 @@ public sealed class GroupModel(IGridGroups groups, GroupJoins joins, GroupsAdmin
 
     public async Task<IActionResult> OnPostAddAsync(Guid id, string? avatar, CancellationToken ct)
     {
-        GroupOutcome outcome;
-        if (AvatarName.Parse(avatar) is not { IsComplete: true } who)
-            outcome = new GroupOutcome(false, "Type the avatar's first and last name.");
-        else
-        {
-            RobustAccount? account = null;
-            outcome = new GroupOutcome(false, $"No avatar called {LogText.Clean(who.Key, 64)}.");
-            try
-            {
-                // The strict lookup: an unusable reply is the service failing, never "no such avatar".
-                account = await robust.FindAccountAsync(who.First, who.Last, ct);
-            }
-            catch (Exception e) when (RobustFailure.IsUnreachable(e, ct))
-            {
-                log.LogWarning("Groups: the account service did not answer: {Message}", LogText.Clean(e.Message, 300));
-                outcome = new GroupOutcome(false, StaffActions.RobustDown);
-            }
-            if (account is not null) outcome = await admin.AddMemberAsync(User, Ip, id, account, ct);
-        }
+        var (account, problem) = await AvatarLookup.FindAsync(robust, avatar, log, ct, "Groups");
+        var outcome = account is null ? new GroupOutcome(false, problem!) : await admin.AddMemberAsync(User, Ip, id, account, ct);
         if (!outcome.Done) TypedAvatar = avatar;
         return await ShowAsync(id, ct, outcome);
     }

@@ -103,7 +103,7 @@ public sealed class EmailWordingModel(IGridController grid, Func<LauncherSetting
             Fill(id, null, "Set up an email account first.", null);
             return Page();
         }
-        var to = string.IsNullOrWhiteSpace(TestTo) ? await OwnerEmailAsync(ct) : TestTo.Trim();
+        var to = string.IsNullOrWhiteSpace(TestTo) ? await OwnerEmail.FindAsync(robust, settings(), ct) : TestTo.Trim();
         if (string.IsNullOrEmpty(to) || !MailboxAddress.TryParse(to, out _))
         {
             Fill(id, null, "Type an address to send the test to.", null);
@@ -176,21 +176,6 @@ public sealed class EmailWordingModel(IGridController grid, Func<LauncherSetting
         if (texts.Count == 0) all.Remove(language);
         else all[language] = texts;
         return s with { Email = s.Email with { Templates = all.Count == 0 ? null : all } };
-    }
-
-    private async Task<string?> OwnerEmailAsync(CancellationToken ct)
-    {
-        var owner = settings().Setup.Owner;
-        if (owner is null) return null;
-        try
-        {
-            var account = await robust.FindAccountAsync(owner.FirstName, owner.LastName, ct);
-            return string.IsNullOrWhiteSpace(account?.Email) ? null : account.Email;
-        }
-        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or InvalidOperationException)
-        {
-            return null;
-        }
     }
 
     private void Write(string action, string target, string result = "ok") =>

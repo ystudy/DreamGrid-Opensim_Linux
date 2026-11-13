@@ -11,7 +11,7 @@ namespace GridGate.Launcher.Estates;
 /// </summary>
 public static class AvatarLookup
 {
-    public static async Task<(RobustAccount? Account, string? Problem)> FindAsync(IRobustClient robust, string? typed, ILogger log, CancellationToken ct)
+    public static async Task<(RobustAccount? Account, string? Problem)> FindAsync(IRobustClient robust, string? typed, ILogger log, CancellationToken ct, string area = "Estates")
     {
         if (AvatarName.Parse(typed) is not { IsComplete: true } who) return (null, "Type the avatar's first and last name.");
         try
@@ -22,7 +22,7 @@ public static class AvatarLookup
         }
         catch (Exception e) when (RobustFailure.IsUnreachable(e, ct))
         {
-            log.LogWarning("Estates: the account service did not answer: {Message}", LogText.Clean(e.Message, 300));
+            log.LogWarning("{Area}: the account service did not answer: {Message}", area, LogText.Clean(e.Message, 300));
             return (null, StaffActions.RobustDown);
         }
     }
