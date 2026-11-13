@@ -123,7 +123,7 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
         if (!await LoadAsync(id)) return NotFound();
         if (BusyText is not null)
         {
-            return Back(id, RegionActions.BusyNotice(BusyText));
+            return Back(id, JobNotices.Busy(BusyText));
         }
 
         var affected = Affected(id, power);
@@ -169,7 +169,7 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
         if (!await LoadAsync(id)) return NotFound();
         if (BusyText is not null)
         {
-            return Back(id, RegionActions.BusyNotice(BusyText));
+            return Back(id, JobNotices.Busy(BusyText));
         }
 
         if (!confirmed)
@@ -273,7 +273,7 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
         if (!await LoadAsync(id) || !HasGuestSide) return NotFound();
         if (BusyText is not null)
         {
-            return Back(id, RegionActions.BusyNotice(BusyText));
+            return Back(id, JobNotices.Busy(BusyText));
         }
         if (RunsWith.Count == 0)
         {

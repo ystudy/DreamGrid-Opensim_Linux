@@ -46,7 +46,7 @@ public sealed class MoveModel(IGridController grid, RegionActions actions) : Pag
         // A program that runs an OAR job refuses the move; the panel says why.
         if (grid.BusyWith(region.Instance) is { } busy)
         {
-            Notice = RegionActions.BusyNotice(busy);
+            Notice = JobNotices.Busy(busy);
             return Redirect("/regions/region/" + id);
         }
 

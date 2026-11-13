@@ -20,9 +20,6 @@ public sealed class RegionActions(IGridController grid, BackgroundWork backgroun
         _ => throw new ArgumentOutOfRangeException(nameof(action)),
     };
 
-    /// <summary>What the page says when a program's running job refuses the request.</summary>
-    public static string BusyNotice(string what) => $"{what} is still running. Try again when it finishes.";
-
     /// <summary>
     /// The other regions a restart of this region's program drops: those sharing it that are running or starting, while
     /// that program is up.

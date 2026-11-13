@@ -174,7 +174,7 @@ public sealed class SettingsModel(IGridController grid, OarJobs oarJobs, Func<Cp
         if (size == Size) return Redirect($"/regions/region/{id}/settings/basics");
         if (grid.BusyWith(Instance) is { } busy)
         {
-            Notice = RegionActions.BusyNotice(busy);
+            Notice = JobNotices.Busy(busy);
             return Redirect($"/regions/region/{id}/settings/basics");
         }
 

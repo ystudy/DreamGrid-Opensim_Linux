@@ -1,6 +1,5 @@
 using GridGate.Launcher.Core.Grid;
 using GridGate.Launcher.Core.Settings;
-using GridGate.Launcher.Endpoints;
 
 namespace GridGate.Launcher;
 
@@ -73,7 +72,7 @@ public sealed class OarJobs(IGridController grid, BackgroundWork background, Tim
     /// </summary>
     public string? Start(OarJobRequest request, string regionName, Func<CancellationToken, Task>? after = null) =>
         !TryStart(request, Describe(request, regionName), after) && For(request.RegionId) is { } running
-            ? RegionActions.BusyNotice(running.Text)
+            ? JobNotices.Busy(running.Text)
             : null;
 
     /// <summary>The running job of the region's program, else the last one that finished there; null if there has been none.</summary>

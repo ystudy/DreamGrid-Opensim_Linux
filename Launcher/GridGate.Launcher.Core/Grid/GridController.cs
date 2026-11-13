@@ -1392,7 +1392,7 @@ public sealed partial class GridController(
     {
         foreach (var instance in instances)
             if (instance is not null && _jobs.TryGetValue(instance, out var job))
-                throw new InvalidOperationException($"{job} is still running. Try again when it finishes.");
+                throw new InvalidOperationException(JobNotices.Busy(job));
     }
 
     /// <summary>
