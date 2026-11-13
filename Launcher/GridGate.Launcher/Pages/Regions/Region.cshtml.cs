@@ -123,8 +123,7 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
         if (!await LoadAsync(id)) return NotFound();
         if (BusyText is not null)
         {
-            Notice = $"{BusyText} is still running. Try again when it finishes.";
-            return Redirect("/regions/region/" + id);
+            return Back(id, RegionActions.BusyNotice(BusyText));
         }
 
         var affected = Affected(id, power);
@@ -151,14 +150,12 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
         if (!await LoadAsync(id)) return NotFound();
         if (!CanOar)
         {
-            Notice = OarNotRunning;
-            return Redirect("/regions/region/" + id);
+            return Back(id, OarNotRunning);
         }
         if (kind == OarJobKind.MakeLand && !NeedsContent) return BadRequest();
 
         var request = new OarJobRequest(id, kind);
-        if (!oarJobs.TryStart(request, OarJobs.Describe(request, Name)) && oarJobs.For(id) is { } running)
-            Notice = $"{running.Text} is still running. Try again when it finishes.";
+        if (oarJobs.Start(request, Name) is { } busy) Notice = busy;
         return Redirect($"/regions/region/{id}/job");
     }
 
@@ -172,8 +169,7 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
         if (!await LoadAsync(id)) return NotFound();
         if (BusyText is not null)
         {
-            Notice = $"{BusyText} is still running. Try again when it finishes.";
-            return Redirect("/regions/region/" + id);
+            return Back(id, RegionActions.BusyNotice(BusyText));
         }
 
         if (!confirmed)
@@ -189,12 +185,10 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
         {
             if (!CanOar)
             {
-                Notice = OarNotRunning;
-                return Redirect("/regions/region/" + id);
+                return Back(id, OarNotRunning);
             }
             var request = new OarJobRequest(id, OarJobKind.Save);
-            if (!oarJobs.TryStart(request, OarJobs.Describe(request, Name), ct => grid.DeleteRegionAsync(id, ct)) && oarJobs.For(id) is { } running)
-                Notice = $"{running.Text} is still running. Try again when it finishes.";
+            if (oarJobs.Start(request, Name, ct => grid.DeleteRegionAsync(id, ct)) is { } busy) Notice = busy;
             return Redirect($"/regions/region/{id}/job");
         }
 
@@ -279,13 +273,11 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
         if (!await LoadAsync(id) || !HasGuestSide) return NotFound();
         if (BusyText is not null)
         {
-            Notice = $"{BusyText} is still running. Try again when it finishes.";
-            return Redirect("/regions/region/" + id);
+            return Back(id, RegionActions.BusyNotice(BusyText));
         }
         if (RunsWith.Count == 0)
         {
-            Notice = $"{Name} already runs on its own.";
-            return Redirect("/regions/region/" + id);
+            return Back(id, $"{Name} already runs on its own.");
         }
         if (OwnProgramAsk is not null && !confirmed)
         {
@@ -294,6 +286,12 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
         }
         if (!actions.TryChangeRunsWith(id, null)) return NotFound();
         Notice = $"Changing how {Name} runs. This can take a few minutes.";
+        return Redirect("/regions/region/" + id);
+    }
+
+    private RedirectResult Back(Guid id, string notice)
+    {
+        Notice = notice;
         return Redirect("/regions/region/" + id);
     }
 

@@ -3,6 +3,7 @@ using GridGate.Launcher.Core.Grid;
 using GridGate.Launcher.Core.Modules;
 using GridGate.Launcher.Core.Processes;
 using GridGate.Launcher.Core.Settings;
+using GridGate.Launcher.Endpoints;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
@@ -173,7 +174,7 @@ public sealed class SettingsModel(IGridController grid, OarJobs oarJobs, Func<Cp
         if (size == Size) return Redirect($"/regions/region/{id}/settings/basics");
         if (grid.BusyWith(Instance) is { } busy)
         {
-            Notice = $"{busy} is still running. Try again when it finishes.";
+            Notice = RegionActions.BusyNotice(busy);
             return Redirect($"/regions/region/{id}/settings/basics");
         }
 
@@ -200,8 +201,7 @@ public sealed class SettingsModel(IGridController grid, OarJobs oarJobs, Func<Cp
                 return Redirect($"/regions/region/{id}/settings/basics");
             }
             var request = new OarJobRequest(id, OarJobKind.Save);
-            if (!oarJobs.TryStart(request, OarJobs.Describe(request, Name), c => grid.ResizeRegionAsync(id, size, c)) && oarJobs.For(id) is { } running)
-                Notice = $"{running.Text} is still running. Try again when it finishes.";
+            if (oarJobs.Start(request, Name, c => grid.ResizeRegionAsync(id, size, c)) is { } busyJob) Notice = busyJob;
             return Redirect($"/regions/region/{id}/job");
         }
 
