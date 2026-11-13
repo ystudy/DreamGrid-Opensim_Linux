@@ -13,7 +13,16 @@ if [ "$#" -eq 0 ]; then
   set -- .
 fi
 
-excludes=(':!docs/superpowers/' ':!docs/wifi-diva-removal-log.md' ':!CONTRIBUTORS.txt'
+# A pathspec that matches no tracked file is a typo, not a clean result.
+for spec in "$@"; do
+  listed=$(git ls-files -- "$spec")
+  if [ -z "$listed" ]; then
+    echo "check-old-name.sh: pathspec matches no tracked file: $spec" >&2
+    exit 2
+  fi
+done
+
+excludes=(':!docs/superpowers/' ':!docs/*-removal-log.md' ':!CONTRIBUTORS.txt'
   ':!.github/scripts/check-old-name.sh' ':!.github/scripts/old-name-history.txt')
 
 # Allow-list entries, comments and blank lines dropped.
@@ -53,7 +62,13 @@ if [ "${#bad[@]}" -gt 0 ]; then
 fi
 
 # Path pass: tracked file paths.
-paths=$(git ls-files -- "$@" "${excludes[@]}" | grep -i -E "$pattern" || true)
+listing=$(git ls-files -- "$@" "${excludes[@]}")
+rc=0
+paths=$(printf '%s
+' "$listing" | grep -i -E "$pattern") || rc=$?
+if [ "$rc" -ne 0 ] && [ "$rc" -ne 1 ]; then
+  exit "$rc"
+fi
 if [ -n "$paths" ]; then
   echo "Path pass: these tracked file names contain the old name DreamGrid:"
   echo "$paths"
