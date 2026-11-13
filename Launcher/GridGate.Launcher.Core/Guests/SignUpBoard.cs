@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 
@@ -150,9 +149,7 @@ public sealed class SignUpBoard(string file, TimeProvider time, ILogger<SignUpBo
         string json;
         try
         {
-            using var fs = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-            using var reader = new StreamReader(fs);
-            json = reader.ReadToEnd();
+            json = AtomicFile.ReadShared(file);
         }
         catch (Exception e) when (e is FileNotFoundException or DirectoryNotFoundException)
         {
@@ -181,12 +178,10 @@ public sealed class SignUpBoard(string file, TimeProvider time, ILogger<SignUpBo
     {
         if (damaged && File.Exists(file))
         {
-            var aside = file + ".damaged-" + DateTime.UtcNow.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture);
-            File.Move(file, aside, overwrite: true);
+            var aside = AtomicFile.SetAside(file);
             log?.LogWarning("The sign-ups board {File} could not be read and was set aside as {Aside}; those sign-ups are no longer cleaned up.",
                 file, Path.GetFileName(aside));
         }
-        if (Path.GetDirectoryName(Path.GetFullPath(file)) is { Length: > 0 } dir) Directory.CreateDirectory(dir);
-        AtomicFile.WriteAllText(file, JsonSerializer.Serialize(all.Values.OrderBy(e => e.Made).ToList(), Options));
+        AtomicFile.WriteAllTextCreatingFolder(file, JsonSerializer.Serialize(all.Values.OrderBy(e => e.Made).ToList(), Options));
     }
 }

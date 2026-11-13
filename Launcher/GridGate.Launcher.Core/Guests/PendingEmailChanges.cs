@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -70,9 +69,7 @@ public sealed class PendingEmailChanges(string file, TimeProvider time, ILogger<
         string json;
         try
         {
-            using var fs = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-            using var reader = new StreamReader(fs);
-            json = reader.ReadToEnd();
+            json = AtomicFile.ReadShared(file);
         }
         catch (Exception e) when (e is FileNotFoundException or DirectoryNotFoundException)
         {
@@ -93,12 +90,10 @@ public sealed class PendingEmailChanges(string file, TimeProvider time, ILogger<
     {
         if (damaged)
         {
-            var aside = file + ".damaged-" + DateTime.UtcNow.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture);
-            File.Move(file, aside, overwrite: true);
+            var aside = AtomicFile.SetAside(file);
             log?.LogWarning("The waiting email changes {File} could not be read and were set aside as {Aside}; those links no longer work.",
                 file, Path.GetFileName(aside));
         }
-        if (Path.GetDirectoryName(Path.GetFullPath(file)) is { Length: > 0 } dir) Directory.CreateDirectory(dir);
-        AtomicFile.WriteAllText(file, JsonSerializer.Serialize(waiting, Options));
+        AtomicFile.WriteAllTextCreatingFolder(file, JsonSerializer.Serialize(waiting, Options));
     }
 }
