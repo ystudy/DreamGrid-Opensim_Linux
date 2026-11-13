@@ -1,6 +1,6 @@
 # Rapier
 
-DreamGrid's third physics engine for the BulletS module (next to BulletSim and BulletXNA) is
+GridGate's third physics engine for the BulletS module (next to BulletSim and BulletXNA) is
 [Rapier](https://rapier.rs), a Rust physics engine, used through the C bindings in its repository
 (`bindings/c`, crate `rapier3d-ffi`). This folder holds what is needed to rebuild the native library and check it.
 OpenSim reaches it through `OpenSim/Region/PhysicsModules/BulletS/Rapier/RapierNative.cs`, the only C# file that knows
@@ -13,7 +13,7 @@ the layout of `include/rapier.h`.
 | `build-windows.ps1 -OutDir DIR [-Parallel]` | The same for 64-bit Windows, with `-C target-feature=+crt-static`; writes `DIR/rapier.dll`, or `DIR/rapier-mt.dll` with `-Parallel`. |
 | `include/rapier.h` | The C header from that commit (`bindings/c/include/rapier.h`), unchanged apart from line endings. |
 | `exports.txt` | The `r3` functions the header declares for these builds (3D, single precision, no FEM, no robotics): 681 names, the same for `single` and `mt` (a build without `parallel` still exports the thread-pool functions; they answer `R3_UNSUPPORTED`). `gen-exports.sh` writes it from the header. |
-| `patches/parry3d-0.31.1-edge-codes.patch` | DreamGrid's patch to Parry, Rapier's collision library (see [The Parry patch](#the-parry-patch)). |
+| `patches/parry3d-0.31.1-edge-codes.patch` | GridGate's patch to Parry, Rapier's collision library (see [The Parry patch](#the-parry-patch)). |
 | `edge-codes-test/` | Rust tests for that patch; both scripts run them against the patched Parry before building Rapier. |
 | `LICENSE` | Rapier's Apache-2.0 licence. The tag has no NOTICE file. |
 | `../../.github/workflows/rapier.yml` | Runs both scripts on GitHub for both builds (Linux x64 and arm64 in Debian 12, Windows x64) and checks exports, glibc and DLL imports. |
@@ -89,7 +89,7 @@ The cost of the internal-edge data falls from about 42 to 4 bytes per triangle. 
   many random directions on a noisy mesh, the corrected normals were within 0.17 degrees of unpatched Parry's for 99 %
   of them.
 - Rapier runs with the patch and without it ended within 12 mm of each other over 5 s on a curved mesh,
-  and identically on flat tiles. `MeshSeamTests` in `tests/DreamGrid.Physics.Rapier.Tests` checks this on a flat and
+  and identically on flat tiles. `MeshSeamTests` in `tests/GridGate.Physics.Rapier.Tests` checks this on a flat and
   a curved floor.
 
 `edge-codes-test` checks that `triangle_normal_constraints` gives what Parry's own pseudo-normals give on these

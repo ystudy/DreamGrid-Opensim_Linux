@@ -1,6 +1,6 @@
 <#
-.SYNOPSIS  Checks a package folder produced by setup/package.ps1 (the dreamgrid/ folder).
-.EXAMPLE   powershell -File setup/test/Test-Package.ps1 -Package $env:TEMP\dgpkg\dreamgrid
+.SYNOPSIS  Checks a package folder produced by setup/package.ps1 (the gridgate/ folder).
+.EXAMPLE   powershell -File setup/test/Test-Package.ps1 -Package $env:TEMP\ggpkg\gridgate
 #>
 param([Parameter(Mandatory)][string]$Package)
 
@@ -14,10 +14,10 @@ $isLinuxPackage = Test-Path (Join-Path $Package 'dotnet/dotnet')
 $dotnetName = if ($isWindowsPackage) { 'dotnet.exe' } else { 'dotnet' }
 
 $required = @(
-    "dotnet/$dotnetName", 'launcher/DreamGrid.Launcher.dll', 'bin/OpenSim.dll', 'bin/Robust.dll',
+    "dotnet/$dotnetName", 'launcher/GridGate.Launcher.dll', 'bin/OpenSim.dll', 'bin/Robust.dll',
     'content/README.md', 'VERSION', 'RUNTIME_VERSION')
 # The Debian installer files only ship in the linux-x64 package.
-if (-not $isWindowsPackage) { $required += 'setup/debian/install.sh', 'setup/debian/dreamgrid.service' }
+if (-not $isWindowsPackage) { $required += 'setup/debian/install.sh', 'setup/debian/gridgate.service' }
 
 foreach ($relative in $required) {
     if (-not (Test-Path -LiteralPath (Join-Path $Package $relative) -PathType Leaf)) { Fail "missing file: $relative" }
@@ -25,7 +25,7 @@ foreach ($relative in $required) {
 
 if ($failures.Count -eq 0) {
     $expected = (Get-Content -LiteralPath (Join-Path $Package 'VERSION') -Raw).Trim()
-    $actual = ((& (Join-Path $Package "dotnet/$dotnetName") (Join-Path $Package 'launcher/DreamGrid.Launcher.dll') --version) -join "`n").Trim()
+    $actual = ((& (Join-Path $Package "dotnet/$dotnetName") (Join-Path $Package 'launcher/GridGate.Launcher.dll') --version) -join "`n").Trim()
     if ($LASTEXITCODE -ne 0) { Fail "launcher --version exited with $LASTEXITCODE" }
     elseif ($actual -ne $expected) { Fail "launcher --version printed '$actual', VERSION says '$expected'" }
     else { Write-Host "launcher --version: $actual" }

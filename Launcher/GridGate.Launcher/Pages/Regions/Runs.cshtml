@@ -1,0 +1,35 @@
+@page "/regions/region/{id:guid}/runs"
+@model GridGate.Launcher.Pages.Regions.RunsModel
+@using GridGate.Launcher.Core.Grid
+@{
+    ViewData["Title"] = "How " + Model.Name + " runs";
+}
+<nav aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="/regions">Regions</a></li><li class="breadcrumb-item"><a href="/regions/region/@Model.Id">@Model.Name</a></li><li class="breadcrumb-item active" aria-current="page">How it runs</li></ol></nav>
+<div class="page-head">
+    <h1>How @Model.Name runs<help-tip class="help-start">A region can run on its own, or together with other regions so they share memory. Regions that run together start, stop and restart together.</help-tip></h1>
+</div>
+
+<section class="work-panel form-panel">
+    <p class="runs-now fw-semibold">@(Model.Others.Count == 0 ? $"{Model.Name} runs on its own." : $"{Model.Name} runs with {RegionAdvice.Join(Model.Others)}.")</p>
+
+    @if (Model.HasChoices)
+    {
+        <form method="post">
+            <partial name="_RunsChoices" model="Model.Choices" />
+            <p class="form-text">The change applies at once.</p>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary" icon="cpu">Change how it runs</button>
+                <a class="btn btn-outline-secondary" href="/regions/region/@Model.Id">Cancel</a>
+            </div>
+        </form>
+    }
+    else
+    {
+        <p>There are no other regions to run with yet.</p>
+        <a class="btn btn-outline-secondary" href="/regions/region/@Model.Id" icon="arrow-left">Back</a>
+    }
+</section>
+
+@section Scripts {
+<script src="/js/runs.js"></script>
+}

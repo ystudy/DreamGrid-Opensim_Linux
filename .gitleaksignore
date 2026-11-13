@@ -10,7 +10,7 @@ bin/config-include/Gloebit.ini:generic-api-key:32
 bin/config-include/Gloebit.ini:generic-api-key:33
 # The same SMTP value in Fred's 2c0fcab6, brought in by the fred/V7 merge (it was already in older history here).
 # This tree no longer has that file; only the commit carries it.
-2c0fcab617406f2f3436c508f3afc57d5efdc68c:bin/Robust.HG.ini:dreamgrid-ini-mail-or-admin-password:1397
+2c0fcab617406f2f3436c508f3afc57d5efdc68c:bin/Robust.HG.ini:gridgate-ini-mail-or-admin-password:1397
 # The pinned Rapier git commit (a public commit hash) and two dependency names in Cargo.lock's lists.
 ThirdParty/rapier/source.env:generic-api-key:5
 ThirdParty/rapier/Cargo.lock:generic-api-key:4056

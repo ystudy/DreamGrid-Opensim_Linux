@@ -1,0 +1,50 @@
+@page "/regions/region/{id:guid}/move"
+@model GridGate.Launcher.Pages.Regions.MoveModel
+@using GridGate.Launcher.Core.Grid
+@{
+    ViewData["Title"] = "Move " + Model.Name;
+    string Error(string key) => ModelState.TryGetValue(key, out var e) && e.Errors.Count > 0 ? e.Errors[0].ErrorMessage : "";
+    var them = Model.Affected.Count == 1 ? "it" : "them";
+}
+<nav aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="/regions">Regions</a></li><li class="breadcrumb-item"><a href="/regions/region/@Model.Id">@Model.Name</a></li><li class="breadcrumb-item active" aria-current="page">Move</li></ol></nav>
+<div class="page-head">
+    <h1>Move @Model.Name<help-tip class="help-start">Type the map spot for the region's south-west corner, or choose it on the map, where you can drag the region to a free spot. Moving restarts the region and drops everyone in it.</help-tip></h1>
+</div>
+
+<section class="work-panel form-panel">
+    <form method="post">
+        <h2 class="panel-title">New map spot</h2>
+        <div class="row g-3 align-items-end">
+            <div class="col-auto">
+                <label class="form-label" for="X">X</label>
+                <input class="form-control" id="X" name="X" type="number" min="0" max="65535" value="@Model.X" required>
+            </div>
+            <div class="col-auto">
+                <label class="form-label" for="Y">Y</label>
+                <input class="form-control" id="Y" name="Y" type="number" min="0" max="65535" value="@Model.Y" required>
+            </div>
+            <div class="col-auto">
+                <a class="choose-on-map btn btn-outline-secondary" href="/regions?move=@Model.Id" icon="map-pin">Choose on the map</a>
+            </div>
+        </div>
+        <p class="form-text mb-0 mt-2" id="placement-text" role="status">@Model.PlacementText</p>
+        <span class="field-error text-danger small d-block">@Error("X")</span>
+
+        @if (Model.Affected.Count > 0)
+        {
+            <div class="alert alert-warning mt-3">
+                <p>@Model.Name runs with @RegionAdvice.Join(Model.Affected). Moving it restarts @them too, and drops everyone in @them.</p>
+                <label class="confirm form-check-label d-block">
+                    <input class="form-check-input" type="checkbox" name="Confirm" value="true" checked="@Model.Confirm">
+                    I understand @RegionAdvice.Join(Model.Affected) will restart
+                </label>
+                <span class="field-error text-danger small d-block">@Error("Confirm")</span>
+            </div>
+        }
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary" icon="move">Move @Model.Name</button>
+            <a class="btn btn-outline-secondary" href="/regions/region/@Model.Id">Cancel</a>
+        </div>
+    </form>
+</section>

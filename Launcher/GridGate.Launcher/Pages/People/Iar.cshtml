@@ -1,0 +1,149 @@
+@page "/people/{id:guid}/iar"
+@model GridGate.Launcher.Pages.People.IarModel
+@{
+    var p = Model.Person!;
+    var id = p.Row.Account.PrincipalId;
+    ViewData["Title"] = "Inventory archives: " + p.FullName;
+}
+<p class="back-link"><a href="/people/@id">‹ @p.FullName</a></p>
+<h1>Inventory archives: @p.FullName</h1>
+<p>Owner and admin powers. Nothing the resident's switches or limits say applies here, and every step is written to the record below with your reason.</p>
+@if (Model.Error is not null)
+{
+    <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
+}
+@if (Model.Notice is not null)
+{
+    <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
+}
+
+<div class="row g-4">
+<section id="iar-save" class="col-lg-6">
+    <h2 class="h5">Save the whole inventory</h2>
+    <p class="small">Everything, whatever the permissions. The file is kept on the server for the owner and admins. With a case number it holds the account against delete while it is kept.</p>
+    <form method="post" action="/people/@id/iar?handler=Save" asp-antiforgery="true">
+        <label class="form-label" for="save-reason">Why (required)</label>
+        <textarea class="form-control" id="save-reason" name="Reason" rows="3" maxlength="1000" required></textarea>
+        <label class="form-label mt-2" for="save-case">Takedown case number (if any)</label>
+        <input class="form-control w-auto" id="save-case" name="CaseNumber" placeholder="TD-2026-001" autocomplete="off">
+        <button type="submit" class="btn btn-primary mt-2">Save inventory</button>
+    </form>
+</section>
+
+<section id="iar-load" class="col-lg-6">
+    <h2 class="h5">Load an archive into this inventory</h2>
+    @if (Model.Pending is null)
+    {
+        <form method="post" action="/people/@id/iar/upload" enctype="multipart/form-data" asp-antiforgery="true">
+            <label class="form-label" for="iar-file">Upload an IAR (no size limit)</label>
+            <input class="form-control" type="file" id="iar-file" name="iar" accept=".iar" required>
+            <button type="submit" class="btn btn-outline-primary mt-2">Upload</button>
+        </form>
+    }
+    <form method="post" action="/people/@id/iar?handler=Load" asp-antiforgery="true" class="mt-3">
+        @if (Model.Pending is not null)
+        {
+            <input type="hidden" name="Pending" value="@Model.Pending">
+            <p class="small">An uploaded archive is waiting to be loaded.</p>
+        }
+        else if (Model.KeptAnyone.Count > 0)
+        {
+            <label class="form-label" for="kept-file">Or load a kept staff save</label>
+            <select class="form-select" id="kept-file" name="KeptFile">
+                @foreach (var k in Model.KeptAnyone)
+                {
+                    <option value="@k.File">@k.SubjectName, @PersonModel.When(k.At)@(k.CaseNumber is null ? "" : $" ({k.CaseNumber})")</option>
+                }
+            </select>
+        }
+        @if (Model.Banned.Count > 0 || Model.BannedUnknown)
+        {
+            <div id="iar-banned" class="alert alert-warning mt-2" role="alert">
+                @if (Model.BannedUnknown)
+                {
+                    <p class="mb-1">The takedown records can't be read, so this archive couldn't be checked.</p>
+                }
+                else
+                {
+                    <p class="mb-1">These items match taken-down content:</p>
+                    <ul class="mb-1">@foreach (var b in Model.Banned) { <li>@b</li> }</ul>
+                }
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="iar-confirm" name="Confirm" value="true">
+                    <label class="form-check-label" for="iar-confirm">Load it anyway; the record lists them.</label>
+                </div>
+            </div>
+        }
+        <label class="form-label mt-2" for="load-folder">Folder under My Inventory</label>
+        <input class="form-control w-auto" id="load-folder" name="Folder" maxlength="64" placeholder="Imported (today's date)" autocomplete="off">
+        <label class="form-label mt-2" for="load-reason">Why (required)</label>
+        <textarea class="form-control" id="load-reason" name="Reason" rows="3" maxlength="1000" required></textarea>
+        <label class="form-label mt-2" for="load-case">Takedown case number (if any)</label>
+        <input class="form-control w-auto" id="load-case" name="CaseNumber" placeholder="TD-2026-001" autocomplete="off">
+        <button type="submit" class="btn btn-primary mt-2">Load</button>
+    </form>
+</section>
+</div>
+
+@if (Model.Kept.Count > 0)
+{
+    <section id="iar-kept" class="mt-4">
+        <h2 class="h5">Kept saves of @p.FullName</h2>
+        <table class="table align-middle">
+            <thead><tr><th>Saved</th><th>By</th><th>Case</th><th>Items</th><th>Size</th><th>SHA-256</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var k in Model.Kept)
+            {
+                <tr>
+                    <td>@PersonModel.When(k.At)</td>
+                    <td>@k.Actor</td>
+                    <td>@k.CaseNumber</td>
+                    <td>@k.Items</td>
+                    <td>@(k.Bytes is { } b ? GridGate.Launcher.Core.Grid.RegionAdvice.FileSize(b) : "")</td>
+                    <td><code class="small">@k.Sha256</code></td>
+                    <td>
+                        <a class="btn btn-sm btn-outline-secondary" href="/people/@id/iar/file/@System.IO.Path.GetFileNameWithoutExtension(k.File)">Download</a>
+                        <form method="post" action="/people/@id/iar?handler=Delete" asp-antiforgery="true" class="d-inline-flex gap-1 mt-1">
+                            <input type="hidden" name="File" value="@k.File">
+                            <input class="form-control form-control-sm" name="Reason" placeholder="Why delete it (required)" maxlength="1000" required>
+                            <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </section>
+}
+
+<section id="iar-records" class="mt-4">
+    <h2 class="h5">Record</h2>
+    @if (Model.Records.Count == 0)
+    {
+        <p>No inventory archive has been saved or loaded for @p.FullName by staff.</p>
+    }
+    else
+    {
+        <table class="table table-sm">
+            <thead><tr><th>When</th><th>Step</th><th>Who</th><th>Address</th><th>Why</th><th>Case</th><th>File</th><th>Items</th><th>Folder</th><th>Taken-down matches</th><th>Result</th></tr></thead>
+            <tbody>
+            @foreach (var r in Model.Records)
+            {
+                <tr>
+                    <td>@PersonModel.When(r.At)</td>
+                    <td>@r.Kind @r.Action</td>
+                    <td>@r.Actor (@r.Role)</td>
+                    <td>@r.Ip</td>
+                    <td>@r.Reason</td>
+                    <td>@r.CaseNumber</td>
+                    <td>@(r.Bytes is { } b ? GridGate.Launcher.Core.Grid.RegionAdvice.FileSize(b) : "") <code class="small">@r.Sha256</code></td>
+                    <td>@r.Items</td>
+                    <td>@r.Folder</td>
+                    <td>@string.Join(", ", r.BannedMatches)</td>
+                    <td>@r.Result</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+</section>

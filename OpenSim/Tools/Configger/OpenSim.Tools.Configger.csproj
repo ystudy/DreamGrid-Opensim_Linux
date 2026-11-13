@@ -61,12 +61,12 @@
   <ItemGroup>
     <Reference Include="log4net" >
       <Name>log4net</Name>
-      <HintPath>$(DgRoot)bin\log4net.dll</HintPath>
+      <HintPath>$(GgRoot)bin\log4net.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="Nini" >
       <Name>Nini</Name>
-      <HintPath>$(DgRoot)bin\Nini.dll</HintPath>
+      <HintPath>$(GgRoot)bin\Nini.dll</HintPath>
       <Private>False</Private>
     </Reference>
   </ItemGroup>

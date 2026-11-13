@@ -5,7 +5,7 @@ Your own OpenSimulator world, installed with one command and run from your brows
 This repository packages [OpenSim](http://opensimulator.org) with everything a world
 needs: its own MariaDB database, the Robust grid services, the regions, and
 **GridGate**, the website you run it all from. The installed package and its
-service are called **DreamGrid**, so that is the name you'll see in folders,
+service use the same name, so that is what you'll see in folders,
 the service and the installer files.
 
 It started as a fork of Outworldz DreamGrid and is now developed on its own, on
@@ -51,32 +51,32 @@ Run this as a user who can use sudo:
 
     curl -fsSL https://github.com/ystudy/GridGate-OpenSim/releases/latest/download/install.sh | sudo bash
 
-It installs the system packages DreamGrid needs (MariaDB, libgdiplus, ICU),
+It installs the system packages GridGate needs (MariaDB, libgdiplus, ICU),
 downloads the latest release and checks it against the release's SHA256SUMS,
-creates a `dreamgrid` system user, and installs and starts the `dreamgrid`
+creates a `gridgate` system user, and installs and starts the `gridgate`
 systemd service. It then prints the setup link.
 
 To install a release you've already downloaded (for example on a computer
 without internet access), pass the file:
 
-    sudo bash install.sh --from dreamgrid-<version>-linux-x64.tar.gz
+    sudo bash install.sh --from gridgate-<version>-linux-x64.tar.gz
 
 ### Windows 10 and 11 (x64)
 
-Download `DreamGridSetup-<version>.exe` from the
+Download `GridGateSetup-<version>.exe` from the
 [latest release](https://github.com/ystudy/GridGate-OpenSim/releases/latest)
 and run it. The installer is not signed, so Windows SmartScreen may say
 "Windows protected your PC": click **More info → Run anyway**. Allow
-DreamGrid through the firewall if Windows asks. The installer sets up the
-DreamGrid service and opens the setup link in your browser when it finishes;
-the Start menu entry "DreamGrid admin page" opens the admin website later.
+GridGate through the firewall if Windows asks. The installer sets up the
+GridGate service and opens the setup link in your browser when it finishes;
+the Start menu entry "GridGate admin page" opens the admin website later.
 
 ### Where things live
 
 | | Debian | Windows |
 |---|---|---|
-| Your world's data (database, regions, settings, logs) | `/var/lib/dreamgrid` | `C:\ProgramData\DreamGrid` |
-| The program | `/opt/dreamgrid` (its .NET runtime: `/opt/dreamgrid-runtime`) | `C:\Program Files\DreamGrid` |
+| Your world's data (database, regions, settings, logs) | `/var/lib/gridgate` | `C:\ProgramData\GridGate` |
+| The program | `/opt/gridgate` (its .NET runtime: `/opt/gridgate-runtime`) | `C:\Program Files\GridGate` |
 
 Installing, upgrading and uninstalling never change, move or delete the data
 folder.
@@ -90,12 +90,12 @@ grid service and regions restart briefly when a release updates OpenSim.
 ### Another web port
 
 The admin website uses port 8001. If another program already uses it, pick
-another port from 1024 to 65535 (not one DreamGrid uses itself: 3307, 8002,
+another port from 1024 to 65535 (not one GridGate uses itself: 3307, 8002,
 8003, 8004, 8010 or 8011):
 
     curl -fsSL https://github.com/ystudy/GridGate-OpenSim/releases/latest/download/install.sh | sudo bash -s -- --web-port 8101
 
-    DreamGridSetup-<version>.exe /WEBPORT=8101
+    GridGateSetup-<version>.exe /WEBPORT=8101
 
 The installer saves the port in your world's settings, so upgrades keep it, and
 you can change it later in Settings → Network.
@@ -105,9 +105,9 @@ you can change it later in Settings → Network.
 Pre-releases (tags such as `v0.1.0-rc1`) are never the latest release, so the
 commands above do not pick them up. On Debian, name the tag:
 
-    curl -fsSL https://github.com/ystudy/GridGate-OpenSim/releases/download/v0.1.0-rc1/install.sh | sudo DREAMGRID_RELEASE=v0.1.0-rc1 bash
+    curl -fsSL https://github.com/ystudy/GridGate-OpenSim/releases/download/v0.1.0-rc1/install.sh | sudo GRIDGATE_RELEASE=v0.1.0-rc1 bash
 
-On Windows, download `DreamGridSetup-<version>.exe` from that pre-release's
+On Windows, download `GridGateSetup-<version>.exe` from that pre-release's
 page on the [releases list](https://github.com/ystudy/GridGate-OpenSim/releases).
 
 ## Connecting with a viewer
@@ -130,7 +130,7 @@ For how releases are numbered and which OpenSimulator code they are built on, se
 Report problems with installing or running a GridGate-OpenSim world on this
 repository's [issues page](https://github.com/ystudy/GridGate-OpenSim/issues).
 Include what you did, what happened, and the launcher log:
-`/var/lib/dreamgrid/state/logs/launcher.log` on Debian, or the Logs page in
+`/var/lib/gridgate/state/logs/launcher.log` on Debian, or the Logs page in
 GridGate's Settings.
 
 Problems in OpenSim itself are best reported on the
@@ -139,7 +139,7 @@ Problems in OpenSim itself are best reported on the
 # Running OpenSim on its own
 
 The rest of this file is OpenSim's own guide, for developers who run the
-simulator by hand rather than through DreamGrid.
+simulator by hand rather than through GridGate.
 
 OpenSim is a BSD Licensed Open Source project to develop a functioning
 virtual worlds server platform capable of supporting multiple clients

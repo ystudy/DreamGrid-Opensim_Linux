@@ -1,0 +1,123 @@
+@page "/setup/network"
+@model GridGate.Launcher.Pages.Setup.NetworkModel
+@using GridGate.Launcher.Core.Settings
+@{
+    ViewData["Title"] = "Your network";
+    var gridAsset = Model.Plan == OwnerPlan.GridAsset;
+    var showPublic = Model.Plan == OwnerPlan.SimplePublic || (gridAsset && Model.AddressKind == "public");
+}
+<partial name="_Checklist" />
+<h1>Your network</h1>
+@if (Model.Plan is OwnerPlan.RegionServer or OwnerPlan.Connected)
+{
+    var regionPublic = Model.AddressKind == "public";
+    <form method="post">
+        <p>How will visitors reach the regions on this computer?</p>
+        <div class="form-check">
+            <input class="form-check-input" type="radio" name="AddressKind" id="AddressKind-lan" value="lan" checked="@(!regionPublic)">
+            <label class="form-check-label" for="AddressKind-lan">On my network</label>
+        </div>
+        <div class="form-check">
+            <input class="form-check-input" type="radio" name="AddressKind" id="AddressKind-public" value="public" checked="@regionPublic">
+            <label class="form-check-label" for="AddressKind-public">From the internet</label>
+        </div>
+
+        <div id="lan-part" hidden="@regionPublic">
+            <p class="mt-3">Your regions use this computer's address on your network, <strong>@Model.NetworkAddress</strong>. You can change it later in Settings.</p>
+        </div>
+        <div id="public-part" hidden="@(!regionPublic)">
+            <label class="form-label mt-3" for="PublicAddress">Your public IP address or a name for this computer</label>
+            <div class="input-group">
+                <input class="form-control" id="PublicAddress" name="PublicAddress" value="@Model.PublicAddress" placeholder="regions.example.com" autocomplete="off" autocapitalize="off" spellcheck="false">
+                <button type="button" id="find-address" class="btn btn-outline-secondary d-none" data-url="?handler=PublicAddress">Find my address</button>
+            </div>
+            <span class="hint form-text d-block">The address visitors use to reach your regions from the internet.</span>
+            <span id="address-error" class="field-error text-danger small d-block">@Model.AddressError</span>
+            <p class="router-advice mt-3">Your router must forward the region ports, @Model.FirstRegionPort upward, to this computer.</p>
+        </div>
+
+        <label class="form-label mt-3" for="FirstRegionPort">First region port</label>
+        <input class="form-control" id="FirstRegionPort" name="FirstRegionPort" value="@Model.FirstRegionPort" inputmode="numeric" autocomplete="off" required>
+        <span class="hint form-text d-block">
+            Regions on this computer use this port and the ones after it.
+            @if (Model.GridAssetRegionPorts is not null)
+            {
+                @:The Grid Asset Server's own regions use @Model.GridAssetRegionPorts, so this starts after them.
+            }
+        </span>
+        <span id="port-error" class="field-error text-danger small d-block">@Model.PortError</span>
+
+        <p id="region-hypergrid" class="hint form-text mt-3">@Model.HypergridLine</p>
+
+        <h2 class="h5 mt-4">Before you go on</h2>
+        <ul class="plan-advisories">
+            @foreach (var advisory in Model.LanAdvisories) { <li>@advisory</li> }
+        </ul>
+        <button type="submit" class="btn btn-primary mt-3">Continue</button>
+    </form>
+    <noscript><link rel="stylesheet" href="/css/noscript.css"></noscript>
+    <script src="/js/network.js"></script>
+    return;
+}
+<form method="post">
+    @if (gridAsset)
+    {
+        <p>Who will visit your grid?</p>
+        <div class="form-check">
+            <input class="form-check-input" type="radio" name="AddressKind" id="AddressKind-lan" value="lan" checked="@(Model.AddressKind == "lan")">
+            <label class="form-check-label" for="AddressKind-lan">Only computers on my network</label>
+        </div>
+        <div class="form-check">
+            <input class="form-check-input" type="radio" name="AddressKind" id="AddressKind-public" value="public" checked="@(Model.AddressKind == "public")">
+            <label class="form-check-label" for="AddressKind-public">Anyone on the internet</label>
+        </div>
+    }
+
+    <div id="lan-part" hidden="@showPublic">
+        <p class="mt-3">Your world uses this computer's address on your network, <strong>@Model.NetworkAddress</strong>. You can change it later in Settings.</p>
+    </div>
+
+    @if (Model.Plan != OwnerPlan.Local)
+    {
+        <div id="public-part" hidden="@(!showPublic)">
+            <label class="form-label mt-3" for="PublicAddress">Your public IP address or your grid's name</label>
+            <div class="input-group">
+                <input class="form-control" id="PublicAddress" name="PublicAddress" value="@Model.PublicAddress" placeholder="world.example.com" autocomplete="off" autocapitalize="off" spellcheck="false">
+                <button type="button" id="find-address" class="btn btn-outline-secondary d-none" data-url="?handler=PublicAddress">Find my address</button>
+            </div>
+            <span class="hint form-text d-block">The address visitors use to reach you from the internet.</span>
+            <span id="address-error" class="field-error text-danger small d-block">@Model.AddressError</span>
+            <p class="router-advice mt-3">Your router must forward these ports to this computer: @Model.Ports.</p>
+        </div>
+        <div id="switch-part" hidden="@(!showPublic)">
+            <partial name="_HypergridSwitch" model="Model.Switch" />
+        </div>
+    }
+    @if (gridAsset)
+    {
+        <p id="lan-hypergrid" class="hint form-text mt-3" hidden="@showPublic">Hypergrid needs a public address.</p>
+    }
+
+    <h2 class="h5 mt-4">Before you go on</h2>
+    @if (Model.LanAdvisories.Count > 0)
+    {
+        <ul id="advisories-lan" class="plan-advisories" hidden="@showPublic">
+            @foreach (var advisory in Model.LanAdvisories) { <li>@advisory</li> }
+        </ul>
+    }
+    @if (Model.PublicAdvisories.Count > 0)
+    {
+        <ul id="advisories-public" class="plan-advisories" hidden="@(!showPublic)">
+            @foreach (var advisory in Model.PublicAdvisories) { <li>@advisory</li> }
+        </ul>
+    }
+    <button type="submit" class="btn btn-primary mt-3">Continue</button>
+</form>
+@if (gridAsset)
+{
+    <noscript><link rel="stylesheet" href="/css/noscript.css"></noscript>
+}
+@if (Model.Plan != OwnerPlan.Local)
+{
+    <script src="/js/network.js"></script>
+}

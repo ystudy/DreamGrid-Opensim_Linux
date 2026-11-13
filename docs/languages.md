@@ -8,7 +8,7 @@ The built-in translations were drafted by AI. No native speaker has checked them
 
 On resident pages GridGate looks for a language in this order. It uses the first one it finds.
 
-1. The language chosen in the header picker. This is kept in the `dg-lang` cookie.
+1. The language chosen in the header picker. This is kept in the `gg-lang` cookie.
 2. The signed-in resident's saved language.
 3. The browser's `Accept-Language` setting.
 4. The grid's default language.
@@ -143,12 +143,12 @@ Correct a translation in the code and send it to the project (see below).
 ## How to correct a translation
 
 1. Open the file for the language. There are two:
-   - `Launcher/DreamGrid.Launcher/Resources/ResidentText.<lang>.resx` for web pages.
-   - `Launcher/DreamGrid.Launcher.Core/Resources/EmailText.<lang>.resx` for emails.
+   - `Launcher/GridGate.Launcher/Resources/ResidentText.<lang>.resx` for web pages.
+   - `Launcher/GridGate.Launcher.Core/Resources/EmailText.<lang>.resx` for emails.
 2. Find the key and change its value. Keep the key name as it is.
 3. Run the tests:
 
-   `dotnet test Launcher/DreamGrid.Launcher.Tests --filter TranslationsTests`
+   `dotnet test Launcher/GridGate.Launcher.Tests --filter TranslationsTests`
 
 4. Open a pull request.
 
@@ -168,8 +168,8 @@ When a native speaker has checked a file, the AI-draft note can be taken out of 
    - `ResidentText.resx` to `ResidentText.<code>.resx`
    - `EmailText.resx` to `EmailText.<code>.resx`
 2. Translate every value. Put the AI-draft note at the top if the translation has not been checked by a native speaker.
-3. Add the code to `Languages.BuiltIn` in `Launcher/DreamGrid.Launcher.Core/Languages/Languages.cs`.
-4. Run `dotnet test Launcher/DreamGrid.Launcher.Tests --filter TranslationsTests`, then the whole test project.
+3. Add the code to `Languages.BuiltIn` in `Launcher/GridGate.Launcher.Core/Languages/Languages.cs`.
+4. Run `dotnet test Launcher/GridGate.Launcher.Tests --filter TranslationsTests`, then the whole test project.
 
 An owner can also add a language on their own grid without changing the code (see "Add a language GridGate doesn't have").
 

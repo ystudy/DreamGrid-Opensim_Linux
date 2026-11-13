@@ -1,0 +1,386 @@
+name: build-and-smoke
+
+# Builds GridGate.sln on .NET 10, runs the unit tests, and boots a real region with the smoke harness
+# (tests/GridGate.Smoke) on Windows and Debian 12. msbuildnet.yml is upstream's and only runs on opensim/opensim.
+# For pull requests and pushes to main that change setup/ or Launcher/, it also runs release.yml's packaging and install
+# smokes (without publishing).
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# A newer push to the same branch (or PR) cancels the run still going for the older one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # gitleaks over the checked-out files and the commits this push or PR adds. Old history is not scanned: the old INI
+  # secrets in it were revoked rather than rewritten (docs/superpowers/plans/2026-10-28-plan5-phase0-secrets.md).
+  secret-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GITLEAKS_VERSION: 8.30.1
+      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Install gitleaks
+        run: |
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 -o gitleaks.tar.gz "https://github.com/gitleaks/gitleaks/releases/download/v$GITLEAKS_VERSION/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "$GITLEAKS_SHA256  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz -C "$RUNNER_TEMP" gitleaks
+          rm gitleaks.tar.gz
+
+      - name: Scan files
+        run: $RUNNER_TEMP/gitleaks dir . --config .gitleaks.toml --redact --verbose --no-banner
+
+      # A new branch has no "before" commit, so its range is everything not yet on main.
+      - name: Scan new commits
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          if [ -n "$PR_BASE" ]; then range="$PR_BASE..HEAD"
+          elif [ -n "$PUSH_BEFORE" ] && [ "$PUSH_BEFORE" != 0000000000000000000000000000000000000000 ]; then range="$PUSH_BEFORE..HEAD"
+          else range="origin/main..HEAD"
+          fi
+          echo "Scanning $range"
+          $RUNNER_TEMP/gitleaks git . --config .gitleaks.toml --redact --no-banner --log-opts="$range"
+
+  # Guards the removal of the old add-ons: fails when one of their names comes back in a tracked text file.
+  # The allow-list and the reasons are in the removal log under docs/ (the one that says what went on 2026-11-12).
+  retired-names:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - run: bash .github/scripts/check-retired-names.sh
+
+      - name: Old name
+        run: bash .github/scripts/check-old-name.sh
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - name: Allow long paths
+        run: git config --system core.longpaths true
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build
+        run: dotnet build -c Release GridGate.sln
+
+      - name: Unit tests
+        run: dotnet test --project tests/GridGate.Platform.Tests -c Release
+
+      # Both runners are x64, which is the shipped Rapier library (bin/lib64). When an arm64 job is added, skip these
+      # three Rapier steps there until librapier-arm64.so and librapier-mt-arm64.so ship from rapier.yml.
+      - name: Rapier tests
+        run: dotnet test --project tests/GridGate.Physics.Rapier.Tests -c Release
+
+      # The same tests on the parallel build (rapier_mt), which RapierNumThreads > 1 loads.
+      - name: Rapier tests (rapier_mt)
+        run: dotnet test --project tests/GridGate.Physics.Rapier.Tests -c Release --no-build
+        env:
+          RAPIER_TEST_THREADS: '2'
+
+      # The model converter's tests. The larger glTF samples are downloaded first (git-ignored; a test skips without its model).
+      - name: Fetch model import test models
+        shell: bash
+        run: bash tests/GridGate.ModelImport.Tests/fetch-models.sh
+
+      - name: Model import tests
+        run: dotnet test --project tests/GridGate.ModelImport.Tests -c Release
+
+      - name: Smoke (ubODE)
+        run: dotnet run --project tests/GridGate.Smoke -c Release -- --bin bin --keep --physics ubODE
+        env:
+          TMP: ${{ runner.temp }}
+          TEMP: ${{ runner.temp }}
+
+      - name: Smoke (BulletSim)
+        run: dotnet run --project tests/GridGate.Smoke -c Release -- --bin bin --keep --physics BulletSim
+        env:
+          TMP: ${{ runner.temp }}
+          TEMP: ${{ runner.temp }}
+
+      - name: Smoke (Rapier)
+        run: dotnet run --project tests/GridGate.Smoke -c Release -- --bin bin --keep --physics Rapier
+        env:
+          TMP: ${{ runner.temp }}
+          TEMP: ${{ runner.temp }}
+
+      - name: Upload smoke logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-logs-windows
+          path: ${{ runner.temp }}/gg smoke */bin/smoke.log
+
+  debian:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        debian: ['12', '13']
+    # Official Debian images: the .NET 10 SDK images are Ubuntu-based, so .NET is installed the way the
+    # Debian setup script will install it.
+    container: debian:${{ matrix.debian }}
+    env:
+      DOTNET_ROOT: /usr/share/dotnet
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+    steps:
+      - name: Install libgdiplus, locales, git
+        run: |
+          apt-get update
+          apt-get install -y curl ca-certificates libicu-dev libgdiplus locales git
+          sed -i 's/# de_DE.UTF-8/de_DE.UTF-8/' /etc/locale.gen
+          locale-gen
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Install .NET 10
+        run: |
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
+          # The channel's newest SDK can be announced before every feed has it: retry once, then fall back to the SDK
+          # global.json names, which stays on the feed. (Release runtimes are pinned by setup/package.ps1 instead.)
+          sdk=$(grep -oE '"version": *"[^"]+"' global.json | head -n 1 | sed -E 's/.*"([^"]+)"$/\1/')
+          bash /tmp/dotnet-install.sh --channel 10.0 --install-dir /usr/share/dotnet || { sleep 30; bash /tmp/dotnet-install.sh --channel 10.0 --install-dir /usr/share/dotnet; } || bash /tmp/dotnet-install.sh --version "$sdk" --install-dir /usr/share/dotnet
+          echo /usr/share/dotnet >> "$GITHUB_PATH"
+
+      - name: Build
+        run: dotnet build -c Release GridGate.sln
+
+      - name: Unit tests
+        run: dotnet test --project tests/GridGate.Platform.Tests -c Release
+
+      # Both runners are x64, which is the shipped Rapier library (bin/lib64). When an arm64 job is added, skip these
+      # three Rapier steps there until librapier-arm64.so and librapier-mt-arm64.so ship from rapier.yml.
+      - name: Rapier tests
+        run: dotnet test --project tests/GridGate.Physics.Rapier.Tests -c Release
+
+      # The same tests on the parallel build (rapier_mt), which RapierNumThreads > 1 loads.
+      - name: Rapier tests (rapier_mt)
+        run: dotnet test --project tests/GridGate.Physics.Rapier.Tests -c Release --no-build
+        env:
+          RAPIER_TEST_THREADS: '2'
+
+      # The model converter's tests. The larger glTF samples are downloaded first (git-ignored; a test skips without its model).
+      - name: Fetch model import test models
+        shell: bash
+        run: bash tests/GridGate.ModelImport.Tests/fetch-models.sh
+
+      - name: Model import tests
+        run: dotnet test --project tests/GridGate.ModelImport.Tests -c Release
+
+      - name: Smoke (ubODE)
+        run: dotnet run --project tests/GridGate.Smoke -c Release -- --bin bin --keep --physics ubODE
+
+      - name: Smoke (BulletSim)
+        run: dotnet run --project tests/GridGate.Smoke -c Release -- --bin bin --keep --physics BulletSim
+
+      - name: Smoke (Rapier)
+        run: dotnet run --project tests/GridGate.Smoke -c Release -- --bin bin --keep --physics Rapier
+
+      - name: Smoke (ubODE, German locale)
+        run: dotnet run --project tests/GridGate.Smoke -c Release -- --bin bin --keep --physics ubODE --culture de_DE.UTF-8
+
+      - name: Upload smoke logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-logs-debian${{ matrix.debian }}
+          path: /tmp/gg smoke */bin/smoke.log
+
+  # The launcher (Launcher/): unit tests, then the integration tests against a real MariaDB, Robust and region,
+  # including the end-to-end tests that run the launcher itself. GRIDGATE_REQUIRE_INTEGRATION=1 turns a missing
+  # MariaDB or bin/ into a failure, so these jobs cannot pass by skipping. GRIDGATE_TEST_KEEP=1 keeps the test data
+  # directories (under the runner temp directory) so their logs can be uploaded when a test fails.
+  launcher-windows:
+    runs-on: windows-latest
+    # The integration step alone takes 23-31 minutes; the jobs ran 35-44. A slow runner must not cancel the job.
+    timeout-minutes: 75
+    env:
+      MARIADB_VERSION: 11.4.9
+      # From https://archive.mariadb.org/mariadb-11.4.9/winx64-packages/sha256sums.txt
+      MARIADB_SHA256: 802f9f40a9dca774a3ba62f39c21093942954f178d6d7d458dc51453929bcdda
+    steps:
+      - name: Allow long paths
+        run: git config --system core.longpaths true
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore MariaDB from the cache
+        id: mariadb-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}\mariadb-dist
+          key: mariadb-${{ env.MARIADB_VERSION }}-winx64
+
+      - name: Download MariaDB
+        id: mariadb-download
+        if: steps.mariadb-cache.outputs.cache-hit != 'true'
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP "mariadb-$env:MARIADB_VERSION-winx64.zip"
+          Invoke-WebRequest -Uri "https://archive.mariadb.org/mariadb-$env:MARIADB_VERSION/winx64-packages/mariadb-$env:MARIADB_VERSION-winx64.zip" -OutFile $zip
+          $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash
+          if ($hash -ne $env:MARIADB_SHA256) { throw "mariadb zip SHA256 $hash does not match $env:MARIADB_SHA256" }
+          Expand-Archive -Path $zip -DestinationPath (Join-Path $env:RUNNER_TEMP 'mariadb-dist')
+          Remove-Item $zip
+
+      - name: Point the tests at MariaDB
+        run: |
+          $bin = Join-Path $env:RUNNER_TEMP "mariadb-dist\mariadb-$env:MARIADB_VERSION-winx64\bin"
+          if (-not (Test-Path (Join-Path $bin 'mariadbd.exe'))) { throw "mariadbd.exe not found in $bin" }
+          "GRIDGATE_MARIADB_BIN=$bin" >> $env:GITHUB_ENV
+
+      - name: Build
+        run: dotnet build -c Release GridGate.sln
+
+      - name: Launcher unit tests
+        run: dotnet test --project Launcher/GridGate.Launcher.Tests -c Release
+
+      - name: Launcher integration and end-to-end tests
+        # Under the job's limit: a stuck test fails this step, so the logs below still upload.
+        timeout-minutes: 55
+        run: dotnet test --project Launcher/GridGate.Launcher.IntegrationTests -c Release
+        env:
+          TMP: ${{ runner.temp }}
+          TEMP: ${{ runner.temp }}
+          GRIDGATE_REQUIRE_INTEGRATION: '1'
+          GRIDGATE_TEST_KEEP: '1'
+
+      - name: Upload launcher test logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: launcher-logs-windows
+          path: ${{ runner.temp }}/Gríd Gate */state/logs/*
+
+      # Saved even when a test failed, but only a download that passed its checksum.
+      - name: Save MariaDB to the cache
+        if: always() && steps.mariadb-cache.outputs.cache-hit != 'true' && steps.mariadb-download.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}\mariadb-dist
+          key: mariadb-${{ env.MARIADB_VERSION }}-winx64
+
+  launcher-debian:
+    runs-on: ubuntu-latest
+    # The integration step alone takes 23-31 minutes; the jobs ran 35-44. A slow runner must not cancel the job.
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        debian: ['12', '13']
+    container: debian:${{ matrix.debian }}
+    env:
+      DOTNET_ROOT: /usr/share/dotnet
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+    steps:
+      - name: Install MariaDB, libgdiplus, git
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates libicu-dev libgdiplus git mariadb-server
+          echo "GRIDGATE_MARIADB_BIN=/usr/sbin" >> "$GITHUB_ENV"
+          # In a container job the runner.temp context is the host path; RUNNER_TEMP is the path inside the container.
+          echo "GG_TEST_TEMP=$RUNNER_TEMP" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Install .NET 10
+        run: |
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
+          # The channel's newest SDK can be announced before every feed has it: retry once, then fall back to the SDK
+          # global.json names, which stays on the feed. (Release runtimes are pinned by setup/package.ps1 instead.)
+          sdk=$(grep -oE '"version": *"[^"]+"' global.json | head -n 1 | sed -E 's/.*"([^"]+)"$/\1/')
+          bash /tmp/dotnet-install.sh --channel 10.0 --install-dir /usr/share/dotnet || { sleep 30; bash /tmp/dotnet-install.sh --channel 10.0 --install-dir /usr/share/dotnet; } || bash /tmp/dotnet-install.sh --version "$sdk" --install-dir /usr/share/dotnet
+          echo /usr/share/dotnet >> "$GITHUB_PATH"
+
+      - name: Build
+        run: dotnet build -c Release GridGate.sln
+
+      - name: Launcher unit tests
+        run: dotnet test --project Launcher/GridGate.Launcher.Tests -c Release
+
+      # The container runs as root: the launcher starts mariadbd with --user=root then.
+      - name: Launcher integration and end-to-end tests
+        # Under the job's limit: a stuck test fails this step, so the logs below still upload.
+        timeout-minutes: 55
+        run: dotnet test --project Launcher/GridGate.Launcher.IntegrationTests -c Release
+        env:
+          TMPDIR: ${{ env.GG_TEST_TEMP }}
+          GRIDGATE_REQUIRE_INTEGRATION: '1'
+          GRIDGATE_TEST_KEEP: '1'
+
+      - name: Upload launcher test logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: launcher-logs-debian${{ matrix.debian }}
+          path: ${{ env.GG_TEST_TEMP }}/Gríd Gate */state/logs/*
+
+  # The install smoke (release.yml without its publish job) when a pull request or a push to main touches setup/ or
+  # Launcher/. Feature-branch pushes skip it (run release.yml by hand there); tags run it in release.yml itself.
+  installer-changes:
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.diff.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Did setup/ or Launcher/ change?
+        id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then base=$PR_BASE; else base=$BEFORE; fi
+          # Unknown base (a force push, the branch's first push): run the smoke.
+          changed=true
+          if [ -n "$base" ] && [ "$base" != 0000000000000000000000000000000000000000 ] &&
+            git fetch --no-tags --depth=1 origin "$base"; then
+            if git diff --name-only "$base" "$GITHUB_SHA" | grep -qE '^(setup|Launcher)/'; then changed=true; else changed=false; fi
+          fi
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+          echo "setup/ or Launcher/ changed: $changed"
+
+  install-smoke:
+    needs: installer-changes
+    if: needs.installer-changes.outputs.changed == 'true'
+    # release.yml's publish job asks for contents: write; it is skipped here (smoke-only), but a called workflow may
+    # not ask for more than its caller grants.
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release.yml
+    with:
+      smoke-only: true

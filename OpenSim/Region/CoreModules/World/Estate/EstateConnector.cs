@@ -137,7 +137,7 @@ namespace OpenSim.Region.CoreModules.World.Estate
             SendToEstate(EstateID, sendData);
         }
 
-        // Tells the other OpenSim instances in the estate to refresh. Fire and forget (DreamGrid, 2026-10-04): this used
+        // Tells the other OpenSim instances in the estate to refresh. Fire and forget (GridGate, 2026-10-04): this used
         // to run on the caller's thread, one instance at a time, each waiting up to 30 s - every OAR load ends with a
         // TriggerRegionInfoChange, so a load sat 30 s per frozen or busy instance in the estate (1.4 min seen live) just
         // to tell neighbours to refresh, where nobody usually is. Local regions are still handled by the callers first.

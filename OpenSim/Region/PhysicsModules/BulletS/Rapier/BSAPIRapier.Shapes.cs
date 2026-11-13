@@ -342,7 +342,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS.Rapier
 
         // The flags every trimesh is built with. FIX_INTERNAL_EDGES makes a ball roll across the seams between triangles
         // without catching on them (it includes MERGE_DUPLICATE_VERTICES, which BulletS's meshes need: sculpt meshes
-        // repeat vertices). DreamGrid's Parry patch (ThirdParty/rapier/patches) keeps the data for it in 4 bytes per
+        // repeat vertices). GridGate's Parry patch (ThirdParty/rapier/patches) keeps the data for it in 4 bytes per
         // triangle.
         internal const uint TrimeshFlags = RapierNative.TrimeshFixInternalEdges | RapierNative.TrimeshMergeDuplicateVertices;
 

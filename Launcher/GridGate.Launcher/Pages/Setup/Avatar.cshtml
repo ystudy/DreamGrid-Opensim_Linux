@@ -1,0 +1,82 @@
+@page "/setup/avatar"
+@model GridGate.Launcher.Pages.Setup.AvatarModel
+@{
+    var title = Model.ByName ? "Your avatar" : "Create your avatar";
+    ViewData["Title"] = title;
+}
+@section Head {
+    @if (Model.Creating)
+    {
+        @* Another submit is creating the avatar: reload until it is done, which moves on to the next step. *@
+        <meta http-equiv="refresh" content="3; url=/setup/avatar">
+    }
+}
+<partial name="_Checklist" />
+<h1>@title</h1>
+@if (Model.ByName)
+{
+    if (Model.OnConnected)
+    {
+        <p>Type the name of your avatar on @Model.GridName. It becomes the owner of the regions on this computer, and it is the avatar you sign in to this website with. No password is needed here.</p>
+    }
+    else
+    {
+        <p>Type the name of your avatar on @Model.GridName. It becomes the owner of the regions on this computer. No password is needed here.</p>
+    }
+}
+else
+{
+    <p>This avatar owns your world and is the one you sign in to this website with. Names use letters and digits only, as Firestorm requires.</p>
+}
+@if (Model.Creating)
+{
+    <div class="progress-box alert alert-info">
+        @if (Model.ByName)
+        {
+            <p>Looking up your avatar… This page moves on by itself when it is done.</p>
+        }
+        else
+        {
+            <p>Creating your avatar… This page moves on by itself when it is done.</p>
+        }
+    </div>
+    return;
+}
+@if (Model.Error is not null)
+{
+    <div class="error-box alert alert-danger">
+        <p>@Model.Error</p>
+        @if (Model.Details is not null)
+        {
+            <details><summary>Show details</summary><pre>@Model.Details</pre></details>
+        }
+    </div>
+}
+<form method="post">
+    <div class="name-row row">
+        <div class="col-sm">
+            <label class="form-label mt-3" asp-for="FirstName">First name</label>
+            <input class="form-control" asp-for="FirstName" maxlength="31" autocomplete="off" required>
+            <span asp-validation-for="FirstName" class="field-error text-danger small d-block"></span>
+        </div>
+        <div class="col-sm">
+            <label class="form-label mt-3" asp-for="LastName">Last name</label>
+            <input class="form-control" asp-for="LastName" maxlength="31" autocomplete="off" required>
+            <span asp-validation-for="LastName" class="field-error text-danger small d-block"></span>
+        </div>
+    </div>
+    @if (!Model.ByName)
+    {
+        <label class="form-label mt-3" asp-for="Password">Password</label>
+        <input class="form-control" asp-for="Password" type="password" minlength="8" autocomplete="new-password" required>
+        <span class="hint form-text d-block">At least 8 characters, no spaces.</span>
+        <span asp-validation-for="Password" class="field-error text-danger small d-block"></span>
+        <label class="form-label mt-3" asp-for="Confirm">Type the password again</label>
+        <input class="form-control" asp-for="Confirm" type="password" autocomplete="new-password" required>
+        <span asp-validation-for="Confirm" class="field-error text-danger small d-block"></span>
+        <label class="form-label mt-3" asp-for="Email">E-mail (optional)</label>
+        <input class="form-control" asp-for="Email" type="email" autocomplete="email">
+        <span asp-validation-for="Email" class="field-error text-danger small d-block"></span>
+    }
+    <button type="submit" class="btn btn-primary mt-3">@(Model.ByName ? "Continue" : "Create my avatar")</button>
+</form>

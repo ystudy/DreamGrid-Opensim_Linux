@@ -62,62 +62,62 @@
   <ItemGroup>
     <Reference Include="Ionic.Zip" >
       <Name>Ionic.Zip</Name>
-      <HintPath>$(DgRoot)bin\Ionic.Zip.dll</HintPath>
+      <HintPath>$(GgRoot)bin\Ionic.Zip.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="log4net" >
       <Name>log4net</Name>
-      <HintPath>$(DgRoot)bin\log4net.dll</HintPath>
+      <HintPath>$(GgRoot)bin\log4net.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="Mono.Addins" >
       <Name>Mono.Addins</Name>
-      <HintPath>$(DgRoot)bin\Mono.Addins.dll</HintPath>
+      <HintPath>$(GgRoot)bin\Mono.Addins.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="NDesk.Options" >
       <Name>NDesk.Options</Name>
-      <HintPath>$(DgRoot)bin\NDesk.Options.dll</HintPath>
+      <HintPath>$(GgRoot)bin\NDesk.Options.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="netcd" >
       <Name>netcd</Name>
-      <HintPath>$(DgRoot)bin\netcd.dll</HintPath>
+      <HintPath>$(GgRoot)bin\netcd.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="Nini" >
       <Name>Nini</Name>
-      <HintPath>$(DgRoot)bin\Nini.dll</HintPath>
+      <HintPath>$(GgRoot)bin\Nini.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="OpenMetaverse" >
       <Name>OpenMetaverse</Name>
-      <HintPath>$(DgRoot)bin\OpenMetaverse.dll</HintPath>
+      <HintPath>$(GgRoot)bin\OpenMetaverse.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="OpenMetaverse.StructuredData" >
       <Name>OpenMetaverse.StructuredData</Name>
-      <HintPath>$(DgRoot)bin\OpenMetaverse.StructuredData.dll</HintPath>
+      <HintPath>$(GgRoot)bin\OpenMetaverse.StructuredData.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="OpenMetaverseTypes" >
       <Name>OpenMetaverseTypes</Name>
-      <HintPath>$(DgRoot)bin\OpenMetaverseTypes.dll</HintPath>
+      <HintPath>$(GgRoot)bin\OpenMetaverseTypes.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="System.Data.SQLite" >
       <Name>System.Data.SQLite</Name>
-      <HintPath>$(DgRoot)bin\System.Data.SQLite.dll</HintPath>
+      <HintPath>$(GgRoot)bin\System.Data.SQLite.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="System.Drawing.Common" >
       <Name>System.Drawing.Common</Name>
-      <HintPath>$(DgRoot)bin\System.Drawing.Common.dll</HintPath>
+      <HintPath>$(GgRoot)bin\System.Drawing.Common.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="XMLRPC" >
       <Name>XMLRPC</Name>
-      <HintPath>$(DgRoot)bin\XMLRPC.dll</HintPath>
+      <HintPath>$(GgRoot)bin\XMLRPC.dll</HintPath>
       <Private>False</Private>
     </Reference>
   </ItemGroup>

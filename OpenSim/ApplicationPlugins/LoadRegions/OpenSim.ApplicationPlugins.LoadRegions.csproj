@@ -62,12 +62,12 @@
   <ItemGroup>
     <Reference Include="log4net" >
       <Name>log4net</Name>
-      <HintPath>$(DgRoot)bin\log4net.dll</HintPath>
+      <HintPath>$(GgRoot)bin\log4net.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="Mono.Addins" >
       <Name>Mono.Addins</Name>
-      <HintPath>$(DgRoot)bin\Mono.Addins.dll</HintPath>
+      <HintPath>$(GgRoot)bin\Mono.Addins.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="Nini" >
@@ -77,7 +77,7 @@
     </Reference>
     <Reference Include="OpenMetaverseTypes" >
       <Name>OpenMetaverseTypes</Name>
-      <HintPath>$(DgRoot)bin\OpenMetaverseTypes.dll</HintPath>
+      <HintPath>$(GgRoot)bin\OpenMetaverseTypes.dll</HintPath>
       <Private>False</Private>
     </Reference>
   </ItemGroup>

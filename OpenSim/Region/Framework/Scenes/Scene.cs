@@ -784,13 +784,13 @@ namespace OpenSim.Region.Framework.Scenes
         #region Constructors
 
 
-        //DreamGrid SmartStart
+        //GridGate SmartStart
         public UUID GetSmartStartALTRegion(UUID regionID, UUID agentID)
         {
-            // !!! DreamGrid Smart Start sends requested Region UUID to Dreamgrid.
+            // !!! GridGate Smart Start sends requested Region UUID to GridGate.
             // If region is on line, returns same UUID. If Offline, returns UUID for Welcome, brings up the region and teleports you to it.
             // Also includes this agent's most recently reported viewer version (if WebStatsModule has captured one
-            // yet - see ClientVersionCache) so DreamGrid can enforce a minimum viewer version on the same round trip.
+            // yet - see ClientVersionCache) so GridGate can enforce a minimum viewer version on the same round trip.
             ClientVersionCache.ClientVersionByAgent.TryGetValue(agentID, out string clientVersion);
             UUID? result = SmartStartAltClient.Query(regionID, agentID,
                 m_SmartStartEnabled, m_SmartStartUrl, m_SmartStartMachineID,

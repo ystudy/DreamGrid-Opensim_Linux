@@ -30,7 +30,7 @@ namespace OpenSim
             }
 
             IConfig SmartStartConfig = scene.Config.Configs["SmartStart"];
-            // Done DreamGrid Smart Start sends Region UUID to Dreamgrid
+            // Done GridGate Smart Start sends Region UUID to GridGate
             m_SmartStartUrl = SmartStartConfig.GetString("URL", m_SmartStartUrl);
 
             string url = $"{m_SmartStartUrl}?type={msg}&UUID={uid}";

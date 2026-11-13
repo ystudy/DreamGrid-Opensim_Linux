@@ -1,0 +1,27 @@
+@page "/guest/terms"
+@model GridGate.Launcher.Pages.Guest.TermsModel
+@{
+    ViewData["Title"] = T["Legal.Terms"].Value;
+}
+<h1>@Model.GridName</h1>
+<h2>@T["Legal.Terms"]</h2>
+<p class="text-body-secondary">@T["Terms.Version", Model.Version]</p>
+@if (Model.Error is not null)
+{
+    <div class="alert alert-warning" role="alert">@Model.Error</div>
+}
+<article>@Html.Raw(Model.Html)</article>
+
+@if (Model.Accepted)
+{
+    <p>@T["Terms.Accepted"]</p>
+    <p><a href="@Model.Next">@T["Common.Continue"]</a></p>
+}
+else
+{
+    <form method="post" action="/guest/terms" asp-antiforgery="true">
+        <input type="hidden" name="Version" value="@Model.Version">
+        <input type="hidden" name="ReturnUrl" value="@Model.ReturnUrl">
+        <button type="submit" class="btn btn-primary">@T["Terms.Accept"]</button>
+    </form>
+}

@@ -81,7 +81,7 @@ namespace OpenSim.Services.LLLoginService
         protected string m_ProfileURL;
         protected string m_OpenIDURL;
         protected string m_SearchURL;
-        // DreamGrid: where login asks whether the avatar must accept the grid's Terms first, and the page the viewer shows them.
+        // GridGate: where login asks whether the avatar must accept the grid's Terms first, and the page the viewer shows them.
         protected string m_TermsCheckURL;
         protected string m_TermsPageURL;
         protected string m_Currency;
@@ -473,7 +473,7 @@ namespace OpenSim.Services.LLLoginService
                 }
 
                 //
-                // DreamGrid: the grid's Terms. A "tos" reply makes Firestorm show TermsPageURL in its Terms window; ticking
+                // GridGate: the grid's Terms. A "tos" reply makes Firestorm show TermsPageURL in its Terms window; ticking
                 // "I agree" logs in again with agree_to_tos, which the launcher records.
                 //
                 if (!string.IsNullOrWhiteSpace(m_TermsCheckURL) && !string.IsNullOrWhiteSpace(m_TermsPageURL))
@@ -1200,7 +1200,7 @@ namespace OpenSim.Services.LLLoginService
         }
 
         /// <summary>
-        /// DreamGrid: asks the launcher whether this avatar must accept the grid's Terms before logging in. When the launcher
+        /// GridGate: asks the launcher whether this avatar must accept the grid's Terms before logging in. When the launcher
         /// can't be reached or answers anything else, the avatar is let in: a launcher hiccup must not lock the grid out.
         /// </summary>
         private bool MustAcceptTerms(UserAccount account)
@@ -1222,7 +1222,7 @@ namespace OpenSim.Services.LLLoginService
             }
         }
 
-        /// <summary>DreamGrid: tells the launcher the avatar agreed to the Terms in the viewer, from <paramref name="clientIP"/>.</summary>
+        /// <summary>GridGate: tells the launcher the avatar agreed to the Terms in the viewer, from <paramref name="clientIP"/>.</summary>
         private void TermsAgreed(UserAccount account, IPEndPoint clientIP)
         {
             try

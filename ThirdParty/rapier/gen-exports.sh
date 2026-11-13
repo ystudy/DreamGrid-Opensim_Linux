@@ -1,5 +1,5 @@
 #!/bin/sh
-# Writes exports.txt: the r3 functions include/rapier.h declares for the builds DreamGrid ships (3D, single precision, no
+# Writes exports.txt: the r3 functions include/rapier.h declares for the builds GridGate ships (3D, single precision, no
 # FEM or robotics), one per line, sorted. build-linux.sh's output and rapier.yml are checked against it. The one list
 # fits both builds, single and mt: the header does not guard the thread-pool functions (r3SetNumThreads,
 # r3ClearThreadPool, r3NumThreads) behind the parallel feature, and a build without it exports them too (they answer

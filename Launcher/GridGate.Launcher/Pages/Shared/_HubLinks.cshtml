@@ -1,0 +1,24 @@
+@model GridGate.Launcher.Navigation.HubLinks
+@inject Func<GridGate.Launcher.Core.Settings.LauncherSettings> Settings
+@{
+    // A row of links under a hub page's heading: the other pages in the menu group named by the model, as StaffMenu shows them to this
+    // person, less Skip (the links the page has of its own), so a hub never links to a page the menu hides. The hub's own page is left out.
+    var role = GridGate.Launcher.Security.StaffSignIn.RoleOf(User);
+    var canApprove = GridGate.Launcher.Core.Security.AdminRule.HasStaffPages(Settings())
+        && GridGate.Launcher.Core.Guests.ApprovalRules.CanApprove(role, Settings());
+    var group = GridGate.Launcher.Navigation.StaffMenu.For(role, Settings(), canApprove).FirstOrDefault(g => g.Text == Model.Group);
+    var links = group?.Items.Where(i => i.Href != group.Href && !Model.Skip.Contains(i.Href)).ToList() ?? [];
+}
+@if (links.Count > 0)
+{
+    <p class="hub-links" id="hub-links">
+        @for (var i = 0; i < links.Count; i++)
+        {
+            if (i > 0)
+            {
+                <span aria-hidden="true"> · </span>
+            }
+            <a href="@links[i].Href">@links[i].Text</a>
+        }
+    </p>
+}

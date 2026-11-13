@@ -1,0 +1,38 @@
+using GridGate.Launcher.Core.Grid;
+using GridGate.Launcher.Core.Settings;
+using GridGate.Launcher.Setup;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.RazorPages;
+
+namespace GridGate.Launcher.Pages.Setup;
+
+/// <summary>Step 4: how to reach the world from Firestorm; "I'm in!" finishes setup.</summary>
+public sealed class ConnectModel(IGridController grid, Func<LauncherSettings> settings) : PageModel
+{
+    public string LoginUri { get; private set; } = "";
+    public string GridName { get; private set; } = "";
+    public string OwnerName { get; private set; } = "";
+
+    /// <summary>True when the owner skipped the region step (Grid Asset Server only).</summary>
+    public bool RegionSkipped { get; private set; }
+
+    public IActionResult OnGet()
+    {
+        if (Closed() is { } closed) return closed;
+        var s = settings();
+        LoginUri = grid.GetStatus().LoginUri;
+        GridName = s.GridName;
+        RegionSkipped = s.Setup.RegionSkipped;
+        OwnerName = s.Setup.Owner is { } o ? $"{o.FirstName} {o.LastName}" : "your avatar";
+        return Page();
+    }
+
+    public IActionResult OnPost()
+    {
+        if (Closed() is { } closed) return closed;
+        grid.UpdateSettings(s => s with { Setup = s.Setup with { Finished = true } }, writeConfig: false);
+        return Redirect("/");
+    }
+
+    private IActionResult? Closed() => SetupSteps.CanOpen(settings(), "/setup/connect") ? null : Redirect("/setup");
+}

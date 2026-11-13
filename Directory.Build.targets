@@ -10,10 +10,10 @@
   <Target Name="SelectSystemDrawing" BeforeTargets="ResolveAssemblyReferences"
           Condition="'@(Reference->WithMetadataValue('Identity', 'System.Drawing.Common'))' != ''">
     <PropertyGroup>
-      <_DgDrawingSource Condition="$([MSBuild]::IsOSPlatform('Windows'))">$(MSBuildThisFileDirectory)bin/System.Drawing.Common.dll.win</_DgDrawingSource>
-      <_DgDrawingSource Condition="!$([MSBuild]::IsOSPlatform('Windows'))">$(MSBuildThisFileDirectory)bin/System.Drawing.Common.dll.linux</_DgDrawingSource>
+      <_GgDrawingSource Condition="$([MSBuild]::IsOSPlatform('Windows'))">$(MSBuildThisFileDirectory)bin/System.Drawing.Common.dll.win</_GgDrawingSource>
+      <_GgDrawingSource Condition="!$([MSBuild]::IsOSPlatform('Windows'))">$(MSBuildThisFileDirectory)bin/System.Drawing.Common.dll.linux</_GgDrawingSource>
     </PropertyGroup>
-    <Copy SourceFiles="$(_DgDrawingSource)" DestinationFiles="$(MSBuildThisFileDirectory)bin/System.Drawing.Common.dll" SkipUnchangedFiles="true"
+    <Copy SourceFiles="$(_GgDrawingSource)" DestinationFiles="$(MSBuildThisFileDirectory)bin/System.Drawing.Common.dll" SkipUnchangedFiles="true"
           Retries="5" RetryDelayMilliseconds="200" />
   </Target>
 

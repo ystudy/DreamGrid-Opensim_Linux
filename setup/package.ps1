@@ -1,10 +1,10 @@
 <#
-.SYNOPSIS  Builds the DreamGrid release package for one runtime identifier.
+.SYNOPSIS  Builds the GridGate release package for one runtime identifier.
 .DESCRIPTION
-  Produces <Out>/dreamgrid/ (launcher, bin, content, a private ASP.NET Core runtime, VERSION, RUNTIME_VERSION).
-  linux-x64 also produces <Out>/dreamgrid-<Version>-linux-x64.tar.gz and must be built on Linux.
+  Produces <Out>/gridgate/ (launcher, bin, content, a private ASP.NET Core runtime, VERSION, RUNTIME_VERSION).
+  linux-x64 also produces <Out>/gridgate-<Version>-linux-x64.tar.gz and must be built on Linux.
   Runs on Windows PowerShell 5.1 and PowerShell 7.
-.EXAMPLE   powershell -File setup/package.ps1 -Rid win-x64 -Version 0.0.0-dev -Out $env:TEMP\dgpkg
+.EXAMPLE   powershell -File setup/package.ps1 -Rid win-x64 -Version 0.0.0-dev -Out $env:TEMP\ggpkg
 #>
 param(
     [Parameter(Mandatory)][ValidateSet('linux-x64', 'win-x64')][string]$Rid,
@@ -22,15 +22,15 @@ if ($Rid -eq 'linux-x64' -and $onWindows) { throw 'linux-x64 packages keep Unix 
 
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $Out = [IO.Path]::GetFullPath($Out)
-$pkg = Join-Path $Out 'dreamgrid'
-$cache = Join-Path ([IO.Path]::GetTempPath()) 'dreamgrid-package-cache'
+$pkg = Join-Path $Out 'gridgate'
+$cache = Join-Path ([IO.Path]::GetTempPath()) 'gridgate-package-cache'
 
 # Same folders and files RuntimeStager leaves out of the staged runtime copy (assetcache, addin-db-* ...).
 $excludedDirectories = @('assetcache', 'Regions', 'ScriptEngines', 'fsassets', 'MeshCache', 'j2kDecodeCache', 'maptiles', 'bakes')
 
 # --- Retired add-on files ---------------------------------------------------------------------------------------
 # The Wifi, Diva and jOpenSim add-ons were removed; a bin/ built before then still holds their output. Same names as
-# Launcher/DreamGrid.Launcher.Core/Runtime/RetiredFiles.cs. Checked first so a dirty folder fails in seconds.
+# Launcher/GridGate.Launcher.Core/Runtime/RetiredFiles.cs. Checked first so a dirty folder fails in seconds.
 # Folders the package leaves out anyway (Copy-Bin's rule below) are not scanned: leftovers in them never ship.
 $retiredFilePrefixes = @('Diva.', 'Wifi.', 'WhoGotWhat.', 'jOpenSim')
 $retiredDirectories = @('DivaUploads')
@@ -93,10 +93,10 @@ New-Item -ItemType Directory -Force $pkg | Out-Null
 
 Push-Location $repo
 try {
-    Invoke-Native 'dotnet build' { dotnet build -c Release DreamGrid.sln "-p:Version=$Version" }
-    # For this system only (still started as "dotnet DreamGrid.Launcher.dll"): a portable publish would carry SkiaSharp's
+    Invoke-Native 'dotnet build' { dotnet build -c Release GridGate.sln "-p:Version=$Version" }
+    # For this system only (still started as "dotnet GridGate.Launcher.dll"): a portable publish would carry SkiaSharp's
     # native library for 18 systems, over 450 MB.
-    Invoke-Native 'dotnet publish' { dotnet publish Launcher/DreamGrid.Launcher -c Release -r $Rid --self-contained false "-p:Version=$Version" -o (Join-Path $pkg 'launcher') }
+    Invoke-Native 'dotnet publish' { dotnet publish Launcher/GridGate.Launcher -c Release -r $Rid --self-contained false "-p:Version=$Version" -o (Join-Path $pkg 'launcher') }
     # SkiaSharp's Windows debug symbols (about 96 MB) are of no use to an installed grid.
     Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $pkg 'launcher/libSkiaSharp.pdb')
 }
@@ -160,7 +160,7 @@ else {
 if ($Rid -eq 'linux-x64') {
     $debian = Join-Path $pkg 'setup/debian'
     New-Item -ItemType Directory -Force $debian | Out-Null
-    foreach ($name in 'install.sh', 'dreamgrid.service') {
+    foreach ($name in 'install.sh', 'gridgate.service') {
         $source = Join-Path $repo "setup/debian/$name"
         if (Test-Path $source) { Copy-Item $source $debian }
     }
@@ -175,9 +175,9 @@ if ($Rid -eq 'linux-x64') {
     $installer = Join-Path $pkg 'setup/debian/install.sh'
     Invoke-Native 'chmod' { chmod +x $dotnetHost }
     if (Test-Path $installer) { Invoke-Native 'chmod' { chmod +x $installer } }
-    $tarball = Join-Path $Out "dreamgrid-$Version-linux-x64.tar.gz"
+    $tarball = Join-Path $Out "gridgate-$Version-linux-x64.tar.gz"
     if (Test-Path $tarball) { Remove-Item -Force $tarball }
-    Invoke-Native 'tar' { tar -czf $tarball --owner=0 --group=0 -C $Out dreamgrid }
+    Invoke-Native 'tar' { tar -czf $tarball --owner=0 --group=0 -C $Out gridgate }
     Write-Host "Package: $tarball"
 }
 else { Write-Host "Package folder: $pkg" }

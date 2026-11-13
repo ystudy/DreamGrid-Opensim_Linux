@@ -11,7 +11,7 @@ longer public, so we now take them from OpenSimulator directly.
 
 - **Base:** OpenSimulator `master` at `9d00a5555225b17d3d1063cb0f3496fb1b6217f9` (2026-11-07, "soem extra
   spaces"), version `0.9.3.1` Dev. Every upstream commit up to it has been picked or recorded. On top of it sit
-  the DreamGrid patches and our own changes.
+  Fred's patches and our own changes.
 - **How we got there:** Fred brought in upstream `78cb44c0` (2026-08-11) as "Update to August core"
   (`a19786cf`). "OpenSim merge 1" (PR #30) picked 34 later commits, and "OpenSim merge 2" picked the other 36.
 - **No shared history.** Our history starts with Fred's import of the source in January 2025 ("V5 from Tandy"),
@@ -74,7 +74,7 @@ git commit --allow-empty -m "OpenSim: not taking <subject>: <reason>" --trailer 
 
 ### 3. Fix up what a clean pick leaves broken
 
-- **Project files.** The `.csproj` files and `DreamGrid.sln` are checked in here, and Prebuild is not run.
+- **Project files.** The `.csproj` files and `GridGate.sln` are checked in here, and Prebuild is not run.
   Our projects list every source file (`EnableDefaultItems` is `false`), while OpenSimulator's Prebuild picks
   files up by pattern. So an upstream commit that adds a `.cs` file picks cleanly but fails to build. Add a
   `<Compile Include=...>` to the matching `.csproj` (remove it for a deleted file). When upstream changes its
@@ -87,26 +87,26 @@ git commit --allow-empty -m "OpenSim: not taking <subject>: <reason>" --trailer 
 
   Our own `prebuild.xml` files are not used by anything. If a pick conflicts on one, take theirs.
 
-  - **Changed reference:** edit the project's `.csproj`. Reference paths use `$(DgRoot)` (the repo root),
+  - **Changed reference:** edit the project's `.csproj`. Reference paths use `$(GgRoot)` (the repo root),
     never an absolute path.
   - **New project:** create a `.csproj` modeled on a sibling project, then
-    `dotnet sln DreamGrid.sln add <path-to-csproj>`.
-  - **Removed project:** `dotnet sln DreamGrid.sln remove <path-to-csproj>` and delete the file.
+    `dotnet sln GridGate.sln add <path-to-csproj>`.
+  - **Removed project:** `dotnet sln GridGate.sln remove <path-to-csproj>` and delete the file.
 
   The target framework is set once in `Directory.Build.props`; do not add `<TargetFramework>` to a project.
   Put these fixes in a commit of their own after the picks ("OpenSim merge N: build the upstream picks").
 
-- **Config templates.** OpenSimulator documents new settings in `bin/*.ini.example`. DreamGrid writes its
+- **Config templates.** OpenSimulator documents new settings in `bin/*.ini.example`. GridGate writes its
   configuration from `bin/Robust.HG.ini.proto` and `bin/config-include/Proto/*/OpenSim.ini`, and the launcher
-  tests compare the result with `Launcher/DreamGrid.Launcher.Tests/Snapshots/`. Carry new or changed settings
+  tests compare the result with `Launcher/GridGate.Launcher.Tests/Snapshots/`. Carry new or changed settings
   over to those files by hand, in a commit of their own.
 
 ### Conflicts to expect
 
 - **DreamGrid patches.** Fred patched some OpenSimulator files, for example Smart Start in
   `GridService.cs`, `HypergridLinker.cs`, `LLLoginService.cs` and `UserAgentService.cs`, and
-  `OutboundUrlFilter.cs`. These are most of the source conflicts. Keep the DreamGrid behavior and fit the
-  upstream change around it. The patches are usually marked with comments; `grep -rn 'SmartStart\|DreamGrid'
+  `OutboundUrlFilter.cs`. These are most of the source conflicts. Keep the GridGate behavior and fit the
+  upstream change around it. The patches are usually marked with comments naming GridGate or Smart Start; `grep -rn 'SmartStart\|GridGate'
   OpenSim` finds most of them.
 - **Our own changes.** We have changed OpenSim code too (ubODE fixes, the Rapier physics backend, login and
   logging fixes). Look at the blame on our side before you take upstream's side of a hunk.
@@ -123,9 +123,9 @@ git commit --allow-empty -m "OpenSim: not taking <subject>: <reason>" --trailer 
 ### Verify
 
 ```bash
-dotnet build -c Release DreamGrid.sln
-dotnet test --project tests/DreamGrid.Platform.Tests -c Release
-dotnet run --project tests/DreamGrid.Smoke -c Release -- --bin bin
+dotnet build -c Release GridGate.sln
+dotnet test --project tests/GridGate.Platform.Tests -c Release
+dotnet run --project tests/GridGate.Smoke -c Release -- --bin bin
 ```
 
 All three must pass before you open the PR. The PR CI then runs the full set on Debian 12, Debian 13 and

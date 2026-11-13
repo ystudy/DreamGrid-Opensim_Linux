@@ -1,0 +1,119 @@
+@page "/splash"
+@model GridGate.Launcher.Pages.Splash.IndexModel
+@using GridGate.Launcher.Core.Splash
+@{
+    ViewData["Title"] = "Splash Page Editor";
+    // The editor needs the whole window: the canvas is where the work happens.
+    ViewData["Wide"] = "full";
+}
+@section Head {
+<link rel="stylesheet" href="/css/splash.css">
+<link rel="stylesheet" href="/css/splash-editor.css">
+<link id="draft-css" rel="stylesheet" href="/api/splash/draft.css?v=@Model.View.Version">
+}
+<div id="splash-editor" data-api="/api/splash" data-blocks="/splash?handler=Blocks" data-version="@Model.View.Version">
+    <form id="splash-token" class="d-none">@Html.AntiForgeryToken()</form>
+
+    @* The title and the page's fate: save the draft, publish it, or throw it away. *@
+    <div class="splash-head">
+        <h1>Splash Page Editor<help-tip class="help-start">Viewers show this page behind their login boxes when someone picks this grid. Build it from blocks: drag them onto the page, move and resize them, then publish. Residents keep seeing the published page until you do.</help-tip></h1>
+        <div class="splash-actions">
+            <span id="save-state" class="small text-body-secondary" role="status"></span>
+            <button type="button" id="discard" class="btn btn-sm btn-outline-danger" data-confirm="Throw away the draft and go back to the published page?">Discard draft</button>
+            <button type="button" id="save" class="btn btn-sm btn-outline-primary">Save</button>
+            <button type="button" id="publish" class="btn btn-sm btn-primary">Publish</button>
+        </div>
+    </div>
+
+    @* One row of tools: history, the selected block, the grid, and the preview sizes. *@
+    <div id="splash-toolbar" class="splash-toolbar" role="toolbar" aria-label="Splash page editor">
+        <div class="btn-group btn-group-sm" role="group" aria-label="Undo">
+            <button type="button" id="undo" class="btn btn-outline-secondary" disabled title="Undo (Ctrl+Z)">Undo</button>
+            <button type="button" id="redo" class="btn btn-outline-secondary" disabled title="Redo (Ctrl+Y)">Redo</button>
+        </div>
+        <div class="btn-group btn-group-sm" role="group" aria-label="Selected block">
+            <button type="button" id="forward" class="btn btn-outline-secondary" icon="bring-forward" disabled>Bring forward</button>
+            <button type="button" id="back" class="btn btn-outline-secondary" icon="send-back" disabled>Send back</button>
+            <button type="button" id="duplicate" class="btn btn-outline-secondary" disabled>Duplicate</button>
+            <button type="button" id="delete" class="btn btn-outline-danger" disabled title="Delete">Delete</button>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <div class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" role="switch" id="snap">
+                <label class="form-check-label small" for="snap">Snap to grid</label>
+            </div>
+            <label class="visually-hidden" for="snap-size">Grid size</label>
+            <select id="snap-size" class="form-select form-select-sm w-auto">
+                @foreach (var size in SplashRules.SnapSizes)
+                {
+                    <option value="@size">@size px</option>
+                }
+            </select>
+        </div>
+        <div class="toolbar-end">
+            <span class="small">Preview<help-tip class="help-end">See the page as a viewer window of that size shows it. The canvas below always shows the size you design at.</help-tip></span>
+            <div class="btn-group btn-group-sm" role="group" aria-label="Preview sizes">
+                <button type="button" class="preview-size btn btn-outline-secondary" data-w="1024" data-h="640">Small</button>
+                <button type="button" class="preview-size btn btn-outline-secondary" data-w="1280" data-h="800">Medium</button>
+                <button type="button" class="preview-size btn btn-outline-secondary" data-w="1920" data-h="1080">Large</button>
+                <button type="button" id="preview-off" class="btn btn-outline-secondary" icon="edit" disabled>Back to editing</button>
+            </div>
+            <a id="preview-tab" href="/splash/preview" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" icon="eye">Open in a new tab</a>
+        </div>
+    </div>
+    <p id="preview-note" class="small mb-2" hidden></p>
+
+    <div class="splash-editor-columns">
+        <section id="splash-shelf" class="splash-panel" aria-label="Blocks">
+            <h2 class="panel-title">Blocks<help-tip class="help-start">Drag a block onto the page, or click it to add it in the middle.</help-tip></h2>
+            @foreach (var (kind, label, icon) in IndexModel.Shelf)
+            {
+                <button type="button" class="shelf-item btn btn-outline-secondary btn-sm" data-kind="@kind" icon="@icon">@label</button>
+            }
+        </section>
+
+        <section id="splash-stage" aria-label="The page">
+            <div id="splash-viewport" class="splash-viewport">
+                <div class="splash-canvas">
+                    <div id="canvas-page" class="splash-page">
+                        <partial name="_SplashBlocks" model="new GridGate.Launcher.Splash.SplashBlocksModel(Model.View, Model.Settings)" />
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="splash-settings" class="splash-panel" aria-label="Settings"></section>
+    </div>
+
+    <section id="splash-pictures" class="splash-panel mt-3" aria-labelledby="pictures-heading">
+        <div class="splash-pictures-columns">
+            <div>
+                <h2 id="pictures-heading" class="panel-title">Pictures<help-tip class="help-start">PNG, JPEG or WebP, up to 10 MB. Each picture is redrawn when it arrives, which drops hidden data such as GPS position. Choose them in the page's or a block's settings.</help-tip></h2>
+                <label class="form-label small" for="picture-file">Upload a picture</label>
+                <input id="picture-file" class="form-control form-control-sm mb-2" type="file" accept="image/png,image/jpeg,image/webp">
+                <div id="picture-progress" class="progress mb-2" role="progressbar" aria-label="Upload" hidden><div class="progress-bar"></div></div>
+                <p id="picture-message" class="small" role="status"></p>
+                <ul id="picture-list" class="picture-list list-unstyled mb-0"></ul>
+            </div>
+            <div>
+                <h3 class="panel-title">The grid's logo<help-tip class="help-end">One logo for the whole grid. The grid name block can show it.</help-tip></h3>
+                @if (Model.View.Logo is { } logo)
+                {
+                    <img id="logo-now" class="picture-thumb mb-2" src="@GridGate.Launcher.Splash.SplashSnapshot.LogoUrl(logo)" alt="The grid's logo">
+                }
+                <label class="form-label small" for="logo-file">@(Model.View.Logo is null ? "Upload a logo" : "Upload a new logo")</label>
+                <input id="logo-file" class="form-control form-control-sm mb-2" type="file" accept="image/png,image/jpeg,image/webp">
+                @if (Model.View.Logo is not null)
+                {
+                    <button type="button" id="logo-remove" class="btn btn-outline-danger btn-sm" data-confirm="Remove the grid's logo?">Remove the logo</button>
+                }
+                <p id="logo-message" class="small mt-2" role="status"></p>
+            </div>
+        </div>
+    </section>
+</div>
+
+@section Scripts {
+<script src="/js/splash-editor-core.js"></script>
+<script src="/js/splash-editor.js"></script>
+}

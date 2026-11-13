@@ -1,0 +1,58 @@
+@page "/people/{id:guid}/delete"
+@model GridGate.Launcher.Pages.People.DeleteModel
+@{
+    ViewData["Title"] = "Delete";
+    var preview = Model.Preview;
+}
+@if (Model.Notice is not null)
+{
+    <h1>Deleted</h1>
+    <div class="ok-box alert alert-success" role="status">@Model.Notice</div>
+    <p><a href="/people">Back to People</a></p>
+}
+else
+{
+    <h1>Are you sure?</h1>
+    @if (Model.Error is not null)
+    {
+        <div class="error-box error alert alert-danger" role="alert">@Model.Error</div>
+    }
+    @if (preview is not null)
+    {
+        var name = preview.Person.FullName;
+        <p>@name is deleted for good. There is no undo.</p>
+        <div id="delete-what">
+            <p>These go:</p>
+            <ul>
+                <li>the account and password</li>
+                <li>inventory</li>
+                <li>friends (their list, and their place on others' lists)</li>
+                <li>group memberships and roles</li>
+                <li>profile, picks, classifieds and notes</li>
+                <li>offline messages</li>
+                <li>region rights, and their own estate</li>
+                <li>the old names kept for them</li>
+            </ul>
+            <p>Things they made that others hold copies of stay.</p>
+        </div>
+        @if (preview.RegionsMoving.Count > 0)
+        {
+            <p id="delete-regions">These regions go back to the estate they came from first: @string.Join(", ", preview.RegionsMoving).</p>
+        }
+        @if (preview.Refusal is { } why)
+        {
+            <div class="error-box error alert alert-danger" role="alert">@why</div>
+            <a class="btn btn-outline-secondary" href="/people/@preview.Person.Row.Account.PrincipalId">Back</a>
+        }
+        else
+        {
+            <form method="post" asp-antiforgery="true">
+                <input type="hidden" name="confirm" value="yes">
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-danger">Delete @name</button>
+                    <a class="btn btn-outline-secondary" href="/people/@preview.Person.Row.Account.PrincipalId">Cancel</a>
+                </div>
+            </form>
+        }
+    }
+}

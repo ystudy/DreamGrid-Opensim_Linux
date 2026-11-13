@@ -14,7 +14,7 @@
 # before Rapier is built against it.
 #
 # Needs git, curl, sha256sum, a C compiler (the linker), and rustup with the toolchain named in source.env (RUST_TOOLCHAIN). Build on the oldest distribution the library has
-# to run on (DreamGrid: Debian 12), because the result links against that glibc.
+# to run on (GridGate: Debian 12), because the result links against that glibc.
 set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)

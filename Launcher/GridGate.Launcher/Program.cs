@@ -1,0 +1,561 @@
+using System.Net;
+using GridGate.Launcher;
+using GridGate.Launcher.Core;
+using GridGate.Launcher.Core.Api;
+using GridGate.Launcher.Core.Config;
+using GridGate.Launcher.Core.Database;
+using GridGate.Launcher.Core.Grid;
+using GridGate.Launcher.Core.Groups;
+using GridGate.Launcher.Core.Guests;
+using GridGate.Launcher.Core.Logs;
+using GridGate.Launcher.Endpoints;
+using GridGate.Launcher.Core.ModelImport;
+using GridGate.Launcher.Core.Modules;
+using GridGate.Launcher.Core.OpenSim;
+using GridGate.Launcher.Core.Settings;
+using GridGate.Launcher.Core.Security;
+using GridGate.Launcher.Core.Setup;
+using GridGate.Launcher.Core.Pictures;
+using GridGate.Launcher.Core.Splash;
+using GridGate.Launcher.Core.Theme;
+using GridGate.Launcher.Security;
+using GridGate.Launcher.Splash;
+using GridGate.Launcher.Email;
+using GridGate.Launcher.Groups;
+using GridGate.Launcher.Guests;
+using GridGate.Launcher.Iar;
+using GridGate.Launcher.Core.Iar;
+using GridGate.Launcher.ModelImport;
+using GridGate.Launcher.Resident;
+using GridGate.Launcher.Setup;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Connections;
+using Microsoft.AspNetCore.DataProtection;
+
+// Installer and owner verbs (--version, admin-link, stop-grid, set-web-port, reset-two-factor) run instead of the host.
+var processEnv = new Dictionary<string, string?>
+{
+    ["GRIDGATE_DATA"] = Environment.GetEnvironmentVariable("GRIDGATE_DATA"),
+    ["GRIDGATE_OPENSIM"] = Environment.GetEnvironmentVariable("GRIDGATE_OPENSIM"),
+    ["GRIDGATE_MARIADB_BIN"] = Environment.GetEnvironmentVariable("GRIDGATE_MARIADB_BIN"),
+    ["ProgramData"] = Environment.GetEnvironmentVariable("ProgramData"),
+};
+if (await CommandLine.RunVerbAsync(args, processEnv, Console.Out, CancellationToken.None) is { } verbExit)
+    return verbExit;
+
+// Staff pages stay in English whatever the operating system's language, words, dates and numbers alike (spec section 2): only
+// resident pages get ResidentLanguageFilter, which sets the culture for its own request.
+System.Globalization.CultureInfo.DefaultThreadCurrentCulture = System.Globalization.CultureInfo.GetCultureInfo("en");
+System.Globalization.CultureInfo.DefaultThreadCurrentUICulture = System.Globalization.CultureInfo.GetCultureInfo("en");
+
+var builder = WebApplication.CreateBuilder(args);
+builder.Host.UseSystemd();
+builder.Host.UseWindowsService(o => o.ServiceName = "GridGate");
+
+// The configuration carries the environment, so GRIDGATE_* can also come from the host settings (tests).
+var config = builder.Configuration;
+var env = new Dictionary<string, string?>
+{
+    ["GRIDGATE_DATA"] = config["GRIDGATE_DATA"],
+    ["GRIDGATE_OPENSIM"] = config["GRIDGATE_OPENSIM"],
+    ["GRIDGATE_MARIADB_BIN"] = config["GRIDGATE_MARIADB_BIN"],
+    ["ProgramData"] = Environment.GetEnvironmentVariable("ProgramData"),
+};
+LauncherPaths paths;
+InstanceLock? instanceLock;
+SettingsStore store;
+LauncherSettings settings;
+try
+{
+    var dataDir = LauncherPaths.ResolveData(args, env, OperatingSystem.IsWindows());
+    instanceLock = InstanceLock.TryAcquire(dataDir);
+    if (instanceLock is null)
+    {
+        using var held = LoggerFactory.Create(b => b.AddConsole());
+        held.CreateLogger("GridGate.Launcher")
+            .LogCritical("Another GridGate launcher is already running with data directory {Data}.", dataDir);
+        return 3;
+    }
+    paths = LauncherPaths.Resolve(args, env, OperatingSystem.IsWindows());
+    store = new SettingsStore(paths.SettingsFile);
+    settings = store.LoadOrCreate();
+    // The --web-port host option (development) is the one settings change made outside the controller: at startup, under
+    // the lock, before anything reads the port. It applies again on every start; the installers use set-web-port instead.
+    if (CommandLine.ParseWebPort(args) is { } webPort)
+    {
+        if (CommandLine.ApplyWebPort(store, webPort) is { } portError)
+            throw new ArgumentException(portError);
+        settings = store.LoadOrCreate();
+    }
+    LauncherPaths.CreateOwnerOnly(paths.Data);
+    LauncherPaths.CreateOwnerOnly(paths.DataProtectionKeys);
+    LauncherPaths.CreateOwnerOnly(paths.Security);
+    LauncherPaths.CreateOwnerOnly(paths.Guests);
+    LauncherPaths.CreateOwnerOnly(paths.StarterAvatars);
+    LauncherPaths.CreateOwnerOnly(paths.Email);
+    LauncherPaths.CreateOwnerOnly(paths.Tickets);
+    GridGate.Launcher.Core.Iar.IarFolders.Prepare(paths);
+}
+catch (Exception e) when (e is ArgumentException or SettingsCorruptException or IOException or UnauthorizedAccessException)
+{
+    // Nothing can be served without the data directory and settings: one plain line, then a non-zero exit
+    // (2; the taken web port is 1).
+    using (var early = LoggerFactory.Create(b => b.AddConsole()))
+        early.CreateLogger("GridGate.Launcher").LogCritical("The launcher cannot start: {Reason}", e.Message);
+    return 2;
+}
+
+using var lockHandle = instanceLock; // held for the host's lifetime
+builder.WebHost.ConfigureKestrel(o => o.Listen(IPAddress.Any, settings.WebPort));
+// The request log line includes the query string, which carries ?password= (MachineId or an avatar's).
+builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.Warning);
+// Health polls of children that are still booting would log a stack trace every few seconds.
+builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);
+// Routing, page and result lines for every request (the dashboard polls every 5 s) would flood launcher.log.
+// Microsoft.Hosting.Lifetime ("Now listening on…") is outside this category and stays at Information.
+builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
+// Console output a command's reply window missed is discarded; keep it in launcher.log (rare, and echoes are redacted).
+builder.Logging.AddFilter("GridGate.Launcher.Core.OpenSim.RestConsoleClient", LogLevel.Debug);
+
+builder.Logging.AddProvider(new RollingFileLoggerProvider(Path.Combine(paths.Logs, "launcher.log")));
+
+// Keys for the sign-in and antiforgery cookies live in the (owner-only) data directory, not the service account's
+// profile, so cookies stay valid across restarts and the keys go wherever the data goes.
+builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(paths.DataProtectionKeys))
+    .SetApplicationName("GridGate");
+builder.Services.AddSingleton<Microsoft.AspNetCore.Routing.MatcherPolicy, LegacyRootPolicy>();
+builder.Services.AddAuthentication(AuthSchemes.Admin).AddCookie(AuthSchemes.Admin, o =>
+{
+    o.Cookie.Name = "gg-auth";
+    o.Cookie.HttpOnly = true;
+    o.Cookie.SameSite = SameSiteMode.Strict;
+    o.LoginPath = "/login";
+    o.ExpireTimeSpan = StaffSignIn.Expiry;
+    o.SlidingExpiration = true;
+    // The session, the stamp and (every 5 minutes) the level, on every request.
+    o.Events.OnValidatePrincipal = c => c.HttpContext.RequestServices.GetRequiredService<StaffPrincipalValidator>().ValidateAsync(c);
+    // API callers get a status code, never a redirect to the login page.
+    o.Events.OnRedirectToLogin = c => ApiOr(c, StatusCodes.Status401Unauthorized);
+    o.Events.OnRedirectToAccessDenied = Denied;
+})
+// The guest door's own cookie: a session cookie (no persistent expiry), 8 hours sliding, never read by the staff pages. The
+// stamp and (every 5 minutes) the level are checked on every request to a guest page. No API takes it, so it only redirects.
+.AddCookie(AuthSchemes.Guest, o =>
+{
+    o.Cookie.Name = "gg-guest";
+    o.Cookie.HttpOnly = true;
+    o.Cookie.SameSite = SameSiteMode.Strict;
+    o.LoginPath = "/guest/sign-in";
+    o.ExpireTimeSpan = StaffSignIn.Expiry;
+    o.SlidingExpiration = true;
+    o.Events.OnValidatePrincipal = c => c.HttpContext.RequestServices.GetRequiredService<GuestPrincipalValidator>().ValidateAsync(c);
+    // Where there is no guest side the pages do not exist: a caller who isn't signed in gets 404, not a redirect to a sign-in
+    // page that doesn't exist either (the policy challenges before GuestSideOnly runs).
+    o.Events.OnRedirectToLogin = c =>
+    {
+        if (!AdminRule.HasStaffPages(c.HttpContext.RequestServices.GetRequiredService<Func<LauncherSettings>>()()))
+            c.Response.StatusCode = StatusCodes.Status404NotFound;
+        else
+            c.Response.Redirect(c.RedirectUri);
+        return Task.CompletedTask;
+    };
+});
+// Whatever has no decision of its own needs the admin role; the open routes say .AllowAnonymous() (or a page convention).
+builder.Services.AddAuthorizationBuilder()
+    .AddPolicy(AuthSchemes.OwnerPolicy, p => p.AddAuthenticationSchemes(AuthSchemes.Admin).RequireRole(AuthSchemes.OwnerRole))
+    .AddPolicy(AuthSchemes.AdminPolicy, p => p.AddAuthenticationSchemes(AuthSchemes.Admin).RequireRole(AuthSchemes.AdminRole))
+    .AddPolicy(AuthSchemes.StaffPolicy, p => p.AddAuthenticationSchemes(AuthSchemes.Admin).RequireRole(AuthSchemes.StaffRole))
+    // Only the guest cookie: a staff cookie opens no guest page, and a guest cookie opens no staff page.
+    .AddPolicy(AuthSchemes.GuestPolicy, p => p.AddAuthenticationSchemes(AuthSchemes.Guest).RequireRole(AuthSchemes.GuestRole))
+    .SetFallbackPolicy(new AuthorizationPolicyBuilder().AddAuthenticationSchemes(AuthSchemes.Admin).RequireRole(AuthSchemes.AdminRole).Build());
+builder.Services.AddLocalization(o => o.ResourcesPath = "Resources");
+// Registered after AddLocalization so the closed generic wins over the framework's open one: the owner's tone text and added languages come first (plan 16b).
+builder.Services.AddSingleton<Microsoft.Extensions.Localization.IStringLocalizer<ResidentText>>(sp => new GridGate.Launcher.Resident.ResidentTextLocalizer(
+    sp.GetRequiredService<Microsoft.Extensions.Localization.IStringLocalizerFactory>(), sp.GetRequiredService<Func<LauncherSettings>>(),
+    sp.GetRequiredService<GridGate.Launcher.Core.OwnerLanguages>()));
+builder.Services.AddRazorPages(o =>
+{
+    // Every page needs the admin role except these; the setup pages are guarded by SetupGate. A person's own pages under
+    // /Profile and the People page are for every staff member, and the Security and Staff pages are the owner's. (Two folder
+    // policies on one page would both have to pass, so those folders are left out of the admin one rather than given a second.)
+    // The Staff and People pages do not exist (404) where there are no supervisors, nor do the Guest pages (the guest side).
+    string[] ownFolders = ["/Profile/", "/Security/", "/Staff/", "/People/", "/Guest/", "/Hypergrid/"];
+    o.Conventions.AddFolderApplicationModelConvention("/", m =>
+    {
+        if (!ownFolders.Any(f => m.ViewEnginePath.StartsWith(f, StringComparison.OrdinalIgnoreCase)))
+            m.EndpointMetadata.Add(new AuthorizeAttribute(AuthSchemes.AdminPolicy));
+    });
+    o.Conventions.AuthorizeFolder("/Profile", AuthSchemes.StaffPolicy);
+    o.Conventions.AuthorizeFolder("/Security", AuthSchemes.OwnerPolicy);
+    o.Conventions.AuthorizeFolder("/Staff", AuthSchemes.OwnerPolicy);
+    // The owner's password-recovery rules (the admin policy applies too; the owner passes both). Only with a guest side.
+    o.Conventions.AuthorizePage("/Advanced/PasswordReset", AuthSchemes.OwnerPolicy);
+    o.Conventions.AddPageApplicationModelConvention("/Advanced/PasswordReset", m => m.Filters.Add(new GuestSideOnly()));
+    o.Conventions.AuthorizeFolder("/People", AuthSchemes.StaffPolicy);
+    o.Conventions.AddFolderApplicationModelConvention("/Staff", m => m.Filters.Add(new StaffPagesOnly()));
+    o.Conventions.AddFolderApplicationModelConvention("/People", m => m.Filters.Add(new StaffPagesOnly()));
+    o.Conventions.AuthorizeFolder("/Guest", AuthSchemes.GuestPolicy);
+    o.Conventions.AddFolderApplicationModelConvention("/Guest", m => m.Filters.Add(new GuestSideOnly()));
+    // A guest accepts the current Terms before any other guest page (the Terms page, sign-out and sign-in excepted, see TermsGate).
+    o.Conventions.AddFolderApplicationModelConvention("/Guest", m => m.Filters.Add(new TermsGate()));
+    // The public front page ("/" shows it to anyone not signed in as staff, see SetupGate); like the guest pages it is not there
+    // on a Region Server or a Connected Server.
+    // The operator's legal pages and the sign-up page are public in the same way.
+    foreach (var publicPage in new[] { "/Home", "/Legal", "/SignUp" })
+        o.Conventions.AddPageApplicationModelConvention(publicPage, m => m.Filters.Add(new GuestSideOnly()));
+    // The owner's legal editor: the Security folder's owner policy, and not there where there is no guest side.
+    o.Conventions.AddPageApplicationModelConvention("/Security/Legal", m => m.Filters.Add(new GuestSideOnly()));
+    // The splash page editor: the page it builds is the guest side's (AdminPolicy comes from the folder rule above).
+    o.Conventions.AddFolderApplicationModelConvention("/Splash", m => m.Filters.Add(new GuestSideOnly()));
+    // The Groups pages: the grid's own groups, so only where this computer runs the grid (AdminPolicy from the folder rule above).
+    o.Conventions.AddFolderApplicationModelConvention("/Groups", m => m.Filters.Add(new GuestSideOnly()));
+    // The hypergrid links: Robust's map, so only where this computer runs the grid; for every staff member (owner, 2026-11-03).
+    o.Conventions.AuthorizeFolder("/Hypergrid", AuthSchemes.StaffPolicy);
+    o.Conventions.AddFolderApplicationModelConvention("/Hypergrid", m => m.Filters.Add(new GuestSideOnly()));
+    // The estates: the regions' database on this computer, for the owner and admins (AdminPolicy from the folder rule above).
+    o.Conventions.AddFolderApplicationModelConvention("/Estates", m => m.Filters.Add(new GuestSideOnly()));
+    // The Guest pages hub (design 2026-11-05-gridgate-menu-looks-workflows §1): AdminPolicy from the folder rule above.
+    o.Conventions.AddFolderApplicationModelConvention("/GuestPages", m => m.Filters.Add(new GuestSideOnly()));
+    // The same for the bot-protection page.
+    o.Conventions.AddPageApplicationModelConvention("/Security/Bots", m => m.Filters.Add(new GuestSideOnly()));
+    o.Conventions.AddPageApplicationModelConvention("/Security/Iar", m => m.Filters.Add(new GuestSideOnly()));
+    o.Conventions.AddPageApplicationModelConvention("/Security/StarterAvatars", m => m.Filters.Add(new GuestSideOnly()));
+    o.Conventions.AddPageApplicationModelConvention("/People/SignUps", m => m.Filters.Add(new GuestSideOnly()));
+    o.Conventions.AddPageApplicationModelConvention("/People/Deny", m => m.Filters.Add(new GuestSideOnly()));
+    // The same for the Email pages: email is for the guest side's sign-up and password reset.
+    foreach (var emailPage in new[] { "/Security/Email", "/Security/EmailWording", "/Security/Wording", "/Security/Languages", "/Security/Translate" })
+        o.Conventions.AddPageApplicationModelConvention(emailPage, m => m.Filters.Add(new GuestSideOnly()));
+    foreach (var open in new[] { "/Login", "/Login/Code", "/Logout", "/Welcome", "/Waiting", "/SetupDone", "/Setup", "/Home", "/Legal", "/SignUp", "/Guest/SignIn", "/Guest/SignInCode", "/Guest/ForgotPassword", "/Guest/ResetPassword", "/Guest/Confirm", "/Guest/ConfirmEmail", "/Guest/Connect", "/Language" })
+        o.Conventions.AllowAnonymousToPage(open);
+    o.Conventions.AllowAnonymousToFolder("/Setup");
+    // Support tickets for guests: open to anyone (each page checks the ticket's link or cookie), only where there is a guest side.
+    // Outside /Guest, which needs the guest sign-in and the Terms gate.
+    o.Conventions.AllowAnonymousToFolder("/Support");
+    o.Conventions.AddFolderApplicationModelConvention("/Support", m => m.Filters.Add(new GuestSideOnly()));
+    // The resident pages pick their language per visitor (see ResidentLanguageFilter); staff pages stay English. Only the welcome
+    // page takes its language from ?lang= alone.
+    o.Conventions.AddPageApplicationModelConvention("/Welcome", m => m.Filters.Add(new ResidentLanguageFilter(welcome: true)));
+    // The language picker's own page: anyone may use it, and like the guest pages it is not there on a Region Server.
+    o.Conventions.AddPageApplicationModelConvention("/Language", m => m.Filters.Add(new GuestSideOnly()));
+    foreach (var folder in new[] { "/Guest", "/Support" })
+        o.Conventions.AddFolderApplicationModelConvention(folder, m => m.Filters.Add(new ResidentLanguageFilter(welcome: false)));
+    foreach (var page in new[] { "/Home", "/Legal", "/SignUp" })
+        o.Conventions.AddPageApplicationModelConvention(page, m => m.Filters.Add(new ResidentLanguageFilter(welcome: false)));
+    // The dashboard's forms post here: a POST to "/" belongs to the port-8001 contract (LegacyRootPolicy).
+    o.Conventions.AddPageRoute("/Index", "dashboard");
+});
+// The dashboard's script sends the token in this header to /api/grid/*.
+// The site's cookies have short names of their own (SiteFacts.Cookies lists them all).
+builder.Services.AddAntiforgery(o =>
+{
+    o.HeaderName = "RequestVerificationToken";
+    o.Cookie.Name = "gg-af";
+});
+builder.Services.Configure<Microsoft.AspNetCore.Mvc.CookieTempDataProviderOptions>(o => o.Cookie.Name = "gg-notice");
+builder.Services.AddGrid(paths, store);
+// Robust's map tiles, fetched on the browser's behalf (the browser never reaches Robust's port).
+builder.Services.AddHttpClient(RegionsApi.RobustMapClient, c => c.Timeout = TimeSpan.FromSeconds(5));
+builder.Services.AddSingleton<LogReader>();
+builder.Services.AddSingleton(sp => new AuditLog(Path.Combine(paths.Logs, "audit.log"), sp.GetRequiredService<TimeProvider>()));
+builder.Services.AddSingleton(sp => new LoginThrottle(sp.GetRequiredService<TimeProvider>(),
+    Path.Combine(paths.Security, "throttle.json"), sp.GetRequiredService<ILogger<LoginThrottle>>()));
+builder.Services.AddSingleton(sp => new StaffSessions(Path.Combine(paths.Security, "sessions.json"),
+    sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<StaffSessions>>()));
+builder.Services.AddSingleton(sp => new TwoFactorStore(Path.Combine(paths.Security, "twofactor.json"),
+    sp.GetRequiredService<IDataProtectionProvider>(), sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<TwoFactorStore>>()));
+builder.Services.AddSingleton<ITwoFactorStatus>(sp => sp.GetRequiredService<TwoFactorStore>());
+builder.Services.AddSingleton(sp => new ResidentTwoFactor(new TwoFactorStore(Path.Combine(paths.Guests, "twofactor.json"),
+    sp.GetRequiredService<IDataProtectionProvider>(), sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<TwoFactorStore>>()), Path.Combine(paths.Guests, "twofactor.json")));
+builder.Services.AddSingleton(sp => new SuspendedStore(Path.Combine(paths.Security, "suspended.json"), sp.GetRequiredService<ILogger<SuspendedStore>>()));
+builder.Services.AddSingleton<IStaffDirectory>(sp => new StaffDirectory(sp.GetRequiredService<Func<LauncherSettings>>()));
+builder.Services.AddSingleton<IPeopleDirectory>(sp => new PeopleDirectory(sp.GetRequiredService<Func<LauncherSettings>>()));
+builder.Services.AddSingleton<IRobustPasswords>(sp => new RobustPasswords(sp.GetRequiredService<Func<LauncherSettings>>()));
+builder.Services.AddSingleton<IRobustEmails>(sp => new RobustEmails(sp.GetRequiredService<Func<LauncherSettings>>()));
+builder.Services.AddSingleton<IAccountRemover>(sp => new AccountRemover(sp.GetRequiredService<Func<LauncherSettings>>()));
+builder.Services.AddSingleton<IInventoryStore>(sp => new InventoryStore(sp.GetRequiredService<Func<LauncherSettings>>()));
+builder.Services.AddSingleton<IAppearanceStore>(sp => new AppearanceStore(sp.GetRequiredService<Func<LauncherSettings>>()));
+// Starter avatars (spec 2026-11-11-starter-avatars-design): the list, and the check of each sign-up's copy.
+builder.Services.AddSingleton(sp => new GridGate.Launcher.Core.Starter.StarterAvatarList(Path.Combine(paths.StarterAvatars, "avatars.json"),
+    sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<GridGate.Launcher.Core.Starter.StarterAvatarList>>()));
+builder.Services.AddSingleton<GridGate.Launcher.Starter.StarterCopyCheck>();
+builder.Services.AddSingleton<GridGate.Launcher.Starter.StarterImport>();
+builder.Services.AddSingleton(sp => new TakedownStore(paths.Takedowns, sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<TakedownStore>>()));
+builder.Services.AddSingleton(new EvidenceCopier(paths.FsAssetsData));
+builder.Services.AddSingleton<IEstateRemover>(sp => new EstateRemover(sp.GetRequiredService<Func<LauncherSettings>>()));
+builder.Services.AddSingleton<AccountHolds>();
+builder.Services.AddSingleton<StaffActions>();
+builder.Services.AddSingleton<PeopleActions>();
+builder.Services.AddSingleton<TakedownActions>();
+builder.Services.AddSingleton<StaffPrincipalValidator>();
+builder.Services.AddSingleton(sp => new GuestStamps(Path.Combine(paths.Guests, "stamps.json"), sp.GetRequiredService<ILogger<GuestStamps>>()));
+builder.Services.AddSingleton<GuestPrincipalValidator>();
+builder.Services.AddSingleton(sp => new TermsAcceptances(Path.Combine(paths.Guests, "terms.json"), sp.GetRequiredService<TimeProvider>(),
+    sp.GetRequiredService<ILogger<TermsAcceptances>>()));
+builder.Services.AddSingleton(sp => new HeldNames(Path.Combine(paths.Guests, "held-names.json"), sp.GetRequiredService<TimeProvider>(),
+    sp.GetRequiredService<ILogger<HeldNames>>()));
+builder.Services.AddSingleton<IRobustNames>(sp => new RobustNames(sp.GetRequiredService<Func<LauncherSettings>>()));
+builder.Services.AddSingleton(sp => new RegionRights(Path.Combine(paths.Guests, "region-rights.json"), sp.GetRequiredService<TimeProvider>(),
+    sp.GetRequiredService<ILogger<RegionRights>>()));
+builder.Services.AddSingleton(sp => new IarRights(Path.Combine(paths.Guests, "iar-rights.json"), sp.GetRequiredService<ILogger<IarRights>>()));
+builder.Services.AddSingleton(sp => new UploadRights(Path.Combine(paths.Guests, "upload-rights.json"), sp.GetRequiredService<TimeProvider>(),
+    sp.GetRequiredService<ILogger<UploadRights>>()));
+builder.Services.AddSingleton(sp => new EmailTokens(Path.Combine(paths.Guests, "email-tokens.json"), sp.GetRequiredService<TimeProvider>(),
+    sp.GetRequiredService<ILogger<EmailTokens>>()));
+builder.Services.AddSingleton(sp => new ResetLimits(sp.GetRequiredService<TimeProvider>(), Path.Combine(paths.Guests, "reset-limits.json"),
+    sp.GetRequiredService<ILogger<ResetLimits>>()));
+builder.Services.AddSingleton<ResetWorker>();
+builder.Services.AddSingleton<IResetWork>(sp => sp.GetRequiredService<ResetWorker>());
+builder.Services.AddHostedService(sp => sp.GetRequiredService<ResetWorker>());
+builder.Services.AddSingleton<PasswordResets>();
+builder.Services.AddSingleton(sp => new SignUpBoard(Path.Combine(paths.Guests, "pending-signups.json"), sp.GetRequiredService<TimeProvider>(),
+    sp.GetRequiredService<ILogger<SignUpBoard>>()));
+builder.Services.AddSingleton(sp => new SignUpLimits(new ResetLimits(sp.GetRequiredService<TimeProvider>(), Path.Combine(paths.Guests, "signup-limits.json"),
+    sp.GetRequiredService<ILogger<ResetLimits>>())));
+builder.Services.AddSingleton<SignUpLock>();
+builder.Services.AddSingleton<SignUps>();
+builder.Services.AddSingleton<SignUpApprovals>();
+// The admin's Groups pages and the default group (spec 2026-11-02-groups-admin-design).
+builder.Services.AddSingleton<IGridGroups>(sp => new GridGroups(sp.GetRequiredService<Func<LauncherSettings>>()));
+builder.Services.AddSingleton(sp => new GroupJoins(Path.Combine(paths.Guests, "group-joins.json"), sp.GetRequiredService<ILogger<GroupJoins>>()));
+builder.Services.AddSingleton<GroupsAdmin>();
+builder.Services.AddSingleton<GridGate.Launcher.Core.Hypergrid.IGridHyperlinks>(sp =>
+    new GridGate.Launcher.Core.Hypergrid.GridHyperlinks(sp.GetRequiredService<Func<LauncherSettings>>()));
+builder.Services.AddSingleton<GridGate.Launcher.Core.Hypergrid.IGridProbe>(_ => new GridGate.Launcher.Core.Hypergrid.GridProbe());
+builder.Services.AddSingleton<GridGate.Launcher.Hypergrid.HypergridAdmin>();
+builder.Services.AddSingleton<GridGate.Launcher.Core.Estates.IGridEstates>(sp =>
+    new GridGate.Launcher.Core.Estates.GridEstates(sp.GetRequiredService<Func<LauncherSettings>>()));
+builder.Services.AddSingleton<GridGate.Launcher.Estates.EstatesAdmin>();
+builder.Services.AddSingleton(sp => new ApprovalNotices(Path.Combine(paths.Guests, "approval-notices.json")));
+// Support tickets (design 2026-11-05-support-tickets): one owner-only file per ticket.
+builder.Services.AddSingleton(sp => new GridGate.Launcher.Core.Tickets.TicketStore(paths.Tickets, sp.GetRequiredService<ILogger<GridGate.Launcher.Core.Tickets.TicketStore>>()));
+builder.Services.AddSingleton<SupportTickets>();
+builder.Services.AddSingleton(sp => new GridGate.Launcher.Core.Tickets.TicketNotices(Path.Combine(paths.Guests, "ticket-notices.json")));
+builder.Services.AddSingleton<TicketCookie>();
+builder.Services.AddSingleton<GridGate.Launcher.Security.StaffTickets>();
+builder.Services.AddSingleton<SignUpNotices>();
+// The language each resident chose (plan 16a).
+builder.Services.AddSingleton(sp => new GridGate.Launcher.Core.ResidentLanguages(Path.Combine(paths.Guests, "languages.json"),
+    sp.GetRequiredService<ILogger<GridGate.Launcher.Core.ResidentLanguages>>()));
+builder.Services.AddSingleton(sp => new GridGate.Launcher.Core.OwnerLanguages(paths.Languages, TimeProvider.System,
+    sp.GetRequiredService<ILogger<GridGate.Launcher.Core.OwnerLanguages>>()));
+// The resident account page (plan 10): email changes waiting for their link, and their own request counts.
+builder.Services.AddSingleton(sp => new PendingEmailChanges(Path.Combine(paths.Guests, "email-changes.json"), sp.GetRequiredService<TimeProvider>(),
+    sp.GetRequiredService<ILogger<PendingEmailChanges>>()));
+builder.Services.AddSingleton(sp => new EmailChangeLimits(new ResetLimits(sp.GetRequiredService<TimeProvider>(),
+    Path.Combine(paths.Guests, "email-change-limits.json"), sp.GetRequiredService<ILogger<ResetLimits>>())));
+builder.Services.AddSingleton<AccountChanges>();
+// Email (plan 8a): the mail accounts, passwords protected by data protection.
+builder.Services.AddSingleton(sp => new EmailAccounts(Path.Combine(paths.Email, "accounts.json"), sp.GetRequiredService<IDataProtectionProvider>(),
+    sp.GetRequiredService<ILogger<EmailAccounts>>()));
+// The outbox, send counts and recent problems; one sender is the only way in, and the worker sends in the background.
+builder.Services.AddSingleton(sp => new EmailOutbox(paths.Email, sp.GetRequiredService<IDataProtectionProvider>(), sp.GetRequiredService<TimeProvider>(),
+    log: sp.GetRequiredService<ILogger<EmailOutbox>>()));
+builder.Services.AddSingleton<IMailTransport, SmtpMailTransport>();
+builder.Services.AddSingleton<EmailSender>();
+builder.Services.AddSingleton<GridGate.Launcher.Resident.OfferedLanguages>();
+builder.Services.AddSingleton<GridGate.Launcher.Resident.LanguageCatalog>();
+builder.Services.AddSingleton<EmailLanguage>();
+builder.Services.AddSingleton<EmailTestLimiter>();
+builder.Services.AddHostedService<EmailWorker>();
+// The proof-of-work key lives in the owner-only security folder; one key for the life of the install. The image CAPTCHA signs with
+// the same key (its signatures carry a label of their own), so it is read once, when the first of the two is needed.
+var powKey = new Lazy<byte[]>(() => ProofOfWork.LoadOrCreateKey(Path.Combine(paths.Security, "pow.key")));
+builder.Services.AddSingleton(sp => new ProofOfWork(powKey.Value, sp.GetRequiredService<TimeProvider>()));
+builder.Services.AddSingleton(sp => new ImageCaptcha(powKey.Value, sp.GetRequiredService<TimeProvider>()));
+builder.Services.AddSingleton<BotGuard>();
+builder.Services.AddSingleton<LegacyCommandApi>();
+builder.Services.AddSingleton<IOnlineUsers>(sp => new OnlineUsers(sp.GetRequiredService<Func<LauncherSettings>>(),
+    sp.GetRequiredService<ILogger<OnlineUsers>>()));
+builder.Services.AddSingleton<IGridRegions>(sp => new GridRegions(sp.GetRequiredService<Func<LauncherSettings>>(),
+    sp.GetRequiredService<ILogger<GridRegions>>()));
+// The viewer splash page: its saved design, and what /welcome shows (rebuilt at most once a minute).
+// Two picture stores: the splash page's pictures, and the grid-wide theme's (the logo).
+builder.Services.AddKeyedSingleton("splash", (sp, _) => new PictureStore(paths.SplashImages, sp.GetRequiredService<TimeProvider>(),
+    sp.GetRequiredService<ILogger<PictureStore>>()));
+builder.Services.AddKeyedSingleton("theme", (sp, _) => new PictureStore(paths.ThemeImages, sp.GetRequiredService<TimeProvider>(),
+    sp.GetRequiredService<ILogger<PictureStore>>()));
+builder.Services.AddSingleton(sp => new SplashStore(paths, sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<SplashStore>>())
+{
+    PictureExists = sp.GetRequiredKeyedService<PictureStore>("splash").Exists,
+});
+builder.Services.AddSingleton(sp => new ThemeStore(paths, sp.GetRequiredKeyedService<PictureStore>("theme"), sp.GetRequiredService<ILogger<ThemeStore>>()));
+builder.Services.AddSingleton<SplashSnapshot>();
+// The Home dashboard's counts (design 2026-11-05-dashboard), cached a minute.
+builder.Services.AddSingleton<GridGate.Launcher.Core.Dashboard.IWorldCounter>(sp => new GridGate.Launcher.Core.Dashboard.WorldCounter(
+    sp.GetRequiredService<Func<LauncherSettings>>(), sp.GetRequiredService<ILogger<GridGate.Launcher.Core.Dashboard.WorldCounter>>()));
+// [S] The Core services checks: 127.0.0.1 only, 2 seconds, no redirects, no cookies (design 2026-11-05-dashboard).
+builder.Services.AddHttpClient(GridGate.Launcher.Dashboard.ServiceChecks.ClientName, c =>
+    {
+        c.Timeout = GridGate.Launcher.Dashboard.ServiceChecks.Timeout;
+        c.MaxResponseContentBufferSize = GridGate.Launcher.Dashboard.ServiceChecks.MaxBytes;
+    })
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false, UseProxy = false });
+builder.Services.AddSingleton<GridGate.Launcher.Dashboard.IServiceChecks, GridGate.Launcher.Dashboard.ServiceChecks>();
+builder.Services.AddSingleton<GridGate.Launcher.Dashboard.DashboardSnapshot>();
+builder.Services.AddSingleton<SplashPictureCleanup>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<SplashPictureCleanup>());
+builder.Services.AddSingleton<GridActions>();
+builder.Services.AddSingleton<RegionActions>();
+builder.Services.AddSingleton<RegionRestarts>();
+builder.Services.AddSingleton<SetupProgress>();
+builder.Services.AddSingleton<SetupRunner>();
+builder.Services.AddSingleton<RegionJob>();
+builder.Services.AddSingleton<OarLibrary>();
+builder.Services.AddSingleton<UploadPartFiles>();
+// The add-region form's memory advice; tests swap it.
+builder.Services.AddSingleton<Func<long?>>(_ => SystemMemory.AvailableBytes);
+// The reason a CPU priority can't be chosen on this computer; tests swap it.
+builder.Services.AddSingleton<Func<CpuPriority, string?>>(_ => RegionSettingsRules.PriorityUnavailable);
+builder.Services.AddHostedService<GridHostedService>();
+// Moves regions into their owner's estate and back while they run; registered after GridHostedService, so it stops first.
+builder.Services.AddHostedService<RegionEstateSync>();
+// Deletes sign-ups nobody confirmed; after GridHostedService too.
+builder.Services.AddSingleton<SignUpCleanup>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<SignUpCleanup>());
+builder.Services.AddSingleton(sp => new ImportJobs(paths, sp.GetRequiredService<TimeProvider>()));
+builder.Services.AddSingleton<IModelConverter>(sp => new ModelConverter(paths, sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<ModelConverter>>()));
+builder.Services.AddHostedService<ImportJobSweep>();
+// The payment hook for Make the item: free in the proof of concept.
+builder.Services.AddSingleton<IUploadCharge, FreeUploads>();
+builder.Services.AddSingleton<ModelUploads>();
+builder.Services.AddSingleton<TicketSweep>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<TicketSweep>());
+// Registered after GridHostedService, so it stops first: running work is awaited before the controller detaches.
+builder.Services.AddSingleton<BackgroundWork>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<BackgroundWork>());
+builder.Services.AddSingleton<OarJobs>();
+// Inventory backups (spec 2026-11-11-iar-backups-design).
+builder.Services.AddSingleton(sp => new IarCounts(Path.Combine(paths.Security, "iar-counts.json"), sp.GetRequiredService<TimeProvider>(),
+    sp.GetRequiredService<ILogger<IarCounts>>()));
+builder.Services.AddSingleton(sp => new IarFiles(paths, sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<IarFiles>>()));
+builder.Services.AddSingleton<IIarNotifier, IarEmailNotifier>();
+builder.Services.AddSingleton(sp => new IarJobs(sp.GetRequiredService<IGridController>(), sp.GetRequiredService<Func<LauncherSettings>>(),
+    sp.GetRequiredService<IarRights>(), sp.GetRequiredService<IarCounts>(), sp.GetRequiredService<IarFiles>(), sp.GetRequiredService<TakedownStore>(),
+    sp.GetRequiredService<IInventoryStore>(), paths, sp.GetRequiredService<BackgroundWork>(), sp.GetRequiredService<IIarNotifier>(),
+    sp.GetRequiredService<AuditLog>(), sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<IarJobs>>()));
+builder.Services.AddSingleton(sp => new IarStaffRecords(paths));
+builder.Services.AddSingleton<IarDownloadGate>();
+builder.Services.AddSingleton(sp => new IarStaffJobs(sp.GetRequiredService<IGridController>(), sp.GetRequiredService<IarStaffRecords>(),
+    sp.GetRequiredService<IInventoryStore>(), paths, sp.GetRequiredService<BackgroundWork>(), sp.GetRequiredService<AuditLog>(),
+    sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<IarStaffJobs>>()));
+
+var app = builder.Build();
+// Routing is stated twice, so the endpoint is known to everything below (ApiEndpoint.Is) and picked again once SetupGate has
+// shown the front page at "/" (it changes the path to /home and drops the endpoint chosen for "/"). A request that already has
+// an endpoint is not matched again.
+app.UseRouting();
+// First, so static files, API answers and the plain-text replies carry the browser security headers too.
+app.UseMiddleware<SecurityHeaders>();
+app.UseStaticFiles();
+// Callers outside the owner's allow-list get 404 before anything reads their cookie.
+app.UseMiddleware<AdminNetworkFilter>();
+app.UseAuthentication();
+app.UseMiddleware<AuditMiddleware>();
+// Someone signed in only to set up two-factor reaches nothing else (before SetupGate, which can send "/" onwards).
+app.UseMiddleware<TwoFactorGate>();
+app.UseMiddleware<SetupGate>();
+app.UseRouting();
+app.UseAuthorization();
+LegacyEndpoints.Map(app);
+LogsApi.Map(app);
+BotsApi.Map(app);
+RegionsApi.Map(app);
+LibraryApi.Map(app);
+IarStaffApi.Map(app);
+IarGuestApi.Map(app);
+StarterSnapshotApi.Map(app);
+StarterApi.Map(app);
+StatusApi.Map(app);
+DashboardApi.Map(app);
+SetupApi.Map(app);
+SplashApi.Map(app);
+app.MapRazorPages();
+
+app.Lifetime.ApplicationStarted.Register(() =>
+{
+    // Plan 3's installers print and open this link; it is shown until the owner avatar exists.
+    var s = app.Services.GetRequiredService<IGridController>().CurrentSettings();
+    if (s.SetupToken is { } token && !s.Setup.OwnerCreated)
+        app.Logger.LogInformation("Setup link: http://{Host}:{Port}/setup?token={Token}",
+            HostAddress.Effective(s.Hostname), s.WebPort, token);
+});
+
+// Uploads and saves cut off by the last stop leave parts behind; nothing is using them yet.
+app.Services.GetRequiredService<OarLibrary>().ClearStaging();
+// Residents' expired backups go now and every 10 minutes after.
+var iarFiles = app.Services.GetRequiredService<IarFiles>();
+iarFiles.Sweep();
+app.Services.GetRequiredService<BackgroundWork>().Run("Inventory backup sweep", async ct =>
+{
+    while (!ct.IsCancellationRequested)
+    {
+        await Task.Delay(TimeSpan.FromMinutes(10), ct);
+        iarFiles.Sweep();
+    }
+});
+
+
+try
+{
+    await app.StartAsync();
+}
+catch (Exception e) when (IsAddressInUse(e))
+{
+    // The website cannot show this one: nothing is listening.
+    app.Logger.LogCritical("Port {Port} (Web) is already in use by another program.", settings.WebPort);
+    await app.DisposeAsync();
+    return 1;
+}
+
+await app.WaitForShutdownAsync();
+await app.DisposeAsync();
+return 0;
+
+static Task ApiOr(RedirectContext<CookieAuthenticationOptions> c, int apiStatus)
+{
+    if (ApiEndpoint.Is(c.HttpContext))
+        c.Response.StatusCode = apiStatus;
+    else
+        c.Response.Redirect(c.RedirectUri);
+    return Task.CompletedTask;
+}
+
+// A signed-in person whose role doesn't include the page: a 403 with a short page of its own (the sign-in page would
+// only send them back here).
+static Task Denied(RedirectContext<CookieAuthenticationOptions> c)
+{
+    c.Response.StatusCode = StatusCodes.Status403Forbidden;
+    if (ApiEndpoint.Is(c.HttpContext)) return Task.CompletedTask;
+    c.Response.ContentType = "text/html; charset=utf-8";
+    return c.Response.WriteAsync("""
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Not allowed</title>
+        <link rel="stylesheet" href="/lib/bootstrap/bootstrap.min.css">
+        <link rel="stylesheet" href="/css/site.css">
+        </head>
+        <body>
+        <main class="container py-4">
+        <h1>You can't open this page</h1>
+        <p>Your role doesn't include this page.</p>
+        <p><a href="/">Back to your start page</a></p>
+        </main>
+        </body>
+        </html>
+        """);
+}
+
+static bool IsAddressInUse(Exception? e)
+{
+    for (; e is not null; e = e.InnerException)
+        if (e is AddressInUseException) return true;
+    return false;
+}
+
+public partial class Program { }

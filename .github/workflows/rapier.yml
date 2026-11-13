@@ -6,7 +6,7 @@ name: rapier
 # ThirdParty/rapier/patches/parry3d-*-edge-codes.patch (failing if it does not apply), run ThirdParty/rapier/edge-codes-test,
 # and build Rapier against that patched Parry. Each platform gets two builds: single (no parallel feature:
 # librapier-*.so, rapier.dll, loaded for RapierNumThreads = 1) and mt (--features parallel: librapier-mt-*.so,
-# rapier-mt.dll, loaded for more threads). Each job checks that the library exports exactly the r3 functions in ThirdParty/rapier/exports.txt (the list DreamGrid's P/Invoke layer is
+# rapier-mt.dll, loaded for more threads). Each job checks that the library exports exactly the r3 functions in ThirdParty/rapier/exports.txt (the list GridGate's P/Invoke layer is
 # written against; both builds export the same names, the thread-pool ones answering R3_UNSUPPORTED without parallel).
 # The Linux jobs also check that nothing needs a newer glibc than Debian 12 has, and the Windows jobs check that the DLL
 # imports no VC++ runtime. The libraries are uploaded as artifacts; copying them into bin/lib64 and committing them is done by hand.
@@ -41,7 +41,7 @@ jobs:
           - variant: mt
             name: librapier-mt
     runs-on: ${{ matrix.runner }}
-    # Debian 12 is the oldest system DreamGrid supports (glibc 2.36); building there keeps the glibc requirement low.
+    # Debian 12 is the oldest system GridGate supports (glibc 2.36); building there keeps the glibc requirement low.
     container: debian:12
     timeout-minutes: 45
     steps:

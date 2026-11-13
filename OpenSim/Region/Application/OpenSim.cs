@@ -459,7 +459,7 @@ namespace OpenSim
                                           "Attaches the specified region to the specified estate.",
                                           EstateLinkRegionCommand);
 
-            // DreamGrid: the launcher's Estates page writes the estate tables, then asks every region program to read them again.
+            // GridGate: the launcher's Estates page writes the estate tables, then asks every region program to read them again.
             m_console.Commands.AddCommand("Estates", false, "estate reload",
                                           "estate reload <estate-id>",
                                           "Reads the specified estate again from the database in every region of this simulator that is in it.",
