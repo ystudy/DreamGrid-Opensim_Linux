@@ -262,8 +262,7 @@ public sealed partial class GridController
         last = (last ?? "").Trim();
         if (first.Length == 0 || last.Length == 0) throw new ArgumentException("Type your avatar's first and last name.");
 
-        await _ops.WaitAsync(ct);
-        try
+        return await ExclusiveAsync(null, async () =>
         {
             LauncherSettings s;
             lock (_configGate) s = ReloadSettings();
@@ -278,8 +277,7 @@ public sealed partial class GridController
                 Setup = l.Setup with { OwnerCreated = true, Owner = new OwnerInfo(account.FirstName, account.LastName, account.PrincipalId) },
             });
             return account;
-        }
-        finally { _ops.Release(); }
+        }, ct);
     }
 
     public async Task<int> JoinedRegionCountAsync(CancellationToken ct)

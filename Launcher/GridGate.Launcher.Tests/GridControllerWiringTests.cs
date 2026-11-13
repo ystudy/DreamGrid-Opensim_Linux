@@ -108,6 +108,18 @@ public sealed class GridControllerWiringTests : IDisposable
     }
 
     [Fact]
+    public async Task A_failed_operation_frees_the_lock_and_clears_the_activity()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await Assert.ThrowsAsync<ArgumentException>(() => _grid.RestartComponentAsync("nonsense", ct));   // sets Restarting first
+        Assert.Equal(GridActivity.None, _grid.GetStatus().Activity);
+        // A lock left held would time out here instead.
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _grid.MoveRegionAsync(Guid.NewGuid(), 0, 0, ct).WaitAsync(TimeSpan.FromSeconds(5), ct));
+        Assert.Equal(GridActivity.None, _grid.GetStatus().Activity);
+    }
+
+    [Fact]
     public async Task StartAsync_port_check_ignores_the_web_port_the_host_already_holds()
     {
         var s = _store.LoadOrCreate();
