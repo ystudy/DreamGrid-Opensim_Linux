@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS  Checks a package folder produced by setup/package.ps1 (the gridgate/ folder).
-.EXAMPLE   powershell -File setup/test/Test-Package.ps1 -Package $env:TEMP\dgpkg\gridgate
+.EXAMPLE   powershell -File setup/test/Test-Package.ps1 -Package $env:TEMP\ggpkg\gridgate
 #>
 param([Parameter(Mandatory)][string]$Package)
 

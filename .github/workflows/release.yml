@@ -368,7 +368,6 @@ jobs:
           cat > "$RUNNER_TEMP/notes.md" <<EOF
           GridGate $VERSION ($OPENSIM)
 
-          GridGate $VERSION
           $kind
 
           ## Debian 12 and 13 (amd64)

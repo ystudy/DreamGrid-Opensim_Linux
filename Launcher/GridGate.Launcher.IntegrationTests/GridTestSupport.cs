@@ -17,7 +17,7 @@ namespace GridGate.Launcher.IntegrationTests;
 internal static class GridTestSupport
 {
     /// <summary>A fresh data directory with a space and a non-ASCII letter in its name.</summary>
-    public static string NewDataDir() => Path.Combine(Path.GetTempPath(), "Dréam Grid " + Guid.NewGuid().ToString("N"));
+    public static string NewDataDir() => Path.Combine(Path.GetTempPath(), "Gríd Gate " + Guid.NewGuid().ToString("N"));
 
     /// <summary>Paths for <paramref name="root"/>; skips (or fails in CI) without MariaDB or a built bin/.</summary>
     public static LauncherPaths RequirePaths(string root)

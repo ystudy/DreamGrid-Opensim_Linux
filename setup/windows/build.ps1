@@ -6,7 +6,7 @@
   *.pdb) as mariadb-<version>\, plus MariaDB's copies of the Visual C++ runtime DLLs that bin\lib64's natives import.
   Then compiles GridGate.iss with Inno Setup 6 (ISCC.exe) into <Out>.
   -SkipCompile stops after staging (no Inno Setup needed). Runs on Windows PowerShell 5.1 and PowerShell 7.
-.EXAMPLE   powershell -File setup/windows/build.ps1 -Package $env:TEMP\dgpkg\gridgate -MariaDbZip mariadb-11.4.9-winx64.zip -Version 0.0.0-dev -Out $env:TEMP\dgsetup
+.EXAMPLE   powershell -File setup/windows/build.ps1 -Package $env:TEMP\ggpkg\gridgate -MariaDbZip mariadb-11.4.9-winx64.zip -Version 0.0.0-dev -Out $env:TEMP\ggsetup
 #>
 param(
     [Parameter(Mandatory)][string]$Package,

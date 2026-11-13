@@ -94,8 +94,8 @@ public sealed class TotpTests
     [Fact]
     public void OtpAuthUri_has_the_parts_and_escapes()
     {
-        var uri = Totp.OtpAuthUri("GridGate", "Ann Admin", Rfc);
-        Assert.Equal("otpauth://totp/GridGate:Ann%20Admin?secret=" + Totp.Base32(Rfc) +
-                     "&issuer=GridGate&digits=6&period=30", uri);
+        var uri = Totp.OtpAuthUri("My World", "Ann Admin", Rfc);
+        Assert.Equal("otpauth://totp/My%20World:Ann%20Admin?secret=" + Totp.Base32(Rfc) +
+                     "&issuer=My%20World&digits=6&period=30", uri);
     }
 }

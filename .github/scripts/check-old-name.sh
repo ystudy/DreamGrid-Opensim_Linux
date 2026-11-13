@@ -36,7 +36,7 @@ failed=0
 
 # Content pass. The grep's "no match" exit 1 must not abort the script.
 rc=0
-matches=$(git grep -n -I -i -E "$pattern" -- "$@" "${excludes[@]}") || rc=$?
+matches=$(git grep -n -a -i -E "$pattern" -- "$@" "${excludes[@]}") || rc=$?
 if [ "$rc" -ne 0 ] && [ "$rc" -ne 1 ]; then
   exit "$rc"
 fi

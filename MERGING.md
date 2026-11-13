@@ -11,7 +11,7 @@ longer public, so we now take them from OpenSimulator directly.
 
 - **Base:** OpenSimulator `master` at `9d00a5555225b17d3d1063cb0f3496fb1b6217f9` (2026-11-07, "soem extra
   spaces"), version `0.9.3.1` Dev. Every upstream commit up to it has been picked or recorded. On top of it sit
-  the GridGate patches and our own changes.
+  Fred's patches and our own changes.
 - **How we got there:** Fred brought in upstream `78cb44c0` (2026-08-11) as "Update to August core"
   (`a19786cf`). "OpenSim merge 1" (PR #30) picked 34 later commits, and "OpenSim merge 2" picked the other 36.
 - **No shared history.** Our history starts with Fred's import of the source in January 2025 ("V5 from Tandy"),

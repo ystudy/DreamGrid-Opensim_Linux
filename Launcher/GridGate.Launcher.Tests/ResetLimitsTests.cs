@@ -7,7 +7,7 @@ namespace GridGate.Launcher.Tests;
 
 public sealed class ResetLimitsTests : IDisposable
 {
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "dgtest-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "ggtest-" + Guid.NewGuid().ToString("N"));
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 10, 31, 12, 0, 0, TimeSpan.Zero));
     private static readonly IPAddress Ip = IPAddress.Parse("192.168.1.20");
 

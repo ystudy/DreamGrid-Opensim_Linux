@@ -630,7 +630,7 @@ public sealed class SetupFlowTests
         };
         using var client = await SignedInClientAsync(f);
 
-        using (var resp = await PostFormAsync(client, "/setup/region", new() { ["RegionName"] = "Dréam Isle", ["Content"] = "island" }))
+        using (var resp = await PostFormAsync(client, "/setup/region", new() { ["RegionName"] = "Gríd Isle", ["Content"] = "island" }))
             Assert.Equal("/setup/region?working=1", Location(resp));
 
         var working = await WaitForProgressAsync(client, p => Str(p, "stage") == "Creating your region");
@@ -651,7 +651,7 @@ public sealed class SetupFlowTests
         Assert.Equal(100, done.GetProperty("percent").GetInt32());
         Assert.Null(Str(done, "error"));
         Assert.Single(f.Grid.Snapshot(), c => c.StartsWith("CreateRegion", StringComparison.Ordinal));
-        Assert.Contains("CreateRegion Dréam Isle island", f.Grid.Snapshot());
+        Assert.Contains("CreateRegion Gríd Isle island", f.Grid.Snapshot());
         Assert.True(f.Store.LoadOrCreate().Setup.RegionCreated);
 
         var ready = new HtmlParser().ParseDocument(await client.GetStringAsync("/setup/region?working=1", Ct));

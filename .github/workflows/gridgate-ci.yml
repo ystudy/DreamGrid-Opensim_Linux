@@ -278,7 +278,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: launcher-logs-windows
-          path: ${{ runner.temp }}/Dréam Grid */state/logs/*
+          path: ${{ runner.temp }}/Gríd Gate */state/logs/*
 
       # Saved even when a test failed, but only a download that passed its checksum.
       - name: Save MariaDB to the cache
@@ -343,7 +343,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: launcher-logs-debian${{ matrix.debian }}
-          path: ${{ env.GG_TEST_TEMP }}/Dréam Grid */state/logs/*
+          path: ${{ env.GG_TEST_TEMP }}/Gríd Gate */state/logs/*
 
   # The install smoke (release.yml without its publish job) when a pull request or a push to main touches setup/ or
   # Launcher/. Feature-branch pushes skip it (run release.yml by hand there); tags run it in release.yml itself.

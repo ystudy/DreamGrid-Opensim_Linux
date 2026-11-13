@@ -18,8 +18,8 @@ The excluded folders and files match what `RuntimeStager` leaves out of the stag
 ## Building a package
 
 ```
-powershell -File setup/package.ps1 -Rid win-x64 -Version 0.0.0-dev -Out $env:TEMP\dgpkg
-powershell -File setup/test/Test-Package.ps1 -Package $env:TEMP\dgpkg\gridgate
+powershell -File setup/package.ps1 -Rid win-x64 -Version 0.0.0-dev -Out $env:TEMP\ggpkg
+powershell -File setup/test/Test-Package.ps1 -Package $env:TEMP\ggpkg\gridgate
 ```
 
 `-Rid linux-x64` must run on Linux (CI): it also writes `gridgate-<Version>-linux-x64.tar.gz`, keeping the execute bits on `dotnet/dotnet` and `setup/debian/install.sh`.

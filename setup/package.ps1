@@ -4,7 +4,7 @@
   Produces <Out>/gridgate/ (launcher, bin, content, a private ASP.NET Core runtime, VERSION, RUNTIME_VERSION).
   linux-x64 also produces <Out>/gridgate-<Version>-linux-x64.tar.gz and must be built on Linux.
   Runs on Windows PowerShell 5.1 and PowerShell 7.
-.EXAMPLE   powershell -File setup/package.ps1 -Rid win-x64 -Version 0.0.0-dev -Out $env:TEMP\dgpkg
+.EXAMPLE   powershell -File setup/package.ps1 -Rid win-x64 -Version 0.0.0-dev -Out $env:TEMP\ggpkg
 #>
 param(
     [Parameter(Mandatory)][ValidateSet('linux-x64', 'win-x64')][string]$Rid,

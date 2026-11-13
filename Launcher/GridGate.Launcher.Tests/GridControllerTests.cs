@@ -46,7 +46,7 @@ public sealed class GridControllerTests : IDisposable
 
     [Theory]
     [InlineData("Welcome")]
-    [InlineData("Dréam Isle")]
+    [InlineData("Gríd Isle")]
     [InlineData("O'Neil_Bay-2")]
     public void Region_name_rule_accepts_letters_digits_spaces_dash_underscore_apostrophe(string name)
     {
@@ -58,7 +58,7 @@ public sealed class GridControllerTests : IDisposable
     {
         Assert.Equal("Welcome", GridController.SafeFolderName("Welcome"));
         Assert.Equal("O_Neil_Bay-2", GridController.SafeFolderName("O'Neil Bay-2"));
-        Assert.Equal("Dr_am", GridController.SafeFolderName("Dréam"));
+        Assert.Equal("Gr_d", GridController.SafeFolderName("Gríd"));
     }
 
     [Theory]

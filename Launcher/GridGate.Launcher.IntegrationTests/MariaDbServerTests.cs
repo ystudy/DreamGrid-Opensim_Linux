@@ -13,7 +13,7 @@ namespace GridGate.Launcher.IntegrationTests;
 public sealed class MariaDbServerTests : IDisposable
 {
     private readonly string _root =
-        Path.Combine(Path.GetTempPath(), "Dréam Grid " + Guid.NewGuid().ToString("N"));
+        Path.Combine(Path.GetTempPath(), "Gríd Gate " + Guid.NewGuid().ToString("N"));
     private readonly List<Process> _started = new();
 
     public void Dispose()

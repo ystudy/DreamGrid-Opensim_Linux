@@ -8,7 +8,7 @@ public class InstanceLockTests
     [Fact]
     public void Second_lock_on_same_dir_is_refused_until_first_is_disposed()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "dgtest-" + Guid.NewGuid().ToString("N"));
+        var dir = Path.Combine(Path.GetTempPath(), "ggtest-" + Guid.NewGuid().ToString("N"));
         try
         {
             var first = InstanceLock.TryAcquire(dir);
@@ -29,7 +29,7 @@ public class InstanceLockTests
     [Fact]
     public void A_refused_lock_leaves_the_directory_permissions_alone()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "dgtest-" + Guid.NewGuid().ToString("N"));
+        var dir = Path.Combine(Path.GetTempPath(), "ggtest-" + Guid.NewGuid().ToString("N"));
         try
         {
             using var first = InstanceLock.TryAcquire(dir);

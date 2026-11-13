@@ -12,7 +12,7 @@ public class SettingsStoreTests : IDisposable
 
     private string NewDir()
     {
-        var d = Path.Combine(Path.GetTempPath(), "dgtest-" + Guid.NewGuid().ToString("N"));
+        var d = Path.Combine(Path.GetTempPath(), "ggtest-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(d);
         _dirs.Add(d);
         return d;

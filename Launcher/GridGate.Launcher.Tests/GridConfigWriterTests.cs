@@ -411,10 +411,10 @@ public sealed class GridConfigWriterTests : IDisposable
     [Fact]
     public void Paths_with_spaces_and_non_ascii_survive()
     {
-        _paths = MakePaths("Dréam Grid");
+        _paths = MakePaths("Gríd Gate");
         Write(Make());
         var expected = _paths.AssetCache.Replace('\\', '/');
-        Assert.Contains("Dréam Grid", expected);
+        Assert.Contains("Gríd Gate", expected);
         Assert.Equal(expected, Flotsam().Get("AssetCache", "CacheDirectory"));
         Assert.StartsWith(_paths.Data.Replace('\\', '/'), Region().Get("Startup", "PIDFile"));
     }

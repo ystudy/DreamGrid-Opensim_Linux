@@ -6,7 +6,7 @@ namespace GridGate.Launcher.Tests;
 
 public class LanguagesTests : IDisposable
 {
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "dgtest-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "ggtest-" + Guid.NewGuid().ToString("N"));
 
     public LanguagesTests() => Directory.CreateDirectory(_dir);
 

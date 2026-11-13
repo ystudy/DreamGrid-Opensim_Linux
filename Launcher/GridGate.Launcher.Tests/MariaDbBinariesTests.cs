@@ -104,7 +104,7 @@ public class MariaDbBinariesTests : IDisposable
     [InlineData(true)]
     public void InstallDb_gets_the_tmpdir_through_a_link_when_its_path_has_a_space(bool asRoot)
     {
-        var paths = new LauncherPaths("/home/gg/Dréam Grid", "/opensim", null);
+        var paths = new LauncherPaths("/home/gg/Gríd Gate", "/opensim", null);
         var plan = MariaDbServer.PlanInstallDb(paths, asRoot, "abc");
 
         Assert.Equal("/tmp/gg-abc-tmp", plan.TmpLink);

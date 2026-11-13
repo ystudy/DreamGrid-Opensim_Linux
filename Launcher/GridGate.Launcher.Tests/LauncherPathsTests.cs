@@ -90,7 +90,7 @@ public class LauncherPathsTests
     [Fact]
     public void EnsureCreated_handles_spaces_and_non_ascii()
     {
-        var data = Path.Combine(Path.GetTempPath(), $"Dréam Grid {Guid.NewGuid():N}");
+        var data = Path.Combine(Path.GetTempPath(), $"Gríd Gate {Guid.NewGuid():N}");
         try
         {
             var p = new LauncherPaths(data, "/o", null);
