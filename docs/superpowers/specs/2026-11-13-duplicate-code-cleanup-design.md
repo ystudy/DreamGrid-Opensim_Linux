@@ -18,7 +18,8 @@ behaves the same before and after, apart from the one decided change below.
 ## Non-goals
 
 - No new features, no page or wording changes a resident or staff member would see.
-- No changes under `OpenSim/` (upstream code) or in `bin/` templates.
+- No changes to upstream OpenSim code or `bin/` templates. GridGate's own tools under `OpenSim/Tools/GridGate.*`
+  (the mesh importer, item 10) are GridGate code and in scope.
 - No renames of public routes, settings keys, cookie names or file formats.
 - Not chasing duplicates beyond the review's list. A new one found on the way goes in the PR body as a note.
 
@@ -46,12 +47,14 @@ Investigated 2026-11-13. The copies agree on the exception types and differ only
 **Decision (Claude's call):** one helper, `RobustFailure.IsUnreachable(Exception e, CancellationToken ct)`, true when `e`
 is one of the five types and `ct` is not cancelled. Callers that also treat the staff list as down say so at the call
 site (`e is StaffDirectoryUnavailableException || RobustFailure.IsUnreachable(e, ct)`, keeping each site's current
-cancel behaviour for that exception). `AccountChanges` moves to the common rule: the only change is that a request
-already cancelled ends as a cancellation instead of a "busy" answer. That is the one behaviour change in this work.
+cancel behaviour for that exception). `AccountChanges` moves to the common rule: the only change is that when the
+request was already cancelled, the original error escapes instead of being turned into a "busy" answer. That is the one
+behaviour change in this work.
 
-Filters that catch a different set on purpose (calls to something other than Robust's account service, such as email
-sending in `Pages/Security/Email*.cshtml.cs`, the region and splash APIs, the support guest lookup, the join page)
-stay as they are unless reading them shows they are the same Robust call.
+Filters that catch a different set on purpose (the region and splash APIs, the support guest lookup, the join page)
+stay as they are unless reading them shows they are the same Robust call. `OwnerEmailAsync` in
+`Pages/Security/Email*.cshtml.cs` is the same Robust lookup, but moving it to the common rule would be a second behaviour
+change, so its filter stays and the PR notes say so.
 
 ## Items 1–10
 

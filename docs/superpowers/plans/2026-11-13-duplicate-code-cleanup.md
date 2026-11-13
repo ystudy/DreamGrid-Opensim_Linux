@@ -14,7 +14,7 @@
 
 - .NET 10, C#, the project's existing style (file-scoped namespaces, `sealed` classes, small static helpers).
 - No new features, no page or wording changes a resident or staff member would see.
-- No changes under `OpenSim/` (upstream code) or in `bin/` templates. Task 15 is the one exception the spec's item 10 needs; read its gate first.
+- No changes to upstream OpenSim code or `bin/` templates. GridGate's own tools under `OpenSim/Tools/GridGate.*` are GridGate code and in scope (Task 15).
 - No renames of public routes, settings keys, cookie names or file formats.
 - Text in logs and audit entries stays word for word (the launcher's log file holds the formatted message, so a literal prefix may become a `{Area}` template argument as long as the rendered line is the same).
 - Not a clean-up that changes what a page shows, what the audit log records, what gets logged at warning level, or which error a resident sees.
@@ -947,7 +947,7 @@ EOF
 
 ### Task 15: Mesh importer bounds and sub-faces (item 10)
 
-**Gate:** these files live under `OpenSim/Tools/GridGate.ModelImport/`. It is GridGate's own converter (namespace `GridGate.ModelImport`, not upstream OpenSim), but the brief says "no edits under `OpenSim/`". Ask the controller before starting. If the answer is no, skip this task and record item 10 in Task 17 as "left: the importer lives under `OpenSim/`".
+**Ruling (controller, 2026-11-13):** these files live under `OpenSim/Tools/GridGate.ModelImport/`, GridGate's own converter (namespace `GridGate.ModelImport`), so the spec's limit on editing upstream OpenSim code does not apply. Do this task.
 
 **Files:**
 - Create: `OpenSim/Tools/GridGate.ModelImport/Model/MeshParts.cs` (the tool has `ImplicitUsings` off: write the `using System; …` lines as `FaceSplitter.cs` does)
@@ -1052,7 +1052,7 @@ Turn each `- [ ] **N.` (and `- [ ] **[?]**`) into `- [x]` and add one indented l
 - 7: "`WebsiteAddress`, `RobustAccount.FullName()`, `TakedownAccess.MayUse`, `AvatarLookup` (with area) and `OwnerEmail` used everywhere."
 - 8: "`AtomicFile.ReadShared`, `SetAside`, `WriteAllTextCreatingFolder`."
 - 9: "`RegionActions.Run` and `BusyNotice`, `OarJobs.Start`, the Region page's `Back`."
-- 10: "`MeshParts.Bounds` and `MeshParts.Piece`" (or "left: the importer lives under `OpenSim/`", per Task 15's gate).
+- 10: "`MeshParts.Bounds` and `MeshParts.Piece`".
 - `[?]`: "Decided: `RobustFailure.IsUnreachable` (five types, caller not cancelled); staff-list sites add their exception; `AccountChanges` moved to it (the one behaviour change)."
 
 - [ ] **Step 2: Write the PR notes**
