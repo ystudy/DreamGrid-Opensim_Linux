@@ -23,7 +23,9 @@ public sealed class TwoFactorModel(ResidentTwoFactor residents, Func<LauncherSet
     : TwoFactorSetupPageModel(settings, audit, dp, throttle, log)
 {
     protected override TwoFactorStore Store => residents.Store;
-    protected override string ShownPurpose => "GridGate.GuestTwoFactorSetup.v1";
+    /// <summary>Seals the setup form on screen; changing it breaks forms already open.</summary>
+    public const string SetupPurpose = "GridGate.GuestTwoFactorSetup.v1";
+    protected override string ShownPurpose => SetupPurpose;
     protected override SignInDoor Door => SignInDoor.Guest;
     protected override string AuditRole => AuthSchemes.GuestRole;
     protected override string LogArea => "Resident two-factor";

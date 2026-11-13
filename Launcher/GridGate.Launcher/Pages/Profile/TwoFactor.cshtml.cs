@@ -45,7 +45,9 @@ public sealed class TwoFactorModel(TwoFactorStore store, Func<LauncherSettings> 
     private StaffClaims? _claims;
 
     protected override TwoFactorStore Store => store;
-    protected override string ShownPurpose => "GridGate.TwoFactorSetup.v1";
+    /// <summary>Seals the setup form on screen; changing it breaks forms already open.</summary>
+    public const string SetupPurpose = "GridGate.TwoFactorSetup.v1";
+    protected override string ShownPurpose => SetupPurpose;
     protected override SignInDoor Door => SignInDoor.Staff;
     protected override string AuditRole => _claims!.Role.AuditName();
     protected override string LogArea => "Two-factor";
