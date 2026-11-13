@@ -39,7 +39,7 @@ public sealed class PendingSignInCookie<T>(string name, string path, string purp
         try
         {
             var pending = JsonSerializer.Deserialize<T>(Protector(ctx).Unprotect(value));
-            if (pending is null || pending.First.Length == 0 || pending.Last.Length == 0 || accept?.Invoke(pending) == false) return null;
+            if (pending is null || accept?.Invoke(pending) == false || pending.First.Length == 0 || pending.Last.Length == 0) return null;
             return Now(ctx).ToUnixTimeSeconds() < pending.Expires ? pending : null;
         }
         catch (Exception e) when (e is CryptographicException or JsonException or FormatException or NotSupportedException)
