@@ -395,6 +395,28 @@ public sealed class AccountChangesTests
     }
 
     [Fact]
+    public async Task Robust_down_after_the_link_request_was_given_up_is_not_answered_busy()
+    {
+        await using var rig = Factory();
+        var token = await AskedTokenAsync(rig);
+        using var gaveUp = new CancellationTokenSource();
+        rig.F.Robust.OnFindAccountById = gaveUp.Cancel;
+        rig.F.Robust.Down = true;
+        await Assert.ThrowsAsync<HttpRequestException>(() => rig.Changes.ConfirmEmailChangeAsync(token, gaveUp.Token));
+    }
+
+    [Fact]
+    public async Task Staff_directory_down_after_the_link_request_was_given_up_is_still_answered_busy()
+    {
+        await using var rig = Factory();
+        var token = await AskedTokenAsync(rig);
+        using var gaveUp = new CancellationTokenSource();
+        rig.F.Robust.OnFindAccountById = gaveUp.Cancel;
+        rig.F.Staff.Down = true;
+        Assert.Equal(EmailLinkResult.Busy, (await rig.Changes.ConfirmEmailChangeAsync(token, gaveUp.Token)).Result);
+    }
+
+    [Fact]
     public async Task Nothing_secret_audited()
     {
         await using var rig = Factory();
