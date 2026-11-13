@@ -170,11 +170,8 @@ public sealed class StaffTickets(TicketStore store, SupportTickets support, Take
     private Ticket? Change(string? number, Func<Ticket, Ticket?> change) =>
         Get(number) is { } t ? store.Update(t.Id, x => x.State == TicketState.Unconfirmed ? null : change(x)) : null;
 
-    private void Audit(ClaimsPrincipal actor, string? ip, string action, string target)
-    {
-        var (who, id, role) = AuditActor.Of(actor);
-        audit.Write(new AuditEntry(who, id, role, ip, action, target, "ok"));
-    }
+    private void Audit(ClaimsPrincipal actor, string? ip, string action, string target) =>
+        audit.Write(actor, ip, action, target);
 
     private static string FullName(ClaimsPrincipal actor) => AuditActor.Of(actor).Name;
 

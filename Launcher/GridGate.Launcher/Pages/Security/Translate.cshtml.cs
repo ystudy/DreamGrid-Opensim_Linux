@@ -194,9 +194,6 @@ public sealed class TranslateModel(OwnerLanguages added, LanguageCatalog catalog
         EmailRows = [.. catalog.EmailKeys().Select(k => RowOf(k, catalog.EnglishEmail(k), language.Email))];
     }
 
-    private void Write(string action, string target)
-    {
-        var (name, actorId, role) = AuditActor.Of(User);
-        audit.Write(new AuditEntry(name, actorId, role, HttpContext.Connection.RemoteIpAddress?.ToString(), action, target, "ok"));
-    }
+    private void Write(string action, string target) =>
+        audit.Write(User, HttpContext.Connection.RemoteIpAddress?.ToString(), action, target);
 }

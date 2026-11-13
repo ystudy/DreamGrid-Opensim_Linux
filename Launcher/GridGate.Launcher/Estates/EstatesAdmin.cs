@@ -198,11 +198,8 @@ public sealed class EstatesAdmin(IGridEstates estates, IEstateRemover remover, I
         finally { _gate.Release(); }
     }
 
-    private void Write(ClaimsPrincipal actor, string? ip, string action, string target)
-    {
-        var (who, id, role) = AuditActor.Of(actor);
-        audit.Write(new AuditEntry(who, id, role, ip, action, LogText.Clean(target, 300), "ok"));
-    }
+    private void Write(ClaimsPrincipal actor, string? ip, string action, string target) =>
+        audit.Write(actor, ip, action, LogText.Clean(target, 300));
 
     private static string Full(RobustAccount a) => $"{a.FirstName} {a.LastName}";
 }

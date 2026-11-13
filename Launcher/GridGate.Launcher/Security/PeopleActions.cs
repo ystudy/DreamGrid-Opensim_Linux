@@ -424,9 +424,6 @@ public sealed class PeopleActions(IPeopleDirectory people, StaffActions staff, F
         }
     }
 
-    private void Write(ClaimsPrincipal actor, string? ip, string action, string target, string result)
-    {
-        var (who, id, role) = AuditActor.Of(actor);
-        audit.Write(new AuditEntry(who, id, role, ip, action, target, result));
-    }
+    private void Write(ClaimsPrincipal actor, string? ip, string action, string target, string result) =>
+        audit.Write(actor, ip, action, target, result);
 }

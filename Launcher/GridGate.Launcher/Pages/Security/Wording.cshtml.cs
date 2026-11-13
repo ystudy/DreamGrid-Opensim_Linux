@@ -137,9 +137,6 @@ public sealed class WordingModel(IGridController grid, Func<LauncherSettings> se
         return all;
     }
 
-    private void Write(string action, string target)
-    {
-        var (name, actorId, role) = AuditActor.Of(User);
-        audit.Write(new AuditEntry(name, actorId, role, HttpContext.Connection.RemoteIpAddress?.ToString(), action, target, "ok"));
-    }
+    private void Write(string action, string target) =>
+        audit.Write(User, HttpContext.Connection.RemoteIpAddress?.ToString(), action, target);
 }

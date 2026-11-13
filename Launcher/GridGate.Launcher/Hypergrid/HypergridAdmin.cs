@@ -142,9 +142,6 @@ public sealed class HypergridAdmin(IGridHyperlinks links, IGridProbe probe, IGri
         }
     }
 
-    private void Write(ClaimsPrincipal actor, string? ip, string action, string target)
-    {
-        var (who, id, role) = AuditActor.Of(actor);
-        audit.Write(new AuditEntry(who, id, role, ip, action, target, "ok"));
-    }
+    private void Write(ClaimsPrincipal actor, string? ip, string action, string target) =>
+        audit.Write(actor, ip, action, target);
 }

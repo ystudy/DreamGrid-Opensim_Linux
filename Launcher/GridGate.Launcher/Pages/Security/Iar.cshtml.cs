@@ -53,9 +53,8 @@ public sealed class IarModel(IGridController grid, Func<LauncherSettings> settin
             return changes.Count == 0 ? s : s with { Iar = wanted };
         }, writeConfig: false);
 
-        var (name, id, role) = AuditActor.Of(User);
         foreach (var target in changes)
-            audit.Write(new AuditEntry(name, id, role, HttpContext.Connection.RemoteIpAddress?.ToString(), "iar-settings", target, "ok"));
+            audit.Write(User, HttpContext.Connection.RemoteIpAddress?.ToString(), "iar-settings", target);
         Notice = changes.Count == 0 ? "Nothing changed." : "Saved. The new limits apply to the next job.";
         return Redirect("/security/iar");
     }

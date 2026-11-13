@@ -193,9 +193,6 @@ public sealed class EmailWordingModel(IGridController grid, Func<LauncherSetting
         }
     }
 
-    private void Write(string action, string target, string result = "ok")
-    {
-        var (name, actorId, role) = AuditActor.Of(User);
-        audit.Write(new AuditEntry(name, actorId, role, HttpContext.Connection.RemoteIpAddress?.ToString(), action, target, result));
-    }
+    private void Write(string action, string target, string result = "ok") =>
+        audit.Write(User, HttpContext.Connection.RemoteIpAddress?.ToString(), action, target, result);
 }

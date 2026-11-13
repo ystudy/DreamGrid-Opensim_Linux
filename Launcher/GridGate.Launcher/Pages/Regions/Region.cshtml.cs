@@ -297,12 +297,8 @@ public sealed class RegionPanelModel(IGridController grid, IOnlineUsers online, 
         return Redirect("/regions/region/" + id);
     }
 
-    private void Audit(string action, string ownerName)
-    {
-        var (actor, actorId, role) = AuditActor.Of(User);
-        audit.Write(new AuditEntry(actor, actorId, role, HttpContext.Connection.RemoteIpAddress?.ToString(), action,
-            $"{Name} → {ownerName}", "ok"));
-    }
+    private void Audit(string action, string ownerName) =>
+        audit.Write(User, HttpContext.Connection.RemoteIpAddress?.ToString(), action, $"{Name} → {ownerName}");
 
     /// <summary>What the OAR items say while the region isn't running.</summary>
     public const string OarNotRunning = "Start it first; an OAR needs it running.";

@@ -142,11 +142,8 @@ public partial class StarterAvatarsModel(StarterAvatarList starters, LauncherPat
 
     private IActionResult Gone() => Problem("That starter avatar isn't on the list any more.");
 
-    protected void Write(string action, string target, string result)
-    {
-        var (name, id, role) = AuditActor.Of(User);
-        audit.Write(new AuditEntry(name, id, role, HttpContext.Connection.RemoteIpAddress?.ToString(), action, LogText.Clean(target, 140), result));
-    }
+    protected void Write(string action, string target, string result) =>
+        audit.Write(User, HttpContext.Connection.RemoteIpAddress?.ToString(), action, LogText.Clean(target, 140), result);
 
     private static void TryDelete(string path)
     {

@@ -216,9 +216,6 @@ public sealed class IndexModel(IGridController grid, Func<LauncherSettings> sett
     private string Caller() =>
         HttpContext.Connection.RemoteIpAddress is { } ip ? (ip.IsIPv4MappedToIPv6 ? ip.MapToIPv4() : ip).ToString() : "unknown";
 
-    private void Write(string action, string target, string result)
-    {
-        var (name, id, role) = AuditActor.Of(User);
-        audit.Write(new AuditEntry(name, id, role, HttpContext.Connection.RemoteIpAddress?.ToString(), action, target, result));
-    }
+    private void Write(string action, string target, string result) =>
+        audit.Write(User, HttpContext.Connection.RemoteIpAddress?.ToString(), action, target, result);
 }

@@ -223,9 +223,6 @@ public sealed class LanguagesModel(IGridController grid, OwnerLanguages added, L
             .DistinctBy(c => c.Code, StringComparer.Ordinal)
             .OrderBy(c => c.Label, StringComparer.CurrentCultureIgnoreCase)]);
 
-    private void Write(string action, string target)
-    {
-        var (name, actorId, role) = AuditActor.Of(User);
-        audit.Write(new AuditEntry(name, actorId, role, HttpContext.Connection.RemoteIpAddress?.ToString(), action, target, "ok"));
-    }
+    private void Write(string action, string target) =>
+        audit.Write(User, HttpContext.Connection.RemoteIpAddress?.ToString(), action, target);
 }

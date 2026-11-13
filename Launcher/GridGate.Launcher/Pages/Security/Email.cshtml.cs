@@ -260,9 +260,6 @@ public sealed class EmailModel(EmailAccounts accounts, EmailSender sender, Email
 
     private static string Target(EmailAccount a) => $"{a.Provider} {a.Id:N}";
 
-    private void Write(string action, string target, string result)
-    {
-        var (name, id, role) = AuditActor.Of(User);
-        audit.Write(new AuditEntry(name, id, role, HttpContext.Connection.RemoteIpAddress?.ToString(), action, target, result));
-    }
+    private void Write(string action, string target, string result) =>
+        audit.Write(User, HttpContext.Connection.RemoteIpAddress?.ToString(), action, target, result);
 }
