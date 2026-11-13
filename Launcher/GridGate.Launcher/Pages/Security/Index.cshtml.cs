@@ -86,48 +86,23 @@ public sealed class IndexModel(IGridController grid, Func<LauncherSettings> sett
         return Page();
     }
 
-    public IActionResult OnPostReset(Guid id)
-    {
-        var person = twoFactor.Enrolled().Where(p => p.Principal == id).Select(p => ((Guid, string)?)p).FirstOrDefault();
-        if (person is not { } who)
-        {
-            Fill();
-            Notice = "That person doesn't have two-factor sign-in on.";
-            return Page();
-        }
-
-        try
-        {
-            twoFactor.Disable(who.Item1);
-            // A change made at the same moment by another request could have put it back.
-            if (twoFactor.StateOf(who.Item1) != TwoFactorState.Off)
-                throw new IOException("The two-factor file changed while it was being saved.");
-        }
-        catch (InvalidOperationException)
-        {
-            Fill();
-            return Refuse("The two-factor file is damaged and has not been changed. Run reset-two-factor --all-damaged on the grid computer.");
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        {
-            Fill();
-            return Refuse(TwoFactorStore.SaveFailed);
-        }
-
-        sessions.EndAll(who.Item1);
-        Write("two-factor-reset", LogText.Clean(who.Item2, 64), "ok");
-        Fill();
-        Notice = $"Two-factor sign-in is off for {who.Item2}. They have been signed out and sign in with their password again.";
-        return Page();
-    }
+    public IActionResult OnPostReset(Guid id) =>
+        Reset(twoFactor, id, "The two-factor file is damaged and has not been changed. Run reset-two-factor --all-damaged on the grid computer.",
+            sessions.EndAll);
 
     /// <summary>
     /// A resident lost their phone and backup codes: two-factor is turned off in the residents' file and their guest sessions end
     /// (their stamp changes), so they sign in with their password. Audited as <c>two-factor-reset</c>.
     /// </summary>
-    public IActionResult OnPostResetResident(Guid id)
+    public IActionResult OnPostResetResident(Guid id) =>
+        Reset(residents.Store, id, "The residents' two-factor file is damaged and has not been changed.", guestStamps.Rotate);
+
+    /// <summary>
+    /// Turns two-factor off for one person in <paramref name="store"/>, then calls <paramref name="signOut"/> so their sessions end.
+    /// Audited as <c>two-factor-reset</c> with the person's name as the target.
+    /// </summary>
+    private IActionResult Reset(TwoFactorStore store, Guid id, string damagedText, Action<Guid> signOut)
     {
-        var store = residents.Store;
         var person = store.Enrolled().Where(p => p.Principal == id).Select(p => ((Guid, string)?)p).FirstOrDefault();
         if (person is not { } who)
         {
@@ -139,13 +114,14 @@ public sealed class IndexModel(IGridController grid, Func<LauncherSettings> sett
         try
         {
             store.Disable(who.Item1);
+            // A change made at the same moment by another request could have put it back.
             if (store.StateOf(who.Item1) != TwoFactorState.Off)
                 throw new IOException("The two-factor file changed while it was being saved.");
         }
         catch (InvalidOperationException)
         {
             Fill();
-            return Refuse("The residents' two-factor file is damaged and has not been changed.");
+            return Refuse(damagedText);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
@@ -153,7 +129,7 @@ public sealed class IndexModel(IGridController grid, Func<LauncherSettings> sett
             return Refuse(TwoFactorStore.SaveFailed);
         }
 
-        guestStamps.Rotate(who.Item1);
+        signOut(who.Item1);
         Write("two-factor-reset", LogText.Clean(who.Item2, 64), "ok");
         Fill();
         Notice = $"Two-factor sign-in is off for {who.Item2}. They have been signed out and sign in with their password again.";
