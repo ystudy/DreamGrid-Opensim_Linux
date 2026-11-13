@@ -20,7 +20,7 @@ namespace GridGate.Launcher.Tests;
 /// GridController behaviour that needs no real child process: a fake program dir (real prototypes, dummy
 /// OpenSim.dll), fake Robust and a fake console server reached through the IHttpClientFactory.
 /// </summary>
-public sealed class GridControllerWiringTests : IDisposable
+public sealed class GridControllerWiringTests : IAsyncDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "gg-wiring-" + Guid.NewGuid().ToString("N"));
     private readonly LauncherPaths _paths;
@@ -57,7 +57,7 @@ public sealed class GridControllerWiringTests : IDisposable
     {
         // A MariaDB that cannot start: anything past the port check fails with a non-port error.
         var missing = Path.Combine(_root, MissingMariaDb, "mariadbd");
-        return new GridController(_paths, _store, new MariaDbBinaries(missing, missing, null),
+        var grid = new GridController(_paths, _store, new MariaDbBinaries(missing, missing, null),
             [new LogLevelModule()], _robust, new FakeGridJoin(), new FakeOtherGrid(), _http, time, regionStores: _ => _regionStore, cpu: cpu ?? ((_, _, _) => { }), platform: platform)
         {
             DatabaseRunningForTests = () => _databaseUp,
@@ -65,6 +65,8 @@ public sealed class GridControllerWiringTests : IDisposable
             // Most fake consoles here never answer "login status" (a real region always does): keep the retry short.
             AdoptedLoginStatusWait = TimeSpan.FromSeconds(1),
         };
+        _grids.Add(grid);
+        return grid;
     }
 
     /// <summary>What the controller's region store gets; the rig has no database.</summary>
@@ -73,9 +75,16 @@ public sealed class GridControllerWiringTests : IDisposable
     /// <summary>Whether the controller sees the database running (the rig's MariaDB never starts).</summary>
     private volatile bool _databaseUp;
 
-    public void Dispose()
+    /// <summary>Every controller this test made, so the clean-up can stop their monitors before ending what they started.</summary>
+    private readonly List<GridController> _grids = [];
+
+    // Runs whether the test passed or not: a test that failed half-way, or a program a controller restarted after the
+    // test's own clean-up, would otherwise keep running and keep this folder from being deleted.
+    public async ValueTask DisposeAsync()
     {
-        try { Directory.Delete(_root, true); } catch (IOException) { }
+        foreach (var grid in _grids) await grid.DetachAsync();
+        RigProcesses.EndAll(_root, _paths.Pids);
+        RigProcesses.DeleteFolder(_root);
     }
 
     private static void CopyPrototypes(string program)
