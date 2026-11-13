@@ -106,8 +106,8 @@ git commit --allow-empty -m "OpenSim: not taking <subject>: <reason>" --trailer 
 - **DreamGrid patches.** Fred patched some OpenSimulator files, for example Smart Start in
   `GridService.cs`, `HypergridLinker.cs`, `LLLoginService.cs` and `UserAgentService.cs`, and
   `OutboundUrlFilter.cs`. These are most of the source conflicts. Keep the GridGate behavior and fit the
-  upstream change around it. The patches are usually marked with comments; `grep -rn 'SmartStart\|GridGate:'
-  OpenSim` finds most of them. Our own patches are marked `GridGate:`; Fred's Smart Start patches carry no such marker.
+  upstream change around it. The patches are usually marked with comments naming GridGate or Smart Start; `grep -rn 'SmartStart\|GridGate'
+  OpenSim` finds most of them.
 - **Our own changes.** We have changed OpenSim code too (ubODE fixes, the Rapier physics backend, login and
   logging fixes). Look at the blame on our side before you take upstream's side of a hunk.
 - **Third-party binaries in `bin/`.** OpenSimulator tracks prebuilt third-party DLLs (libomv, CSJ2K, and
