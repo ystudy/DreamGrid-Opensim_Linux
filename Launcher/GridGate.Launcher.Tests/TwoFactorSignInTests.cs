@@ -5,6 +5,7 @@ using AngleSharp.Html.Parser;
 using GridGate.Launcher.Core.Security;
 using GridGate.Launcher.Core.Settings;
 using GridGate.Launcher.Security;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Xunit;
@@ -680,5 +681,18 @@ public sealed class TwoFactorSignInTests
         Assert.DoesNotContain("style", svg, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("<script", svg, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("viewBox", svg, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_code_step_cookie_from_before_the_change_is_still_read()
+    {
+        await using var f = Factory();
+        var expires = f.Time.GetUtcNow().AddMinutes(5).ToUnixTimeSeconds();
+        var json = JsonSerializer.Serialize(new TwoFactorPendingSignIn(Guid.NewGuid(), "Test", "Admin", 200, StaffRole.Admin, null, expires));
+        var value = f.Services.GetRequiredService<IDataProtectionProvider>().CreateProtector("GridGate.TwoFactorPending.v1").Protect(json);
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/login/code");
+        request.Headers.Add("Cookie", "gg-2fa=" + value);
+        using var r = await f.CreateClient(new() { AllowAutoRedirect = false, HandleCookies = false }).SendAsync(request, Ct);
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
     }
 }
