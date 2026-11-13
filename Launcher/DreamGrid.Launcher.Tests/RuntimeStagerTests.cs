@@ -20,8 +20,21 @@ public sealed class RuntimeStagerTests : IDisposable
         File.WriteAllBytes(Path.Combine(program, "Gloebit.dll"), [4]);
         File.WriteAllText(Path.Combine(program, "addin-db-002", "x"), "x");
         File.WriteAllText(Path.Combine(program, "config-include", "a.ini"), "[A]");
-        File.WriteAllText(Path.Combine(program, "config-addon-opensim", "Wifi.ini"), "[WifiService]");
-        File.WriteAllText(Path.Combine(program, "config-addon-opensim", "Wifi.ini.proto"), "[WifiService]");
+        // Build output from before the Wifi, Diva and jOpenSim add-ons were removed.
+        File.WriteAllBytes(Path.Combine(program, "Diva.Wifi.dll"), [5]);
+        File.WriteAllBytes(Path.Combine(program, "diva.utils.dll"), [6]);
+        File.WriteAllBytes(Path.Combine(program, "WhoGotWhat.dll"), [7]);
+        File.WriteAllText(Path.Combine(program, "config-addon-opensim", "WhoGotWhat.ini"), "[WhoGotWhat]");
+        File.WriteAllBytes(Path.Combine(program, "jOpenSimSearch.Modules.dll"), [8]);
+        Directory.CreateDirectory(Path.Combine(program, "de"));
+        File.WriteAllBytes(Path.Combine(program, "de", "Diva.Wifi.resources.dll"), [9]);
+        Directory.CreateDirectory(Path.Combine(program, "WifiPages-White"));
+        File.WriteAllText(Path.Combine(program, "WifiPages-White", "header.html"), "<html/>");
+        Directory.CreateDirectory(Path.Combine(program, "DivaUploads"));
+        File.WriteAllText(Path.Combine(program, "DivaUploads", ".keep"), "");
+        // Near misses that must still be staged.
+        File.WriteAllBytes(Path.Combine(program, "Divan.dll"), [10]);
+        File.WriteAllBytes(Path.Combine(program, "OpenSimSearch.Modules.dll"), [11]);
         File.WriteAllText(Path.Combine(program, "x.log"), "log");
         _paths = new LauncherPaths(Path.Combine(_root, "data"), program, null);
     }
@@ -40,10 +53,22 @@ public sealed class RuntimeStagerTests : IDisposable
         Assert.True(File.Exists(Path.Combine(rt, "OpenSim.dll")));
         Assert.True(File.Exists(Path.Combine(rt, "config-include", "a.ini")));
         Assert.False(File.Exists(Path.Combine(rt, "Gloebit.dll")));
-        Assert.False(File.Exists(Path.Combine(rt, "config-addon-opensim", "Wifi.ini")));
-        Assert.True(File.Exists(Path.Combine(rt, "config-addon-opensim", "Wifi.ini.proto")));
         Assert.False(Directory.Exists(Path.Combine(rt, "addin-db-002")));
         Assert.False(File.Exists(Path.Combine(rt, "x.log")));
+    }
+
+    [Fact]
+    public void Retired_files_never_reach_the_runtime()
+    {
+        Assert.True(new RuntimeStager(_paths).StageIfNeeded());
+        var rt = _paths.RuntimeOpenSim;
+        foreach (var gone in new[] { "Diva.Wifi.dll", "diva.utils.dll", "WhoGotWhat.dll", "jOpenSimSearch.Modules.dll",
+                     Path.Combine("config-addon-opensim", "WhoGotWhat.ini"), Path.Combine("de", "Diva.Wifi.resources.dll") })
+            Assert.False(File.Exists(Path.Combine(rt, gone)), gone);
+        Assert.False(Directory.Exists(Path.Combine(rt, "WifiPages-White")));
+        Assert.False(Directory.Exists(Path.Combine(rt, "DivaUploads")));
+        Assert.True(File.Exists(Path.Combine(rt, "Divan.dll")));
+        Assert.True(File.Exists(Path.Combine(rt, "OpenSimSearch.Modules.dll")));
     }
 
     [Fact]

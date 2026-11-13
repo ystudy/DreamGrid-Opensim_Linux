@@ -15,7 +15,7 @@ paths = ['''^bin/assets/.*\.lsl$''']
 regexes = ['''^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-zA-Z]{12}$''']
 
 # The default rules miss low-entropy values such as a Gmail app password. This rule covers the mail and admin
-# passwords Wifi and OpenSim keep in INI files (the leak this config exists for); the many database passwords in
+# passwords OpenSim's INI files used to hold (the leak this config exists for); the many database passwords in
 # OpenSim's INIs are upstream defaults that the launcher replaces, so they are not covered.
 [[rules]]
 id = "dreamgrid-ini-mail-or-admin-password"

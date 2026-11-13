@@ -121,8 +121,8 @@ public sealed class RegionSettingsTests : IDisposable
             var file = IniDocument.Load(Path.Combine(paths.RegionDefinitionDir(isle.Instance), "Isle.ini"));
             Assert.Equal("20", file.Get("Isle", "MaxAgents"));
             Assert.Equal("DisallowResidents", OpenSimIni(paths, isle.Instance).Get("AuthorizationService", "Region_Isle"));
-            // Every OpenSim start here logs two [ERROR] lines that no setting causes: the PID file the launcher writes before
-            // OpenSim reads it, and jOpenSimSearch without a search server. So the restart may log only what the first start did.
+            // Every OpenSim start here logs an [ERROR] line that no setting causes: the PID file the launcher writes before
+            // OpenSim reads it. So the restart may log only what the first start did.
             var baseline = ErrorLines(ReadBytes(log, 0, before)).ToHashSet();
             var errors = ErrorLines(ReadBytes(log, before)).Where(e => !baseline.Contains(e)).ToList();
             Assert.True(errors.Count == 0, "the restart logged new errors:" + Environment.NewLine + string.Join(Environment.NewLine, errors));

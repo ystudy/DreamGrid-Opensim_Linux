@@ -35,7 +35,7 @@ On the owner's own grid, only **People** and **Groups** search work today. Place
 - **Covers:** the same Search tabs as OpenSimSearch. It also pushes data itself: it tells the jOpenSim website when a region goes online or offline, asks it to refresh the region's data (`init_SearchDataUpdate`, `searchDataUpdate`), watches avatars entering parcels, and adds a `search update` console command.
 - **How:** the same XML-RPC calls, aimed at jOpenSim's PHP pages (`com_opensim`), which no longer exist (see `docs/jopensim-notes.md`).
 - **Turns on** when `SearchURL` is set, `[DataSnapshot] index_sims` is true and `default_snapshot_period` has a value. It never looks at `[Search] Module`.
-- **Where:** `addon-modules/jOpenSimSearch/Modules/jOpenSimSearch/jOpenSimSearch.cs`, about 1,000 lines. Removed in Phase 3 of the work list.
+- **Where:** `addon-modules/jOpenSimSearch/Modules/jOpenSimSearch/jOpenSimSearch.cs`, about 1,000 lines. Removed in Phase 3 of the work list. Removed on 2026-11-12; see `docs/wifi-diva-removal-log.md`.
 
 ### Not a search module: jOpenSimProfile
 
