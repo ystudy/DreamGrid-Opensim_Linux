@@ -431,6 +431,12 @@ builder.Services.AddSingleton(sp =>
         sp.GetRequiredService<MoneyAuthFailures>(), sp.GetRequiredService<ILoggerFactory>());
 });
 builder.Services.AddHostedService(sp => sp.GetRequiredService<MoneyServiceHost>());
+builder.Services.AddHostedService(sp =>
+{
+    var current = sp.GetRequiredService<Func<LauncherSettings>>();
+    return new MoneyMaintenance(sp.GetRequiredService<MoneyLedger>(), () => MoneyRelease.Effective(current().Money),
+        sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<MoneyMaintenance>>());
+});
 builder.Services.AddHostedService<GridHostedService>();
 // Moves regions into their owner's estate and back while they run; registered after GridHostedService, so it stops first.
 builder.Services.AddHostedService<RegionEstateSync>();
