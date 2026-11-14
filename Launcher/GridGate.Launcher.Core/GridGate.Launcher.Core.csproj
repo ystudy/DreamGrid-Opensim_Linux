@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="GridGate.Launcher.Tests" />
+    <InternalsVisibleTo Include="GridGate.Launcher.IntegrationTests" />
   </ItemGroup>
 
 </Project>

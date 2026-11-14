@@ -11,6 +11,7 @@
   <ItemGroup>
     <!-- Runs on Microsoft.Testing.Platform (selected in global.json); no VSTest packages needed. -->
     <PackageReference Include="xunit.v3" Version="4.0.2" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.0.0" />
     <!-- Parses the website's forms (antiforgery tokens, input names) in the end-to-end test. -->
     <PackageReference Include="AngleSharp" Version="1.8.6" />
   </ItemGroup>
