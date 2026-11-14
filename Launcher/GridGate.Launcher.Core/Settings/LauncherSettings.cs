@@ -1,9 +1,11 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
+using GridGate.Launcher.Core.Money;
 
 namespace GridGate.Launcher.Core.Settings;
 
-public sealed record DatabaseSecrets(string RootPassword, string RobustPassword, string OpensimPassword);
+/// <summary><paramref name="MoneyPassword"/> is empty until money is first turned on (money design §7.1).</summary>
+public sealed record DatabaseSecrets(string RootPassword, string RobustPassword, string OpensimPassword, string MoneyPassword = "");
 
 public sealed record ConsoleSecrets(string User, string Password);
 
@@ -215,7 +217,7 @@ public sealed record LanguageSettings
 
 public sealed record LauncherSettings
 {
-    public const int CurrentSchema = 6;
+    public const int CurrentSchema = 7;
 
     public int SchemaVersion { get; init; } = CurrentSchema;
     public string GridName { get; init; } = "My World";
@@ -242,6 +244,8 @@ public sealed record LauncherSettings
     public int RobustConsolePort { get; init; } = 8010;
     /// <summary>The first port tried for a new program's REST console.</summary>
     public int RegionConsolePort { get; init; } = 8011;
+    /// <summary>The money service's own HTTPS port (money design §7.2).</summary>
+    public int MoneyPort { get; init; } = 8000;
 
     public required DatabaseSecrets Db { get; init; }
     public required ConsoleSecrets Console { get; init; }
@@ -330,6 +334,12 @@ public sealed record LauncherSettings
     [JsonPropertyName("region")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public LegacyRegionV1? LegacyRegion { get; init; }
+
+    private readonly MoneySettings _money = new();
+
+    /// <summary>The grid's money settings; a missing or null value reads as the defaults (money Off).</summary>
+    [AllowNull]
+    public MoneySettings Money { get => _money; init => _money = value ?? new(); }
 
     public Dictionary<string, Dictionary<string, string>> Modules { get; init; } = new();
     public List<IniOverride> Overrides { get; init; } = new();

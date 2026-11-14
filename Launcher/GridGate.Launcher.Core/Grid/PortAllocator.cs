@@ -15,7 +15,7 @@ public static class PortAllocator
     /// </summary>
     public static IReadOnlySet<int> Taken(LauncherSettings s)
     {
-        var taken = new HashSet<int> { s.WebPort, s.MariaDbPort, s.RobustPublicPort, s.RobustPrivatePort, s.RobustConsolePort };
+        var taken = new HashSet<int> { s.WebPort, s.MariaDbPort, s.RobustPublicPort, s.RobustPrivatePort, s.RobustConsolePort, s.MoneyPort };
         foreach (var p in s.Programs) { taken.Add(p.HttpPort); taken.Add(p.ConsolePort); }
         foreach (var r in s.Regions) taken.Add(r.UdpPort);
         taken.Remove(0);
