@@ -39,7 +39,7 @@ public sealed class PortAllocatorTests
     [Fact]
     public void Taken_lists_configured_and_assigned_ports()
     {
-        Assert.Equal(new HashSet<int> { 8001, 3307, 8002, 8003, 8010, 8011, 8004, 8005 }, PortAllocator.Taken(Defaults()));
+        Assert.Equal(new HashSet<int> { 8001, 3307, 8002, 8003, 8010, 8000, 8011, 8004, 8005 }, PortAllocator.Taken(Defaults()));
     }
 
     [Fact]

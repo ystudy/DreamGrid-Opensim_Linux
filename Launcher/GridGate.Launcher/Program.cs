@@ -11,6 +11,7 @@ using GridGate.Launcher.Core.Logs;
 using GridGate.Launcher.Endpoints;
 using GridGate.Launcher.Core.ModelImport;
 using GridGate.Launcher.Core.Modules;
+using GridGate.Launcher.Core.Money;
 using GridGate.Launcher.Core.OpenSim;
 using GridGate.Launcher.Core.Settings;
 using GridGate.Launcher.Core.Security;
@@ -26,6 +27,7 @@ using GridGate.Launcher.Guests;
 using GridGate.Launcher.Iar;
 using GridGate.Launcher.Core.Iar;
 using GridGate.Launcher.ModelImport;
+using GridGate.Launcher.Money;
 using GridGate.Launcher.Resident;
 using GridGate.Launcher.Setup;
 using Microsoft.AspNetCore.Authentication;
@@ -409,6 +411,32 @@ builder.Services.AddSingleton<UploadPartFiles>();
 builder.Services.AddSingleton<Func<long?>>(_ => SystemMemory.AvailableBytes);
 // The reason a CPU priority can't be chosen on this computer; tests swap it.
 builder.Services.AddSingleton<Func<CpuPriority, string?>>(_ => RegionSettingsRules.PriorityUnavailable);
+// Money (money design §7.2). The service, its certificate and its database only come to life once money is approved
+// (MoneyRelease) and turned on; registered before GridHostedService so it is listening before regions start.
+builder.Services.AddSingleton(sp => new PresenceCheck(MoneyConnections.Robust(sp.GetRequiredService<Func<LauncherSettings>>())));
+builder.Services.AddSingleton(sp =>
+{
+    var current = sp.GetRequiredService<Func<LauncherSettings>>();
+    return new MoneyLedger(MoneyConnections.Money(current), () => current().Money, () => MoneyRelease.Effective(current().Money),
+        sp.GetRequiredService<PresenceCheck>().IsLocalUserAsync, sp.GetRequiredService<TimeProvider>());
+});
+builder.Services.AddSingleton(sp => new MoneyAuthFailures(sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<MoneyAuthFailures>>()));
+builder.Services.AddSingleton(sp =>
+{
+    var current = sp.GetRequiredService<Func<LauncherSettings>>();
+    var time = sp.GetRequiredService<TimeProvider>();
+    return new MoneyServiceHost(sp.GetRequiredService<MoneyLedger>(), sp.GetRequiredService<PresenceCheck>(), current,
+        () => MoneyRelease.Effective(current().Money),
+        () => MoneyCertificate.LoadOrCreate(Path.Combine(paths.Security, MoneyCertificate.FileName), time),
+        sp.GetRequiredService<MoneyAuthFailures>(), sp.GetRequiredService<ILoggerFactory>());
+});
+builder.Services.AddHostedService(sp => sp.GetRequiredService<MoneyServiceHost>());
+builder.Services.AddHostedService(sp =>
+{
+    var current = sp.GetRequiredService<Func<LauncherSettings>>();
+    return new MoneyMaintenance(sp.GetRequiredService<MoneyLedger>(), () => MoneyRelease.Effective(current().Money),
+        sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<MoneyMaintenance>>());
+});
 builder.Services.AddHostedService<GridHostedService>();
 // Moves regions into their owner's estate and back while they run; registered after GridHostedService, so it stops first.
 builder.Services.AddHostedService<RegionEstateSync>();

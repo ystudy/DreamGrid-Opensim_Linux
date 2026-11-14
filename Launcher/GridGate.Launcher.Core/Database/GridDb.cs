@@ -27,6 +27,10 @@ internal static class GridDb
     public static Task<MySqlConnection> OpenOpensimAsync(LauncherSettings s, uint timeoutSeconds, CancellationToken ct) =>
         OpenAsync(MariaDbServer.ConnectionString(s, "opensim", "opensimuser", s.Db.OpensimPassword, timeoutSeconds), ct);
 
+    /// <summary>Opens a connection to the money database as moneyuser (money design §7.1).</summary>
+    public static Task<MySqlConnection> OpenMoneyAsync(LauncherSettings s, uint timeoutSeconds, CancellationToken ct) =>
+        OpenAsync(MariaDbServer.ConnectionString(s, "money", "moneyuser", s.Db.MoneyPassword, timeoutSeconds), ct);
+
     /// <summary>
     /// Opens a connection, runs <paramref name="work"/> and disposes the connection. A database failure is rethrown as
     /// whatever <paramref name="unavailable"/> makes of it; any other exception passes through.

@@ -3,7 +3,7 @@ using MySqlConnector;
 
 namespace GridGate.Launcher.Core.Database;
 
-/// <summary>Creates the robust and opensim databases and their users; safe to run repeatedly.</summary>
+/// <summary>Creates the robust and opensim databases and their users, and money's once it has a password; safe to run repeatedly.</summary>
 public sealed class DatabaseProvisioner(LauncherSettings s)
 {
     public async Task EnsureAsync(CancellationToken ct)
@@ -13,6 +13,9 @@ public sealed class DatabaseProvisioner(LauncherSettings s)
 
         await Provision(conn, "robust", "robustuser", s.Db.RobustPassword, ct);
         await Provision(conn, "opensim", "opensimuser", s.Db.OpensimPassword, ct);
+        // Money's database exists only once money has been turned on and given its password (money design §7.1).
+        if (s.Db.MoneyPassword != "")
+            await Provision(conn, "money", "moneyuser", s.Db.MoneyPassword, ct);
     }
 
     private static async Task Provision(MySqlConnection conn, string database, string user, string password, CancellationToken ct)

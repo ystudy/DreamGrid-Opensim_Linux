@@ -236,14 +236,14 @@ public class SettingsStoreTests : IDisposable
 
         var s = new SettingsStore(path).LoadOrCreate();
 
-        Assert.Equal(6, s.SchemaVersion);
+        Assert.Equal(LauncherSettings.CurrentSchema, s.SchemaVersion);
         Assert.Null(s.Programs[0].Physics);
         // Schema 2's BulletSim ran with the prototype's UseSeparatePhysicsThread=true: it keeps running that way.
         Assert.Equal("BulletSimThreaded", s.Programs[1].Physics);
         Assert.Equal("ubODE", s.DefaultPhysics);
         Assert.True(s.DefaultScripts);
         var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
-        Assert.Equal(6, (int)node["schemaVersion"]!);
+        Assert.Equal(LauncherSettings.CurrentSchema, (int)node["schemaVersion"]!);
     }
 
     [Fact]
@@ -267,7 +267,7 @@ public class SettingsStoreTests : IDisposable
     {
         var s = new SettingsStore(WriteV1(V1Region.Replace("BulletSim", "ubODE"))).LoadOrCreate();
 
-        Assert.Equal(6, s.SchemaVersion);
+        Assert.Equal(LauncherSettings.CurrentSchema, s.SchemaVersion);
         Assert.Null(Assert.Single(s.Programs).Physics);
     }
 
@@ -284,7 +284,7 @@ public class SettingsStoreTests : IDisposable
 
         var loaded = new SettingsStore(path).LoadOrCreate();
 
-        Assert.Equal(6, loaded.SchemaVersion);
+        Assert.Equal(LauncherSettings.CurrentSchema, loaded.SchemaVersion);
         Assert.Equal(["ubODE", "BulletSim"], loaded.Programs.Select(p => p.Physics));
     }
 
@@ -328,7 +328,7 @@ public class SettingsStoreTests : IDisposable
     {
         var s = new SettingsStore(WriteV1(V1Region)).LoadOrCreate();
 
-        Assert.Equal(6, s.SchemaVersion);
+        Assert.Equal(LauncherSettings.CurrentSchema, s.SchemaVersion);
         Assert.Equal([new ProgramSettings("Welcome", 8004, 8011, "BulletSimThreaded")], s.Programs);
         Assert.Equal([new RegionSettings("Welcome", "Welcome", V1Uuid, 1000, 1000, "island", 1, 8004)], s.Regions);
         Assert.Null(s.LegacyRegion);
@@ -341,7 +341,7 @@ public class SettingsStoreTests : IDisposable
         new SettingsStore(path).LoadOrCreate();
 
         var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
-        Assert.Equal(6, (int)node["schemaVersion"]!);
+        Assert.Equal(LauncherSettings.CurrentSchema, (int)node["schemaVersion"]!);
         Assert.True(node.ContainsKey("programs"));
         Assert.False(node.ContainsKey("region"));
     }
@@ -351,7 +351,7 @@ public class SettingsStoreTests : IDisposable
     {
         var s = new SettingsStore(WriteV1(null)).LoadOrCreate();
 
-        Assert.Equal(6, s.SchemaVersion);
+        Assert.Equal(LauncherSettings.CurrentSchema, s.SchemaVersion);
         Assert.Empty(s.Programs);
         Assert.Empty(s.Regions);
     }
@@ -397,7 +397,7 @@ public class SettingsStoreTests : IDisposable
 
         var loaded = new SettingsStore(path).LoadOrCreate();
 
-        Assert.Equal(6, loaded.SchemaVersion);
+        Assert.Equal(LauncherSettings.CurrentSchema, loaded.SchemaVersion);
         Assert.Empty(loaded.CustomTypes);
         Assert.False(loaded.Regions[0].NeedsContent);
     }
@@ -442,7 +442,7 @@ public class SettingsStoreTests : IDisposable
 
         Assert.Equal(OwnerPlan.SimplePublic, s.Plan);
         Assert.True(s.Hypergrid);
-        Assert.Equal(6, s.SchemaVersion);
+        Assert.Equal(LauncherSettings.CurrentSchema, s.SchemaVersion);
     }
 
     [Theory]
@@ -472,7 +472,7 @@ public class SettingsStoreTests : IDisposable
         Assert.Equal(200, s.Security.AdminLevel);
         Assert.False(s.Security.RequireTwoFactorForStaff);
         Assert.Null(s.Security.AdminNetworks);
-        Assert.Equal(6, s.SchemaVersion);
+        Assert.Equal(LauncherSettings.CurrentSchema, s.SchemaVersion);
     }
 
     [Fact]
@@ -488,7 +488,7 @@ public class SettingsStoreTests : IDisposable
 
         var s = new SettingsStore(path).LoadOrCreate();
 
-        Assert.Equal(6, s.SchemaVersion);
+        Assert.Equal(LauncherSettings.CurrentSchema, s.SchemaVersion);
         Assert.Equal(new BotSettings(true, true, 5, true, 50_000, false, false), s.Bots);
         Assert.True(s.Bots.Honeypot);
         Assert.False(s.Bots.ImageCaptcha);

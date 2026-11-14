@@ -86,7 +86,8 @@ public sealed class SettingsStore(string path)
             var plan = HostAddress.IsPublic(s.Hostname) ? OwnerPlan.SimplePublic : OwnerPlan.Local;
             s = s with { Plan = plan, Hypergrid = plan == OwnerPlan.SimplePublic };
         }
-        // Schema 4 to 5 (security settings) and 5 to 6 (legal pages, bot protection) arrive with their defaults; only the version changes.
+        // Schema 4 to 5 (security settings), 5 to 6 (legal pages, bot protection) and 6 to 7 (money, its port and database
+        // password) arrive with their defaults; only the version changes.
         return s with { SchemaVersion = LauncherSettings.CurrentSchema };
     }
 
