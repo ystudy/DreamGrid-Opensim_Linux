@@ -24,6 +24,9 @@ public sealed class MoneyServiceTests(MoneyMariaDb maria) : IClassFixture<MoneyM
     private static readonly Guid SessionA = Guid.Parse("5000000a-0000-0000-0000-000000000005");
     private static readonly Guid SecureA = Guid.Parse("6000000a-0000-0000-0000-000000000006");
     private const string Key = "the-region-key-for-program-one-0000000000000000";
+    private const string Key2 = "the-region-key-for-program-two-0000000000000000";
+    private static readonly Guid SessionB = Guid.Parse("5000000b-0000-0000-0000-000000000005");
+    private static readonly Guid SecureB = Guid.Parse("6000000b-0000-0000-0000-000000000006");
 
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "gg-money-svc-" + Guid.NewGuid().ToString("N"));
     private readonly ConcurrentQueue<string> _logs = new();
@@ -42,20 +45,22 @@ public sealed class MoneyServiceTests(MoneyMariaDb maria) : IClassFixture<MoneyM
     }
 
     /// <summary>Starts the service on a fresh database: program p1 holds region Here, and A is logged in there.</summary>
-    private async Task<MoneyTestDatabase> StartAsync(MoneyMode mode = MoneyMode.Play, Func<LauncherSettings, LauncherSettings>? dbOverride = null)
+    private async Task<MoneyTestDatabase> StartAsync(MoneyMode mode = MoneyMode.Play, Func<LauncherSettings, LauncherSettings>? dbOverride = null,
+        Func<X509Certificate2>? certificate = null, int? port = null)
     {
         var db = await maria.FreshAsync();
         await db.EnsureSchemaAsync();
         await db.AddUser(A);
         await db.AddUser(B);
         await db.AddPresence(A, Here, SessionA, SecureA);
-        _port = MoneyMariaDb.FreePort();
+        await db.AddPresence(B, There, SessionB, SecureB);
+        _port = port ?? MoneyMariaDb.FreePort();
         var settings = db.Settings with
         {
             MoneyPort = _port,
-            Programs = [new ProgramSettings("p1", 8004, 8011)],
-            Regions = [new RegionSettings("p1", "Here", Here, UdpPort: 8004)],
-            Money = new MoneySettings(Mode: mode, UploadFee: 3, ProgramKeys: new() { ["p1"] = Key }),
+            Programs = [new ProgramSettings("p1", 8004, 8011), new ProgramSettings("p2", 8005, 8012)],
+            Regions = [new RegionSettings("p1", "Here", Here, UdpPort: 8004), new RegionSettings("p2", "There", There, UdpPort: 8005)],
+            Money = new MoneySettings(Mode: mode, UploadFee: 3, ProgramKeys: new() { ["p1"] = Key, ["p2"] = Key2 }),
         };
         var dbSettings = dbOverride?.Invoke(settings) ?? settings;
         var time = TimeProvider.System;
@@ -65,7 +70,7 @@ public sealed class MoneyServiceTests(MoneyMariaDb maria) : IClassFixture<MoneyM
         Directory.CreateDirectory(_dir);
         var cert = MoneyCertificate.LoadOrCreate(Path.Combine(_dir, MoneyCertificate.FileName), time);
         _fingerprint = MoneyCertificate.Fingerprint(cert);
-        _host = new MoneyServiceHost(ledger, presence, () => settings, () => mode, () => cert, new MoneyAuthFailures(time, loggers.CreateLogger<MoneyAuthFailures>()), loggers);
+        _host = new MoneyServiceHost(ledger, presence, () => settings, () => mode, certificate ?? (() => cert), new MoneyAuthFailures(time, loggers.CreateLogger<MoneyAuthFailures>()), loggers);
         await _host.StartAsync(Ct);
         _http = new HttpClient(new SocketsHttpHandler
         {
@@ -109,13 +114,69 @@ public sealed class MoneyServiceTests(MoneyMariaDb maria) : IClassFixture<MoneyM
     }
 
     [Fact]
-    public async Task Twenty_bad_keys_then_429()
+    public async Task Valid_key_works_after_many_bad_keys()
     {
         await StartAsync();
-        for (var i = 0; i < 20; i++)
+        for (var i = 0; i < MoneyAuthFailures.Limit + 2; i++)
             Assert.Equal(HttpStatusCode.Unauthorized, (await Post("health", null, key: "nope")).Status);
 
-        Assert.Equal((HttpStatusCode)429, (await Post("health", null)).Status);
+        Assert.Equal(HttpStatusCode.OK, (await Post("health", null)).Status);
+    }
+
+    [Fact]
+    public async Task Bad_keys_past_the_limit_are_slowed()
+    {
+        await StartAsync();
+        for (var i = 0; i < MoneyAuthFailures.Limit; i++) await Post("health", null, key: "nope");
+
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        Assert.Equal(HttpStatusCode.Unauthorized, (await Post("health", null, key: "nope")).Status);
+
+        Assert.True(watch.Elapsed >= TimeSpan.FromMilliseconds(900), $"answered after {watch.ElapsedMilliseconds} ms");
+    }
+
+    [Fact]
+    public async Task Same_txn_from_two_keys_are_separate()
+    {
+        await StartAsync();
+        var txn = Guid.NewGuid();
+
+        var first = await Post("transfer", new { txnId = txn, type = "pay_avatar", from = WhoA(), to = new { agentId = B, home = "" }, amount = 10, regionId = Here });
+        var second = await Post("transfer", new
+        {
+            txnId = txn, type = "pay_avatar", from = new { agentId = B, home = "", sessionId = SessionB, secureSessionId = SecureB },
+            to = new { agentId = A, home = "" }, amount = 4, regionId = There,
+        }, key: Key2);
+
+        Assert.Equal("ok", (string?)first.Body!["code"]);
+        Assert.Equal("ok", (string?)second.Body!["code"]);
+        Assert.Equal(106, second.Body["balance"]!.GetValue<long>());
+    }
+
+    [Fact]
+    public async Task Busy_port_does_not_stop_start()
+    {
+        var busy = new TcpListener(IPAddress.Loopback, 0);
+        busy.Start();
+        try
+        {
+            await StartAsync(port: ((IPEndPoint)busy.LocalEndpoint).Port); // must not throw
+            Assert.Contains(_logs, l => l.Contains("money service couldn't start", StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            busy.Stop();
+        }
+    }
+
+    [Fact]
+    public async Task Certificate_failure_does_not_stop_start()
+    {
+        await StartAsync(certificate: () => throw new IOException("disk full"));
+
+        Assert.Contains(_logs, l => l.Contains("money service couldn't start", StringComparison.OrdinalIgnoreCase));
+        using var tcp = new TcpClient();
+        await Assert.ThrowsAnyAsync<SocketException>(async () => await tcp.ConnectAsync(IPAddress.Loopback, _port, Ct));
     }
 
     [Fact]

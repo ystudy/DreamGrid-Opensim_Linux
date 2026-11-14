@@ -28,7 +28,7 @@ public sealed partial class MoneyLedger
     {
         if (!AmountOk(r.Amount) || r.Kind is not ("object" or "land")) return Task.FromResult(MoneyResult.Of(MoneyOutcome.BadAmount));
         if (Same(r.Buyer, r.Seller)) return Task.FromResult(MoneyResult.Of(MoneyOutcome.NotAllowed));
-        return Idempotent(r.TxnId, "hold", async (conn, tx) =>
+        return Idempotent(r.TxnId, "hold", r, async (conn, tx) =>
         {
             if (await GridFrozenAsync(conn, tx, ct)) return MoneyResult.Of(MoneyOutcome.Frozen);
             var (buyer, r1) = await ResolveAsync(conn, tx, r.Buyer, ct);
@@ -60,11 +60,11 @@ public sealed partial class MoneyLedger
 
     /// <summary>Delivery succeeded: Holding pays the seller. Not blocked by freezes.</summary>
     public Task<MoneyResult> CompleteHoldAsync(Guid txnId, long holdId, CancellationToken ct) =>
-        Idempotent(txnId, "hold_complete", (conn, tx) => SettleAsync(conn, tx, holdId, complete: true, ct), ct);
+        Idempotent(txnId, "hold_complete", holdId, (conn, tx) => SettleAsync(conn, tx, holdId, complete: true, ct), ct);
 
     /// <summary>Delivery failed: Holding pays the buyer back. Not blocked by freezes.</summary>
     public Task<MoneyResult> ReturnHoldAsync(Guid txnId, long holdId, CancellationToken ct) =>
-        Idempotent(txnId, "hold_return", (conn, tx) => SettleAsync(conn, tx, holdId, complete: false, ct), ct);
+        Idempotent(txnId, "hold_return", holdId, (conn, tx) => SettleAsync(conn, tx, holdId, complete: false, ct), ct);
 
     /// <summary>Returns every open hold older than <see cref="HoldLifetime"/>; how many were returned.</summary>
     public async Task<int> ReturnExpiredHoldsAsync(CancellationToken ct)

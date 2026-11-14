@@ -35,7 +35,7 @@ public static class MoneySchema
           created DATETIME(6) NOT NULL, state VARCHAR(16) NOT NULL, settled DATETIME(6) NULL, KEY state_created (state, created))
           ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         CREATE TABLE IF NOT EXISTS requests (
-          txn_id CHAR(36) PRIMARY KEY, op VARCHAR(32) NOT NULL, response TEXT NOT NULL, at DATETIME(6) NOT NULL)
+          txn_id CHAR(36) PRIMARY KEY, op VARCHAR(32) NOT NULL, fingerprint CHAR(64) NOT NULL, response TEXT NOT NULL, at DATETIME(6) NOT NULL)
           ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         CREATE TABLE IF NOT EXISTS state (name VARCHAR(64) PRIMARY KEY, value VARCHAR(500) NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         INSERT IGNORE INTO accounts (id, agent_id, home, kind, created) VALUES

@@ -28,13 +28,13 @@ public sealed partial class MoneyLedger
         if (!settings().ScriptPayouts) return Task.FromResult(MoneyResult.Of(MoneyOutcome.NotAllowed));
         var owner = AccountRef.Resident(r.OwnerId);
         if (Same(owner, r.To)) return Task.FromResult(MoneyResult.Of(MoneyOutcome.NotAllowed));
-        return Idempotent(r.TxnId, "payout", async (conn, tx) =>
+        return Idempotent(r.TxnId, "payout", r, async (conn, tx) =>
         {
             if (await GridFrozenAsync(conn, tx, ct)) return MoneyResult.Of(MoneyOutcome.Frozen);
             var (payer, r1) = await ResolveAsync(conn, tx, owner, ct);
             if (payer is null) return MoneyResult.Of(r1);
 
-            // Locking the owner first makes two payouts at once see each other's total.
+            // Locking the owner first, under READ COMMITTED, makes two payouts at once see each other's total (review C1).
             await LockAsync(conn, tx, payer.Id, ct);
             if (await ScalarAsync(conn, tx, "SELECT payouts_allowed FROM accounts WHERE id = @id", ct, ("@id", payer.Id)) != 1)
                 return MoneyResult.Of(MoneyOutcome.NotAllowed);
@@ -67,7 +67,7 @@ public sealed partial class MoneyLedger
         if (r.Type is not (EntryType.UploadFee or EntryType.ClassifiedFee or EntryType.GroupJoinFee))
             return Task.FromResult(MoneyResult.Of(MoneyOutcome.NotAllowed));
         if (!AmountOk(r.Amount)) return Task.FromResult(MoneyResult.Of(MoneyOutcome.BadAmount));
-        return Idempotent(r.TxnId, "charge", async (conn, tx) =>
+        return Idempotent(r.TxnId, "charge", r, async (conn, tx) =>
         {
             if (await GridFrozenAsync(conn, tx, ct)) return MoneyResult.Of(MoneyOutcome.Frozen);
             var (payer, refusal) = await ResolveAsync(conn, tx, r.Payer, ct);

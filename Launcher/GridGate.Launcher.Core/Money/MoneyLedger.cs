@@ -1,4 +1,6 @@
 using System.Data;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using MySqlConnector;
 
@@ -17,7 +19,7 @@ public sealed partial class MoneyLedger(
     TimeProvider time)
 {
     private const int DeadlockRetries = 3;
-    private const int ErDuplicateKey = 1062, ErDeadlock = 1213, ErLockWaitTimeout = 1205;
+    private const int ErDuplicateKey = 1062, ErDeadlock = 1213, ErLockWaitTimeout = 1205, ErCheckRead = 1020;
 
     private sealed record Account(long Id, AccountKind Kind, long Balance, bool Frozen);
 
@@ -39,7 +41,7 @@ public sealed partial class MoneyLedger(
     {
         if (!AmountOk(r.Amount)) return Task.FromResult(MoneyResult.Of(MoneyOutcome.BadAmount));
         if (Same(r.From, r.To)) return Task.FromResult(MoneyResult.Of(MoneyOutcome.NotAllowed));
-        return Idempotent(r.TxnId, "transfer", (conn, tx) =>
+        return Idempotent(r.TxnId, "transfer", r, (conn, tx) =>
             MoveAsync(conn, tx, r.From, r.To, r.Amount, new Entry(r.Type, r.RegionId, r.ObjectId, r.ObjectName), ct), ct);
     }
 
@@ -99,8 +101,9 @@ public sealed partial class MoneyLedger(
             await ExecAsync(conn, tx, "UPDATE accounts SET balance = balance - @amt WHERE id = @id", ct, ("@amt", amount), ("@id", payer.Id));
         await ExecAsync(conn, tx, "UPDATE accounts SET balance = balance + @amt WHERE id = @id", ct, ("@amt", amount), ("@id", payee.Id));
 
-        var fromAfter = payer.Balance - amount;
-        var toAfter = payee.Balance + amount;
+        // Read back, not computed: an allowance applied above may have moved the bank between the locks and the debit.
+        var fromAfter = await ScalarAsync(conn, tx, "SELECT balance FROM accounts WHERE id = @id", ct, ("@id", payer.Id));
+        var toAfter = await ScalarAsync(conn, tx, "SELECT balance FROM accounts WHERE id = @id", ct, ("@id", payee.Id));
         var entryId = await WriteEntryAsync(conn, tx, payer.Id, payee.Id, amount, fromAfter, toAfter, entry, ct);
         return new MoneyResult(MoneyOutcome.Ok, fromAfter, toAfter, entryId);
     }
@@ -188,15 +191,12 @@ public sealed partial class MoneyLedger(
         var weekly = settings().WeeklyAllowance;
         if (weekly <= 0 || a.Kind != AccountKind.Person) return a;
 
-        await using (var cmd = new MySqlCommand("SELECT last_allowance FROM accounts WHERE id = @id", conn, tx))
-        {
-            cmd.Parameters.AddWithValue("@id", a.Id);
-            var last = await cmd.ExecuteScalarAsync(ct);
-            if (last is DateTime when && Now - when < TimeSpan.FromDays(7)) return a;
-        }
-
+        // One conditional update decides it, so two touches at once can't both grant it (review C2).
+        var granted = await ExecAsync(conn, tx,
+            "UPDATE accounts SET balance = balance + @amt, last_allowance = @now WHERE id = @id AND (last_allowance IS NULL OR last_allowance <= @due)",
+            ct, ("@amt", weekly), ("@now", Now), ("@id", a.Id), ("@due", Now - TimeSpan.FromDays(7)));
+        if (granted != 1) return a;
         await ExecAsync(conn, tx, "UPDATE accounts SET balance = balance - @amt WHERE id = @bank", ct, ("@amt", weekly), ("@bank", MoneySchema.BankId));
-        await ExecAsync(conn, tx, "UPDATE accounts SET balance = balance + @amt, last_allowance = @now WHERE id = @id", ct, ("@amt", weekly), ("@now", Now), ("@id", a.Id));
         var bankAfter = await ScalarAsync(conn, tx, "SELECT balance FROM accounts WHERE id = @bank", ct, ("@bank", MoneySchema.BankId));
         await WriteEntryAsync(conn, tx, MoneySchema.BankId, a.Id, weekly, bankAfter, a.Balance + weekly, new Entry(EntryType.Allowance), ct);
         return a with { Balance = a.Balance + weekly };
@@ -209,40 +209,49 @@ public sealed partial class MoneyLedger(
     // Transactions, retries and idempotency.
 
     /// <summary>
-    /// Runs <paramref name="work"/> once per <paramref name="txnId"/>: an id already answered returns that answer and
-    /// changes nothing. Only Ok answers are kept: a refusal changed nothing, so asking again is harmless.
+    /// Runs <paramref name="work"/> once per <paramref name="txnId"/>: the same request again returns the first answer and
+    /// changes nothing; a different request (another operation, or other values) with that id is
+    /// <see cref="MoneyOutcome.DuplicateTxn"/> (review M2). Only Ok answers are kept: a refusal changed nothing, so asking
+    /// again is harmless.
     /// </summary>
-    private Task<MoneyResult> Idempotent(Guid txnId, string op, Func<MySqlConnection, MySqlTransaction, Task<MoneyResult>> work, CancellationToken ct) =>
-        RunAsync(async (conn, tx) =>
+    private Task<MoneyResult> Idempotent(Guid txnId, string op, object request, Func<MySqlConnection, MySqlTransaction, Task<MoneyResult>> work, CancellationToken ct)
+    {
+        var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(op + "\n" + JsonSerializer.Serialize(request))));
+        return RunAsync(async (conn, tx) =>
         {
-            if (await StoredAsync(conn, tx, txnId, ct) is { } earlier) return earlier;
+            if (await StoredAsync(conn, tx, txnId, ct) is { } earlier)
+                return earlier.Fingerprint == fingerprint ? earlier.Result : MoneyResult.Of(MoneyOutcome.DuplicateTxn);
             var result = await work(conn, tx);
             if (result.Outcome == MoneyOutcome.Ok)
-                await ExecAsync(conn, tx, "INSERT INTO requests (txn_id, op, response, at) VALUES (@txn, @op, @resp, @now)",
-                    ct, ("@txn", txnId.ToString()), ("@op", op), ("@resp", JsonSerializer.Serialize(result)), ("@now", Now));
+                await ExecAsync(conn, tx, "INSERT INTO requests (txn_id, op, fingerprint, response, at) VALUES (@txn, @op, @fp, @resp, @now)",
+                    ct, ("@txn", txnId.ToString()), ("@op", op), ("@fp", fingerprint), ("@resp", JsonSerializer.Serialize(result)), ("@now", Now));
             return result;
-        }, ct, txnId);
+        }, ct, (txnId, fingerprint));
+    }
 
-    private static async Task<MoneyResult?> StoredAsync(MySqlConnection conn, MySqlTransaction? tx, Guid txnId, CancellationToken ct)
+    private static async Task<(string Fingerprint, MoneyResult Result)?> StoredAsync(MySqlConnection conn, MySqlTransaction? tx, Guid txnId, CancellationToken ct)
     {
-        await using var cmd = new MySqlCommand("SELECT response FROM requests WHERE txn_id = @txn", conn, tx);
+        await using var cmd = new MySqlCommand("SELECT fingerprint, response FROM requests WHERE txn_id = @txn", conn, tx);
         cmd.Parameters.AddWithValue("@txn", txnId.ToString());
-        return await cmd.ExecuteScalarAsync(ct) is string json ? JsonSerializer.Deserialize<MoneyResult>(json) : null;
+        await using var r = await cmd.ExecuteReaderAsync(ct);
+        if (!await r.ReadAsync(ct)) return null;
+        return (r.GetString(0), JsonSerializer.Deserialize<MoneyResult>(r.GetString(1))!);
     }
 
     /// <summary>
-    /// One database transaction: committed when <paramref name="work"/> answers Ok, rolled back otherwise. Deadlocks are
-    /// retried; a duplicate transaction id (two copies racing) returns the winner's answer; any other database failure is
-    /// <see cref="MoneyOutcome.Unavailable"/>.
+    /// One database transaction: committed when <paramref name="work"/> answers Ok, rolled back otherwise. READ COMMITTED,
+    /// so every read after a row lock sees what the transaction that held the lock committed (review C1, C2, I1). Deadlocks
+    /// are retried; a duplicate transaction id (two copies racing) returns the winner's answer; any other database failure
+    /// is <see cref="MoneyOutcome.Unavailable"/>.
     /// </summary>
-    private async Task<MoneyResult> RunAsync(Func<MySqlConnection, MySqlTransaction, Task<MoneyResult>> work, CancellationToken ct, Guid? txnId = null)
+    private async Task<MoneyResult> RunAsync(Func<MySqlConnection, MySqlTransaction, Task<MoneyResult>> work, CancellationToken ct, (Guid Id, string Fingerprint)? txn = null)
     {
         for (var attempt = 0; ; attempt++)
         {
             try
             {
                 await using var conn = await open(ct);
-                await using var tx = await conn.BeginTransactionAsync(IsolationLevel.RepeatableRead, ct);
+                await using var tx = await conn.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
                 var result = await work(conn, tx);
                 if (result.Outcome == MoneyOutcome.Ok)
                     await tx.CommitAsync(ct);
@@ -250,13 +259,15 @@ public sealed partial class MoneyLedger(
                     await tx.RollbackAsync(ct);
                 return result;
             }
-            catch (MySqlException e) when ((e.Number == ErDeadlock || e.Number == ErLockWaitTimeout) && attempt < DeadlockRetries)
+            catch (MySqlException e) when (e.Number is ErDeadlock or ErLockWaitTimeout or ErCheckRead && attempt < DeadlockRetries)
             {
                 await Task.Delay(Random.Shared.Next(5, 30), ct);
             }
-            catch (MySqlException e) when (e.Number == ErDuplicateKey && txnId is { } id)
+            catch (MySqlException e) when (e.Number == ErDuplicateKey && txn is { } t)
             {
-                return await ReadStoredAsync(id, ct) ?? MoneyResult.Unavailable;
+                return await ReadStoredAsync(t.Id, ct) is { } stored
+                    ? stored.Fingerprint == t.Fingerprint ? stored.Result : MoneyResult.Of(MoneyOutcome.DuplicateTxn)
+                    : MoneyResult.Unavailable;
             }
             catch (Exception e) when (e is MySqlException or TimeoutException or InvalidOperationException { Source: "MySqlConnector" })
             {
@@ -265,7 +276,7 @@ public sealed partial class MoneyLedger(
         }
     }
 
-    private async Task<MoneyResult?> ReadStoredAsync(Guid txnId, CancellationToken ct)
+    private async Task<(string Fingerprint, MoneyResult Result)?> ReadStoredAsync(Guid txnId, CancellationToken ct)
     {
         try
         {

@@ -1,4 +1,6 @@
 using System.Net;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using GridGate.Launcher.Core.Money;
@@ -62,13 +64,13 @@ internal static class MoneyApi
             var region = Need(b.RegionId);
             if (!grant.Regions.Contains(region)) return Code("wrong_region");
             return await WithSession(c, from, grant, ct) ?? Of(await c.Ledger.TransferAsync(
-                new TransferRequest(Need(b.TxnId), type, Account(from), Account(Need(b.To)), Need(b.Amount), region, b.ObjectId, b.ObjectName), ct));
+                new TransferRequest(Scoped(grant, b.TxnId), type, Account(from), Account(Need(b.To)), Need(b.Amount), region, b.ObjectId, b.ObjectName), ct));
         });
         Post(app, "/money/v1/payout", c, async (http, grant, ct) =>
         {
             var b = await Read<PayoutBody>(http, ct);
             var region = Need(b.RegionId);
-            var request = new PayoutRequest(Need(b.TxnId), Need(b.OwnerId), Account(Need(b.To)), Need(b.Amount), region, Need(b.ObjectId), Need(b.ObjectName));
+            var request = new PayoutRequest(Scoped(grant, b.TxnId), Need(b.OwnerId), Account(Need(b.To)), Need(b.Amount), region, Need(b.ObjectId), Need(b.ObjectName));
             if (!grant.Regions.Contains(region)) return Code("wrong_region");
             return Of(await c.Ledger.PayoutAsync(request, ct));
         });
@@ -76,7 +78,7 @@ internal static class MoneyApi
         {
             var b = await Read<ChargeBody>(http, ct);
             var payer = Need(b.Payer);
-            var request = new ChargeRequest(Need(b.TxnId), Need(b.Type), Account(payer), Need(b.Amount), b.PayTo);
+            var request = new ChargeRequest(Scoped(grant, b.TxnId), Need(b.Type), Account(payer), Need(b.Amount), b.PayTo);
             return await WithSession(c, payer, grant, ct) ?? Of(await c.Ledger.ChargeAsync(request, ct));
         });
         Post(app, "/money/v1/hold", c, async (http, grant, ct) =>
@@ -84,7 +86,7 @@ internal static class MoneyApi
             var b = await Read<HoldBody>(http, ct);
             var buyer = Need(b.Buyer);
             var region = Need(b.RegionId);
-            var request = new HoldRequest(Need(b.TxnId), Need(b.Kind), Account(buyer), Account(Need(b.Seller)), Need(b.Amount), region, b.ObjectId, b.ObjectName);
+            var request = new HoldRequest(Scoped(grant, b.TxnId), Need(b.Kind), Account(buyer), Account(Need(b.Seller)), Need(b.Amount), region, b.ObjectId, b.ObjectName);
             if (!grant.Regions.Contains(region)) return Code("wrong_region");
             return await WithSession(c, buyer, grant, ct) ?? Of(await c.Ledger.HoldAsync(request, ct));
         });
@@ -101,7 +103,7 @@ internal static class MoneyApi
     private static async Task<object> Settle(HttpContext http, Context c, RegionKeyGrant grant, bool complete, CancellationToken ct)
     {
         var b = await Read<SettleBody>(http, ct);
-        var (txn, hold) = (Need(b.TxnId), Need(b.HoldId));
+        var (txn, hold) = (Scoped(grant, b.TxnId), Need(b.HoldId));
         // Only the region that made a hold may settle it.
         if (await c.Ledger.HoldRegionAsync(hold, ct) is not { } region) return Code("unknown_hold");
         if (!grant.Regions.Contains(region)) return Code("wrong_region");
@@ -114,17 +116,13 @@ internal static class MoneyApi
     private static async Task Handle(HttpContext http, Context c, Endpoint endpoint)
     {
         var ct = http.RequestAborted;
-        var ip = http.Connection.RemoteIpAddress ?? IPAddress.None;
-        if (c.Failures.IsBlocked(ip))
-        {
-            http.Response.StatusCode = StatusCodes.Status429TooManyRequests;
-            return;
-        }
         var header = http.Request.Headers.Authorization.ToString();
         var key = header.StartsWith(Scheme, StringComparison.Ordinal) ? header[Scheme.Length..] : null;
+        // The key first: a valid key is never slowed down or refused because of someone else's wrong ones.
         if (!RegionKeyRing.FromSettings(c.Settings()).TryAuthenticate(key, out var grant) || grant is null)
         {
-            c.Failures.RecordFailure(ip);
+            var wait = c.Failures.RecordFailure(http.Connection.RemoteIpAddress ?? IPAddress.None);
+            if (wait > TimeSpan.Zero) await Task.Delay(wait, ct);
             http.Response.StatusCode = StatusCodes.Status401Unauthorized;
             return;
         }
@@ -165,6 +163,13 @@ internal static class MoneyApi
             PresenceOutcome.Unavailable => Code("unavailable"),
             _ => Code("no_session"),
         };
+
+    /// <summary>
+    /// The region's transaction id, made unique to its key: two programs that happen to use the same id never see each
+    /// other's answers (review M2).
+    /// </summary>
+    private static Guid Scoped(RegionKeyGrant grant, Guid? txn) =>
+        new(SHA256.HashData(Encoding.UTF8.GetBytes(grant.KeyId + "\n" + Need(txn).ToString("D"))).AsSpan(0, 16));
 
     private static AccountRef Account(Who w) => new(Need(w.AgentId), w.Home ?? "");
 

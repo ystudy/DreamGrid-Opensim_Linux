@@ -15,12 +15,18 @@ public sealed class MoneyMaintenanceTests(MoneyMariaDb maria) : IClassFixture<Mo
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private static async Task Eventually(Func<Task<bool>> condition, string what)
+    /// <summary>
+    /// Waits for <paramref name="condition"/>, calling <paramref name="tick"/> between tries. .NET 10 starts a
+    /// BackgroundService's work on another thread, so its timer may not exist yet when a test first moves the fake clock;
+    /// moving it on every try reaches the timer whenever it was made.
+    /// </summary>
+    private static async Task Eventually(Func<Task<bool>> condition, string what, Action? tick = null)
     {
         var deadline = DateTime.UtcNow.AddSeconds(15);
         while (!await condition())
         {
             Assert.True(DateTime.UtcNow < deadline, $"Timed out waiting until {what}.");
+            tick?.Invoke();
             await Task.Delay(100, Ct);
         }
     }
@@ -34,9 +40,9 @@ public sealed class MoneyMaintenanceTests(MoneyMariaDb maria) : IClassFixture<Mo
         await maintenance.StartAsync(Ct);
 
         time.Advance(TimeSpan.FromMinutes(6));
-        time.Advance(MoneyMaintenance.SweepEvery);
 
-        await Eventually(async () => await db.Text($"SELECT state FROM `money`.`holds` WHERE id = {hold.HoldId}") == "returned", "the hold is returned");
+        await Eventually(async () => await db.Text($"SELECT state FROM `money`.`holds` WHERE id = {hold.HoldId}") == "returned", "the hold is returned",
+            () => time.Advance(MoneyMaintenance.SweepEvery));
         await maintenance.StopAsync(Ct);
     }
 
@@ -52,6 +58,64 @@ public sealed class MoneyMaintenanceTests(MoneyMariaDb maria) : IClassFixture<Mo
 
         await Eventually(async () => (await ledger.FrozenAsync(Ct)).Frozen, "the grid is frozen");
         await maintenance.StopAsync(Ct);
+    }
+
+    /// <summary>A ledger over <paramref name="db"/> whose database answers only once <paramref name="up"/> says so.</summary>
+    private static MoneyLedger Flaky(MoneyTestDatabase db, Func<bool> up, Func<CancellationToken, Task<MySqlConnector.MySqlConnection>> down, Microsoft.Extensions.Time.Testing.FakeTimeProvider time)
+    {
+        var s = new MoneySettings(Mode: MoneyMode.Play);
+        return new MoneyLedger(ct => up() ? db.OpenMoney(ct) : down(ct), () => s, () => MoneyMode.Play, MoneyLedgerTransferTests.LocalUsers(db), time);
+    }
+
+    [Fact]
+    public async Task Self_check_retries_until_it_runs()
+    {
+        var (ledger, db, time) = await MoneyLedgerTransferTests.Setup(maria);
+        await ledger.BalanceAsync(AccountRef.Resident(A), Ct);
+        await db.Sql($"UPDATE `money`.`accounts` SET balance = balance + 5 WHERE agent_id = '{A}'");
+        var up = false;
+        var closed = db.Settings with { MariaDbPort = MoneyMariaDb.FreePort() };
+        var flaky = Flaky(db, () => up, ct => Core.Database.GridDb.OpenMoneyAsync(closed, 2, ct), time);
+        using var maintenance = new MoneyMaintenance(flaky, () => MoneyMode.Play, time, NullLogger<MoneyMaintenance>.Instance);
+        await maintenance.StartAsync(Ct);
+        await Task.Delay(300, Ct); // the start-up check finds the database down
+
+        up = true;
+
+        await Eventually(async () => (await ledger.FrozenAsync(Ct)).Frozen, "the self-check runs once the database is up",
+            () => time.Advance(MoneyMaintenance.SweepEvery));
+        await maintenance.StopAsync(Ct);
+    }
+
+    [Fact]
+    public async Task Maintenance_survives_unexpected_errors()
+    {
+        var (ledger, db, time) = await MoneyLedgerTransferTests.Setup(maria);
+        await ledger.BalanceAsync(AccountRef.Resident(A), Ct);
+        await db.Sql($"UPDATE `money`.`accounts` SET balance = balance + 5 WHERE agent_id = '{A}'");
+        var up = false;
+        var flaky = Flaky(db, () => up, _ => throw new InvalidOperationException("something unexpected"), time);
+        using var maintenance = new MoneyMaintenance(flaky, () => MoneyMode.Play, time, NullLogger<MoneyMaintenance>.Instance);
+        await maintenance.StartAsync(Ct);
+        await Task.Delay(300, Ct);
+        Assert.False(maintenance.ExecuteTask!.IsCompleted, "maintenance stopped after an unexpected error");
+
+        up = true;
+
+        await Eventually(async () => (await ledger.FrozenAsync(Ct)).Frozen, "maintenance keeps going after an unexpected error",
+            () => time.Advance(MoneyMaintenance.SweepEvery));
+        await maintenance.StopAsync(Ct);
+    }
+
+    [Fact]
+    public async Task Failed_preparation_does_not_throw()
+    {
+        var db = await maria.FreshAsync();
+        var closed = db.Settings with { MariaDbPort = MoneyMariaDb.FreePort(), Db = db.Settings.Db with { MoneyPassword = "already-set" } };
+
+        var after = await MoneyStartup.TryPrepareAsync(closed, f => f(closed), MoneyMode.Play, NullLogger.Instance, Ct);
+
+        Assert.Same(closed, after);
     }
 
     [Fact]

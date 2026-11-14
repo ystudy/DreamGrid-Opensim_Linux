@@ -1708,7 +1708,8 @@ public sealed partial class GridController(
         await StartComponentAsync(_db!, ct);
         await new DatabaseProvisioner(s).EnsureAsync(ct);
         // The money database, once money is approved and turned on (money design §7.1); nothing while it is Off.
-        await MoneyStartup.PrepareAsync(s, change => UpdateSettings(change, writeConfig: false), MoneyRelease.Effective(s.Money), ct);
+        await MoneyStartup.TryPrepareAsync(s, change => UpdateSettings(change, writeConfig: false), MoneyRelease.Effective(s.Money),
+            _log ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance, ct);
     }
 
     /// <summary>

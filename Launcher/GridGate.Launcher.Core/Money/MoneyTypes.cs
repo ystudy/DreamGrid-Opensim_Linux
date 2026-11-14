@@ -26,6 +26,9 @@ public enum MoneyOutcome
     HoldClosed,
     NoWallet,
     DuplicateReference,
+
+    /// <summary>A transaction id already used for a different request.</summary>
+    DuplicateTxn,
 }
 
 /// <summary>

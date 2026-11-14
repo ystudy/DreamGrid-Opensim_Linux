@@ -29,8 +29,26 @@ public sealed class MoneyServiceHost(
     {
         if (effective() == MoneyMode.Off) return;
         var port = settings().MoneyPort;
-        var cert = certificate();
+        WebApplication? app = null;
+        try
+        {
+            var cert = certificate();
+            app = Build(port, cert);
+            await app.StartAsync(cancellationToken);
+            _app = app;
+            _log.LogInformation("The money service is listening on 127.0.0.1:{Port}.", port);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            // Money being down must not take the launcher or the grid with it (money design §5): payments are refused
+            // until the next start.
+            _log.LogError("The money service couldn't start on 127.0.0.1:{Port}: {Error}: {Message}", port, e.GetType().Name, e.Message);
+            if (app is not null) await app.DisposeAsync();
+        }
+    }
 
+    private WebApplication Build(int port, X509Certificate2 cert)
+    {
         var builder = WebApplication.CreateEmptyBuilder(new WebApplicationOptions());
         builder.WebHost.UseKestrelCore().ConfigureKestrel(o =>
         {
@@ -42,10 +60,7 @@ public sealed class MoneyServiceHost(
         var app = builder.Build();
         app.UseRouting();
         MoneyApi.Map(app, new MoneyApi.Context(ledger, presence, settings, failures, _log));
-
-        await app.StartAsync(cancellationToken);
-        _app = app;
-        _log.LogInformation("The money service is listening on 127.0.0.1:{Port}.", port);
+        return app;
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)

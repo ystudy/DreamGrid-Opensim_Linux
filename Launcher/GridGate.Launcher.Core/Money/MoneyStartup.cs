@@ -1,5 +1,6 @@
 using GridGate.Launcher.Core.Database;
 using GridGate.Launcher.Core.Settings;
+using Microsoft.Extensions.Logging;
 
 namespace GridGate.Launcher.Core.Money;
 
@@ -23,5 +24,24 @@ public static class MoneyStartup
         await using var conn = await GridDb.OpenMoneyAsync(s, 10, ct);
         await MoneySchema.EnsureAsync(conn, ct);
         return s;
+    }
+
+    /// <summary>
+    /// <see cref="PrepareAsync"/>, but a failure is logged and leaves money unavailable instead of stopping the grid (money
+    /// design §5). Returns the settings as they are after whatever succeeded.
+    /// </summary>
+    public static async Task<LauncherSettings> TryPrepareAsync(
+        LauncherSettings s, Func<Func<LauncherSettings, LauncherSettings>, LauncherSettings> update, MoneyMode effective, ILogger log, CancellationToken ct)
+    {
+        var latest = s;
+        try
+        {
+            return await PrepareAsync(s, change => latest = update(change), effective, ct);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            log.LogError("The money database couldn't be prepared ({Error}); payments are refused until the next start.", e.GetType().Name);
+            return latest;
+        }
     }
 }
