@@ -162,6 +162,12 @@ The money service runs **inside the launcher process**, on **its own listener an
   `Presence` table: the avatar's session id and secure session id must match, and the avatar's current region must be one the
   key covers. This also covers hypergrid visitors, because the Gatekeeper records them in `Presence` too
   (`OpenSim/Services/HypergridService/GatekeeperService.cs:552`).
+- **A resident account is only created for a real local user** (found while planning). The UUID must be in Robust's
+  `UserAccounts`; anything else gets "no wallet". Otherwise a taken-over region could create starting balances by inventing
+  UUIDs.
+- **Where local keys live** (found while planning): the launcher rewrites every region INI before each start, so it keeps
+  local programs' keys in the owner-only settings file, like the database passwords, and compares them by hash. Region Server
+  keys (§7.7) are kept as hashes only.
 - **Every request carries a transaction id** that the region makes. A repeated id returns the first answer and moves nothing.
 - **Payments are one database transaction each:**
   - Debit with a guard: `balance = balance - amount WHERE balance >= amount AND NOT frozen`. If no row changes, the answer is
